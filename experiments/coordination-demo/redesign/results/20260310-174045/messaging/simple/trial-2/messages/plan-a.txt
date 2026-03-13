@@ -1,0 +1,30 @@
+Plan for FormatBytes implementation:
+
+FILES TO MODIFY:
+- pkg/display/display.go
+- pkg/display/display_test.go
+
+INSERTION POINT:
+- In display.go: After FormatDurationShort() function (after line 94)
+- In display_test.go: After TestFormatDurationShort() function (after line 134)
+
+FUNCTIONS TO ADD:
+- FormatBytes(bytes int64) string
+
+IMPLEMENTATION DETAILS:
+- Binary units: B, KiB, MiB, GiB, TiB
+- 1 decimal place for non-byte units
+- Handle negative values with "-" prefix
+- Zero returns "0 B"
+- Test function TestFormatBytes with coverage for:
+  - Zero value
+  - Small values (< 1024)
+  - Exact boundaries (1024, 1048576, etc.)
+  - Negative values
+  - Large values (GiB, TiB)
+  - Between-boundary values
+
+NO CONFLICTS EXPECTED:
+- FormatRate function will follow similar pattern but with different units/suffix
+- Both will be added after FormatDurationShort
+- Each has own test function

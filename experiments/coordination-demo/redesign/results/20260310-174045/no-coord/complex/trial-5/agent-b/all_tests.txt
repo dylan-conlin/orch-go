@@ -1,0 +1,36 @@
+=== RUN   TestTruncate
+--- PASS: TestTruncate (0.00s)
+=== RUN   TestTruncateWithPadding
+--- PASS: TestTruncateWithPadding (0.00s)
+=== RUN   TestShortID
+--- PASS: TestShortID (0.00s)
+=== RUN   TestStripANSI
+--- PASS: TestStripANSI (0.00s)
+=== RUN   TestFormatDuration
+--- PASS: TestFormatDuration (0.00s)
+=== RUN   TestFormatDurationShort
+--- PASS: TestFormatDurationShort (0.00s)
+=== RUN   TestFormatTable
+=== RUN   TestFormatTable/basic_table
+=== RUN   TestFormatTable/headers_only_(no_rows)
+=== RUN   TestFormatTable/single_column_table
+=== RUN   TestFormatTable/wide_content
+=== RUN   TestFormatTable/mismatched_columns_-_row_fewer_than_headers
+=== RUN   TestFormatTable/empty_headers
+=== RUN   TestFormatTable/nil_rows
+--- PASS: TestFormatTable (0.00s)
+    --- PASS: TestFormatTable/basic_table (0.00s)
+    --- PASS: TestFormatTable/headers_only_(no_rows) (0.00s)
+    --- PASS: TestFormatTable/single_column_table (0.00s)
+    --- PASS: TestFormatTable/wide_content (0.00s)
+    --- PASS: TestFormatTable/mismatched_columns_-_row_fewer_than_headers (0.00s)
+    --- PASS: TestFormatTable/empty_headers (0.00s)
+    --- PASS: TestFormatTable/nil_rows (0.00s)
+=== RUN   TestFormatTableWithANSI
+--- PASS: TestFormatTableWithANSI (0.00s)
+=== RUN   TestFormatTableAlignment
+--- PASS: TestFormatTableAlignment (0.00s)
+=== RUN   TestFormatTableEdgeCases
+--- PASS: TestFormatTableEdgeCases (0.00s)
+PASS
+ok  	github.com/dylan-conlin/orch-go/pkg/display	(cached)

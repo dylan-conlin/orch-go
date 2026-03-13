@@ -1,0 +1,29 @@
+Perfect! I've successfully completed the task:
+
+## Summary
+
+✅ **FormatTable Implementation Complete**
+
+**What was added:**
+- `FormatTable` function in `pkg/display/display.go` (lines 96-169) that renders headers and rows as an aligned text table
+- Comprehensive test suite in `pkg/display/display_test.go` with 10 test cases
+
+**Key Features:**
+- Auto-sizes columns based on widest content (headers + data)
+- Correctly handles ANSI-colored text using the existing `StripANSI` function for width calculation
+- Handles edge cases: empty rows, mismatched column counts, nil rows
+- Separator style: space-pipe-space between columns, with dashes in the separator line
+- All trailing newlines removed from output
+
+**Test Coverage:**
+- Basic table, headers-only, single column
+- Wide content, ANSI-colored cells
+- Rows with fewer/more columns than headers
+- Varying column widths
+- Empty headers, single row
+
+**All tests passing:** ✅ (10/10)
+
+**Committed:** `b17b6ca5b` - feat: add FormatTable function to pkg/display
+
+The implementation is ready for coordination with the other agent adding `VisualWidth` and `PadToWidth` functions—these will be independent additions to the same file with no merge conflicts.

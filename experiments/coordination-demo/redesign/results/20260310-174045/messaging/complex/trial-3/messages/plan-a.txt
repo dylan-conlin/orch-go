@@ -1,0 +1,24 @@
+PLAN A: VisualWidth and PadToWidth Functions
+=============================================
+
+Files to modify:
+1. pkg/display/display.go
+   - Insert location: After FormatDurationShort function (line 94)
+   - Functions to add:
+     * VisualWidth(s string) int - returns visual display width, using StripANSI
+     * PadToWidth(s string, width int) string - right-pads with spaces to width
+
+2. pkg/display/display_test.go
+   - Add comprehensive tests:
+     * TestVisualWidth - covering ASCII, ANSI codes, Unicode, empty strings, edge cases
+     * TestPadToWidth - covering plain strings, ANSI codes, Unicode, already-at-width, wider-than-target cases
+
+Insertion points (non-conflicting):
+- Functions added after line 94 in display.go
+- Tests use standard Go testing table-driven pattern
+- Tests added at end of existing test file
+
+Dependencies used:
+- Standard library only (no new imports)
+- Uses existing StripANSI function
+- Uses utf8.RuneCountInString or len([]rune(s)) for proper Unicode handling

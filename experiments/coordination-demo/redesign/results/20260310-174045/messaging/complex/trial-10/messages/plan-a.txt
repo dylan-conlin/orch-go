@@ -1,0 +1,33 @@
+AGENT A IMPLEMENTATION PLAN: VisualWidth and PadToWidth
+
+TASK: Add VisualWidth and PadToWidth functions to pkg/display/display.go
+
+FILES TO MODIFY:
+1. pkg/display/display.go
+   - Insert after FormatDurationShort function (line 94)
+   - Add VisualWidth(s string) int
+   - Add PadToWidth(s string, width int) string
+
+2. pkg/display/display_test.go
+   - Add TestVisualWidth test
+   - Add TestPadToWidth test
+
+FUNCTION SIGNATURES:
+- func VisualWidth(s string) int
+  - Returns visual width of string ignoring ANSI codes
+  - Uses existing StripANSI function
+  - Counts runes not bytes
+
+- func PadToWidth(s string, width int) string
+  - Right-pads string with spaces to target visual width
+  - Preserves ANSI codes but doesn't count them
+  - Returns unchanged if already wider than width
+
+TEST COVERAGE:
+- Plain ASCII strings
+- Strings with ANSI color codes
+- Unicode strings (CJK, emoji)
+- Empty strings
+- Edge cases (at width, wider than target)
+
+INSERTION POINT: After line 94 (FormatDurationShort)

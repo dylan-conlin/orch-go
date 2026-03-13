@@ -1,0 +1,1 @@
+4232cecc6 feat: add FormatRate function to pkg/display

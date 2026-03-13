@@ -1,0 +1,30 @@
+Perfect! I've successfully completed the task. Here's a summary of what was implemented:
+
+## Summary
+
+✅ **FormatTable function added to `pkg/display/display.go`**
+
+**Key features:**
+- Renders headers and data rows as an aligned text table
+- Auto-sizes columns based on widest content (headers + data)
+- Uses `StripANSI()` for correct visual width calculation with ANSI colors
+- Separates headers from data with a dash-line separator (e.g., `--|-----|------`)
+- Uses `|` as column separator with proper spacing
+- Handles edge cases: empty tables (headers only), nil rows, mismatched column counts, rows with fewer/more columns than headers
+
+**Test coverage in `display_test.go`:**
+- ✅ Basic table (headers + multiple rows)
+- ✅ Headers-only table
+- ✅ Empty headers edge case
+- ✅ Single-column table
+- ✅ Wide content (long strings)
+- ✅ Rows with fewer columns than headers
+- ✅ ANSI-colored content alignment
+- ✅ ANSI-colored headers
+- ✅ Nil rows slice
+- ✅ Rows with more columns than headers
+- ✅ Mixed content lengths
+
+**All 13 tests pass** ✅
+
+The implementation follows existing code style, includes proper doc comments, uses only standard library, and correctly leverages the existing `StripANSI` function for width calculations.

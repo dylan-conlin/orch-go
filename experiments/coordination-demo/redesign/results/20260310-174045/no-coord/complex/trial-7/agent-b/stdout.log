@@ -1,0 +1,29 @@
+Perfect! I've successfully completed the task. Here's a summary of what was implemented:
+
+## Summary
+
+✅ **Added `FormatTable` function to `pkg/display/display.go`** with:
+- Auto-sized columns based on widest content (header + all rows)
+- ANSI color support via `StripANSI` for accurate width calculation
+- Header-to-data separator with dashes
+- Pipe-delimited columns with proper alignment
+- Edge case handling:
+  - Empty tables (headers only)
+  - Rows with fewer columns than headers (padded with empty cells)
+  - Rows with more columns than headers (truncated to header count)
+  - Nil rows (treated as empty)
+
+✅ **Comprehensive test coverage** in `pkg/display/display_test.go`:
+- Basic table rendering
+- Empty tables
+- Single-column tables
+- Wide content
+- ANSI-colored content alignment
+- Mismatched column counts
+- Empty strings in cells
+
+✅ **All tests pass** (9 test cases across existing and new functionality)
+
+✅ **Committed** with proper message
+
+The implementation uses standard library only (no new dependencies) and follows the existing code style with doc comments on the public function.

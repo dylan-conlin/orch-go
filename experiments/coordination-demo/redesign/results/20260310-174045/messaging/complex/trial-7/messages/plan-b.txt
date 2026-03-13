@@ -1,0 +1,46 @@
+IMPLEMENTATION PLAN - Agent B (FormatTable)
+
+Files to modify:
+1. pkg/display/display.go - Add FormatTable function
+2. pkg/display/display_test.go - Add TestFormatTable test
+
+Implementation Details:
+================================================================================
+
+FILE: pkg/display/display.go
+- Location: After FormatDurationShort function (after line 94)
+- New function: FormatTable(headers []string, rows [][]string) string
+  * Returns a formatted text table as a string
+  * Uses StripANSI for correct column width calculation
+  * Design choices: Pipe separators (|), 1 space padding on each side, dash separator for header
+  * Handles edge cases: empty rows, mismatched column counts, nil input
+
+Implementation approach:
+  1. Handle nil/empty input gracefully
+  2. Calculate max width for each column using StripANSI
+  3. Format headers with separators
+  4. Format data rows
+  5. Include dash line separator between header and rows
+
+FILE: pkg/display/display_test.go
+- Location: After TestFormatDurationShort test (after line 134)
+- New test: TestFormatTable
+- Test cases:
+  1. Basic table with headers and rows
+  2. Empty table (headers only, no data rows)
+  3. ANSI-colored content alignment
+  4. Mismatched column counts (fewer columns than headers)
+  5. Single-column table
+  6. Wide content (long strings)
+
+Insertion strategy:
+- Will insert after existing functions in both files
+- Will NOT conflict with other agent's VisualWidth/PadToWidth functions
+- Both agents will insert at same location (after FormatDurationShort)
+- Order: This agent (B) inserts FormatTable, other agent (A) inserts VisualWidth/PadToWidth
+- No naming conflicts, no file dependency issues
+
+Coordination notes:
+- Other agent (A) is adding VisualWidth and PadToWidth helper functions
+- FormatTable will use existing StripANSI function, not waiting for other agent's functions
+- If other agent completes first, can optionally refactor FormatTable to use VisualWidth (but not required)

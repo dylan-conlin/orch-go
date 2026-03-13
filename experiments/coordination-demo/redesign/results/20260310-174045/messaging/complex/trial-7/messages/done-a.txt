@@ -1,0 +1,49 @@
+IMPLEMENTATION COMPLETE: VisualWidth and PadToWidth Functions
+================================================================
+
+Date: 2026-03-10
+Status: ✅ COMPLETE
+
+## Changes Made
+
+### File: pkg/display/display.go
+- Added `VisualWidth(s string) int` function (line 96-99)
+  - Returns visual display width of string, ignoring ANSI escape codes
+  - Uses existing StripANSI() function to strip codes
+  - Counts runes (not bytes) for Unicode correctness
+
+- Added `PadToWidth(s string, width int) string` function (line 101-108)
+  - Right-pads string with spaces to reach target visual width
+  - Preserves ANSI codes but doesn't count them toward width
+  - Returns unchanged if already at or wider than target
+
+### File: pkg/display/display_test.go
+- Added `TestVisualWidth` test function (20 test cases covering):
+  - Plain ASCII strings
+  - ANSI color codes (should be ignored)
+  - Unicode strings (Chinese, emoji, accented characters, Japanese)
+  - Mixed ANSI + Unicode combinations
+
+- Added `TestPadToWidth` test function (19 test cases covering):
+  - Plain ASCII padding
+  - ANSI-colored content preservation
+  - Unicode string padding
+  - Edge cases (already at width, wider than target)
+  - Mixed ANSI and Unicode scenarios
+
+## Test Results
+All tests pass: `go test ./pkg/display/ -v`
+- 8 total test functions, all passing
+- Existing tests remain unmodified and passing
+
+## Git Commit
+Commit: 952a27c04
+Message: "feat: add VisualWidth and PadToWidth functions to pkg/display"
+
+## Coordination Status
+No conflicts expected with FormatTable implementation (Agent B):
+- FormatTable will also insert after FormatDurationShort
+- Different function names (FormatTable vs VisualWidth/PadToWidth)
+- Will benefit from VisualWidth for column width calculation
+
+Both implementations use StripANSI() - a shared utility that's already proven reliable.

@@ -1,0 +1,20 @@
+Perfect! I've successfully completed the task:
+
+## Summary
+
+✅ **FormatBytes function added** to `pkg/display/display.go` (after `FormatDurationShort`)
+- Formats byte counts into human-readable strings using binary units: B, KiB, MiB, GiB, TiB
+- Shows 1 decimal place for non-byte units
+- Handles zero and negative values correctly
+
+✅ **Comprehensive tests added** to `pkg/display/display_test.go` (after `TestFormatDurationShort`)
+- 14 test cases covering:
+  - Zero: `"0 B"`
+  - Small bytes: `"512 B"`, `"1023 B"`
+  - Exact boundaries: `"1.0 KiB"`, `"1.0 MiB"`, `"1.0 GiB"`, `"1.0 TiB"`
+  - Mid-range values: `"1.5 KiB"`, `"1.5 MiB"`, `"1.5 GiB"`, `"1.5 TiB"`
+  - Negative values: `"-1.0 KiB"`, `"-1.5 KiB"`, `"-1.0 MiB"`
+
+✅ **All tests pass** (7/7 test functions in display package)
+
+✅ **Committed** with commit message: `feat: add FormatBytes function to display package`

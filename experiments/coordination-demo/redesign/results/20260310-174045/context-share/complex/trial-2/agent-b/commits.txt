@@ -1,0 +1,1 @@
+32ee20025 feat: add FormatTable function for aligned text table formatting

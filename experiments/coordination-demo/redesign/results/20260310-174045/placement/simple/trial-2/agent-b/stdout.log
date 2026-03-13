@@ -1,0 +1,21 @@
+Done! I've successfully added the `FormatRate` function to `pkg/display`:
+
+## Summary
+
+✅ **Function added:** `FormatRate(bytesPerSec float64) string`
+- Formats transfer rates using binary units (B/s, KiB/s, MiB/s, GiB/s)
+- Shows 1 decimal place for non-byte units
+- Handles zero, negative values, and large values correctly
+
+✅ **Tests added:** `TestFormatRate` with 18 test cases covering:
+- Zero and small values (bytes)
+- Exact boundaries (1024, 1048576, etc.)
+- Fractional values
+- Negative values
+- Large values (GiB/s)
+
+✅ **All tests passing:** `TestFormatRate` and all existing display package tests pass
+
+✅ **Proper placement:** Function placed after `StripANSI` and before `FormatDuration`; test placed after `TestStripANSI` and before `TestFormatDuration`
+
+✅ **Committed:** Changes committed as `9214e31da`

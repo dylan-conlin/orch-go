@@ -1,0 +1,32 @@
+Excellent! I've successfully completed the task. Here's a summary:
+
+## ✅ Task Completed
+
+I've added the `FormatTable` function to `pkg/display/display.go` with the following features:
+
+### Implementation Details
+- **Auto-sizing columns** based on the widest content (including headers)
+- **ANSI-aware width calculation** using the existing `StripANSI` function
+- **Proper handling of edge cases**: empty tables, mismatched column counts, nil rows, single-column tables
+- **Clean table format** with pipes (`|`) and dashes (`-`) separators
+
+### Tests Added
+Comprehensive test coverage in `TestFormatTable` including:
+- ✓ Basic table with multiple rows
+- ✓ Headers-only table (no rows)
+- ✓ ANSI-colored content alignment
+- ✓ Mismatched column counts (rows with fewer/more columns than headers)
+- ✓ Single-column tables
+- ✓ Wide content (long strings)
+- ✓ Empty headers (edge case)
+- ✓ Nil rows (edge case)
+- ✓ Multiple ANSI color codes in single row
+
+All existing tests continue to pass, and the new tests validate the function works correctly with both plain text and ANSI-colored content.
+
+### Coordination Note
+I've designed the implementation to cleanly integrate with the other agent's work:
+- Used `StripANSI` directly for width calculations (as required)
+- Implemented padding logic inline to avoid duplicate functions
+- Inserted `FormatTable` after `FormatDurationShort`, leaving space for the other agent's `VisualWidth` and `PadToWidth` functions
+- Both implementations can coexist without merge conflicts

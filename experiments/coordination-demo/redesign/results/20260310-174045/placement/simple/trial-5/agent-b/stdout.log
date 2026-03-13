@@ -1,0 +1,23 @@
+Perfect! I've successfully completed the task. Here's a summary of what was implemented:
+
+## Summary
+
+✅ **Added `FormatRate` function to `pkg/display/display.go`**
+- Formats transfer rates into human-readable strings using binary units (B/s, KiB/s, MiB/s, GiB/s)
+- Shows 1 decimal place for non-byte-per-sec units
+- Handles zero, negative values, and large values correctly
+- Positioned after `StripANSI` and before `FormatDuration` as requested
+
+✅ **Added comprehensive tests to `pkg/display/display_test.go`**
+- Covers zero and small values
+- Tests exact boundaries (1024, 1048576, etc.)
+- Includes negative value handling
+- Tests large GiB/s values
+- Validates fractional rates
+- Positioned after `TestStripANSI` and before `TestFormatDuration`
+
+✅ **All tests pass** - ran both the new `TestFormatRate` and all existing tests in the display package
+
+✅ **Committed changes** with a clear commit message
+
+The implementation follows the existing code style and patterns in the package, using simple conditional logic and `fmt.Sprintf` for formatting, consistent with functions like `FormatDuration` and `FormatDurationShort`.

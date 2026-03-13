@@ -1,0 +1,29 @@
+Perfect! I've successfully implemented and tested the `FormatRate` function. Here's a summary:
+
+## Implementation Complete ✓
+
+**Changes made:**
+- Added `FormatRate(bytesPerSec float64) string` function to `pkg/display/display.go`
+- Added comprehensive `TestFormatRate` test function to `pkg/display/display_test.go`
+
+**Function behavior:**
+- Formats transfer rates into human-readable binary units (B/s, KiB/s, MiB/s, GiB/s)
+- Shows integer format for bytes/sec, 1 decimal place for larger units
+- Handles zero, negative values, and fractional rates
+- Examples: `1024` → `"1.0 KiB/s"`, `1536` → `"1.5 KiB/s"`, `-1048576` → `"-1.0 MiB/s"`
+
+**Testing:**
+- All 7 existing tests pass
+- TestFormatRate covers 21 test cases including:
+  - Zero and small values (B/s)
+  - Exact unit boundaries (1024, 1048576, 1073741824)
+  - Negative values
+  - Large values (GiB/s)
+  - Fractional values
+
+**Coordination status:**
+- Function placed after `FormatDurationShort` in `display.go`
+- Tests placed after `TestFormatDurationShort` in `display_test.go`
+- Ready for clean merge with the other agent's `FormatBytes` implementation
+
+✅ **Committed** with message: "feat: add FormatRate function to pkg/display"

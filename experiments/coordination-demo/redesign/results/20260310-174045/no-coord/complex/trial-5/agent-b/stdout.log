@@ -1,0 +1,19 @@
+Excellent! The `FormatTable` function has been successfully implemented and tested. Here's a summary of what was added:
+
+## Implementation Summary
+
+**FormatTable function (`pkg/display/display.go`):**
+- Takes headers and rows as input, returns a formatted table string
+- Auto-sizes columns based on widest content in each column (including headers)
+- Uses the existing `StripANSI` function to calculate correct widths for ANSI-colored content
+- Separates headers from data with a row of dashes and plus signs
+- Handles edge cases: empty rows, mismatched column counts, nil rows
+- Preserves ANSI escape codes in output while correctly calculating display widths
+
+**Comprehensive Tests:**
+- `TestFormatTable`: 7 test cases covering basic tables, headers-only, single columns, wide content, mismatched columns, empty headers, and nil rows
+- `TestFormatTableWithANSI`: Validates ANSI color preservation and correct width calculation
+- `TestFormatTableAlignment`: Multi-column alignment with ANSI codes
+- `TestFormatTableEdgeCases`: Single cells, empty strings, extra columns, and multiple ANSI codes
+
+All tests pass successfully! ✓

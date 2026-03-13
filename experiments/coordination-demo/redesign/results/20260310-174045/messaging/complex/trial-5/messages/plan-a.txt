@@ -1,0 +1,35 @@
+PLAN-A: VisualWidth and PadToWidth Implementation
+
+Files to modify:
+1. pkg/display/display.go - add functions after FormatDurationShort (after line 94)
+2. pkg/display/display_test.go - add test functions at end of file
+
+Functions to add to display.go:
+1. VisualWidth(s string) int
+   - Returns visual display width ignoring ANSI escape codes
+   - Uses existing StripANSI function to remove codes
+   - Counts runes (not bytes) for proper Unicode handling
+
+2. PadToWidth(s string, width int) string
+   - Right-pads string with spaces to reach target visual width
+   - Preserves ANSI codes but they don't count toward width
+   - Returns unchanged if already wider than target
+
+Tests to add to display_test.go:
+1. TestVisualWidth - covers:
+   - Plain ASCII strings
+   - Strings with ANSI color codes
+   - Unicode strings (CJK, emoji)
+   - Empty strings
+   - Edge cases
+
+2. TestPadToWidth - covers:
+   - Plain ASCII strings
+   - ANSI color codes (preserved in output)
+   - Unicode strings
+   - Already at width
+   - Already wider than target
+   - Empty strings
+
+Insertion point: Both functions added after FormatDurationShort function
+Tests added at end of display_test.go after TestFormatDurationShort

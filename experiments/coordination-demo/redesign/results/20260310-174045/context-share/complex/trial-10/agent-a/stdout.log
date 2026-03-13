@@ -1,0 +1,17 @@
+Perfect! ✅ I've successfully completed the task. Here's what was implemented:
+
+## Summary
+
+**Added to `pkg/display/display.go`:**
+- `VisualWidth(s string) int` — Returns the visual display width of a string, excluding ANSI escape codes. Correctly handles Unicode by counting runes.
+- `PadToWidth(s string, width int) string` — Right-pads strings with spaces to reach target visual width, preserving ANSI codes without counting them.
+
+**Added to `pkg/display/display_test.go`:**
+- `TestVisualWidth` — 14 test cases covering ASCII, ANSI-colored, Unicode (CJK, emoji, Hiragana), and edge cases
+- `TestPadToWidth` — 17 test cases with verification of actual visual width after padding
+
+**Test Results:** ✅ All 8 tests pass (6 existing + 2 new)
+
+**Coordination:** The implementation is positioned cleanly after `FormatDurationShort` without conflicting with the other agent's `FormatTable` task — both can coexist in the same location without merge issues.
+
+Both functions follow the existing code style, use only standard library, leverage the existing `StripANSI` function as required, and include proper doc comments.

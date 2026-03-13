@@ -1,0 +1,35 @@
+DONE-B: FormatTable Implementation Complete
+==============================================
+
+Task: Add FormatTable function to pkg/display/display.go
+
+Implementation Summary:
+  - Added FormatTable(headers []string, rows [][]string) string function
+  - Location: pkg/display/display.go after FormatDurationShort (line 95-148)
+  - Uses pipes (|) and dashes (-) for table borders
+  - Auto-sizes columns based on widest content (using StripANSI for ANSI-safe width calculation)
+  - Handles ANSI-colored content correctly by calculating visual width only
+  - Pads rows with fewer columns than headers with empty strings
+  - Format: `| cell1 | cell2 | ... |` with `+---+---+...+` separator lines
+
+Tests Added:
+  - TestFormatTable (main test with 8 sub-cases):
+    1. Basic table (headers + 2 rows)
+    2. Headers only (no rows)
+    3. Single column table
+    4. ANSI-colored content (verifies alignment ignores ANSI codes)
+    5. Mismatched column counts (fewer columns in row than headers)
+    6. Wide content (very long strings)
+    7. Empty strings in cells
+    8. All empty headers
+  - TestFormatTableEmptyHeaders (edge case: nil input)
+
+Commit: 25d658b1d "feat: add FormatTable function to pkg/display"
+
+Test Results: All 10 tests pass (6 existing + 4 new)
+
+Coordination Notes:
+  - No conflicts with Agent A's VisualWidth/PadToWidth functions
+  - Both agents inserting after FormatDurationShort at line 94
+  - Agent A's functions can be used to refactor FormatTable in future (currently uses StripANSI directly as required)
+  - Implementation is complete and ready for merge

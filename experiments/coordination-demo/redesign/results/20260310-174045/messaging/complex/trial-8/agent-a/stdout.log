@@ -1,0 +1,46 @@
+## ✅ Task Complete
+
+I've successfully implemented `VisualWidth` and `PadToWidth` functions with comprehensive tests. Here's what was done:
+
+### Implementation Summary
+
+**pkg/display/display.go** — Added 2 functions after `FormatDurationShort`:
+
+1. **`VisualWidth(s string) int`** — Returns the visual display width of a string by:
+   - Using the existing `StripANSI()` function to remove ANSI codes
+   - Counting runes (not bytes) to handle Unicode correctly
+   - Works with ASCII, ANSI-colored text, CJK characters, and emoji
+
+2. **`PadToWidth(s string, width int) string`** — Right-pads with spaces to reach target width:
+   - Uses `VisualWidth()` to calculate current width
+   - Preserves ANSI codes while only counting actual characters
+   - Returns unchanged if already wider than target
+
+### Test Coverage
+
+**pkg/display/display_test.go** — Added 2 comprehensive test functions:
+
+- **TestVisualWidth** — 13 test cases covering:
+  - Plain ASCII, ANSI-colored text, Unicode (CJK), emoji
+  - Mixed ANSI + Unicode combinations
+  - Edge cases (empty strings)
+
+- **TestPadToWidth** — 11 test cases covering:
+  - Padding needs, exact width matches, wider-than-target
+  - ANSI-preserved padding, Unicode padding
+  - Validates visual width >= target for all results
+
+### Test Results
+```
+✓ 8/8 tests pass (6 existing + 2 new)
+✓ All test cases pass with correct output
+```
+
+### Coordination
+- **plan-a.txt** — Implementation plan created before coding
+- **done-a.txt** — Completion summary written
+- Positioned functions to allow `FormatTable` (agent B) to follow seamlessly
+- Ready for merge with other agent's changes
+
+### Commit
+Created commit `6f0716be8` with all changes. Tests verified post-commit.

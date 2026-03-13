@@ -1,0 +1,20 @@
+Perfect! I've successfully completed the task:
+
+## Summary
+
+✅ **Added `VisualWidth` function** — Returns the visual display width of a string, ignoring ANSI escape codes. Uses the existing `StripANSI` function and counts Unicode runes correctly.
+
+✅ **Added `PadToWidth` function** — Right-pads strings with spaces to a target visual width while preserving ANSI codes.
+
+✅ **Comprehensive tests** covering:
+- Plain ASCII strings
+- Strings with ANSI color codes
+- Unicode strings (CJK characters, emoji)
+- Empty strings
+- Edge cases (already at width, wider than target)
+
+✅ **All tests pass** (8/8 existing + new tests)
+
+✅ **Committed** with clear commit message
+
+Both functions are correctly placed after `FormatDurationShort` in `display.go`, and the tests are after `TestFormatDurationShort` in `display_test.go`, following the exact placement instructions.

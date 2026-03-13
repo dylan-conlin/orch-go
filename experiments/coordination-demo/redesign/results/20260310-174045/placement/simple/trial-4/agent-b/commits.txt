@@ -1,0 +1,1 @@
+de421c832 add: FormatRate function to pkg/display for human-readable transfer rates

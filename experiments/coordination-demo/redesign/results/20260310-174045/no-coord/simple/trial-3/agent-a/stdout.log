@@ -1,0 +1,34 @@
+## ✅ Task Complete
+
+I've successfully added the `FormatBytes` function to `pkg/display/` with comprehensive tests:
+
+### Implementation Summary
+
+**Function added to `pkg/display/display.go` (lines 97-139):**
+- Formats byte counts as human-readable strings using binary units (B, KiB, MiB, GiB, TiB)
+- Shows 1 decimal place for non-byte units
+- Handles zero, negative values, and all boundary points
+- Follows existing code style and patterns
+
+**Comprehensive test suite in `pkg/display/display_test.go` (lines 136-196):**
+- Zero case
+- Small bytes (no decimals)
+- KiB, MiB, GiB, TiB boundaries
+- Exact and intermediate values
+- Negative values
+- Large values (100+ TiB)
+
+**Test Results:**
+- All 28 test cases pass ✓
+- Pre-commit hooks passed (compilation, architecture lint, accretion gate)
+- Commit: `ed95b2f07`
+
+**Examples:**
+```
+FormatBytes(0)         → "0 B"
+FormatBytes(512)       → "512 B"
+FormatBytes(1024)      → "1.0 KiB"
+FormatBytes(1536)      → "1.5 KiB"
+FormatBytes(1048576)   → "1.0 MiB"
+FormatBytes(-1024)     → "-1.0 KiB"
+```

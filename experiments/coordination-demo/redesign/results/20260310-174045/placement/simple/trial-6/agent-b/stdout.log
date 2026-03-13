@@ -1,0 +1,25 @@
+Excellent! The task is complete. Here's a summary of what was implemented:
+
+## Summary
+
+✅ **FormatRate function added to `pkg/display/display.go`**
+- Formats transfer rates in bytes/sec into human-readable strings
+- Uses binary units: B/s, KiB/s, MiB/s, GiB/s
+- Shows 1 decimal place for non-byte-per-sec units
+- Handles zero, negative, and large values correctly
+- Placed immediately after `StripANSI` function as specified
+
+✅ **Comprehensive tests added to `pkg/display/display_test.go`**
+- Covers zero and small values
+- Tests exact boundaries (1024, 1048576, 1073741824)
+- Tests negative values
+- Tests large GiB/s values
+- Tests fractional values
+- All 25+ test cases pass
+- Placed immediately after `TestStripANSI` as specified
+
+✅ **Verification**
+- All display package tests pass (7 tests total)
+- No existing functions were modified
+- Code follows existing style conventions
+- Changes committed successfully with proper message

@@ -1,0 +1,39 @@
+Perfect! I've successfully implemented the `FormatTable` function. Here's a summary of what was completed:
+
+## Summary
+
+✅ **Implementation Complete**
+
+### What was added:
+
+1. **`FormatTable` function** in `pkg/display/display.go` (lines 96-166)
+   - Renders headers and rows as an aligned text table
+   - Auto-sizes columns based on widest content in each column
+   - Uses `StripANSI` to correctly calculate visual widths for ANSI-colored content
+   - Handles edge cases: empty rows, mismatched column counts, nil rows
+   - Uses pipe borders and dash separator line for clear structure
+
+2. **Comprehensive test suite** in `pkg/display/display_test.go`
+   - 8 test cases covering all requirements:
+     - Basic table formatting
+     - Headers-only (no rows)
+     - Single-column tables
+     - Wide content
+     - Rows with fewer columns than headers
+     - ANSI-colored content alignment
+     - Empty tables
+     - Rows with more columns than headers
+
+### Test Results
+```
+✓ All tests pass (7 existing + 8 new FormatTable tests)
+✓ Code follows existing style conventions
+✓ No modifications to existing functions
+✓ Standard library only (no new dependencies)
+✓ All public functions have doc comments
+```
+
+### Coordination Note
+The implementation is positioned to cleanly merge with the other agent's work on `VisualWidth` and `PadToWidth`. Both additions are placed after `FormatDurationShort` with no overlapping insertion points or conflicts.
+
+The commit is ready at: `1715a8e42`

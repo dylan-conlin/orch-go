@@ -1,0 +1,28 @@
+=== RUN   TestTruncate
+--- PASS: TestTruncate (0.00s)
+=== RUN   TestTruncateWithPadding
+--- PASS: TestTruncateWithPadding (0.00s)
+=== RUN   TestShortID
+--- PASS: TestShortID (0.00s)
+=== RUN   TestStripANSI
+--- PASS: TestStripANSI (0.00s)
+=== RUN   TestFormatDuration
+--- PASS: TestFormatDuration (0.00s)
+=== RUN   TestFormatDurationShort
+--- PASS: TestFormatDurationShort (0.00s)
+=== RUN   TestFormatTable_Basic
+--- PASS: TestFormatTable_Basic (0.00s)
+=== RUN   TestFormatTable_HeadersOnly
+--- PASS: TestFormatTable_HeadersOnly (0.00s)
+=== RUN   TestFormatTable_ANSIContent
+--- PASS: TestFormatTable_ANSIContent (0.00s)
+=== RUN   TestFormatTable_MismatchedColumns
+--- PASS: TestFormatTable_MismatchedColumns (0.00s)
+=== RUN   TestFormatTable_SingleColumn
+--- PASS: TestFormatTable_SingleColumn (0.00s)
+=== RUN   TestFormatTable_WideContent
+--- PASS: TestFormatTable_WideContent (0.00s)
+=== RUN   TestFormatTable_EmptyHeaders
+--- PASS: TestFormatTable_EmptyHeaders (0.00s)
+PASS
+ok  	github.com/dylan-conlin/orch-go/pkg/display	(cached)

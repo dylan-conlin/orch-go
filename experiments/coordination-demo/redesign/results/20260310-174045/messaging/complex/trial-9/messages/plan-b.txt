@@ -1,0 +1,46 @@
+# Task B: FormatTable Implementation Plan
+
+## Files Modified
+- pkg/display/display.go
+- pkg/display/display_test.go
+
+## Implementation Plan
+
+### In pkg/display/display.go:
+- Add FormatTable function after FormatDurationShort (line 94)
+- Function signature: func FormatTable(headers []string, rows [][]string) string
+
+### Function Implementation Details:
+- Use existing StripANSI function to calculate visual column widths
+- Auto-size columns based on widest content (header or data)
+- Separate header from rows with dashes
+- Use pipe (|) separators with single space padding
+- Handle edge cases:
+  - Empty rows (headers only)
+  - Rows with fewer columns than headers (pad with empty cells)
+  - Rows with more columns than headers (skip extra columns or include them)
+  - Nil/empty input
+
+### In pkg/display/display_test.go:
+- Add TestFormatTable function covering:
+  1. Basic table (headers + data)
+  2. Headers only (no rows)
+  3. ANSI color codes in content
+  4. Mismatched column counts
+  5. Single column table
+  6. Wide content
+
+## Design Choices
+- Separator style: | with spaces (e.g., "| col1 | col2 |")
+- Column padding: 1 space on each side
+- Header separator: dashes matching column width
+- Rows wider than headers: include extra columns (extend table)
+
+## Dependencies
+- Uses standard library only
+- Uses existing StripANSI function
+- No new imports needed
+
+## Insertion Order
+- FormatTable function (after FormatDurationShort)
+- TestFormatTable function (after TestFormatDurationShort in tests)

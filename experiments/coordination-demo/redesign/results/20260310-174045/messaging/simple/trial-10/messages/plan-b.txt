@@ -1,0 +1,18 @@
+Agent B - FormatRate Implementation Plan
+========================================
+
+Files to modify:
+1. /private/tmp/coord-messaging-b-t10-74618/pkg/display/display.go
+2. /private/tmp/coord-messaging-b-t10-74618/pkg/display/display_test.go
+
+Implementation details:
+- Add FormatRate(bytesPerSec float64) string function after FormatDurationShort (line 94)
+- Uses binary units: B/s, KiB/s, MiB/s, GiB/s
+- Shows 1 decimal place for non-B/s units
+- Handles zero, negative, and large values
+- Follows existing code style with fmt.Sprintf patterns
+
+Test cases:
+- Add TestFormatRate function to display_test.go
+- Test zero, boundaries (1024, 1048576), negative values, large values
+- Similar structure to existing test functions in the file

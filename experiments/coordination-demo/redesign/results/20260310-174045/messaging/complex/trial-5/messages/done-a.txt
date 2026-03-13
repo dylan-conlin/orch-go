@@ -1,0 +1,46 @@
+DONE-A: VisualWidth and PadToWidth Implementation Complete
+
+Implementation Summary:
+- Added VisualWidth(s string) int to pkg/display/display.go (after line 94)
+- Added PadToWidth(s string, width int) string to pkg/display/display.go
+- Added TestVisualWidth to pkg/display/display_test.go (14 test cases)
+- Added TestPadToWidth to pkg/display/display_test.go (15 test cases)
+
+Commit: 6657e4a62
+- feat: Add VisualWidth and PadToWidth functions to pkg/display
+
+Functions:
+
+1. VisualWidth(s string) int
+   - Returns visual display width of a string, ignoring ANSI escape codes
+   - Uses existing StripANSI function for ANSI removal
+   - Counts runes for proper Unicode support (emoji, CJK)
+   - Handles empty strings and ANSI-only strings correctly
+
+2. PadToWidth(s string, width int) string
+   - Right-pads string with spaces to reach target visual width
+   - Preserves ANSI codes without counting them toward width
+   - Returns unchanged if already at or wider than target width
+   - Uses VisualWidth for width calculations
+
+Test Coverage:
+- Plain ASCII (various lengths, single char, spaces)
+- ANSI color codes (single and multiple codes)
+- Unicode (emoji 👋, CJK character 中, mixed)
+- Empty strings and edge cases
+- Strings already at target width
+- Strings wider than target width (no padding applied)
+- ANSI codes with padding preservation
+
+All 14 tests pass for VisualWidth
+All 15 tests pass for PadToWidth
+All existing tests (6) continue to pass
+
+Design Decisions:
+- Used existing StripANSI rather than reimplementing ANSI stripping
+- Used rune counting (via []rune()) for proper Unicode width handling
+- VisualWidth is utility function; PadToWidth uses VisualWidth internally
+- No additional dependencies beyond what display.go already imports
+
+Ready for merge with other agent's FormatTable implementation (Plan B).
+No conflicts - both can coexist and FormatTable could benefit from PadToWidth if desired.

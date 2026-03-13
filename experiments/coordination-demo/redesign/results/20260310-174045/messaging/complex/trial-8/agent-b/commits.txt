@@ -1,0 +1,1 @@
+c56f8cee3 feat: add FormatTable function for text table rendering

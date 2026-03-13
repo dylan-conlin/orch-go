@@ -1,0 +1,31 @@
+Perfect! ✅ **Task complete.** Here's what I implemented:
+
+## Summary
+
+### Added `FormatTable` function
+- **Location:** `pkg/display/display.go` (after `FormatDurationShort`)
+- **Signature:** `func FormatTable(headers []string, rows [][]string) string`
+- **Features:**
+  - Auto-sizes columns based on widest content
+  - Uses `StripANSI` for correct visual width with color codes
+  - Header-data separator with dashes
+  - Handles edge cases: empty rows, mismatched columns, nil rows
+
+### Added `TestFormatTable` (12 test cases)
+- Basic multi-column tables
+- Headers-only tables
+- ANSI-colored content alignment
+- Mismatched column counts
+- Single-column tables
+- Wide content and whitespace
+- Empty headers and cells
+
+### Test Results
+✅ All 18 tests passing (6 existing + 12 new)
+
+### Coordination
+- Reviewed Agent A's plan (VisualWidth + PadToWidth)
+- Confirmed no conflicts—FormatTable will be inserted after their functions
+- Committed changes: `5d0b04f56`
+
+The implementation is ready for Agent A's complementary functions, and all changes will merge cleanly.

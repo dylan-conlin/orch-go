@@ -1,0 +1,23 @@
+AGENT-B PLAN: Add FormatRate function
+======================================
+
+Files to modify:
+1. pkg/display/display.go - Add FormatRate function
+2. pkg/display/display_test.go - Add TestFormatRate
+
+Implementation details:
+- Location: After FormatDurationShort function (line 94 in display.go)
+- Function: FormatRate(bytesPerSec float64) string
+- Units: B/s, KiB/s, MiB/s, GiB/s (binary units with "/s" suffix)
+- Format: 1 decimal place for non-B/s units, integers for B/s
+- Handles zero, negative values
+
+Test cases will include:
+- Zero value
+- Small values (512 B/s)
+- Exact boundaries (1024, 1048576)
+- Negative values
+- Large values (GiB/s)
+- Fractional values
+
+Insertion point: After line 94 (after FormatDurationShort)

@@ -1,0 +1,115 @@
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 1a699243d..82bbaafc8 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -92,3 +92,22 @@ func FormatDurationShort(d time.Duration) string {
+ 	}
+ 	return fmt.Sprintf("%dh", int(d.Hours()))
+ }
++
++// VisualWidth returns the visual display width of a string, ignoring ANSI
++// escape codes. Unicode characters are counted as individual runes.
++func VisualWidth(s string) int {
++	stripped := StripANSI(s)
++	return len([]rune(stripped))
++}
++
++// PadToWidth right-pads a string with spaces to reach the target visual width.
++// ANSI codes are preserved but don't count toward the width. If the string is
++// already wider than width, it is returned unchanged.
++func PadToWidth(s string, width int) string {
++	currentWidth := VisualWidth(s)
++	if currentWidth >= width {
++		return s
++	}
++	padding := width - currentWidth
++	return s + strings.Repeat(" ", padding)
++}
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index fcd3fa61c..e08ad0809 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -132,3 +132,83 @@ func TestFormatDurationShort(t *testing.T) {
+ 		}
+ 	}
+ }
++
++func TestVisualWidth(t *testing.T) {
++	tests := []struct {
++		input string
++		want  int
++	}{
++		// Plain ASCII strings
++		{"hello", 5},
++		{"hello world", 11},
++		{"", 0},
++		{"a", 1},
++		{"12345", 5},
++		// Strings with ANSI color codes
++		{"\x1b[31mhello\x1b[0m", 5},
++		{"\x1b[1;32mbold green\x1b[0m", 10},
++		{"\x1b[31mred\x1b[0m \x1b[32mgreen\x1b[0m", 9},
++		{"\x1b[0m", 0},
++		// Unicode strings (CJK characters)
++		{"你好", 2},
++		{"你好world", 7},
++		// Emoji
++		{"😀", 1},
++		{"hello😀world", 11},
++		// Mixed ANSI and Unicode
++		{"\x1b[31m你好\x1b[0m", 2},
++		{"\x1b[1;32m😀\x1b[0m", 1},
++	}
++	for _, tt := range tests {
++		got := VisualWidth(tt.input)
++		if got != tt.want {
++			t.Errorf("VisualWidth(%q) = %d, want %d", tt.input, got, tt.want)
++		}
++	}
++}
++
++func TestPadToWidth(t *testing.T) {
++	tests := []struct {
++		input string
++		width int
++		want  string
++	}{
++		// Plain ASCII strings - padding needed
++		{"hello", 10, "hello     "},
++		{"hi", 5, "hi   "},
++		{"", 5, "     "},
++		// Plain ASCII strings - no padding needed
++		{"hello", 5, "hello"},
++		{"hello world", 5, "hello world"},
++		{"hello world", 11, "hello world"},
++		// Already wider than target
++		{"hello world", 3, "hello world"},
++		// Strings with ANSI color codes
++		{"\x1b[31mhello\x1b[0m", 10, "\x1b[31mhello\x1b[0m     "},
++		{"\x1b[1;32mbold\x1b[0m", 8, "\x1b[1;32mbold\x1b[0m    "},
++		{"\x1b[31mred\x1b[0m", 5, "\x1b[31mred\x1b[0m  "},
++		// ANSI codes at exact width
++		{"\x1b[31mhello\x1b[0m", 5, "\x1b[31mhello\x1b[0m"},
++		// Unicode strings
++		{"你好", 4, "你好  "},
++		{"😀test", 6, "😀test "},
++		// Mixed ANSI and Unicode
++		{"\x1b[31m你好\x1b[0m", 4, "\x1b[31m你好\x1b[0m  "},
++		{"\x1b[1;32m😀\x1b[0m", 3, "\x1b[1;32m😀\x1b[0m  "},
++		// Edge case: width of 0
++		{"", 0, ""},
++		{"hello", 0, "hello"},
++	}
++	for _, tt := range tests {
++		got := PadToWidth(tt.input, tt.width)
++		if got != tt.want {
++			t.Errorf("PadToWidth(%q, %d) = %q, want %q", tt.input, tt.width, got, tt.want)
++		}
++		// Verify that the visual width matches expected (considering ANSI codes)
++		visualWidth := VisualWidth(got)
++		expectedVisualWidth := tt.width
++		if visualWidth < expectedVisualWidth {
++			t.Errorf("PadToWidth(%q, %d) visual width = %d, want at least %d", tt.input, tt.width, visualWidth, expectedVisualWidth)
++		}
++	}
++}

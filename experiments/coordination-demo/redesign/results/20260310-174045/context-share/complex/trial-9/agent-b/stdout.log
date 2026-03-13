@@ -1,0 +1,29 @@
+Excellent! I've successfully completed the task. Here's a summary of what was implemented:
+
+## Summary
+
+**Added `FormatTable` function to `pkg/display/display.go`** with the following features:
+
+- Renders aligned text tables with auto-sized columns
+- Calculates column widths based on the widest content (including headers)
+- Correctly handles ANSI-colored content using the existing `StripANSI` function
+- Separates header from data rows with a dash line
+- Handles edge cases: empty rows, rows with fewer columns than headers, nil rows
+
+**Implementation details:**
+- Uses `" | "` as column separator and `"-+-"` for the header/data separator
+- Pads all cells right-aligned to match column widths
+- Preserves ANSI color codes in output while using stripped width for calculations
+
+**Test coverage:** 8 comprehensive test cases including:
+- Basic tables with multiple rows
+- Headers-only tables (no data rows)
+- Single column tables
+- ANSI-colored content alignment
+- Wide content handling
+- Mismatched column counts
+- Empty headers/rows
+
+All tests pass successfully ✓
+
+**Coordination note:** This implementation is ready to coexist with the other agent's `VisualWidth` and `PadToWidth` functions. Both tasks place their functions after `FormatDurationShort`, and the implementations won't conflict since they serve different purposes and operate independently.

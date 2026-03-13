@@ -1,0 +1,1 @@
+454185bc9 feat: add FormatRate function to display package

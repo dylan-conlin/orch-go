@@ -1,0 +1,22 @@
+Perfect! I've successfully implemented the `VisualWidth` and `PadToWidth` functions for the display package. Here's what was completed:
+
+## Summary
+
+**Added to `pkg/display/display.go`:**
+- **`VisualWidth(s string) int`** — Returns the visual display width of a string, ignoring ANSI escape codes. Uses rune counting for proper Unicode support.
+- **`PadToWidth(s string, width int) string`** — Right-pads a string with spaces to reach the target visual width, preserving ANSI codes.
+
+**Tests in `pkg/display/display_test.go`:**
+- `TestVisualWidth` — Covers plain ASCII, ANSI-colored text, Unicode (CJK, emoji), and mixed cases
+- `TestPadToWidth` — Covers padding logic, strings already at width, wider strings, ANSI preservation, and Unicode handling
+
+**All 8 tests pass** (including the 6 existing tests).
+
+## Coordination Strategy
+
+To avoid conflicts with the other agent implementing `FormatTable`:
+- Functions inserted right after `FormatDurationShort` (line 94)
+- Tests added right after `TestFormatDurationShort` (line 134)
+- This leaves space for `FormatTable` to be added after my functions without overlapping edits
+
+The commit is ready and the changes are clean for merging with the concurrent work.

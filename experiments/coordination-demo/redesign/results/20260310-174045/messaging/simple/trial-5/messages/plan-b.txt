@@ -1,0 +1,26 @@
+PLAN-B: FormatRate Implementation
+
+Files to modify:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+Insertion points:
+- display.go: Add FormatRate function after FormatDurationShort (after line 94)
+- display_test.go: Add TestFormatRate test after TestFormatDurationShort (after line 134)
+
+Function to add:
+- FormatRate(bytesPerSec float64) string
+  - Formats transfer rates in binary units: B/s, KiB/s, MiB/s, GiB/s
+  - Shows 1 decimal place for non-B/s units
+  - Handles zero, negative values, and large values
+  - Examples: 512 → "512 B/s", 1024 → "1.0 KiB/s", -1024 → "-1.0 KiB/s"
+
+Test cases to add:
+- Zero value
+- Small values (512 B/s)
+- Exact boundaries (1024, 1048576, etc.)
+- Negative values
+- Large values (GiB/s range)
+- Fractional values (1536 → "1.5 KiB/s")
+
+No conflicts expected with FormatBytes (different unit suffix "/s" vs no suffix).

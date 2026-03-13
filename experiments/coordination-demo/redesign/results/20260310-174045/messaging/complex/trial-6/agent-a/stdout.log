@@ -1,0 +1,35 @@
+Perfect! ✅ Implementation complete and verified.
+
+## Summary
+
+I've successfully added `VisualWidth` and `PadToWidth` functions to `pkg/display/display.go` with comprehensive tests.
+
+### What was implemented:
+
+**1. VisualWidth(s string) int** (lines 96-102)
+- Returns the visual display width of a string, ignoring ANSI escape codes
+- Uses the existing `StripANSI` function as required
+- Correctly handles Unicode by counting runes, not bytes
+
+**2. PadToWidth(s string, width int) string** (lines 104-113)
+- Right-pads strings with spaces to reach target visual width
+- Preserves ANSI codes (they don't count toward the width calculation)
+- Returns unchanged if already at or wider than target width
+
+### Tests added:
+- **TestVisualWidth**: 8 test cases covering ASCII, ANSI codes, Unicode (Chinese, Japanese, emoji), and combined cases
+- **TestPadToWidth**: 11 test cases covering plain text, ANSI-colored strings, Unicode, and edge cases
+
+### Verification:
+✅ All tests pass (`go test ./pkg/display/ -v`)
+✅ Both new functions have doc comments
+✅ No modifications to existing functions
+✅ No new dependencies added
+✅ Code follows existing style conventions
+
+### Coordination:
+- **Insertion point**: After `FormatDurationShort` function (line 94)
+- **Merge plan**: Agent B's `FormatTable` will insert after these functions, creating a clean merge
+- **Status files written**: `/tmp/coord-msg-6-74618/plan-a.txt` and `done-a.txt`
+
+**Commit hash**: `79ca0dd12`

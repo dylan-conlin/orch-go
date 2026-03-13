@@ -1,0 +1,20 @@
+Done! I've successfully added the `FormatRate` function to `pkg/display` with comprehensive tests.
+
+**Summary:**
+
+✅ **Function added** (`display.go`):
+- Formats transfer rates with binary units (B/s, KiB/s, MiB/s, GiB/s)
+- Shows 1 decimal place for non-byte units
+- Handles zero and negative values correctly
+
+✅ **Comprehensive tests** (`display_test.go`):
+- 24 test cases covering:
+  - Zero values
+  - Exact boundaries (1024, 1048576, 1073741824)
+  - Fractional values
+  - Negative rates
+  - Large values (GiB/s)
+
+✅ **All tests pass**: `go test ./pkg/display/ -v` — 7/7 tests passing
+
+✅ **Committed**: `7f8f47c8a` — feat: add FormatRate function to pkg/display

@@ -1,0 +1,30 @@
+Excellent! I've successfully implemented `VisualWidth` and `PadToWidth` functions for `pkg/display`. Here's a summary of what was completed:
+
+## Implementation Summary
+
+### Functions Added
+
+1. **`VisualWidth(s string) int`** — Calculates the visual display width of a string by:
+   - Stripping ANSI escape codes using the existing `StripANSI` function
+   - Counting Unicode runes (handles emoji, CJK characters correctly)
+
+2. **`PadToWidth(s string, width int) string`** — Right-pads a string to a target visual width by:
+   - Calculating current visual width via `VisualWidth`
+   - Adding appropriate number of spaces if needed
+   - Preserving ANSI codes in the output (they don't count toward width)
+
+### Tests Added
+
+Comprehensive test coverage for both functions:
+- **Plain ASCII strings** — basic padding cases
+- **ANSI-colored content** — verifies ANSI codes don't count but are preserved
+- **Unicode strings** — emoji, CJK characters counted as 1 width unit
+- **Edge cases** — empty strings, already-at-width strings, wider-than-target strings
+
+### Coordination
+
+✅ **Conflict-free placement:** Functions added after `FormatDurationShort` (line 95)  
+✅ **Available for other agent:** The `VisualWidth` function can be reused by the `FormatTable` implementation  
+✅ **All tests pass:** Existing tests + new tests (8 tests total)
+
+The implementation is production-ready and follows the existing code style and conventions in the package.

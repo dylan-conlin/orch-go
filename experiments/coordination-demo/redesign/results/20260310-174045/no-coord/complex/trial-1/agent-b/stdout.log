@@ -1,0 +1,23 @@
+Perfect! I've successfully completed the task:
+
+✅ **Implemented `FormatTable` function** in `pkg/display/display.go`
+- Auto-sizes columns based on widest content (including headers)
+- Properly handles ANSI-colored content using the existing `StripANSI` function
+- Separates header from data rows with a dash line
+- Handles edge cases: empty rows, mismatched columns, nil data
+- Uses clean `|` and `-+-` formatting style
+
+✅ **Added comprehensive tests** in `pkg/display/display_test.go`
+- Basic table formatting
+- Empty tables (headers only)
+- ANSI-colored content alignment
+- Mismatched column counts
+- Single-column tables
+- Wide content
+- Edge cases (empty strings, extra columns)
+
+✅ **All tests pass** - ran full test suite for the display package
+
+✅ **Committed changes** with clear message documenting the feature
+
+The function is ready to use and follows all project conventions (doc comments, standard library only, matching code style).

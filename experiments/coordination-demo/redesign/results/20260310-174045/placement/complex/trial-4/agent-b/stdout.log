@@ -1,0 +1,28 @@
+Done! I've successfully implemented the `FormatTable` function with comprehensive tests. Here's what was added:
+
+## Summary
+
+**Implementation:** `FormatTable` function in `pkg/display/display.go`
+- Renders headers and rows as an aligned text table with pipe separators
+- Auto-sizes columns based on the widest content (including headers)
+- Uses the existing `StripANSI` function to correctly calculate visual widths of ANSI-colored content
+- Handles edge cases: empty tables, rows with fewer/more columns than headers
+- Helper function `padRight` for padding with proper ANSI width awareness
+
+**Tests:** `TestFormatTable` in `pkg/display/display_test.go`
+7 comprehensive test cases covering:
+- ✅ Basic table with headers and rows
+- ✅ Empty table (headers only)
+- ✅ Single column table
+- ✅ ANSI-colored content alignment
+- ✅ Mismatched column counts
+- ✅ Wide content (long strings)
+- ✅ All empty cells
+
+**Verification:**
+```
+go test ./pkg/display/ -v
+```
+All tests pass (10/10 including existing tests).
+
+**Code placement:** Exactly as specified - function added immediately after `StripANSI` and before `FormatDuration` in both files.

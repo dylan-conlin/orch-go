@@ -1,0 +1,32 @@
+IMPLEMENTATION PLAN: FormatBytes Function
+==========================================
+
+Task: Add FormatBytes function to pkg/display/display.go
+
+Files to modify:
+1. pkg/display/display.go
+   - Insert FormatBytes function after line 94 (after FormatDurationShort)
+   - Function: func FormatBytes(bytes int64) string
+   - Uses binary units: B, KiB, MiB, GiB, TiB (1024-byte boundaries)
+   - Format: 1 decimal place for non-B units, handle negative values
+
+2. pkg/display/display_test.go
+   - Add TestFormatBytes function at the end of the test file
+   - Test cases: zero, small bytes, boundaries (1024, 1048576, etc.), negative values, large values
+
+Insertion points:
+- display.go: After line 94 (after FormatDurationShort function)
+- display_test.go: After line 134 (after TestFormatDurationShort function)
+
+Function signature:
+func FormatBytes(bytes int64) string
+
+Test coverage:
+- Zero: FormatBytes(0) → "0 B"
+- Small bytes: FormatBytes(512) → "512 B"
+- Exact boundaries: 1024, 1048576 (1024^2), 1073741824 (1024^3), 1099511627776 (1024^4)
+- Between boundaries: FormatBytes(1536) → "1.5 KiB"
+- Negative values: FormatBytes(-1024) → "-1.0 KiB"
+- Large values: GiB, TiB ranges
+
+No conflicts expected with FormatRate (different function names, same insertion area).

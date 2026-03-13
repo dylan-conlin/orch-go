@@ -1,0 +1,23 @@
+Perfect! I've successfully completed the task. Here's what was done:
+
+## Summary
+
+✅ **Added `FormatRate` function** to `pkg/display/display.go` with:
+- Proper placement after `StripANSI` and before `FormatDuration`
+- Support for binary units: B/s, KiB/s, MiB/s, GiB/s
+- 1 decimal place for non-B/s units
+- Handles zero and negative values correctly
+
+✅ **Added comprehensive tests** to `pkg/display/display_test.go`:
+- 13 test cases covering:
+  - Zero and small values (512 B/s)
+  - Exact boundaries (1024, 1048576, 1073741824)
+  - Decimal values (1.5 KiB/s, 1.5 MiB/s)
+  - Negative values (-512 B/s, -1.0 KiB/s)
+  - Large values (1.5 GiB/s)
+
+✅ **All tests passing** — both the new `TestFormatRate` and all existing display tests
+
+✅ **Changes committed** with descriptive message
+
+The implementation follows the existing code style and conventions used throughout the display package.

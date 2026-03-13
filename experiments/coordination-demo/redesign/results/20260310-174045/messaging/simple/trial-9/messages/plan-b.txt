@@ -1,0 +1,22 @@
+Agent B: FormatRate Implementation Plan
+========================================
+
+Files to modify:
+1. pkg/display/display.go - Add FormatRate function
+2. pkg/display/display_test.go - Add TestFormatRate test
+
+Implementation details:
+- Insert FormatRate function after FormatDurationShort (after line 94 in display.go)
+- Function: func FormatRate(bytesPerSec float64) string
+- Uses binary units: B/s, KiB/s, MiB/s, GiB/s
+- 1 decimal place for non-byte-per-sec units
+- Handle zero, negative values
+- Mirror the style of existing functions (similar to FormatDurationShort pattern)
+
+Test insertion:
+- Add TestFormatRate to display_test.go after existing tests
+- Cases: zero, small values, boundaries (1024, 1048576), negative, large values
+
+Expected merge point:
+- Both functions will be inserted after FormatDurationShort
+- Coordinate insertion order: Agent A (FormatBytes) first, then Agent B (FormatRate)

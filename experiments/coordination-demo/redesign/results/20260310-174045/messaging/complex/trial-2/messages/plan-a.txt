@@ -1,0 +1,51 @@
+Agent A Plan: VisualWidth and PadToWidth Implementation
+=========================================================
+
+TARGET FILE: pkg/display/display.go
+- Insertion point: After FormatDurationShort function (after line 94)
+- No modifications to existing functions
+
+NEW FUNCTIONS:
+1. VisualWidth(s string) int
+   - Returns visual display width of a string (ignoring ANSI codes)
+   - Uses existing StripANSI function
+   - Counts runes, not bytes
+   - Implementation: len([]rune(StripANSI(s)))
+
+2. PadToWidth(s string, width int) string
+   - Right-pads string with spaces to reach target visual width
+   - Preserves ANSI codes (they don't count toward width)
+   - Returns unchanged if already wider than width
+   - Implementation: strip, check width, pad original string
+
+TEST FILE: pkg/display/display_test.go
+- Add TestVisualWidth covering:
+  * Plain ASCII strings
+  * Strings with ANSI color codes
+  * Unicode strings (CJK, emoji)
+  * Empty strings
+  * Edge cases
+
+- Add TestPadToWidth covering:
+  * Basic padding
+  * Strings with ANSI codes (width calculation)
+  * Unicode strings
+  * Already at width
+  * Wider than target
+  * Empty strings
+
+CONSTRAINTS:
+- Standard library only (no new dependencies)
+- Must have doc comments on public functions
+- Follow existing code style (no extra blank lines, clear logic)
+- All existing tests must still pass
+
+EXPECTED INSERTION LOCATION:
+- After line 94 (end of FormatDurationShort)
+- Before EOF (currently line 95 is blank)
+- No conflict with other functions
+
+CONFLICT DETECTION:
+- Checking for plan-b.txt (FormatTable function)
+- If FormatTable is added after same location, no conflict
+- Both functions are independent and don't interact

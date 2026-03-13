@@ -1,0 +1,23 @@
+AGENT A - VisualWidth and PadToWidth Implementation
+
+MODIFIED FILES:
+- pkg/display/display.go
+- pkg/display/display_test.go
+
+INSERTION POINTS:
+1. display.go: After FormatDurationShort function (line 94)
+   - Add VisualWidth(s string) int
+   - Add PadToWidth(s string, width int) string
+
+2. display_test.go: After TestFormatDurationShort test (line 134)
+   - Add TestVisualWidth
+   - Add TestPadToWidth
+
+FUNCTION DETAILS:
+- VisualWidth: Returns visual display width of a string, using StripANSI to ignore ANSI codes, counting runes
+- PadToWidth: Right-pads string with spaces to reach target visual width, preserves ANSI codes
+
+NO CONFLICTS EXPECTED:
+- Functions added after existing code
+- Test functions follow existing patterns
+- VisualWidth is a helper function (may be used by other agents' FormatTable function for width calculation)

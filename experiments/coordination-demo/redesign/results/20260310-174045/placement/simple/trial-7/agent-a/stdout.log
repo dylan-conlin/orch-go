@@ -1,0 +1,19 @@
+Perfect! I've successfully added the `FormatBytes` function to `pkg/display/display.go` with comprehensive tests.
+
+## Summary
+
+✅ **Completed:**
+- Added `FormatBytes(bytes int64) string` function to `pkg/display/display.go` after `FormatDurationShort`
+- Formats byte counts with binary units (B, KiB, MiB, GiB, TiB)
+- Shows 1 decimal place for non-byte units
+- Handles negative values and zero correctly
+- Added 18 comprehensive test cases covering:
+  - Zero and small bytes
+  - Exact boundaries (1024, 1048576, 1073741824, 1099511627776)
+  - Values between boundaries
+  - Large values
+  - Negative values
+- All tests pass ✓
+- Committed with descriptive message
+
+The function follows the existing code style and integrates seamlessly with the display package.

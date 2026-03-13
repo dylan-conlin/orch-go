@@ -1,0 +1,31 @@
+## Task Complete ✓
+
+I've successfully added the `FormatRate` function to `pkg/display/display.go` with comprehensive tests. Here's what was implemented:
+
+### Changes Made
+
+**`pkg/display/display.go`:**
+- Added `FormatRate(bytesPerSec float64) string` function after `StripANSI`
+- Formats transfer rates with binary units: B/s, KiB/s, MiB/s, GiB/s
+- Shows 1 decimal place for non-byte units
+- Handles zero (returns "0 B/s") and negative values
+
+**`pkg/display/display_test.go`:**
+- Added `TestFormatRate` with 24 test cases covering:
+  - Zero and small values (B/s)
+  - Exact boundaries (1024, 1048576, 1073741824)
+  - Fractional values
+  - Negative values across all unit scales
+  - Large values (GiB/s)
+
+### Verification
+- ✅ All 7 tests in `pkg/display/` pass
+- ✅ Specific examples from requirements verified:
+  - `FormatRate(0)` → `"0 B/s"`
+  - `FormatRate(512)` → `"512 B/s"`
+  - `FormatRate(1024)` → `"1.0 KiB/s"`
+  - `FormatRate(1536)` → `"1.5 KiB/s"`
+  - `FormatRate(1048576)` → `"1.0 MiB/s"`
+  - `FormatRate(-1024)` → `"-1.0 KiB/s"`
+
+- ✅ Committed: `de421c832` with proper message

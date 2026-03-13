@@ -1,0 +1,82 @@
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 1a699243d..5eb5fd3f2 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -92,3 +92,40 @@ func FormatDurationShort(d time.Duration) string {
+ 	}
+ 	return fmt.Sprintf("%dh", int(d.Hours()))
+ }
++
++// FormatRate formats a transfer rate (bytes per second) as a human-readable string.
++// Output style: "512 B/s", "1.0 KiB/s", "1.5 MiB/s", "2.3 GiB/s".
++func FormatRate(bytesPerSec float64) string {
++	if bytesPerSec == 0 {
++		return "0 B/s"
++	}
++
++	neg := false
++	if bytesPerSec < 0 {
++		neg = true
++		bytesPerSec = -bytesPerSec
++	}
++
++	units := []string{"B/s", "KiB/s", "MiB/s", "GiB/s"}
++	const divider = 1024.0
++	index := 0
++
++	for bytesPerSec >= divider && index < len(units)-1 {
++		bytesPerSec /= divider
++		index++
++	}
++
++	var result string
++	if index == 0 {
++		// For bytes per second, show as integer
++		result = fmt.Sprintf("%d %s", int(bytesPerSec), units[index])
++	} else {
++		// For larger units, show with 1 decimal place
++		result = fmt.Sprintf("%.1f %s", bytesPerSec, units[index])
++	}
++
++	if neg {
++		result = "-" + result
++	}
++	return result
++}
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index fcd3fa61c..fbd865e73 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -132,3 +132,32 @@ func TestFormatDurationShort(t *testing.T) {
+ 		}
+ 	}
+ }
++
++func TestFormatRate(t *testing.T) {
++	tests := []struct {
++		input float64
++		want  string
++	}{
++		{0, "0 B/s"},
++		{512, "512 B/s"},
++		{1024, "1.0 KiB/s"},
++		{1536, "1.5 KiB/s"},
++		{2048, "2.0 KiB/s"},
++		{1048576, "1.0 MiB/s"},
++		{1572864, "1.5 MiB/s"},
++		{10485760, "10.0 MiB/s"},
++		{1073741824, "1.0 GiB/s"},
++		{1610612736, "1.5 GiB/s"},
++		{-1024, "-1.0 KiB/s"},
++		{-512, "-512 B/s"},
++		{-1048576, "-1.0 MiB/s"},
++		{256, "256 B/s"},
++		{1023, "1023 B/s"},
++	}
++	for _, tt := range tests {
++		got := FormatRate(tt.input)
++		if got != tt.want {
++			t.Errorf("FormatRate(%v) = %q, want %q", tt.input, got, tt.want)
++		}
++	}
++}

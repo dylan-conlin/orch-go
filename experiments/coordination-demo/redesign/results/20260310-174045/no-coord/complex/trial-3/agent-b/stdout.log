@@ -1,0 +1,24 @@
+Excellent! The `FormatTable` function has been successfully implemented and all tests pass. Here's a summary of what was completed:
+
+## Summary
+
+✅ **Implementation Complete:**
+- Added `FormatTable(headers []string, rows [][]string) string` to `pkg/display/display.go`
+- Auto-sizes columns based on widest content (including headers)
+- Correctly handles ANSI-colored content by using `StripANSI` for width calculations
+- Separates header from data rows with a line of dashes
+- Handles edge cases: empty rows, rows with fewer/more columns than headers, nil rows
+
+✅ **Test Coverage:**
+- 8 main test cases covering basic tables, empty tables, single columns, wide content, mismatched columns, and ANSI colors
+- 3 additional edge case tests
+- All 11 tests passing
+
+✅ **Code Quality:**
+- Follows existing code style and conventions
+- Includes comprehensive doc comment
+- Uses only standard library
+- No existing functions were modified
+- Changes committed with full message
+
+The function is ready to use for rendering aligned text tables throughout the orch-go codebase.

@@ -1,0 +1,53 @@
+## Done B: FormatTable Implementation
+
+### Completed Tasks
+
+✅ Implemented FormatTable function in pkg/display/display.go
+✅ Added comprehensive tests in pkg/display/display_test.go
+✅ All tests passing (13/13 tests)
+✅ Code committed: 44d02fcbf
+
+### Implementation Details
+
+**File: pkg/display/display.go**
+- Added FormatTable(headers []string, rows [][]string) string
+  - Auto-sizes columns based on widest content
+  - Uses StripANSI for correct ANSI width calculation
+  - Handles rows with more columns than headers (includes extra columns)
+  - Handles rows with fewer columns than headers (pads with empty cells)
+
+- Added helper functions:
+  - visualWidth(s string) int - Returns visual width ignoring ANSI codes
+  - buildTableRow(cells []string, colWidths []int) string - Formats single row
+  - buildSeparatorRow(colWidths []int) string - Creates dash separator line
+  - padToWidth(s string, width int) string - Right-pads with spaces while preserving ANSI
+
+**File: pkg/display/display_test.go**
+- Added 7 test functions covering:
+  1. TestFormatTable_Basic - Basic 3-column table with 2 rows
+  2. TestFormatTable_HeadersOnly - Headers with no data rows
+  3. TestFormatTable_ANSIContent - ANSI color codes preserved and aligned correctly
+  4. TestFormatTable_MismatchedColumns - Rows with varying column counts (including extra columns)
+  5. TestFormatTable_SingleColumn - Single header/column table
+  6. TestFormatTable_WideContent - Long strings with auto-sizing
+  7. TestFormatTable_EmptyHeaders - Empty header edge case
+
+### Design Choices Made
+
+1. **Column Borders:** Used pipe separators (|) for clarity and alignment
+2. **Padding:** Single space on each side of content (" | ")
+3. **Separator:** Dashes (---) for header/data separation
+4. **Extra Columns:** Rows with more columns than headers are included (not truncated)
+5. **ANSI Handling:** ANSI codes preserved in output, but visual width calculated without them
+
+### Integration Notes
+
+- Created helper function `padToWidth()` which may be useful if the other agent (Agent A) implements a similar `PadToWidth` public function
+- Implementation uses internal `visualWidth()` function which could complement Agent A's `VisualWidth` if needed
+- No conflicts with Agent A's planned `VisualWidth` and `PadToWidth` functions (different naming: internal vs public)
+- Ready to merge with Agent A's implementation
+
+### Test Results
+All 13 tests passing:
+- 6 existing tests (Truncate, TruncateWithPadding, ShortID, StripANSI, FormatDuration, FormatDurationShort)
+- 7 new FormatTable tests

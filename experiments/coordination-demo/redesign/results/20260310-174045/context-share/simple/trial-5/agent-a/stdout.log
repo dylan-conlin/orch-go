@@ -1,0 +1,20 @@
+Done! I've successfully implemented the `FormatBytes` function with full test coverage. Here's what was added:
+
+**Implementation:**
+- `FormatBytes(bytes int64) string` function in `pkg/display/display.go`
+- Formats byte counts using binary units (B, KiB, MiB, GiB, TiB)
+- Shows 1 decimal place for non-byte units
+- Handles negative values by prefixing with "-"
+- Returns "0 B" for zero
+
+**Tests:**
+- `TestFormatBytes` with 16 test cases covering:
+  - Zero and small byte values
+  - Exact unit boundaries (1024, 1048576, etc.)
+  - Negative values at different scales
+  - Large values (GiB, TiB)
+
+**Coordination note:**
+I placed `FormatBytes` immediately after `FormatDurationShort` in the file. When the other agent adds `FormatRate`, they should insert it after my function to avoid conflicts.
+
+Tests pass ✓ and changes are committed.

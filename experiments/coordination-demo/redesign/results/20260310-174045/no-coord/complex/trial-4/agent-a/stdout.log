@@ -1,0 +1,24 @@
+Perfect! All tests pass and the changes are committed. Here's what was implemented:
+
+## Summary
+
+**Added two new functions to `pkg/display/display.go`:**
+
+1. **`VisualWidth(s string) int`** - Returns the visual display width of a string, ignoring ANSI escape codes. Uses the existing `StripANSI` function and correctly counts runes for Unicode support.
+
+2. **`PadToWidth(s string, width int) string`** - Right-pads a string with spaces to reach a target visual width. ANSI codes are preserved but don't count toward the width calculation. Returns the string unchanged if already wider than target.
+
+**Added comprehensive test coverage:**
+- Plain ASCII strings
+- Strings with ANSI color codes (single and multiple codes)
+- Unicode strings (CJK characters and emoji)
+- Empty strings
+- Edge cases (strings already at width, wider than target, mixed ANSI + Unicode)
+
+**Test Results:**
+```
+✓ All 8 tests pass (6 existing + 2 new)
+✓ Commit: 0a1b4f239
+```
+
+The implementation follows existing code style, uses only the standard library, and includes proper doc comments for both public functions.

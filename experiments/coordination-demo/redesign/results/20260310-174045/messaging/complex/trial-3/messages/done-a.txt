@@ -1,0 +1,48 @@
+DONE-A: VisualWidth and PadToWidth Implementation
+==================================================
+
+Implementation completed successfully.
+
+Changes made:
+1. pkg/display/display.go
+   - Added import: "unicode/utf8"
+   - Added VisualWidth(s string) int function (line 97-100)
+     * Uses StripANSI to remove escape codes
+     * Uses utf8.RuneCountInString for correct Unicode handling
+   - Added PadToWidth(s string, width int) string function (line 102-108)
+     * Uses VisualWidth to calculate current width
+     * Returns unchanged if already at or wider than target
+     * Right-pads with spaces to reach target width
+     * Preserves ANSI codes (they don't count toward width)
+
+2. pkg/display/display_test.go
+   - Added TestVisualWidth (line 137-176)
+     * Tests ASCII strings
+     * Tests ANSI color codes (single and multiple)
+     * Tests Unicode: CJK characters, emoji
+     * Tests Unicode + ANSI combinations
+     * Tests edge cases: empty strings, tabs, spaces
+   - Added TestPadToWidth (line 178-213)
+     * Tests ASCII padding
+     * Tests padding with ANSI codes
+     * Tests Unicode padding
+     * Tests edge cases: already at width, wider than target
+     * Validates both output and visual width verification
+
+Test results:
+- All 8 tests pass (6 existing + 2 new)
+- Execution time: 0.004s
+- No regressions
+
+Commit: 161712e87
+Message: feat: add VisualWidth and PadToWidth display functions
+
+Insertion points used:
+- Functions: After FormatDurationShort (line 94 in original)
+- Tests: After TestFormatDurationShort in test file
+
+Non-conflicting with plan-b (FormatTable):
+- plan-b will add FormatTable after my PadToWidth function
+- plan-b indicated no dependency on VisualWidth/PadToWidth
+- Both use existing StripANSI function independently
+- No file conflicts, functions are separate concerns

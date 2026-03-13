@@ -1,0 +1,20 @@
+Perfect! I've successfully completed the task:
+
+## Summary
+
+✅ **Added `VisualWidth` function** — Returns the visual display width of a string, ignoring ANSI escape codes and counting runes for proper Unicode support.
+
+✅ **Added `PadToWidth` function** — Right-pads a string with spaces to reach a target visual width while preserving ANSI codes.
+
+✅ **Comprehensive test coverage** including:
+- Plain ASCII strings
+- ANSI color-coded strings  
+- Unicode (CJK, emoji, Arabic)
+- Mixed Unicode + ANSI
+- Edge cases (exact width, already wider, empty strings)
+
+✅ **All tests pass** — 8 tests in the display package
+
+✅ **Code committed** — Changes placed exactly as specified (after `FormatDurationShort` and `TestFormatDurationShort`)
+
+Both functions use the existing `StripANSI` function as required, follow the existing code style, and include proper documentation comments.

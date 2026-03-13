@@ -1,0 +1,15 @@
+Perfect! ✅ Task complete. I've successfully added `VisualWidth` and `PadToWidth` functions to `pkg/display` with comprehensive tests.
+
+**Summary:**
+
+- **VisualWidth(s string) int** — Returns visual display width by stripping ANSI codes with the existing `StripANSI` function and counting runes for proper Unicode support
+- **PadToWidth(s string, width int) string** — Right-pads strings with spaces while preserving ANSI codes; returns unchanged if already at or wider than target width
+
+**Test Coverage:**
+- Plain ASCII strings
+- ANSI color codes (single and multiple)
+- Unicode (CJK characters, emoji)
+- Mixed content (ANSI + Unicode)
+- Edge cases (empty strings, already at width, wider than target, zero width)
+
+**All 8 tests pass** (6 existing + 2 new). Changes committed to `exp/coord-no-coord-complex-a-t9-74618`.

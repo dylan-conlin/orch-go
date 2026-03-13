@@ -1,0 +1,26 @@
+DONE-B: FormatRate Implementation Complete
+
+Implementation Summary:
+- Added FormatRate(bytesPerSec float64) string function to pkg/display/display.go
+  Location: Lines 96-137 (after FormatDurationShort)
+
+- Added TestFormatRate(t *testing.T) test function to pkg/display/display_test.go
+  Location: Lines 137-156 (after TestFormatDurationShort)
+
+Function Behavior:
+- Handles zero values: returns "0 B/s"
+- Formats rates using binary units (B/s, KiB/s, MiB/s, GiB/s)
+- Shows 1 decimal place for non-byte units
+- Handles negative values by prefixing with "-"
+- Ranges: B/s (0-1023), KiB/s (1024-1048575), MiB/s (1048576-1073741823), GiB/s (1073741824+)
+
+Test Coverage:
+- Zero and small values (B/s range)
+- Exact boundaries: 1024 (KiB), 1048576 (MiB), 1073741824 (GiB)
+- Fractional values (1.5, 2.5)
+- Negative values for all unit ranges
+- Total: 14 test cases covering all requirements
+
+Test Results: All tests passing (7/7 tests in pkg/display including existing tests)
+
+Ready for merge with FormatBytes implementation from Agent A.

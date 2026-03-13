@@ -1,0 +1,46 @@
+Agent B Implementation Plan: FormatTable
+
+FILES TO MODIFY:
+- /private/tmp/coord-messaging-b-t6-74618/pkg/display/display.go
+- /private/tmp/coord-messaging-b-t6-74618/pkg/display/display_test.go
+
+INSERTION POINTS:
+1. In display.go: Add FormatTable function AFTER VisualWidth and PadToWidth (Agent A will add these after line 94)
+   - Coordinate: Agent A inserts VisualWidth + PadToWidth after line 94
+   - I will insert FormatTable after those functions
+2. In display_test.go: Add TestFormatTable function AFTER TestPadToWidth (Agent A will add TestVisualWidth + TestPadToWidth after line 134)
+   - Coordinate: Agent A inserts their tests after line 134
+   - I will insert TestFormatTable after those tests
+
+FUNCTIONS TO ADD:
+1. FormatTable(headers []string, rows [][]string) string
+   - Renders aligned text table with auto-sized columns
+   - Uses StripANSI for width calculation
+   - Format: header row | separator line of dashes | data rows
+   - Handles nil/empty rows, mismatched column counts
+
+FUNCTION SIGNATURE:
+func FormatTable(headers []string, rows [][]string) string
+
+DESIGN CHOICES:
+- Border style: pipe characters (|) with spaces
+- Column padding: 2 spaces on each side (1 space + content + 1 space)
+- Row separator: dashes matching column width
+- Handles ANSI codes by stripping for width, keeping original strings in output
+- Missing columns in rows: pad with empty strings
+- Extra columns in rows: include them
+
+TEST COVERAGE (TestFormatTable):
+1. Basic table with multiple rows
+2. Headers only (empty rows)
+3. ANSI-colored content
+4. Mismatched column counts
+5. Single-column table
+6. Wide content/long strings
+7. Edge case: nil rows slice
+8. Edge case: empty strings in cells
+
+DEPENDENCIES:
+- Uses existing StripANSI function
+- Uses fmt, strings packages
+- No new imports needed

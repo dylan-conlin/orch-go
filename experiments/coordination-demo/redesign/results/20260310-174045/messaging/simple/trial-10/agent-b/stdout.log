@@ -1,0 +1,19 @@
+## Done! ✓
+
+I've successfully implemented `FormatRate` for pkg/display with full test coverage:
+
+**Implementation:**
+- Added `FormatRate(bytesPerSec float64) string` to display.go (after line 94)
+- Formats transfer rates using binary units: B/s, KiB/s, MiB/s, GiB/s
+- Shows 1 decimal place for non-B/s units
+- Handles zero, negative, and large values
+
+**Tests:**
+- 15 comprehensive test cases in TestFormatRate
+- Coverage: boundaries (1024, 1048576), negatives, large values (GiB/s)
+- All tests pass ✓
+
+**Coordination:**
+- Both implementations (FormatRate and FormatBytes) insert after `FormatDurationShort`
+- Independent functions → clean merge with Agent A's work
+- Commit: `e5475bdbe`

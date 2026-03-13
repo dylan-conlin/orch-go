@@ -1,0 +1,21 @@
+AGENT A: FormatBytes Implementation Plan
+
+Files to modify:
+1. pkg/display/display.go
+   - Add FormatBytes(bytes int64) string after FormatDurationShort (line 94)
+   - Function converts byte counts to binary units (B, KiB, MiB, GiB, TiB) with 1 decimal place
+   - Handles zero, negative values, and exact boundaries
+
+2. pkg/display/display_test.go
+   - Add TestFormatBytes function after TestFormatDurationShort
+   - Test cases: zero, small bytes, exact boundaries (1024, 1048576), negatives, large values
+
+Implementation details:
+- Use 1024 as the divisor for binary units
+- Format with 1 decimal place for KiB and above
+- Handle negative numbers by computing on absolute value and prefixing result with "-"
+- No new dependencies required
+
+Insertion points:
+- Code: After line 94 in display.go (after FormatDurationShort function)
+- Tests: After line 134 in display_test.go (after TestFormatDurationShort function)

@@ -1,0 +1,14 @@
+{
+  "timestamp": "20260310-173729",
+  "baseline_commit": "684b429af34c9f6568492a5571314cb601ef887c",
+  "model": "haiku",
+  "model_full": "claude-haiku-4-5-20251001",
+  "trials": 1,
+  "task_types": [
+  "simple"
+],
+  "conditions": [
+  "no-coord"
+],
+  "timeout_minutes": 10
+}

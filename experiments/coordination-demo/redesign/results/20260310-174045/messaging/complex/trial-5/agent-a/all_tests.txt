@@ -1,0 +1,74 @@
+=== RUN   TestTruncate
+--- PASS: TestTruncate (0.00s)
+=== RUN   TestTruncateWithPadding
+--- PASS: TestTruncateWithPadding (0.00s)
+=== RUN   TestShortID
+--- PASS: TestShortID (0.00s)
+=== RUN   TestStripANSI
+--- PASS: TestStripANSI (0.00s)
+=== RUN   TestFormatDuration
+--- PASS: TestFormatDuration (0.00s)
+=== RUN   TestFormatDurationShort
+--- PASS: TestFormatDurationShort (0.00s)
+=== RUN   TestVisualWidth
+=== RUN   TestVisualWidth/plain_ASCII
+=== RUN   TestVisualWidth/empty_string
+=== RUN   TestVisualWidth/single_char
+=== RUN   TestVisualWidth/spaces
+=== RUN   TestVisualWidth/red_text_with_ANSI
+=== RUN   TestVisualWidth/bold_green_with_ANSI
+=== RUN   TestVisualWidth/multiple_ANSI_codes
+=== RUN   TestVisualWidth/emoji
+=== RUN   TestVisualWidth/CJK_character
+=== RUN   TestVisualWidth/mixed_ASCII_and_emoji
+=== RUN   TestVisualWidth/only_ANSI_codes
+=== RUN   TestVisualWidth/longer_text
+=== RUN   TestVisualWidth/ANSI_with_spaces
+--- PASS: TestVisualWidth (0.00s)
+    --- PASS: TestVisualWidth/plain_ASCII (0.00s)
+    --- PASS: TestVisualWidth/empty_string (0.00s)
+    --- PASS: TestVisualWidth/single_char (0.00s)
+    --- PASS: TestVisualWidth/spaces (0.00s)
+    --- PASS: TestVisualWidth/red_text_with_ANSI (0.00s)
+    --- PASS: TestVisualWidth/bold_green_with_ANSI (0.00s)
+    --- PASS: TestVisualWidth/multiple_ANSI_codes (0.00s)
+    --- PASS: TestVisualWidth/emoji (0.00s)
+    --- PASS: TestVisualWidth/CJK_character (0.00s)
+    --- PASS: TestVisualWidth/mixed_ASCII_and_emoji (0.00s)
+    --- PASS: TestVisualWidth/only_ANSI_codes (0.00s)
+    --- PASS: TestVisualWidth/longer_text (0.00s)
+    --- PASS: TestVisualWidth/ANSI_with_spaces (0.00s)
+=== RUN   TestPadToWidth
+=== RUN   TestPadToWidth/pad_plain_text
+=== RUN   TestPadToWidth/pad_to_exact
+=== RUN   TestPadToWidth/pad_single_char
+=== RUN   TestPadToWidth/already_at_width
+=== RUN   TestPadToWidth/empty_string,_pad_to_width
+=== RUN   TestPadToWidth/wider_than_target
+=== RUN   TestPadToWidth/wider_than_target_2
+=== RUN   TestPadToWidth/ANSI_code_with_padding
+=== RUN   TestPadToWidth/ANSI_code_no_padding_needed
+=== RUN   TestPadToWidth/ANSI_code_wider_than_target
+=== RUN   TestPadToWidth/unicode_padding
+=== RUN   TestPadToWidth/emoji_with_padding
+=== RUN   TestPadToWidth/mixed_ASCII_and_emoji_padding
+=== RUN   TestPadToWidth/empty_string_no_padding
+=== RUN   TestPadToWidth/width_zero
+--- PASS: TestPadToWidth (0.00s)
+    --- PASS: TestPadToWidth/pad_plain_text (0.00s)
+    --- PASS: TestPadToWidth/pad_to_exact (0.00s)
+    --- PASS: TestPadToWidth/pad_single_char (0.00s)
+    --- PASS: TestPadToWidth/already_at_width (0.00s)
+    --- PASS: TestPadToWidth/empty_string,_pad_to_width (0.00s)
+    --- PASS: TestPadToWidth/wider_than_target (0.00s)
+    --- PASS: TestPadToWidth/wider_than_target_2 (0.00s)
+    --- PASS: TestPadToWidth/ANSI_code_with_padding (0.00s)
+    --- PASS: TestPadToWidth/ANSI_code_no_padding_needed (0.00s)
+    --- PASS: TestPadToWidth/ANSI_code_wider_than_target (0.00s)
+    --- PASS: TestPadToWidth/unicode_padding (0.00s)
+    --- PASS: TestPadToWidth/emoji_with_padding (0.00s)
+    --- PASS: TestPadToWidth/mixed_ASCII_and_emoji_padding (0.00s)
+    --- PASS: TestPadToWidth/empty_string_no_padding (0.00s)
+    --- PASS: TestPadToWidth/width_zero (0.00s)
+PASS
+ok  	github.com/dylan-conlin/orch-go/pkg/display	(cached)
