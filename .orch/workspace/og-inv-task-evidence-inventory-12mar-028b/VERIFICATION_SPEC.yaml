@@ -1,0 +1,27 @@
+name: evidence-inventory-orchestrator-skill-cluster
+type: investigation
+status: complete
+
+verification:
+  automated: []
+  manual:
+    - description: "Verify SYNTHESIS.md contains 67 numbered claims across 4 themes"
+      command: "grep -c '^\\*\\*[0-9]' .orch/workspace/og-inv-task-evidence-inventory-12mar-028b/SYNTHESIS.md"
+      expected: "67 claims numbered across THEME 1-4 sections"
+    - description: "Verify probe file exists with all 4 required sections"
+      command: "grep -c '## Question\\|## What I Tested\\|## What I Observed\\|## Model Impact' .kb/models/orchestrator-session-lifecycle/probes/2026-03-12-probe-evidence-inventory-orchestrator-skill-cluster.md"
+      expected: "4"
+    - description: "Verify model.md was updated with evidence quality stratification"
+      command: "grep -c 'evidence quality stratification' .kb/models/orchestrator-session-lifecycle/model.md"
+      expected: "2 (one in Last Updated header, one in Phase 8)"
+
+artifacts:
+  - path: ".kb/models/orchestrator-session-lifecycle/probes/2026-03-12-probe-evidence-inventory-orchestrator-skill-cluster.md"
+    type: probe
+    description: "Probe file with 67-claim evidence inventory summary and model impact"
+  - path: ".orch/workspace/og-inv-task-evidence-inventory-12mar-028b/SYNTHESIS.md"
+    type: synthesis
+    description: "Full numbered evidence inventory with cross-reference matrix and caveats"
+  - path: ".kb/models/orchestrator-session-lifecycle/model.md"
+    type: model-update
+    description: "Updated with evidence quality stratification paragraph in Phase 8"
