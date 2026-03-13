@@ -1,29 +1,25 @@
-issue: orch-go-u8owr
-title: "Gate Signal vs Noise — Phase 4: Prospective measurement baseline"
+issue: orch-go-knli7
+title: "Emit gate.allowed events alongside gate.blocked/gate.fired events"
 skill: feature-impl
 tier: light
 
 verification:
   automated:
-    - command: "go test ./cmd/orch/ -run 'TestGateEffectivenessStats_PrecommitBlocksWithoutBeadsID|TestGateEffectivenessStats_ProspectiveBaseline|TestGateAccuracyBaseline' -v"
-      expected: "3 tests PASS"
-    - command: "go test ./cmd/orch/ -run 'TestGateDecisionStats|TestGateEffectivenessStats' -v"
-      expected: "10 tests PASS (all gate-related tests)"
-    - command: "go build ./cmd/orch/"
+    - command: "go test ./pkg/orch/ -run TestLogGateDecision -v"
+      expected: "7 tests PASS (2 existing + 5 new allow/block cases)"
+    - command: "go build ./..."
       expected: "clean build, no errors"
-    - command: "go run ./cmd/orch stats --snapshot"
-      expected: "records baseline to ~/.orch/gate-baselines.jsonl with summary output"
+    - command: "go test ./pkg/orch/... ./pkg/events/..."
+      expected: "all tests pass"
 
-  manual:
-    - check: "orch stats output shows GATE EFFECTIVENESS section with real data (gated vs ungated cohort comparison)"
-    - check: "orch stats --snapshot records baseline and shows delta when run twice"
+  manual: []
 
 deliverables:
-  - path: cmd/orch/stats_cmd.go
-    description: "Added extractGateAccuracyBaseline(), recordGateBaseline(), loadGateBaselines(), printDelta() functions. Added --snapshot flag."
-  - path: cmd/orch/stats_types.go
-    description: "Added GateAccuracyBaseline type for point-in-time accuracy snapshots."
-  - path: cmd/orch/stats_test.go
-    description: "Added 3 new tests: PrecommitBlocksWithoutBeadsID, ProspectiveBaseline, GateAccuracyBaseline."
-  - path: .kb/plans/2026-03-11-gate-signal-vs-noise.md
-    description: "Updated Phase 4 with status, Day 1 baseline data, and Mar 24 check-in note."
+  - path: pkg/orch/spawn_preflight.go
+    description: "Added concurrency allow/block and ratelimit allow/block gate_decision events"
+  - path: cmd/orch/precommit_cmd.go
+    description: "Added accretion_precommit allow gate_decision event when gate passes"
+  - path: pkg/events/logger.go
+    description: "Updated LogGateDecision comment to reflect allow decisions"
+  - path: pkg/orch/spawn_preflight_test.go
+    description: "Added TestLogGateDecision_AllowDecisions with 5 test cases"

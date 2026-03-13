@@ -888,7 +888,7 @@ type GateDecisionData struct {
 	Reason      string   `json:"reason,omitempty"`       // Why the decision was made
 }
 
-// LogGateDecision logs a spawn gate evaluation event (block or bypass only).
+// LogGateDecision logs a spawn gate evaluation event (block, bypass, or allow).
 func (l *Logger) LogGateDecision(data GateDecisionData) error {
 	eventData := map[string]interface{}{
 		"gate_name": data.GateName,

@@ -38,12 +38,18 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, for
 		logGateDecision("verification", "allow", input.SkillName, input.IssueID, "no unverified work", nil)
 	}
 	if err := gates.CheckConcurrency(input.ServerURL, maxAgents, extractBeadsIDFunc); err != nil {
+		logGateDecision("concurrency", "block", input.SkillName, input.IssueID, err.Error(), nil)
 		return nil, nil, nil, nil, err
 	}
+	logGateDecision("concurrency", "allow", input.SkillName, input.IssueID, "within concurrency limit", nil)
+
 	usageCheckResult, usageErr := gates.CheckRateLimit()
 	if usageErr != nil {
+		// Block event already emitted inside CheckRateLimit() as spawn.blocked.rate_limit
+		logGateDecision("ratelimit", "block", input.SkillName, input.IssueID, usageErr.Error(), nil)
 		return nil, nil, nil, nil, usageErr
 	}
+	logGateDecision("ratelimit", "allow", input.SkillName, input.IssueID, "usage within threshold", nil)
 
 	// Governance file detection — warn if task targets protected paths (advisory only)
 	CheckGovernance(input.Task, input.SkillName, input.DaemonDriven)

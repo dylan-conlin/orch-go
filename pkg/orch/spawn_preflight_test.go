@@ -167,3 +167,87 @@ func TestLogGateDecision_IncludesBeadsID(t *testing.T) {
 		t.Errorf("event.SessionID = %q, want %q", event.SessionID, "orch-go-xyz99")
 	}
 }
+
+func TestLogGateDecision_AllowDecisions(t *testing.T) {
+	// Verify that allow events for concurrency/ratelimit gates
+	// produce valid spawn.gate_decision events with correct fields.
+	tests := []struct {
+		name     string
+		gate     string
+		decision string
+		reason   string
+	}{
+		{
+			name:     "concurrency allow",
+			gate:     "concurrency",
+			decision: "allow",
+			reason:   "within concurrency limit",
+		},
+		{
+			name:     "concurrency block",
+			gate:     "concurrency",
+			decision: "block",
+			reason:   "concurrency limit reached: 5 active agents (max 5)",
+		},
+		{
+			name:     "ratelimit allow",
+			gate:     "ratelimit",
+			decision: "allow",
+			reason:   "usage within threshold",
+		},
+		{
+			name:     "ratelimit block",
+			gate:     "ratelimit",
+			decision: "block",
+			reason:   "usage critical: 5h session at 97.0%",
+		},
+		{
+			name:     "accretion_precommit allow",
+			gate:     "accretion_precommit",
+			decision: "allow",
+			reason:   "staged files within accretion threshold",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			logPath := filepath.Join(tmpDir, "events.jsonl")
+
+			logger := events.NewLogger(logPath)
+			err := logger.LogGateDecision(events.GateDecisionData{
+				GateName: tt.gate,
+				Decision: tt.decision,
+				Skill:    "feature-impl",
+				BeadsID:  "orch-go-test1",
+				Reason:   tt.reason,
+			})
+			if err != nil {
+				t.Fatalf("LogGateDecision() error = %v", err)
+			}
+
+			data, err := os.ReadFile(logPath)
+			if err != nil {
+				t.Fatalf("Failed to read log file: %v", err)
+			}
+
+			var event events.Event
+			if err := json.Unmarshal(data, &event); err != nil {
+				t.Fatalf("Failed to unmarshal event: %v", err)
+			}
+
+			if event.Type != events.EventTypeSpawnGateDecision {
+				t.Errorf("event.Type = %q, want %q", event.Type, events.EventTypeSpawnGateDecision)
+			}
+			if event.Data["gate_name"] != tt.gate {
+				t.Errorf("gate_name = %v, want %q", event.Data["gate_name"], tt.gate)
+			}
+			if event.Data["decision"] != tt.decision {
+				t.Errorf("decision = %v, want %q", event.Data["decision"], tt.decision)
+			}
+			if event.Data["reason"] != tt.reason {
+				t.Errorf("reason = %v, want %q", event.Data["reason"], tt.reason)
+			}
+		})
+	}
+}
