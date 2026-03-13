@@ -1,0 +1,309 @@
+package events
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func writeEvents(t *testing.T, dir string, events []Event) string {
+	t.Helper()
+	path := filepath.Join(dir, "events.jsonl")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	for _, e := range events {
+		data, _ := json.Marshal(e)
+		f.Write(append(data, '\n'))
+	}
+	return path
+}
+
+func TestComputeLearning_Empty(t *testing.T) {
+	dir := t.TempDir()
+	path := writeEvents(t, dir, nil)
+
+	store, err := ComputeLearning(path)
+	if err != nil {
+		t.Fatalf("ComputeLearning() error = %v", err)
+	}
+	if len(store.Skills) != 0 {
+		t.Errorf("expected 0 skills, got %d", len(store.Skills))
+	}
+}
+
+func TestComputeLearning_MissingFile(t *testing.T) {
+	store, err := ComputeLearning("/nonexistent/events.jsonl")
+	if err != nil {
+		t.Fatalf("ComputeLearning() should not error on missing file, got %v", err)
+	}
+	if len(store.Skills) != 0 {
+		t.Errorf("expected 0 skills, got %d", len(store.Skills))
+	}
+}
+
+func TestComputeLearning_SuccessRate(t *testing.T) {
+	dir := t.TempDir()
+
+	events := []Event{
+		// 2 successful completions for feature-impl
+		{Type: EventTypeAgentCompleted, Timestamp: 1000, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "success", "duration_seconds": float64(600),
+			"verification_passed": true,
+		}},
+		{Type: EventTypeAgentCompleted, Timestamp: 2000, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "success", "duration_seconds": float64(900),
+			"verification_passed": true,
+		}},
+		// 1 forced completion for feature-impl
+		{Type: EventTypeAgentCompleted, Timestamp: 3000, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "forced", "duration_seconds": float64(1200),
+			"verification_passed": false,
+		}},
+		// 1 abandonment for feature-impl
+		{Type: EventTypeAgentAbandonedTelemetry, Timestamp: 4000, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "abandoned", "duration_seconds": float64(2000),
+		}},
+	}
+
+	path := writeEvents(t, dir, events)
+	store, err := ComputeLearning(path)
+	if err != nil {
+		t.Fatalf("ComputeLearning() error = %v", err)
+	}
+
+	skill, ok := store.Skills["feature-impl"]
+	if !ok {
+		t.Fatal("expected feature-impl in skills")
+	}
+
+	if skill.TotalCompletions != 3 {
+		t.Errorf("TotalCompletions = %d, want 3", skill.TotalCompletions)
+	}
+	if skill.SuccessCount != 2 {
+		t.Errorf("SuccessCount = %d, want 2", skill.SuccessCount)
+	}
+	if skill.ForcedCount != 1 {
+		t.Errorf("ForcedCount = %d, want 1", skill.ForcedCount)
+	}
+	if skill.AbandonedCount != 1 {
+		t.Errorf("AbandonedCount = %d, want 1", skill.AbandonedCount)
+	}
+
+	// Success rate: 2 / (3 + 1) = 0.5
+	expectedRate := 0.5
+	if skill.SuccessRate < expectedRate-0.01 || skill.SuccessRate > expectedRate+0.01 {
+		t.Errorf("SuccessRate = %f, want ~%f", skill.SuccessRate, expectedRate)
+	}
+}
+
+func TestComputeLearning_CompletionTimes(t *testing.T) {
+	dir := t.TempDir()
+
+	events := []Event{
+		{Type: EventTypeAgentCompleted, Timestamp: 1000, Data: map[string]interface{}{
+			"skill": "investigation", "outcome": "success", "duration_seconds": float64(300),
+		}},
+		{Type: EventTypeAgentCompleted, Timestamp: 2000, Data: map[string]interface{}{
+			"skill": "investigation", "outcome": "success", "duration_seconds": float64(600),
+		}},
+		{Type: EventTypeAgentCompleted, Timestamp: 3000, Data: map[string]interface{}{
+			"skill": "investigation", "outcome": "success", "duration_seconds": float64(900),
+		}},
+	}
+
+	path := writeEvents(t, dir, events)
+	store, err := ComputeLearning(path)
+	if err != nil {
+		t.Fatalf("ComputeLearning() error = %v", err)
+	}
+
+	skill := store.Skills["investigation"]
+	// avg = (300+600+900)/3 = 600
+	if skill.AvgDurationSeconds != 600 {
+		t.Errorf("AvgDurationSeconds = %d, want 600", skill.AvgDurationSeconds)
+	}
+	// median of [300, 600, 900] = 600
+	if skill.MedianDurationSeconds != 600 {
+		t.Errorf("MedianDurationSeconds = %d, want 600", skill.MedianDurationSeconds)
+	}
+}
+
+func TestComputeLearning_GateHitRates(t *testing.T) {
+	dir := t.TempDir()
+
+	events := []Event{
+		// Gate blocked
+		{Type: EventTypeSpawnGateDecision, Timestamp: 1000, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "block", "skill": "feature-impl",
+		}},
+		// Gate allowed (3 times)
+		{Type: EventTypeSpawnGateDecision, Timestamp: 1001, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "allow", "skill": "feature-impl",
+		}},
+		{Type: EventTypeSpawnGateDecision, Timestamp: 1002, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "allow", "skill": "feature-impl",
+		}},
+		{Type: EventTypeSpawnGateDecision, Timestamp: 1003, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "allow", "skill": "feature-impl",
+		}},
+		// Verification failed
+		{Type: EventTypeVerificationFailed, Timestamp: 2000, Data: map[string]interface{}{
+			"skill": "feature-impl", "gates_failed": []interface{}{"test_evidence"},
+		}},
+		// Verification bypassed
+		{Type: EventTypeVerificationBypassed, Timestamp: 2001, Data: map[string]interface{}{
+			"skill": "feature-impl", "gate": "test_evidence",
+		}},
+	}
+
+	path := writeEvents(t, dir, events)
+	store, err := ComputeLearning(path)
+	if err != nil {
+		t.Fatalf("ComputeLearning() error = %v", err)
+	}
+
+	skill := store.Skills["feature-impl"]
+
+	// Gate hits: hotspot blocked 1 out of 4 evaluations = 25%
+	hotspot, ok := skill.GateHitRates["hotspot"]
+	if !ok {
+		t.Fatal("expected hotspot in gate_hit_rates")
+	}
+	if hotspot.BlockCount != 1 {
+		t.Errorf("hotspot BlockCount = %d, want 1", hotspot.BlockCount)
+	}
+	if hotspot.TotalEvaluations != 4 {
+		t.Errorf("hotspot TotalEvaluations = %d, want 4", hotspot.TotalEvaluations)
+	}
+
+	// Verification failures
+	if skill.VerificationFailures != 1 {
+		t.Errorf("VerificationFailures = %d, want 1", skill.VerificationFailures)
+	}
+	if skill.VerificationBypasses != 1 {
+		t.Errorf("VerificationBypasses = %d, want 1", skill.VerificationBypasses)
+	}
+}
+
+func TestComputeLearning_MultipleSkills(t *testing.T) {
+	dir := t.TempDir()
+
+	events := []Event{
+		{Type: EventTypeAgentCompleted, Timestamp: 1000, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "success",
+		}},
+		{Type: EventTypeAgentCompleted, Timestamp: 2000, Data: map[string]interface{}{
+			"skill": "investigation", "outcome": "success",
+		}},
+		{Type: EventTypeAgentCompleted, Timestamp: 3000, Data: map[string]interface{}{
+			"skill": "architect", "outcome": "success",
+		}},
+	}
+
+	path := writeEvents(t, dir, events)
+	store, err := ComputeLearning(path)
+	if err != nil {
+		t.Fatalf("ComputeLearning() error = %v", err)
+	}
+
+	if len(store.Skills) != 3 {
+		t.Errorf("expected 3 skills, got %d", len(store.Skills))
+	}
+
+	for _, name := range []string{"feature-impl", "investigation", "architect"} {
+		if _, ok := store.Skills[name]; !ok {
+			t.Errorf("expected skill %q in store", name)
+		}
+	}
+}
+
+func TestComputeLearning_SkipsEventsWithoutSkill(t *testing.T) {
+	dir := t.TempDir()
+
+	events := []Event{
+		// Completed without skill field — should be ignored
+		{Type: EventTypeAgentCompleted, Timestamp: 1000, Data: map[string]interface{}{
+			"outcome": "success",
+		}},
+		// With skill
+		{Type: EventTypeAgentCompleted, Timestamp: 2000, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "success",
+		}},
+	}
+
+	path := writeEvents(t, dir, events)
+	store, err := ComputeLearning(path)
+	if err != nil {
+		t.Fatalf("ComputeLearning() error = %v", err)
+	}
+
+	if len(store.Skills) != 1 {
+		t.Errorf("expected 1 skill, got %d", len(store.Skills))
+	}
+}
+
+func TestComputeLearning_IgnoresNonRelevantEvents(t *testing.T) {
+	dir := t.TempDir()
+
+	events := []Event{
+		// Daemon-internal events should be ignored
+		{Type: "daemon.recovery", Timestamp: 1000, Data: map[string]interface{}{
+			"message": "something",
+		}},
+		{Type: "daemon.phase_timeout", Timestamp: 1001, Data: map[string]interface{}{
+			"message": "something",
+		}},
+		{Type: EventTypeSessionSpawned, Timestamp: 1002, Data: map[string]interface{}{
+			"skill": "feature-impl",
+		}},
+		// Only this should be counted
+		{Type: EventTypeAgentCompleted, Timestamp: 2000, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "success",
+		}},
+	}
+
+	path := writeEvents(t, dir, events)
+	store, err := ComputeLearning(path)
+	if err != nil {
+		t.Fatalf("ComputeLearning() error = %v", err)
+	}
+
+	skill := store.Skills["feature-impl"]
+	if skill.TotalCompletions != 1 {
+		t.Errorf("TotalCompletions = %d, want 1", skill.TotalCompletions)
+	}
+	// SpawnCount should be tracked from session.spawned
+	if skill.SpawnCount != 1 {
+		t.Errorf("SpawnCount = %d, want 1", skill.SpawnCount)
+	}
+}
+
+func TestComputeLearning_CorruptLine(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "events.jsonl")
+
+	// Write a mix of valid and corrupt lines
+	f, _ := os.Create(path)
+	valid := Event{Type: EventTypeAgentCompleted, Timestamp: 1000, Data: map[string]interface{}{
+		"skill": "feature-impl", "outcome": "success",
+	}}
+	data, _ := json.Marshal(valid)
+	f.Write(append(data, '\n'))
+	f.WriteString("this is not json\n")
+	f.Write(append(data, '\n'))
+	f.Close()
+
+	store, err := ComputeLearning(path)
+	if err != nil {
+		t.Fatalf("ComputeLearning() should skip corrupt lines, got error: %v", err)
+	}
+
+	skill := store.Skills["feature-impl"]
+	if skill.SuccessCount != 2 {
+		t.Errorf("SuccessCount = %d, want 2 (should skip corrupt line)", skill.SuccessCount)
+	}
+}
