@@ -2,7 +2,7 @@
 
 **Domain:** How CLI flags, CLAUDE.md, settings, and hooks compose to shape spawned agent behavior
 **Last Updated:** 2026-03-12
-**Synthesized From:** 3 investigations (Feb 14 - Feb 28, 2026) + ongoing spawn infrastructure evolution
+**Synthesized From:** 3 investigations (Feb 14 - Feb 28, 2026) + 1 hook audit probe (Mar 12) + ongoing spawn infrastructure evolution
 
 ---
 
@@ -22,7 +22,7 @@ Every spawned agent's behavior is shaped by four layers, applied in order:
 |---|---|---|---|---|
 | **CLAUDE.md** | Project instructions, architecture overview, key references | Rarely (project-level) | Every agent in project | Bloat → context dilution; drift → misleading architecture claims |
 | **CLI flags** | Spawn-time capability control (`--effort`, `--max-turns`, `--permission-mode`) | Per-spawn (in `BuildClaudeLaunchCommand`) | Single agent | Wrong flags → wrong capabilities; missing flags → under-restricted agents |
-| **settings.json** | Hooks (SessionStart, PreToolUse, Stop) and permission rules | Per-deployment (global) | All agents using that settings file | Hook errors → agent blocked; dual authority (hook + skill text) → confusion |
+| **settings.json** | Hooks (SessionStart, PreToolUse, Stop) and permission rules. 11 hooks in `~/.orch/hooks/`, 12 registrations (1 duplicate). 9 fire on every Bash call (in parallel). | Per-deployment (global) | All agents using that settings file | Hook errors → agent blocked; dual authority (hook + skill text) → confusion; **zero observability** (no invocation logging) |
 | **SPAWN_CONTEXT.md** | Task description, skill content, beads context, server context | Per-spawn (generated) | Single agent | Missing context → agent works blind; excess context → dilution |
 
 ### CLAUDE.md as Agent Context Surface
@@ -96,6 +96,8 @@ Code changes without corresponding CLAUDE.md updates. References to deleted dire
 ### Failure Mode 2: Configuration Drift Across Layers
 Settings.json hooks evolve independently of skill content. SPAWN_CONTEXT.md template changes don't always sync with CLAUDE.md. The four layers drift apart because they're maintained by different mechanisms (manual edits, code generation, templates).
 
+**Confirmed example (Mar 12 audit):** `pre-commit-knowledge-gate.py` guards the `kn` CLI system which has been dead since Dec 25, 2025 (`kn` binary not on PATH, last entry 2.5 months old). The hook still fires on every `git commit`, consuming ~49ms per invocation to guard a system that no longer exists. Additionally, `gate-worker-git-add-all.py` is registered twice in settings.json (indices 5 and 10).
+
 ### Failure Mode 3: Under-Restriction
 Agents get more capabilities than needed because CLI flag adoption lags. Investigation agents have full write access when `--permission-mode plan` would be more appropriate. All agents get the same reasoning depth when `--effort` could differentiate.
 
@@ -107,13 +109,15 @@ Agents get more capabilities than needed because CLI flag adoption lags. Investi
 
 **2026-02-28:** Feature audit of Claude Code v2.1.63 mapped the full CLI configuration space. Identified 4 "adopt now" features and 6 "evaluate" features. Current spawn invocation uses only 4 of 15+ available flags.
 
+**2026-03-12:** Hook infrastructure audit. 11 unique hooks, 12 registrations (1 duplicate). All denial hooks fire correctly. Zero observability — no invocation logging exists. One hook (`pre-commit-knowledge-gate.py`) guards dead `kn` system. Stop hook confirmed in production with escape hatch. Cost: ~50ms wall-clock per Bash call (9 hooks in parallel), ~805 Python processes per worker session.
+
 ---
 
 ## Open Questions
 
 1. **Should `--effort` map to skill or tier?** Skills are more granular (investigation=medium, architect=high) but tiers are simpler (light=low, full=medium, deep=high). Decision needed before implementation.
 
-2. **Is the Stop hook safe for production?** The hook can block agent exit if Phase: Complete is missing — but what if the agent genuinely can't satisfy the condition? Needs an escape hatch (timer or max retries).
+2. **~~Is the Stop hook safe for production?~~** **Answered (Mar 12 audit):** The Stop hook (`enforce-phase-complete.py`) IS in production. It uses `{"decision": "block", "reason": "..."}` output format and has a `stop_hook_active` escape hatch — on second attempt (after first block), it allows exit with a stderr warning. Output format differs from PreToolUse hooks and is not formally documented.
 
 3. **When should we adopt `--tools` allowlist?** The fail-closed approach (only allow listed tools) is more secure than `--disallowedTools` (deny specific tools). But it requires maintaining per-skill tool allowlists. Worth it for investigation/architect agents that shouldn't modify code?
 
@@ -124,7 +128,7 @@ Agents get more capabilities than needed because CLI flag adoption lags. Investi
 ### For spawn infrastructure
 - Implement `--effort` and `--max-turns` first (lowest risk, immediate value)
 - Design per-spawn `--settings` for worker hook isolation
-- Prototype `Stop` hook for completion enforcement with timeout escape hatch
+- ~~Prototype `Stop` hook for completion enforcement with timeout escape hatch~~ Done — `enforce-phase-complete.py` in production with `stop_hook_active` escape hatch
 
 ### For CLAUDE.md maintenance
 - Audit CLAUDE.md after major refactors (directory restructuring, command renaming)
@@ -143,6 +147,9 @@ Agents get more capabilities than needed because CLI flag adoption lags. Investi
 **Related decisions:**
 - `.kb/decisions/2026-03-05-remediate-configuration-drift-defect-class.md` — Systemic drift remediation
 - `.kb/decisions/2026-02-26-phase-based-liveness-over-tmux-as-state.md` — Phase comments as agent heartbeat
+
+**Probes:**
+- 2026-03-12: Hook Infrastructure Audit — 11 hooks audited, zero observability, 1 dead-system guard, 1 duplicate registration, Stop hook confirmed in production
 
 **Related models:**
 - `.kb/models/skill-content-transfer/` — How skill content transfers to agents (three content types)
