@@ -1,25 +1,23 @@
-issue: orch-go-knli7
-title: "Emit gate.allowed events alongside gate.blocked/gate.fired events"
+issue: orch-go-cshrz
+title: "Build harness audit command for per-gate metrics and anomaly detection"
 skill: feature-impl
 tier: light
 
 verification:
   automated:
-    - command: "go test ./pkg/orch/ -run TestLogGateDecision -v"
-      expected: "7 tests PASS (2 existing + 5 new allow/block cases)"
-    - command: "go build ./..."
+    - command: "go test ./cmd/orch/ -run 'TestHarnessAudit|TestBuildGateAudit|TestFormatGateAudit' -count=1 -v"
+      expected: "11 tests PASS"
+    - command: "go build ./cmd/orch/"
       expected: "clean build, no errors"
-    - command: "go test ./pkg/orch/... ./pkg/events/..."
-      expected: "all tests pass"
+    - command: "go run ./cmd/orch/ harness audit --days 7"
+      expected: "per-gate table with invocations, fire rate, coverage, cost, anomalies"
+    - command: "go run ./cmd/orch/ harness audit --json --days 7"
+      expected: "valid JSON with gates array and anomalies array"
 
   manual: []
 
 deliverables:
-  - path: pkg/orch/spawn_preflight.go
-    description: "Added concurrency allow/block and ratelimit allow/block gate_decision events"
-  - path: cmd/orch/precommit_cmd.go
-    description: "Added accretion_precommit allow gate_decision event when gate passes"
-  - path: pkg/events/logger.go
-    description: "Updated LogGateDecision comment to reflect allow decisions"
-  - path: pkg/orch/spawn_preflight_test.go
-    description: "Added TestLogGateDecision_AllowDecisions with 5 test cases"
+  - path: cmd/orch/harness_audit_cmd.go
+    description: "harness audit command: reads gate_decision events, produces per-gate table + anomaly detection"
+  - path: cmd/orch/harness_audit_cmd_test.go
+    description: "11 tests covering counts, fire rates, cost from pipeline_timing, all 3 anomaly types, text/JSON output"
