@@ -1,6 +1,6 @@
 # Probe: Distribution Channels for Solo Developer CLI Tools — Where STR Users Actually Are
 
-**Model:** Knowledge Physics
+**Model:** Knowledge Accretion
 **Date:** 2026-03-11
 **Status:** Complete
 **Methodology:** Confirmatory — conducted by the same AI system that built the model. Cannot constitute independent validation.
@@ -9,7 +9,7 @@
 
 ## Question
 
-The knowledge-physics model and prior probes (first-external-user-profile-analysis, kb-cli-public-release-readiness) identified the Solo Technical Researcher (STR) as the ideal first user. The model's adoption sequence claims bottom-up adoption (solo → team → org) following proven knowledge-tool patterns (Zettelkasten, ADRs, lab notebooks).
+The knowledge-accretion model and prior probes (first-external-user-profile-analysis, kb-cli-public-release-readiness) identified the Solo Technical Researcher (STR) as the ideal first user. The model's adoption sequence claims bottom-up adoption (solo → team → org) following proven knowledge-tool patterns (Zettelkasten, ADRs, lab notebooks).
 
 **Testing:** For a solo developer with zero audience, which distribution channels actually produce first users for CLI dev tools targeting AI agent users? Not theory — what has worked for comparable tools in 2024-2026?
 
@@ -129,7 +129,7 @@ Aider's first Show HN (May 2023): **3 points, 4 comments**. Today: **41,600 star
 - Growth came through sustained iteration, word of mouth, and being genuinely useful
 - A single viral moment is not required or even typical for successful dev tools
 
-This aligns with the knowledge-physics model's adoption sequence (solo → team → org) — it's a slow burn, not a launch event.
+This aligns with the knowledge-accretion model's adoption sequence (solo → team → org) — it's a slow burn, not a launch event.
 
 ### Finding 7: Conversion funnel is extremely leaky
 

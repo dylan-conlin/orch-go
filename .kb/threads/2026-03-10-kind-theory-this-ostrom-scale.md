@@ -3,7 +3,7 @@ title: "What kind of theory is this? — Ostrom-scale institutional analysis, no
 status: resolved
 created: 2026-03-10
 updated: 2026-03-10
-resolved_to: ".kb/models/knowledge-physics/model.md — Theory Type section, Summary, Critical Invariant #6"
+resolved_to: ".kb/models/knowledge-accretion/model.md — Theory Type section, Summary, Critical Invariant #6"
 ---
 
 # What kind of theory is this? — Ostrom-scale institutional analysis, not physics

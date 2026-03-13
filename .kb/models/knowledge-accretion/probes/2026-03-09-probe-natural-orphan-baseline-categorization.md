@@ -1,6 +1,6 @@
 # Probe: Natural Orphan Baseline — Categorizing Orphan Types and Healthy Rates
 
-**Model:** knowledge-physics
+**Model:** knowledge-accretion
 **Date:** 2026-03-09
 **Status:** Complete
 **Methodology:** Confirmatory — conducted by the same AI system that built the model. Cannot constitute independent validation.

@@ -31,10 +31,10 @@
 
 | Investigation | Relationship | Verified | Conflicts |
 |--------------|--------------|----------|-----------|
-| `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-physics-accretion-attractor-gate-dynamics.md` | extends | yes | none |
+| `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-accretion-accretion-attractor-gate-dynamics.md` | extends | yes | none |
 | `.kb/models/system-learning-loop/probes/2026-03-01-probe-legibility-literature-review-bainbridge-forward.md` | extends | yes | none |
 
-**Verified:** Knowledge-physics probe's claim that "knowledge attractors are attention-primed" confirmed — agents receive model claims via SPAWN_CONTEXT injection, which is an attention mechanism. Legibility probe's Bainbridge Irony #3 (autonomous daemon degrades Dylan's intervention readiness) is directly relevant: if only agents run probes, Dylan loses the ability to probe.
+**Verified:** Knowledge-accretion probe's claim that "knowledge attractors are attention-primed" confirmed — agents receive model claims via SPAWN_CONTEXT injection, which is an attention mechanism. Legibility probe's Bainbridge Irony #3 (autonomous daemon degrades Dylan's intervention readiness) is directly relevant: if only agents run probes, Dylan loses the ability to probe.
 
 ---
 
@@ -83,7 +83,7 @@ This is question → experiment → observation → theory update. Humans have b
 
 **Source:** `.orch/templates/PROBE.md`, review of 2 existing probes in system-learning-loop/probes/
 
-**Significance:** The cycle is not agent-specific. It was formalized for agents but describes universal empirical inquiry. The knowledge-physics model's claim that the dynamics are "substrate-independent" extends to the investigator substrate too.
+**Significance:** The cycle is not agent-specific. It was formalized for agents but describes universal empirical inquiry. The knowledge-accretion model's claim that the dynamics are "substrate-independent" extends to the investigator substrate too.
 
 ---
 
@@ -109,7 +109,7 @@ Zero probes have been created by humans. The system has been running since Febru
 
 **Source:** `for model in .kb/models/*/; do ... done | sort -rn` (probe count per model)
 
-**Significance:** This is a monoculture. If the knowledge system's probe cycle only works with AI agents, it has a single point of failure: agent availability. It also means the system has never been validated with human investigators — the "substrate independence" claim (from knowledge-physics model) is untested for the investigator dimension.
+**Significance:** This is a monoculture. If the knowledge system's probe cycle only works with AI agents, it has a single point of failure: agent availability. It also means the system has never been validated with human investigators — the "substrate independence" claim (from knowledge-accretion model) is untested for the investigator dimension.
 
 ---
 
@@ -129,7 +129,7 @@ Zero probes have been created by humans. The system has been running since Febru
 
 Step 3 is the bottleneck. A human must know: the template path (`.orch/templates/PROBE.md`), the naming convention (`YYYY-MM-DD-probe-{slug}.md`), the target directory (`.kb/models/{model-name}/probes/`), and the placeholder substitution (`{title}`, `{model-name}`, `{date}`). All of this is in the skill file that humans don't read.
 
-Step 6 is medium friction because model.md files can be long (system-learning-loop is 526 lines, knowledge-physics is 344 lines) and the merge requires understanding the model's organizational structure.
+Step 6 is medium friction because model.md files can be long (system-learning-loop is 526 lines, knowledge-accretion is 344 lines) and the merge requires understanding the model's organizational structure.
 
 **Source:** Full walk-through of each step with actual commands tested.
 
@@ -143,7 +143,7 @@ Step 6 is medium friction because model.md files can be long (system-learning-lo
 
 1. **The probe cycle IS the scientific method, formalized for a file system** — The 4-section template (Question, What I Tested, What I Observed, Model Impact) maps directly to hypothesis → experiment → results → theory update. Humans invented this cycle. AI agents are running a formalized version of something humans do naturally.
 
-2. **The agent-only monoculture creates two risks** — First, Bainbridge Irony #3: when only agents probe, the human operator's ability to evaluate model claims degrades (confirmed by the legibility literature review probe). Second, the knowledge-physics claim that dynamics are "substrate-independent" is untested for the investigator substrate — 100% of 187 probes were agent-created.
+2. **The agent-only monoculture creates two risks** — First, Bainbridge Irony #3: when only agents probe, the human operator's ability to evaluate model claims degrades (confirmed by the legibility literature review probe). Second, the knowledge-accretion claim that dynamics are "substrate-independent" is untested for the investigator substrate — 100% of 187 probes were agent-created.
 
 3. **One CLI command breaks the bottleneck** — `kb create probe "slug" --model {name}` would scaffold the probe file in the right location with the right naming. This is a ~50-line implementation (copy template, substitute placeholders, mkdir -p probes dir). Combined with a human-readable guide, this makes the full cycle accessible.
 
@@ -216,7 +216,7 @@ The more interesting finding: humans may be *better* at the merge step (probe �
 
 **Option C: Do nothing — keep probes agent-only**
 - **Pros:** No implementation cost
-- **Cons:** Maintains monoculture risk (Bainbridge Irony #3), leaves knowledge-physics claim untested
+- **Cons:** Maintains monoculture risk (Bainbridge Irony #3), leaves knowledge-accretion claim untested
 - **When to use instead:** If human probing has no strategic value
 
 **Rationale:** Option A is the minimum viable experiment. If humans don't run probes after the tooling exists, the barrier was motivational, not tooling — and we learn that cheaply.
@@ -247,8 +247,8 @@ The more interesting finding: humans may be *better* at the merge step (probe �
 - `.orch/templates/PROBE.md` — Probe template (41 lines, 3 placeholders, 4 required sections)
 - `skills/src/worker/investigation/.skillc/intro.md` — Probe creation instructions (agent-only)
 - `.kb/models/system-learning-loop/model.md` — System learning loop model (526 lines)
-- `.kb/models/knowledge-physics/model.md` — Knowledge physics model (344 lines)
-- `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-physics-accretion-attractor-gate-dynamics.md` — Example probe
+- `.kb/models/knowledge-accretion/model.md` — Knowledge accretion model (344 lines)
+- `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-accretion-accretion-attractor-gate-dynamics.md` — Example probe
 
 **Commands Run:**
 ```bash
@@ -273,7 +273,7 @@ ls .kb/models/
 
 **Related Artifacts:**
 - **Model:** `.kb/models/system-learning-loop/model.md` — Parent model for this investigation
-- **Model:** `.kb/models/knowledge-physics/model.md` — Framework for investigator-substrate independence
+- **Model:** `.kb/models/knowledge-accretion/model.md` — Framework for investigator-substrate independence
 - **Probe:** `.kb/models/system-learning-loop/probes/2026-03-01-probe-legibility-literature-review-bainbridge-forward.md` — Bainbridge Irony #3 relevance
 
 ---
@@ -282,7 +282,7 @@ ls .kb/models/
 
 **2026-03-09:** Investigation started
 - Initial question: Can humans run the investigation/probe/model cycle without AI agents?
-- Context: Knowledge-physics model claims substrate independence, but 100% of probes are agent-created
+- Context: Knowledge-accretion model claims substrate independence, but 100% of probes are agent-created
 
 **2026-03-09:** Walked through full 7-step probe lifecycle
 - Tested each step with actual commands

@@ -1,6 +1,6 @@
-# Probe: Falsifiability of Knowledge Physics — Counterexample Search
+# Probe: Falsifiability of Knowledge Accretion — Counterexample Search
 
-**Model:** knowledge-physics
+**Model:** knowledge-accretion
 **Date:** 2026-03-10
 **Status:** Complete
 **Methodology:** Confirmatory — conducted by the same AI system that built the model. Cannot constitute independent validation. Counterexample search was bounded by the system's own framing of what counts as a counterexample.
@@ -138,7 +138,7 @@ Code and knowledge substrates lack ALL three — a `.go` file doesn't resist blo
 
 ## Notes
 
-**For publication:** The refinement from 4 binary conditions to a 5-factor risk model is not a weakness — it's a maturation. Physical theories often begin as qualitative claims and mature into quantitative models. The knowledge physics theory is currently at the qualitative stage with quantitative evidence (orphan rates, bloat measurements, gate compliance percentages). The risk-factor formulation enables future quantitative work.
+**For publication:** The refinement from 4 binary conditions to a 5-factor risk model is not a weakness — it's a maturation. Physical theories often begin as qualitative claims and mature into quantitative models. The knowledge accretion theory is currently at the qualitative stage with quantitative evidence (orphan rates, bloat measurements, gate compliance percentages). The risk-factor formulation enables future quantitative work.
 
 **Strongest external evidence (from web research):**
 

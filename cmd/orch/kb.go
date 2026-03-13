@@ -169,7 +169,7 @@ An investigation is "orphaned" if no other .kb/ file (model, decision, guide,
 probe, or other investigation) references it. High orphan rates signal
 under-synthesis — investigations producing findings that never get integrated.
 
-The orphan rate was first measured at 85.5% during the knowledge-physics probe
+The orphan rate was first measured at 85.5% during the knowledge-accretion probe
 (Mar 2026). The model-era rate (after probe system existed) was 52.0%.
 
 Examples:

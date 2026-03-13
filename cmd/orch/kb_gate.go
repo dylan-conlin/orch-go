@@ -41,7 +41,7 @@ Exit code 1 if any check fails.
 
 Examples:
   orch kb gate publish docs/blog/my-post.md
-  orch kb gate publish .kb/publications/knowledge-physics.md --json
+  orch kb gate publish .kb/publications/knowledge-accretion.md --json
   orch kb gate publish .kb/publications/draft.md --acknowledge-claims`,
 	Args:         cobra.ExactArgs(1),
 	SilenceUsage: true,

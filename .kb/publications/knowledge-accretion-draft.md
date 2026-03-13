@@ -1,4 +1,4 @@
-# Knowledge Physics: What Happens When No One Remembers
+# Knowledge Accretion: What Happens When No One Remembers
 
 *Why shared systems degrade from correct contributions — a diagnostic framework derived from 1,166 investigations, tested against 15 counterexamples, and observed in two substrates (code and knowledge) where amnesiac agents contribute.*
 
@@ -36,7 +36,7 @@ The 32nd model the system produced describes the dynamics governing the other 31
 
 This is a diagnostic framework — structural conditions that diagnose whether a shared resource is at risk of degradation. The closest comparison in type (not in evidence base) is Elinor Ostrom's institutional analysis of commons governance. Ostrom identified structural conditions, empirically derived from studying hundreds of commons across dozens of countries over decades, that predict whether a fishery collapses or a forest sustains. Her design principles don't guarantee outcomes — they diagnose structural risk.
 
-Knowledge physics aspires to work the same way, but from a far narrower evidence base — one system, one operator, three months. Five conditions diagnose whether a shared system is at risk of degrading from individually correct contributions:
+Knowledge accretion aspires to work the same way, but from a far narrower evidence base — one system, one operator, three months. Five conditions diagnose whether a shared system is at risk of degrading from individually correct contributions:
 
 1. **Multiple agents write to the substrate.** Not one person, but many contributors making independent changes.
 
@@ -182,7 +182,7 @@ This ratchet alone may explain monotonic accretion even in systems with partial 
 
 ## What Kind of Theory Is This?
 
-Not a law of physics. The name "knowledge physics" is memorable shorthand — the body earns it through empirical evidence and honest scoping, not through claiming mathematical certainty.
+Not a law of physics. The name "knowledge accretion" is memorable shorthand — the body earns it through empirical evidence and honest scoping, not through claiming mathematical certainty.
 
 This is a diagnostic framework in the tradition of Ostrom's design principles for commons governance (1990), Conway's Law (1967), and Brooks's Law (1975). Structural conditions, empirically derived, that predict outcomes without guaranteeing them.
 

@@ -16,7 +16,7 @@ func TestCheckStagedKnowledge(t *testing.T) {
 		{
 			name: "investigation with Model field passes",
 			stagedFiles: map[string]string{
-				".kb/investigations/2026-03-09-inv-test.md": "# Investigation\n\n**Model:** knowledge-physics\n\n**Question:** test\n",
+				".kb/investigations/2026-03-09-inv-test.md": "# Investigation\n\n**Model:** knowledge-accretion\n\n**Question:** test\n",
 			},
 			expectPassed: true,
 			expectCount:  0,
@@ -55,7 +55,7 @@ func TestCheckStagedKnowledge(t *testing.T) {
 			name: "investigation with probe file also staged passes",
 			stagedFiles: map[string]string{
 				".kb/investigations/2026-03-09-inv-test.md":                              "# Investigation\n\n**Question:** test\n",
-				".kb/models/knowledge-physics/probes/2026-03-09-probe-test.md": "# Probe\n\nContent\n",
+				".kb/models/knowledge-accretion/probes/2026-03-09-probe-test.md": "# Probe\n\nContent\n",
 			},
 			expectPassed: true,
 			expectCount:  0,

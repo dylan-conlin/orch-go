@@ -1,6 +1,6 @@
 # Probe: Health Score Structural Improvement Validation (Phase 4)
 
-**Model:** knowledge-physics
+**Model:** knowledge-accretion
 **Date:** 2026-03-10
 **Status:** Complete
 **Methodology:** Confirmatory — conducted by the same AI system that built the model. Cannot constitute independent validation.

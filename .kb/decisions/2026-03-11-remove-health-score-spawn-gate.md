@@ -46,4 +46,4 @@ The advisory gate printed "✓ Health score: 73 (C)" on every spawn — giving t
 - Supersedes: `2026-03-10-health-score-floor-gate-downgraded-from-blocking-t.md`
 - Supersedes: `2026-03-10-health-score-targets-65-floor-gate-80-target.md` (floor gate portion)
 - Evidence: `.kb/models/harness-engineering/probes/2026-03-10-probe-health-score-calibration-vs-structural-improvement.md`
-- Evidence: `.kb/models/knowledge-physics/probes/2026-03-10-probe-health-score-structural-improvement-validation.md`
+- Evidence: `.kb/models/knowledge-accretion/probes/2026-03-10-probe-health-score-structural-improvement-validation.md`

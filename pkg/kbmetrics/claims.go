@@ -2,7 +2,7 @@
 // Currently implements claims-per-model extraction — the knowledge equivalent
 // of lines-per-file for code bloat detection.
 //
-// Thresholds (from .kb/models/knowledge-physics/model.md):
+// Thresholds (from .kb/models/knowledge-accretion/model.md):
 //   - healthy: < 30 claims
 //   - warning: 30-49 claims (model may need splitting)
 //   - critical: >= 50 claims (model needs splitting)

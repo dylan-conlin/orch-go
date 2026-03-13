@@ -1,6 +1,6 @@
 ## Summary (D.E.K.N.)
 
-**Delta:** Knowledge physics is conditionally predictive, not merely descriptive — but requires a fifth condition (non-trivial composition) to be fully falsifiable. Without it, the theory over-predicts accretion in additive/self-similar substrates that don't degrade. With the refinement, no clean counterexamples survive.
+**Delta:** Knowledge accretion is conditionally predictive, not merely descriptive — but requires a fifth condition (non-trivial composition) to be fully falsifiable. Without it, the theory over-predicts accretion in additive/self-similar substrates that don't degrade. With the refinement, no clean counterexamples survive.
 
 **Evidence:** Systematic analysis of 15+ candidate counterexamples across natural systems (ant colonies, coral reefs, immune systems), engineered systems (CRDTs, blockchains, event stores, standardized manufacturing), and human systems (wikis, scientific literature, shared drives, markets). Every candidate either (a) has hidden coordination that violates condition 4, or (b) lacks non-trivial composition, or (c) does exhibit accretion upon examination.
 
@@ -12,9 +12,9 @@
 
 ---
 
-# Investigation: Probe Falsifiability of Knowledge Physics Theory
+# Investigation: Probe Falsifiability of Knowledge Accretion Theory
 
-**Question:** Is knowledge physics predictive (can identify which systems WILL accrete) or merely descriptive (can explain any system post-hoc)? Can we find counterexamples — systems meeting all four conditions that do NOT exhibit accretion?
+**Question:** Is knowledge accretion predictive (can identify which systems WILL accrete) or merely descriptive (can explain any system post-hoc)? Can we find counterexamples — systems meeting all four conditions that do NOT exhibit accretion?
 
 **Started:** 2026-03-10
 **Updated:** 2026-03-10
@@ -22,7 +22,7 @@
 **Phase:** Complete
 **Next Step:** None — findings ready for model update and publication refinement
 **Status:** Complete
-**Model:** knowledge-physics
+**Model:** knowledge-accretion
 
 **Patches-Decision:** N/A
 **Extracted-From:** N/A
@@ -31,9 +31,9 @@
 
 | Investigation | Relationship | Verified | Conflicts |
 |--------------|--------------|----------|-----------|
-| `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-physics-accretion-attractor-gate-dynamics.md` | extends | Yes — re-read full probe | None — findings build on substrate generalization claim |
-| `.kb/models/knowledge-physics/probes/2026-03-09-probe-natural-orphan-baseline-categorization.md` | extends | Yes — via model.md synthesis | None |
-| `.kb/models/knowledge-physics/model.md` | deepens | Yes — comprehensive read | Identified hidden fifth condition not yet explicit in model |
+| `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-accretion-accretion-attractor-gate-dynamics.md` | extends | Yes — re-read full probe | None — findings build on substrate generalization claim |
+| `.kb/models/knowledge-accretion/probes/2026-03-09-probe-natural-orphan-baseline-categorization.md` | extends | Yes — via model.md synthesis | None |
+| `.kb/models/knowledge-accretion/model.md` | deepens | Yes — comprehensive read | Identified hidden fifth condition not yet explicit in model |
 
 ---
 
@@ -171,7 +171,7 @@ When this "risk score" exceeds a threshold, accretion dynamics become visible. T
 - Whether a specific contribution will be the one that causes degradation — accretion is statistical, not deterministic
 
 **Comparison to merely descriptive theories:**
-A merely descriptive theory would say "this system accreted because it had no coordination." A predictive theory says "this system WILL accrete because it lacks coordination at transition X, and adding a gate at X will prevent it." The knowledge physics theory does the latter.
+A merely descriptive theory would say "this system accreted because it had no coordination." A predictive theory says "this system WILL accrete because it lacks coordination at transition X, and adding a gate at X will prevent it." The knowledge accretion theory does the latter.
 
 **Source:** Analysis of prediction types and testability.
 
@@ -330,9 +330,9 @@ The theory is **conditionally predictive** — genuinely predictive within its d
 ## References
 
 **Files Examined:**
-- `.kb/models/knowledge-physics/model.md` — Full model with substrate generalization
-- `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-physics-accretion-attractor-gate-dynamics.md` — Original empirical measurement
-- `.kb/models/knowledge-physics/probes/2026-03-09-probe-natural-orphan-baseline-categorization.md` — Orphan taxonomy (via model synthesis)
+- `.kb/models/knowledge-accretion/model.md` — Full model with substrate generalization
+- `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-accretion-accretion-attractor-gate-dynamics.md` — Original empirical measurement
+- `.kb/models/knowledge-accretion/probes/2026-03-09-probe-natural-orphan-baseline-categorization.md` — Orphan taxonomy (via model synthesis)
 
 **External Research Domains (with key sources):**
 - Natural systems: ant colonies, coral reefs, termite mounds, immune systems, forest ecosystems
@@ -345,15 +345,15 @@ The theory is **conditionally predictive** — genuinely predictive within its d
   - Knight Capital $460M (FlagShark); FlagShark 73% flag non-removal; Bytebase schema drift; Tiger Data MongoDB; APIsec 15,564 median APIs; Spacelift Terraform drift loop
 
 **Related Artifacts:**
-- **Model:** `.kb/models/knowledge-physics/model.md` — Parent model being probed
-- **Probe:** `.kb/models/knowledge-physics/probes/2026-03-10-probe-falsifiability-counterexamples.md` — Created from these findings
+- **Model:** `.kb/models/knowledge-accretion/model.md` — Parent model being probed
+- **Probe:** `.kb/models/knowledge-accretion/probes/2026-03-10-probe-falsifiability-counterexamples.md` — Created from these findings
 
 ---
 
 ## Investigation History
 
 **2026-03-10:** Investigation started
-- Question: Is knowledge physics predictive or merely descriptive?
+- Question: Is knowledge accretion predictive or merely descriptive?
 - Context: Publication readiness — need to determine if theory warrants publication as predictive framework
 
 **2026-03-10:** Systematic counterexample search

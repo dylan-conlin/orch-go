@@ -9,14 +9,14 @@
 
 ## Problem
 
-The health score currently lives in orch-go (`pkg/health/health.go` + `cmd/orch/doctor_health.go`). External users of knowledge-physics cannot measure their own codebase health because:
+The health score currently lives in orch-go (`pkg/health/health.go` + `cmd/orch/doctor_health.go`). External users of knowledge-accretion cannot measure their own codebase health because:
 
 1. `orch health` depends on `bd` (beads) for issue metrics
 2. `orch health` depends on `orch hotspot` for fix-density analysis
 3. Gate coverage checks orch-specific gates (spawn, completion, pre-commit hooks)
 4. Snapshot storage assumes `~/.orch/health-snapshots.jsonl`
 
-For knowledge-physics publication, external users need `kb health` — a zero-dependency command that works in any git repo.
+For knowledge-accretion publication, external users need `kb health` — a zero-dependency command that works in any git repo.
 
 ---
 
@@ -26,8 +26,8 @@ For knowledge-physics publication, external users need `kb health` — a zero-de
 |--------|---------|
 | `pkg/health/health.go` | 5-dimension score: gate coverage, accretion control, fix:feat balance, hotspot control, bloat % |
 | `.kb/plans/2026-03-10-harness-health-improvement.md` | Phase 0 constraint: calibration must work for external users |
-| `.kb/models/knowledge-physics/model.md` | "Harness engineering is substrate governance" — health metrics are substrate-independent |
-| knowledge-physics probes | kb-cli public release audit identified 7 blocking changes; health is one integration gap |
+| `.kb/models/knowledge-accretion/model.md` | "Harness engineering is substrate governance" — health metrics are substrate-independent |
+| knowledge-accretion probes | kb-cli public release audit identified 7 blocking changes; health is one integration gap |
 
 ---
 

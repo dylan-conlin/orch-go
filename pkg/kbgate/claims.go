@@ -136,7 +136,7 @@ func isOrdinalFirst(line string) bool {
 }
 
 // isPhysicsInTitle returns true if "physics" appears only in a markdown heading
-// that matches the filename/directory name (e.g., "# Knowledge Physics" in knowledge-physics/model.md).
+// that matches the filename/directory name (e.g., "# Knowledge Accretion" in knowledge-accretion/model.md).
 func isPhysicsInTitle(line, path string) bool {
 	trimmed := strings.TrimSpace(line)
 	if !strings.HasPrefix(trimmed, "#") {

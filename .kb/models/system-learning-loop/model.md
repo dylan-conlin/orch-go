@@ -10,7 +10,7 @@
 
 The System Learning Loop is the third layer of the Pressure Visibility System that automatically converts recurring context gaps into actionable improvements. It tracks gaps during spawns, identifies patterns using RecurrenceThreshold=3, and suggests specific actions (kn entries, beads issues, investigations). The system uses shell-aware command parsing to generate runnable commands with proper quoted string handling, and ensures minimum length requirements for downstream tools (kn requires 20+ chars). This creates a closed feedback loop: gaps → patterns → suggestions → improvements → fewer gaps.
 
-**Knowledge Physics Reframe (2026-03-09):** This loop is a specialized instance of knowledge physics — the same accretion/attractor/gate dynamics that govern code. The gap→pattern→suggestion→improvement cycle maps to entropy detection → attractor formation → gate recommendation → entropy reduction. RecurrenceThreshold=3 is an attractor formation criterion (same role as the "3+ investigations trigger model creation" threshold). The learning loop operates on one substrate (context gaps); the same physics apply to all knowledge artifacts (investigations, models, decisions, quick entries) and to any shared mutable substrate where amnesiac agents contribute.
+**Knowledge Accretion Reframe (2026-03-09):** This loop is a specialized instance of knowledge accretion — the same accretion/attractor/gate dynamics that govern code. The gap→pattern→suggestion→improvement cycle maps to entropy detection → attractor formation → gate recommendation → entropy reduction. RecurrenceThreshold=3 is an attractor formation criterion (same role as the "3+ investigations trigger model creation" threshold). The learning loop operates on one substrate (context gaps); the same physics apply to all knowledge artifacts (investigations, models, decisions, quick entries) and to any shared mutable substrate where amnesiac agents contribute.
 
 ---
 
@@ -407,7 +407,7 @@ Gap excluded from future FindRecurringGaps calls
 | Probe | Date | Verdict | Key Finding |
 |-------|------|---------|-------------|
 | `probes/2026-03-01-probe-legibility-literature-review-bainbridge-forward.md` | 2026-03-01 | Confirms + Extends | Core architecture confirmed by 40 years of human factors research. Three gaps identified: SA-3 projection absent, honest legibility risk (Scott's trap), joint cognitive system framing neglected. Pace-layered transparency needed. Bainbridge Irony #3 is live — autonomous daemon degrades Dylan's intervention readiness. |
-| `probes/2026-03-09-probe-knowledge-physics-accretion-attractor-gate-dynamics.md` | 2026-03-09 | Confirms + Extends | The gap→pattern→suggestion→improvement cycle IS knowledge physics (attractor formation from entropy). Empirical measurement across 1,166 investigations: 85.5% orphan rate, models exhibit three behaviors (attractor/capstone/dormant), all knowledge gates are advisory (zero hard gates). Knowledge physics generalizes to any shared mutable substrate with amnesiac agents. Six entropy metrics proposed. Recommends creating knowledge-physics model. |
+| `probes/2026-03-09-probe-knowledge-accretion-accretion-attractor-gate-dynamics.md` | 2026-03-09 | Confirms + Extends | The gap→pattern→suggestion→improvement cycle IS knowledge accretion (attractor formation from entropy). Empirical measurement across 1,166 investigations: 85.5% orphan rate, models exhibit three behaviors (attractor/capstone/dormant), all knowledge gates are advisory (zero hard gates). Knowledge accretion generalizes to any shared mutable substrate with amnesiac agents. Six entropy metrics proposed. Recommends creating knowledge-accretion model. |
 
 ---
 
@@ -461,13 +461,13 @@ cat ~/.orch/gap-tracker.json | jq '.Events | group_by(.Query) | map({query: .[0]
 
 ---
 
-## Knowledge Physics Assessment (2026-03-09)
+## Knowledge Accretion Assessment (2026-03-09)
 
-The system-learning-loop describes knowledge physics without naming it. Empirical measurement across the full knowledge corpus confirms the hypothesis:
+The system-learning-loop describes knowledge accretion without naming it. Empirical measurement across the full knowledge corpus confirms the hypothesis:
 
 ### The Mapping
 
-| System-Learning-Loop Concept | Knowledge Physics | Code Physics |
+| System-Learning-Loop Concept | Knowledge Accretion | Code Physics |
 |------------------------------|-------------------|--------------|
 | Gap recording | Entropy detection | Hotspot analysis |
 | Pattern detection (threshold=3) | Attractor formation criterion | "3+ investigations → model" threshold |

@@ -1,12 +1,12 @@
-# Model: Knowledge Physics
+# Model: Knowledge Accretion
 
 **Domain:** Multi-Agent Knowledge Systems
 **Last Updated:** 2026-03-11
 **Validation Status:** WORKING HYPOTHESIS — not externally validated. Built by one person with AI agents that optimize for coherence. Independent external review (Codex, Mar 10) identified core claims as restatements of existing governance/coordination concepts (Ostrom, Conway, Brooks) with agent vocabulary. Observations are real; theoretical framing is overclaimed. See `.kb/threads/2026-03-10-closed-loop-risk-ai-agents.md`.
 **Synthesized From:**
-- `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-physics-accretion-attractor-gate-dynamics.md` — Empirical measurement across 1,166 investigations, 32 models, 187 probes
+- `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-accretion-accretion-attractor-gate-dynamics.md` — Empirical measurement across 1,166 investigations, 32 models, 187 probes
 - `.kb/models/harness-engineering/model.md` — Hard/soft harness taxonomy, accretion as thermodynamics, compliance vs coordination failure
-- `.kb/models/system-learning-loop/model.md` — Gap→pattern→suggestion→improvement as proto-knowledge-physics
+- `.kb/models/system-learning-loop/model.md` — Gap→pattern→suggestion→improvement as proto-knowledge-accretion
 - `.kb/models/skill-content-transfer/model.md` — Attention primers vs action directives, three-type vocabulary
 - `.kb/models/entropy-spiral/model.md` — Feedback loops, control plane immutability, 1,625 lost commits
 
@@ -20,7 +20,7 @@
 
 ## Theory Type
 
-**Status: overclaimed.** The name "knowledge physics" implies a level of generality and novelty that independent review did not support. The observations it contains (file growth, orphan rates, coordination failures) are real but well-described by existing concepts: Ostrom's commons governance, Conway's Law, coordination costs, institutional drift, tech debt dynamics. The vocabulary ("accretion dynamics," "substrate-independent," "entropy") adds no predictive power beyond these existing concepts.
+**Status: overclaimed.** The name "knowledge accretion" implies a level of generality and novelty that independent review did not support. The observations it contains (file growth, orphan rates, coordination failures) are real but well-described by existing concepts: Ostrom's commons governance, Conway's Law, coordination costs, institutional drift, tech debt dynamics. The vocabulary ("accretion dynamics," "substrate-independent," "entropy") adds no predictive power beyond these existing concepts.
 
 **What to keep:** The observations, the measurements, the five conditions as an organizing checklist for this system.
 **What to stop claiming:** That this is a novel framework, that it's "substrate-independent," that it constitutes a new diagnostic discipline.
@@ -181,7 +181,7 @@ Code has pre-commit hooks, spawn gates, and completion verification. Knowledge h
 
 6. **Quick entry duplication rate** — duplicate entries in entries.jsonl. Measures whether the "quick capture" path is creating noise instead of signal. No automated dedup exists.
 
-7. **Composite health score** — `orch health` implements a 5-dimension 0-100 score: gate coverage, accretion control, fix:feat balance, hotspot control, bloat percentage. First concrete implementation of entropy measurement for code substrate. Current score: 73/100 (C). Key finding: **measurement-improvement bias** — when a broken metric is fixed, the improvement in the metric appears as improvement in the thing being measured. The health score jumped 37→69 in a single snapshot when `total_source_files` tracking was added (a pure measurement fix, not structural change). Systems tracking their own health need to distinguish "we got healthier" from "we got better at measuring." This has a knowledge-physics analogue: if we track orphan rate but change the counting method, an apparent rate drop could be measurement improvement rather than actual synthesis.
+7. **Composite health score** — `orch health` implements a 5-dimension 0-100 score: gate coverage, accretion control, fix:feat balance, hotspot control, bloat percentage. First concrete implementation of entropy measurement for code substrate. Current score: 73/100 (C). Key finding: **measurement-improvement bias** — when a broken metric is fixed, the improvement in the metric appears as improvement in the thing being measured. The health score jumped 37→69 in a single snapshot when `total_source_files` tracking was added (a pure measurement fix, not structural change). Systems tracking their own health need to distinguish "we got healthier" from "we got better at measuring." This has a knowledge-accretion analogue: if we track orphan rate but change the counting method, an apparent rate drop could be measurement improvement rather than actual synthesis.
 
 ---
 
@@ -256,7 +256,7 @@ The investigation/probe/model cycle separates cleanly into **substrate** (the kn
 
 5. **Accretion, attractors, gates, and entropy are substrate-independent.** They emerge from system properties (multiple writers, no persistent memory, local correctness, non-trivial composition, no structural coordination), not substrate properties. Code, knowledge, and OPSEC are three confirmed instances. OPSEC extends the evidence to adversarial substrates where entropy is invisible to internal metrics and failure is binary/catastrophic. The same dynamics should appear in any substrate meeting the five conditions.
 
-6. **The framework is falsifiable and conditionally predictive — diagnostic, not legislative.** Systematic search across 15+ candidate counterexamples (natural systems: ant colonies, coral reefs, immune systems; engineered: CRDTs, blockchains, event stores; human: Wikipedia, scientific literature, shared drives) found no clean counterexamples. Every system that resists accretion does so through coordination (explicit, substrate-embedded, or environmental). The framework makes testable predictions: (a) where accretion will concentrate (at coordination gaps), (b) what interventions will reduce it (gates at compositional boundaries), (c) that removing coordination will introduce accretion. It does NOT predict accretion form, rate, or threshold — these are substrate-specific. This is an Ostrom-scale diagnostic framework — structural conditions empirically derived from one system and stress-tested against 15+ — not a quantitative physical law. The name "knowledge physics" is shorthand for the substrate-independent dynamics; the framing is institutional analysis, not natural science.
+6. **The framework is falsifiable and conditionally predictive — diagnostic, not legislative.** Systematic search across 15+ candidate counterexamples (natural systems: ant colonies, coral reefs, immune systems; engineered: CRDTs, blockchains, event stores; human: Wikipedia, scientific literature, shared drives) found no clean counterexamples. Every system that resists accretion does so through coordination (explicit, substrate-embedded, or environmental). The framework makes testable predictions: (a) where accretion will concentrate (at coordination gaps), (b) what interventions will reduce it (gates at compositional boundaries), (c) that removing coordination will introduce accretion. It does NOT predict accretion form, rate, or threshold — these are substrate-specific. This is an Ostrom-scale diagnostic framework — structural conditions empirically derived from one system and stress-tested against 15+ — not a quantitative physical law. The name "knowledge accretion" is shorthand for the substrate-independent dynamics; the framing is institutional analysis, not natural science.
 
 ---
 
@@ -264,7 +264,7 @@ The investigation/probe/model cycle separates cleanly into **substrate** (the kn
 
 ### Harness Engineering (Code Instance of Substrate Physics)
 
-Knowledge physics provides the theoretical grounding for why harness engineering generalizes. Harness engineering describes the *discipline* — making wrong paths mechanically impossible for AI agents. Knowledge physics explains the *theory* — why the discipline works across substrates.
+Knowledge accretion provides the theoretical grounding for why harness engineering generalizes. Harness engineering describes the *discipline* — making wrong paths mechanically impossible for AI agents. Knowledge accretion explains the *theory* — why the discipline works across substrates.
 
 The mapping:
 - Harness engineering's hard/soft taxonomy → applies to knowledge (all knowledge harness is currently soft)
@@ -272,13 +272,13 @@ The mapping:
 - Harness engineering's accretion as thermodynamics → knowledge accretion follows the same thermodynamic pattern
 - Harness engineering's compliance vs coordination distinction → knowledge failures are coordination failures (agents each investigate correctly but collectively produce 85.5% orphan rate)
 
-Harness engineering is the code-specific instance of substrate governance. Knowledge physics is the general theory.
+Harness engineering is the code-specific instance of substrate governance. Knowledge accretion is the general theory.
 
-### System Learning Loop (Knowledge Physics in One Domain)
+### System Learning Loop (Knowledge Accretion in One Domain)
 
-The system-learning-loop model describes knowledge physics without naming it. Its gap→pattern→suggestion→improvement cycle maps directly to the attractor/gate framework:
+The system-learning-loop model describes knowledge accretion without naming it. Its gap→pattern→suggestion→improvement cycle maps directly to the attractor/gate framework:
 
-| System-Learning-Loop | Knowledge Physics | Code Physics |
+| System-Learning-Loop | Knowledge Accretion | Code Physics |
 |---------------------|-------------------|--------------|
 | Gap recording | Entropy detection | Hotspot analysis |
 | Pattern detection (threshold=3) | Attractor formation criterion | "3+ investigations → model" threshold |
@@ -396,13 +396,13 @@ The STR community is large and discoverable (probe 2026-03-11). ~100k+ users fit
 
 ## Evolution
 
-**2025-12-25:** System-learning-loop model created, describing gap→pattern→suggestion→improvement as a closed feedback loop. Proto-knowledge-physics without naming it.
+**2025-12-25:** System-learning-loop model created, describing gap→pattern→suggestion→improvement as a closed feedback loop. Proto-knowledge-accretion without naming it.
 
 **2026-02-25:** Entropy-spiral model created, documenting how locally correct changes compose into globally incoherent systems in code substrates. Three spirals, 1,625 lost commits. Control plane immutability principle established.
 
 **2026-03-07 to 2026-03-08:** Harness engineering model created, synthesizing accretion as thermodynamics, hard/soft harness taxonomy, compliance vs coordination failure. Established that codebase architecture is governance infrastructure.
 
-**2026-03-09:** Knowledge physics probe (orch-go-8m7w9) empirically measured knowledge dynamics: 85.5% orphan rate, three model behaviors (attractor/capstone/dormant), zero hard gates, 4 unmerged contradicts. Confirmed substrate independence of the physics. This model created to formalize the framework.
+**2026-03-09:** Knowledge accretion probe (orch-go-8m7w9) empirically measured knowledge dynamics: 85.5% orphan rate, three model behaviors (attractor/capstone/dormant), zero hard gates, 4 unmerged contradicts. Confirmed substrate independence of the physics. This model created to formalize the framework.
 
 **2026-03-09:** Natural orphan baseline probe (orch-go-80rg8) decomposed the orphan rate into six categories and established natural baseline of 40-50%. Discovered pre-model era (83% of corpus) inflates the aggregate rate; model-era rate is 52%. Probes confirmed as the structural fix converting attention-primed attractors to structurally-coupled attractors. Open question #1 answered.
 
@@ -414,27 +414,27 @@ The STR community is large and discoverable (probe 2026-03-11). ~100k+ users fit
 
 **2026-03-09:** Public release readiness audit (orch-go-8zp45) of kb-cli codebase. **Contradicted** the "single tooling gap" claim from minimal-substrate probe — found 6 additional gaps beyond `--extract-models`. **Confirmed** core cycle commands are fully standalone. **Extended** substrate/orchestration separation with three-tier coupling taxonomy: hard (ask, link — break without orch), soft (reflect --create-issue, context --siblings — degrade gracefully), none (init, create, search, list — fully standalone). Code health: 57.6% test coverage, 3 failing tests, 3 direct dependencies, no go vet errors. Key blockers: missing LICENSE file, incomplete README, hardcoded orch paths.
 
-**2026-03-10:** Ostrom framing thread resolved (orch-go-3hdyt). Added Theory Type section establishing knowledge physics as a diagnostic framework (Ostrom-scale institutional analysis), not a natural law. Updated Summary and Critical Invariant #6 to reflect diagnostic framing. Analogues: Ostrom's commons governance design principles, Conway's Law, Brooks's Law. This shapes publication tone: "here's a predictive pattern I found and tried to break" rather than "here's a new field of science."
+**2026-03-10:** Ostrom framing thread resolved (orch-go-3hdyt). Added Theory Type section establishing knowledge accretion as a diagnostic framework (Ostrom-scale institutional analysis), not a natural law. Updated Summary and Critical Invariant #6 to reflect diagnostic framing. Analogues: Ostrom's commons governance design principles, Conway's Law, Brooks's Law. This shapes publication tone: "here's a predictive pattern I found and tried to break" rather than "here's a new field of science."
 
 **2026-03-10:** Falsifiability probe (orch-go-dqv2o). Systematic counterexample search across 15+ systems in three domains (natural, engineered, human). No clean counterexamples found. Three key extensions: (1) Added condition 5 — "non-trivial composition" — to prevent over-prediction in additive substrates (logs, sensor data, coral reefs) that meet conditions 1-4 but don't degrade because composition is trivial. (2) Coordination taxonomy: explicit (type systems), substrate-embedded (CRDTs), environmental (stigmergy). Digital substrates lack environmental coordination, explaining why they require engineered gates. (3) Continuous risk formulation: `accretion_risk = f(amnesia × complexity / coordination)` — more precise than binary conditions. Theory verdict: conditionally predictive, publishable with composition refinement.
 
 **2026-03-11:** Distribution channels probe. Extended Adoption Sequencing section with concrete channel data: r/ClaudeCode (96k members, 4.2k weekly contributors), awesome-claude-code lists (21.6k stars), Show HN as top-3 channels for reaching STR users. Active demand confirmed via GitHub Issue #28196 ("Built-in Personal Knowledge Base with Semantic RAG"). Key positioning insight: pain-point framing outperforms feature-list framing by ~100:1 on HN. Claude Code orchestrator space oversaturated (10+ tools, 1-5 HN pts each) but knowledge management methodology is undersaturated. Conversion funnel: ~0.1% top-of-funnel → regular user. Aider case validates persistence over virality (3 HN pts → 41.6k stars over 2 years). Concrete 4-phase launch sequence defined: preparation → community presence → passive distribution → active launch.
 
-**2026-03-10:** Blog post uncontaminated claim review (orch-go-2bdvb). Read all three blog drafts (harness engineering, knowledge physics, coordination demo) as an external reader with no model framing. Found systematic gap between the model's self-assessment (already corrected to "WORKING HYPOTHESIS" / "overclaimed") and the publication language (still claims universality, novelty, and validated theory). 8 validation assumptions, 4 novelty assumptions, 12 overclaimed language instances identified with specific line references and recommended corrections. Key finding: hedging exists but is structurally misplaced (buried at end, not inline with claims). Publication gate assessment: 2 of 3 required artifacts exist (red-team memo + this claim-label pass); claim ledger still needed. Added Publication Readiness section to model.
+**2026-03-10:** Blog post uncontaminated claim review (orch-go-2bdvb). Read all three blog drafts (harness engineering, knowledge accretion, coordination demo) as an external reader with no model framing. Found systematic gap between the model's self-assessment (already corrected to "WORKING HYPOTHESIS" / "overclaimed") and the publication language (still claims universality, novelty, and validated theory). 8 validation assumptions, 4 novelty assumptions, 12 overclaimed language instances identified with specific line references and recommended corrections. Key finding: hedging exists but is structurally misplaced (buried at end, not inline with claims). Publication gate assessment: 2 of 3 required artifacts exist (red-team memo + this claim-label pass); claim ledger still needed. Added Publication Readiness section to model.
 
 ---
 
 ## Publication Readiness (Blog Post Claim Audit)
 
-**Status: NOT READY.** Uncontaminated review of all three blog drafts (harness engineering, knowledge physics, coordination demo) found overclaimed language that contradicts the model-level corrections already applied. The model says "WORKING HYPOTHESIS" and "Status: overclaimed" — but the publications still use language that assumes validation and novelty.
+**Status: NOT READY.** Uncontaminated review of all three blog drafts (harness engineering, knowledge accretion, coordination demo) found overclaimed language that contradicts the model-level corrections already applied. The model says "WORKING HYPOTHESIS" and "Status: overclaimed" — but the publications still use language that assumes validation and novelty.
 
 **Key gaps between model self-assessment and publication language:**
 
-1. **"Physics" in title and body.** The model's Theory Type section says "the name implies a level of generality and novelty that independent review did not support." The knowledge-physics draft still uses the title "Knowledge Physics" and the phrase "the physics appear to be substrate-independent" (appears in 2 of 3 posts).
+1. **"Physics" in title and body.** The model's Theory Type section says "the name implies a level of generality and novelty that independent review did not support." The knowledge-accretion draft still uses the title "Knowledge Accretion" and the phrase "the physics appear to be substrate-independent" (appears in 2 of 3 posts).
 
 2. **Universality claims from N=2.** The model's Core Claim says "Whether the pattern generalizes beyond this one system is untested." The publications say "any substrate," "regardless of what the substrate is made of," and "applicable to any substrate where amnesiac agents contribute."
 
-3. **Internal validation presented as external.** The model says "not externally validated" and flags closed-loop risk. The knowledge-physics draft says "kept surviving every attempt to break it" and "No clean counterexample survived" without disclosing that all testing was by agents inside the framework.
+3. **Internal validation presented as external.** The model says "not externally validated" and flags closed-loop risk. The knowledge-accretion draft says "kept surviving every attempt to break it" and "No clean counterexample survived" without disclosing that all testing was by agents inside the framework.
 
 4. **The 265-trial methodology gap.** The harness engineering post cites "265 contrastive trials across 7 agent skills" as evidence for soft instruction failure. No methodology is provided — what constitutes a "trial," what was measured, how controls were defined. The number is unverifiable by readers.
 
@@ -442,18 +442,18 @@ The STR community is large and discoverable (probe 2026-03-11). ~100k+ users fit
 
 6. **Ostrom comparison without evidence-base acknowledgment.** Ostrom studied hundreds of commons across dozens of countries over decades. This is one system, one operator, three months. The comparison is apt in type but the evidence gap is not acknowledged.
 
-7. **Hedging is structurally misplaced.** The knowledge-physics post buries "One system, one operator" in an "Honest Gaps" section at the end. Readers absorb confident claims in the body and skim caveats at the end.
+7. **Hedging is structurally misplaced.** The knowledge-accretion post buries "One system, one operator" in an "Honest Gaps" section at the end. Readers absorb confident claims in the body and skim caveats at the end.
 
 **Specific language requiring change (by post):**
 
 | Post | Current Language | Recommended Change |
 |------|-----------------|-------------------|
-| Knowledge Physics (title) | "Knowledge Physics" | Consider "Coordination Patterns" or scope the name explicitly |
-| Knowledge Physics (L3) | "applicable to any substrate" | "observed in two substrates in one system" |
-| Knowledge Physics (L31) | "kept surviving every attempt to break it" | "survived internal testing; not yet externally validated" |
-| Knowledge Physics (L71) | "any shared mutable substrate" | "the substrates we've tested" |
-| Knowledge Physics (L89) | "No clean counterexample survived" | Add: "though all testing was by agents within the same framework" |
-| Knowledge Physics (L143) | "Greater capability created greater divergence" | "In this trial, ..." (N=1) |
+| Knowledge Accretion (title) | "Knowledge Accretion" | Consider "Coordination Patterns" or scope the name explicitly |
+| Knowledge Accretion (L3) | "applicable to any substrate" | "observed in two substrates in one system" |
+| Knowledge Accretion (L31) | "kept surviving every attempt to break it" | "survived internal testing; not yet externally validated" |
+| Knowledge Accretion (L71) | "any shared mutable substrate" | "the substrates we've tested" |
+| Knowledge Accretion (L89) | "No clean counterexample survived" | Add: "though all testing was by agents within the same framework" |
+| Knowledge Accretion (L143) | "Greater capability created greater divergence" | "In this trial, ..." (N=1) |
 | Harness Engineering (L15) | "faster, more capable agents accrete more code per session" | "model improvement doesn't reduce accretion" |
 | Harness Engineering (L195) | "language-independent" | "tested in one additional language" |
 | Harness Engineering (L217) | "absent from the published literature" | "not prominent in the AI agent literature we've reviewed" |
@@ -502,26 +502,26 @@ kb reflect --type stale
 ## References
 
 **Primary Evidence:**
-- `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-physics-accretion-attractor-gate-dynamics.md` — Full empirical measurement (1,166 investigations, 32 models, 187 probes)
-- `.kb/models/knowledge-physics/probes/2026-03-09-probe-natural-orphan-baseline-categorization.md` — Orphan taxonomy, era-adjusted rates, natural baseline (40-50%), probe displacement finding
-- `.kb/models/knowledge-physics/probes/2026-03-09-probe-minimal-kb-substrate-cycle-dependencies.md` — Minimal substrate identification: 5 components (agent + kb + git + .kb/ + skill), substrate/orchestration separation confirmed, context injection gap identified
-- `.kb/models/knowledge-physics/probes/2026-03-09-probe-first-external-user-profile-analysis.md` — First user is Solo Technical Researcher (STR), not R&D lab. Adoption sequencing validated across 4 analogous tools. Tooling gap: `kb create model`/`kb create probe` missing, `kb init` doesn't create models/
-- `.kb/models/knowledge-physics/probes/2026-03-09-probe-kb-cli-public-release-readiness-audit.md` — kb-cli public release audit: core cycle standalone, 6 gaps beyond --extract-models, three-tier coupling taxonomy (hard/soft/none), 7 blocking changes for v0.1
-- `.kb/models/knowledge-physics/probes/2026-03-10-probe-health-score-structural-improvement-validation.md` — Health score 37→73 decomposition: 90% calibration, 10% extraction. Measurement-improvement bias finding. Hotspot dimension (1.9/20) is honest remaining signal.
-- `.kb/models/knowledge-physics/probes/2026-03-10-probe-falsifiability-counterexamples.md` — Falsifiability probe: 15+ counterexamples tested, none survive. Fifth condition (non-trivial composition) identified. Coordination taxonomy (explicit/substrate-embedded/environmental). Theory is conditionally predictive.
-- `.kb/models/knowledge-physics/probes/2026-03-10-probe-blog-post-uncontaminated-claim-review.md` — Publication claim audit: 8 validation assumptions, 4 novelty assumptions, 12 overclaimed language instances across 3 blog drafts. Publications still use language the model has already corrected internally.
-- `.kb/models/knowledge-physics/probes/2026-03-11-probe-empty-model-stub-creation-vectors.md` — Model stub creation vector analysis: 3 creation paths identified (kb create model, kb create model --from, agent direct-write). Zero current empty stubs exist (behavioral compliance held). Model-stub pre-commit gate implemented to convert from behavioral to architectural enforcement.
-- `.kb/models/knowledge-physics/probes/2026-03-11-probe-distribution-channels-solo-dev-cli-tools.md` — Distribution channel analysis for first STR user: r/ClaudeCode (96k), awesome-claude-code (21.6k stars), Show HN as top channels. Active demand confirmed via GitHub Issue #28196. Pain-point framing >> feature-list framing (100:1). Orchestrator space saturated; knowledge methodology space undersaturated.
+- `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-accretion-accretion-attractor-gate-dynamics.md` — Full empirical measurement (1,166 investigations, 32 models, 187 probes)
+- `.kb/models/knowledge-accretion/probes/2026-03-09-probe-natural-orphan-baseline-categorization.md` — Orphan taxonomy, era-adjusted rates, natural baseline (40-50%), probe displacement finding
+- `.kb/models/knowledge-accretion/probes/2026-03-09-probe-minimal-kb-substrate-cycle-dependencies.md` — Minimal substrate identification: 5 components (agent + kb + git + .kb/ + skill), substrate/orchestration separation confirmed, context injection gap identified
+- `.kb/models/knowledge-accretion/probes/2026-03-09-probe-first-external-user-profile-analysis.md` — First user is Solo Technical Researcher (STR), not R&D lab. Adoption sequencing validated across 4 analogous tools. Tooling gap: `kb create model`/`kb create probe` missing, `kb init` doesn't create models/
+- `.kb/models/knowledge-accretion/probes/2026-03-09-probe-kb-cli-public-release-readiness-audit.md` — kb-cli public release audit: core cycle standalone, 6 gaps beyond --extract-models, three-tier coupling taxonomy (hard/soft/none), 7 blocking changes for v0.1
+- `.kb/models/knowledge-accretion/probes/2026-03-10-probe-health-score-structural-improvement-validation.md` — Health score 37→73 decomposition: 90% calibration, 10% extraction. Measurement-improvement bias finding. Hotspot dimension (1.9/20) is honest remaining signal.
+- `.kb/models/knowledge-accretion/probes/2026-03-10-probe-falsifiability-counterexamples.md` — Falsifiability probe: 15+ counterexamples tested, none survive. Fifth condition (non-trivial composition) identified. Coordination taxonomy (explicit/substrate-embedded/environmental). Theory is conditionally predictive.
+- `.kb/models/knowledge-accretion/probes/2026-03-10-probe-blog-post-uncontaminated-claim-review.md` — Publication claim audit: 8 validation assumptions, 4 novelty assumptions, 12 overclaimed language instances across 3 blog drafts. Publications still use language the model has already corrected internally.
+- `.kb/models/knowledge-accretion/probes/2026-03-11-probe-empty-model-stub-creation-vectors.md` — Model stub creation vector analysis: 3 creation paths identified (kb create model, kb create model --from, agent direct-write). Zero current empty stubs exist (behavioral compliance held). Model-stub pre-commit gate implemented to convert from behavioral to architectural enforcement.
+- `.kb/models/knowledge-accretion/probes/2026-03-11-probe-distribution-channels-solo-dev-cli-tools.md` — Distribution channel analysis for first STR user: r/ClaudeCode (96k), awesome-claude-code (21.6k stars), Show HN as top channels. Active demand confirmed via GitHub Issue #28196. Pain-point framing >> feature-list framing (100:1). Orchestrator space saturated; knowledge methodology space undersaturated.
 
 **Related Models:**
 - `.kb/models/harness-engineering/model.md` — Code instance of substrate physics, hard/soft harness taxonomy
-- `.kb/models/system-learning-loop/model.md` — Knowledge physics in context-gap domain without naming it
+- `.kb/models/system-learning-loop/model.md` — Knowledge accretion in context-gap domain without naming it
 - `.kb/models/skill-content-transfer/model.md` — Attention primers vs action directives, mechanism behind knowledge attractors
 - `.kb/models/entropy-spiral/model.md` — Feedback loops in code substrate, control plane immutability
 
-**Knowledge Physics Assessment (in system-learning-loop model):**
-- Section "Knowledge Physics Assessment (2026-03-09)" in system-learning-loop/model.md documents the mapping and empirical evidence that prompted this model's creation.
+**Knowledge Accretion Assessment (in system-learning-loop model):**
+- Section "Knowledge Accretion Assessment (2026-03-09)" in system-learning-loop/model.md documents the mapping and empirical evidence that prompted this model's creation.
 
 **Threads:**
-- `.kb/threads/2026-03-09-knowledge-physics-does-knowledge-have.md` — Initial question formulation
+- `.kb/threads/2026-03-09-knowledge-accretion-does-knowledge-have.md` — Initial question formulation
 - `.kb/threads/2026-03-10-kind-theory-this-ostrom-scale.md` — Theory type resolved: diagnostic framework (Ostrom-scale), not natural law

@@ -1,35 +1,35 @@
 ## Summary (D.E.K.N.)
 
-**Delta:** Publish knowledge physics theory + kb-cli as a coherent Path A+B narrative — agent coordination problems (blog audience) explained by general theory (knowledge physics), with tooling to try it.
+**Delta:** Publish knowledge accretion theory + kb-cli as a coherent Path A+B narrative — agent coordination problems (blog audience) explained by general theory (knowledge accretion), with tooling to try it.
 
-**Evidence:** 5 existing blog posts (all Path A), falsifiability probe (15+ counterexamples, none clean), kb-cli v0.1.0 tagged, knowledge-physics model resolved, 5 active threads synthesized.
+**Evidence:** 5 existing blog posts (all Path A), falsifiability probe (15+ counterexamples, none clean), kb-cli v0.1.0 tagged, knowledge-accretion model resolved, 5 active threads synthesized.
 
-**Knowledge:** Path A and Path B are not competing — Path A (harness engineering) is the empirical evidence, Path B (knowledge physics) is the theory that explains it. The blog audience arrives via Path A. Knowledge physics is the payoff.
+**Knowledge:** Path A and Path B are not competing — Path A (harness engineering) is the empirical evidence, Path B (knowledge accretion) is the theory that explains it. The blog audience arrives via Path A. Knowledge accretion is the payoff.
 
 **Next:** Resolve Ostrom framing thread (orch-go-3hdyt) — this shapes the essay's claims and tone.
 
 ---
 
-# Plan: Knowledge Physics Publication
+# Plan: Knowledge Accretion Publication
 
 **Date:** 2026-03-10
 **Status:** Active
 **Owner:** Dylan
 
-**Extracted-From:** Threads: knowledge-physics, abiogenesis, distribution-as-substrate, validation-gap, what-kind-of-theory, publication-sequencing
+**Extracted-From:** Threads: knowledge-accretion, abiogenesis, distribution-as-substrate, validation-gap, what-kind-of-theory, publication-sequencing
 **Supersedes:** Previous Path B-only publication plan
 
 ---
 
 ## Objective
 
-Publish the knowledge physics essay to dylanconlin.com, announce kb-cli in the same cycle, and follow with the coordination failure demo. Each piece creates demand for the next. Success = the essay names a problem readers recognize, kb-cli gives them a "try it" button, and the demo provides the strongest empirical hook for sharing.
+Publish the knowledge accretion essay to dylanconlin.com, announce kb-cli in the same cycle, and follow with the coordination failure demo. Each piece creates demand for the next. Success = the essay names a problem readers recognize, kb-cli gives them a "try it" button, and the demo provides the strongest empirical hook for sharing.
 
 ---
 
 ## Substrate Consulted
 
-- **Models:** knowledge-physics (five conditions, substrate-independent dynamics), harness-engineering (compliance vs coordination)
+- **Models:** knowledge-accretion (five conditions, substrate-independent dynamics), harness-engineering (compliance vs coordination)
 - **Decisions:** Path A+B (both, not either), Ostrom-scale framing (diagnostic framework, not natural law)
 - **Guides:** Publication sequencing thread — sequential demand creation vs parallel launches
 - **Constraints:** Validation gap — one person, one system. Essay must be honest about this.
@@ -40,15 +40,15 @@ Publish the knowledge physics essay to dylanconlin.com, announce kb-cli in the s
 
 ### Decision 1: Essay framing — Ostrom or physics?
 
-**Context:** "Knowledge physics" is a catchy name but overclaims. Ostrom-scale institutional analysis is more accurate.
+**Context:** "Knowledge accretion" is a catchy name but overclaims. Ostrom-scale institutional analysis is more accurate.
 
 **Options:**
-- **A: Keep "knowledge physics" as title, Ostrom as framing** — Name is memorable, body is honest about scope. Pros: SEO, shareability. Cons: sets expectations high.
-- **B: Lead with Ostrom framing, "knowledge physics" as shorthand** — More academically honest. Pros: defensible claims. Cons: less catchy.
+- **A: Keep "knowledge accretion" as title, Ostrom as framing** — Name is memorable, body is honest about scope. Pros: SEO, shareability. Cons: sets expectations high.
+- **B: Lead with Ostrom framing, "knowledge accretion" as shorthand** — More academically honest. Pros: defensible claims. Cons: less catchy.
 
 **Recommendation:** A — the name is a hook, the body earns it. The falsifiability probe gives credibility to bold framing.
 
-**Status:** Resolved (orch-go-3hdyt) — Keep "knowledge physics" as title, Ostrom as framing. Theory Type section added to model with analogues (Ostrom, Conway, Brooks). Tone: "here's a predictive pattern I found and tried to break" not "here's a new field of science."
+**Status:** Resolved (orch-go-3hdyt) — Keep "knowledge accretion" as title, Ostrom as framing. Theory Type section added to model with analogues (Ostrom, Conway, Brooks). Tone: "here's a predictive pattern I found and tried to break" not "here's a new field of science."
 
 ### Decision 2: kb-cli timing — same post or separate?
 
@@ -77,10 +77,10 @@ Publish the knowledge physics essay to dylanconlin.com, announce kb-cli in the s
 **Why this goes first:** The theory was built by one person with AI agents that reinforce coherent framing. Internal consistency is not external validation. The formula-shaped claims (accretion_risk = f(...)) emerged from the closed loop, not from measurement. Ship the reproducible observation first, see if it holds.
 
 ### Phase 2: Essay (only after external data)
-**Goal:** Publish knowledge physics essay grounded in externally-confirmed observations
+**Goal:** Publish knowledge accretion essay grounded in externally-confirmed observations
 **Deliverables:**
 - Ostrom framing resolved (orch-go-3hdyt) — DONE
-- Knowledge physics essay draft on blog (orch-go-lnve9)
+- Knowledge accretion essay draft on blog (orch-go-lnve9)
 - Distribution-as-substrate paragraph folded in (orch-go-ightw)
 - Abiogenesis as Future Directions section (orch-go-dm79z)
 **Exit criteria:** Essay published to dylanconlin.com, grounded in at least one external data point
@@ -107,7 +107,7 @@ Publish the knowledge physics essay to dylanconlin.com, announce kb-cli in the s
 
 | Decision Point | Substrate Available | Navigable? |
 |----------------|---------------------|------------|
-| Essay framing | knowledge-physics model, falsifiability probe, Ostrom thread | Yes |
+| Essay framing | knowledge-accretion model, falsifiability probe, Ostrom thread | Yes |
 | kb-cli timing | v0.1.0 tagged, repo public | Yes |
 | Coordination demo scope | N=10 data, compliance/coordination distinction | Yes |
 | Validation path | No external users yet | Blocked on publication |
@@ -126,7 +126,7 @@ Publish the knowledge physics essay to dylanconlin.com, announce kb-cli in the s
 
 **What's untested:**
 - Whether Path A audience converts to Path B interest
-- Whether "knowledge physics" framing resonates or alienates
+- Whether "knowledge accretion" framing resonates or alienates
 - Whether kb-cli is usable by someone who didn't build it
 - Whether the theory holds for non-code, non-knowledge substrates
 
@@ -139,7 +139,7 @@ Publish the knowledge physics essay to dylanconlin.com, announce kb-cli in the s
 
 ## Success Criteria
 
-- [ ] Knowledge physics essay published to dylanconlin.com
+- [ ] Knowledge accretion essay published to dylanconlin.com
 - [ ] kb-cli announcement post published within same week
 - [ ] Coordination failure demo post published within 2 weeks
 - [ ] At least one external person tries kb-cli

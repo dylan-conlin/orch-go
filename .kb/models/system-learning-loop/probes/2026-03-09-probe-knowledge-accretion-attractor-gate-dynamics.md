@@ -1,4 +1,4 @@
-# Probe: Knowledge Physics — Accretion/Attractor/Gate Dynamics in Knowledge Systems
+# Probe: Knowledge Accretion — Accretion/Attractor/Gate Dynamics in Knowledge Systems
 
 **Model:** system-learning-loop
 **Date:** 2026-03-09
@@ -8,14 +8,14 @@
 
 ## Question
 
-The system-learning-loop model describes gap->pattern->suggestion->improvement as a closed feedback loop and frames it as observability. Does knowledge exhibit the same physics as code — accretion, attractors, gates, entropy? If so, the system-learning-loop model is describing knowledge physics without naming it, and harness engineering generalizes from "governing agents writing code" to "governing agents contributing to any shared mutable substrate."
+The system-learning-loop model describes gap->pattern->suggestion->improvement as a closed feedback loop and frames it as observability. Does knowledge exhibit the same physics as code — accretion, attractors, gates, entropy? If so, the system-learning-loop model is describing knowledge accretion without naming it, and harness engineering generalizes from "governing agents writing code" to "governing agents contributing to any shared mutable substrate."
 
 Specifically testing:
 1. Does knowledge accrete (orphan rate, duplication)?
 2. Do models act as attractors (cluster investigations)?
 3. Are knowledge gates missing or ungated paths exist?
 4. Are current entropy metrics the right ones?
-5. Does the system-learning-loop already describe knowledge physics?
+5. Does the system-learning-loop already describe knowledge accretion?
 6. Does the physics generalize to other substrates?
 
 ---
@@ -74,7 +74,7 @@ kb reflect --type stale
 kb reflect --type synthesis
 ```
 
-Analyzed current metrics vs proposed knowledge-physics metrics.
+Analyzed current metrics vs proposed knowledge-accretion metrics.
 
 ### 5. System-Learning-Loop Mapping
 
@@ -163,7 +163,7 @@ Every knowledge transition is either ungated or advisory-only:
 5. **Synthesis backlog** — investigation clusters awaiting model creation (currently 4 clusters, 17 investigations)
 6. **Decision enforcement rate** — % of decisions with `kb agreements` checks (currently 1/56 = 1.8%)
 
-### 5. SYSTEM-LEARNING-LOOP IS PROTO-KNOWLEDGE-PHYSICS
+### 5. SYSTEM-LEARNING-LOOP IS PROTO-KNOWLEDGE-ACCRETION
 
 The system-learning-loop model describes:
 ```
@@ -172,7 +172,7 @@ gap → pattern (RecurrenceThreshold=3) → suggestion → improvement → fewer
 
 This maps directly to the attractor/gate framework:
 
-| System-Learning-Loop | Knowledge Physics | Code Physics |
+| System-Learning-Loop | Knowledge Accretion | Code Physics |
 |---------------------|-------------------|--------------|
 | Gap recording | Entropy detection | Hotspot analysis |
 | Pattern detection (threshold=3) | Attractor emergence | Package structure as routing |
@@ -180,7 +180,7 @@ This maps directly to the attractor/gate framework:
 | Resolution tracking | Gate enforcement | Completion verification |
 | 30-day retention | Entropy decay | Stale code pruning |
 
-**The reframe:** The system-learning-loop is describing knowledge physics in the specific domain of "context gaps." It's a specialized instance of the general pattern:
+**The reframe:** The system-learning-loop is describing knowledge accretion in the specific domain of "context gaps." It's a specialized instance of the general pattern:
 
 ```
 Entropy (unstructured contributions)
@@ -214,7 +214,7 @@ The physics hold for any shared mutable substrate where:
 | API surfaces | Endpoint bloat | Resource-oriented design | Contract testing, versioning | Deprecated endpoints, inconsistent naming |
 | Documentation | Doc sprawl, contradictions | Doc hierarchy/taxonomy | Link validation, freshness checks | Stale pages, orphaned docs |
 
-**Minimal substrate properties for knowledge physics to apply:**
+**Minimal substrate properties for knowledge accretion to apply:**
 1. **Mutable** — agents can add/modify content
 2. **Shared** — multiple agents read/write
 3. **Compositional** — individual contributions must compose into a coherent whole
@@ -229,17 +229,17 @@ The physics hold for any shared mutable substrate where:
 
 ## Model Impact
 
-- [x] **Confirms** invariant: The system-learning-loop's gap→pattern→suggestion→improvement cycle IS knowledge physics (attractor formation from entropy). RecurrenceThreshold=3 is an attractor formation criterion, same as the model creation threshold.
+- [x] **Confirms** invariant: The system-learning-loop's gap→pattern→suggestion→improvement cycle IS knowledge accretion (attractor formation from entropy). RecurrenceThreshold=3 is an attractor formation criterion, same as the model creation threshold.
 
 - [x] **Extends** model with:
 
-  1. **The system-learning-loop describes one specialized instance of knowledge physics** (context gaps), but the same dynamics apply to all knowledge artifacts (investigations, models, decisions, quick entries). The model should be reframed as an instance of the general knowledge physics pattern.
+  1. **The system-learning-loop describes one specialized instance of knowledge accretion** (context gaps), but the same dynamics apply to all knowledge artifacts (investigations, models, decisions, quick entries). The model should be reframed as an instance of the general knowledge accretion pattern.
 
-  2. **Knowledge physics differs from code physics in one key way:** Code attractors work through structural coupling (imports, compilation). Knowledge attractors work through attention priming (kb context injection frames agent investigation). This maps to the skill-content-transfer model's distinction between structural enforcement (hard harness) and attention primers (stance).
+  2. **Knowledge accretion differs from code physics in one key way:** Code attractors work through structural coupling (imports, compilation). Knowledge attractors work through attention priming (kb context injection frames agent investigation). This maps to the skill-content-transfer model's distinction between structural enforcement (hard harness) and attention primers (stance).
 
   3. **The knowledge system has zero hard gates.** While the code system has pre-commit hooks, spawn gates, and completion verification, every knowledge gate is advisory. This is the most significant finding: the knowledge substrate is governed entirely by soft harness, which the harness-engineering model has shown degrades under pressure.
 
-  4. **Six proposed knowledge entropy metrics** that would make knowledge physics measurable: orphan rate, claims-per-model, unprobed claims ratio, contradiction backlog, synthesis backlog, decision enforcement rate.
+  4. **Six proposed knowledge entropy metrics** that would make knowledge accretion measurable: orphan rate, claims-per-model, unprobed claims ratio, contradiction backlog, synthesis backlog, decision enforcement rate.
 
   5. **Three model behaviors discovered** — attractor (pulls future work), capstone (settles topic), dormant (no ongoing engagement). The system-learning-loop only describes the attractor pattern.
 
@@ -249,9 +249,9 @@ The physics hold for any shared mutable substrate where:
 
 ## Notes
 
-**Recommendation:** Create `.kb/models/knowledge-physics/model.md` to formalize this framework. The system-learning-loop model should be reframed as an instance (specialized to context gaps) rather than the general theory.
+**Recommendation:** Create `.kb/models/knowledge-accretion/model.md` to formalize this framework. The system-learning-loop model should be reframed as an instance (specialized to context gaps) rather than the general theory.
 
-**Relationship to harness-engineering model:** Knowledge physics provides the theoretical grounding for why harness engineering generalizes. Harness engineering is the discipline; knowledge physics is the theory explaining why the discipline works across substrates.
+**Relationship to harness-engineering model:** Knowledge accretion provides the theoretical grounding for why harness engineering generalizes. Harness engineering is the discipline; knowledge accretion is the theory explaining why the discipline works across substrates.
 
 **Key evidence to verify in future probes:**
 - Does adding hard gates to the knowledge system (e.g., blocking commits that add .kb/ files contradicting existing models) actually reduce knowledge entropy?

@@ -149,7 +149,7 @@ Every term in a model/publication that looks coined, disciplinary, or framework-
 | term | plain_language | nearest_existing_concepts | claimed_delta | verdict |
 |------|----------------|---------------------------|---------------|---------|
 | accretion dynamics | things grow because addition is cheaper than cleanup | tech debt, institutional drift | predicts where decay appears | review |
-| knowledge physics | governance constraints on shared systems | Ostrom, coordination cost, institutional memory | cross-domain mechanism | fail |
+| knowledge accretion | governance constraints on shared systems | Ostrom, coordination cost, institutional memory | cross-domain mechanism | fail |
 ```
 
 Rules:

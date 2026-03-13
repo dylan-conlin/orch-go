@@ -1,6 +1,6 @@
 # Probe: Empty Model Stub Creation Vectors
 
-**Model:** knowledge-physics
+**Model:** knowledge-accretion
 **Date:** 2026-03-11
 **Status:** Complete
 
@@ -8,7 +8,7 @@
 
 ## Question
 
-What creates empty model stubs in .kb/models/? The knowledge-physics model claims an 85.5% orphan rate and identifies "attractor dynamics" as a core mechanism — does model creation follow the same accretion-without-synthesis pattern seen in investigations?
+What creates empty model stubs in .kb/models/? The knowledge-accretion model claims an 85.5% orphan rate and identifies "attractor dynamics" as a core mechanism — does model creation follow the same accretion-without-synthesis pattern seen in investigations?
 
 ---
 
@@ -108,7 +108,7 @@ The `orch precommit` command already has `accretion` and `knowledge` subcommands
 
 ## Notes
 
-The knowledge-physics model's accretion-without-synthesis pattern applies to investigations but not (yet) to models. This is likely because:
+The knowledge-accretion model's accretion-without-synthesis pattern applies to investigations but not (yet) to models. This is likely because:
 1. Models are created less frequently (41 vs 700+)
 2. Models require explicit invocation (`kb create model`) vs investigations which are created by skill templates
 3. The Feb 25 batch migration established a baseline of filled models

@@ -1,6 +1,6 @@
 # Probe: kb-cli Public Release Readiness — Standalone Substrate Audit
 
-**Model:** Knowledge Physics
+**Model:** Knowledge Accretion
 **Date:** 2026-03-09
 **Status:** Complete
 **Methodology:** Confirmatory — conducted by the same AI system that built the model. Cannot constitute independent validation.

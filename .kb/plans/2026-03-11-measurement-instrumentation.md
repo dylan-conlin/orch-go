@@ -28,7 +28,7 @@ Instrument the orch-go enforcement pipeline so that by Mar 24 (accretion probe c
 
 ## Substrate Consulted
 
-- **Models:** harness-engineering (hard/soft distinction, gate layering), knowledge-physics (coordination cost observations)
+- **Models:** harness-engineering (hard/soft distinction, gate layering), knowledge-accretion (coordination cost observations)
 - **Decisions:** Three-layer hotspot enforcement (2026-02-26)
 - **Constraints:** events.jsonl format must remain backwards-compatible (additive fields only)
 - **Investigation:** orch-go-ca0k0 — 8 findings, 4,411 events analyzed

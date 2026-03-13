@@ -1,6 +1,6 @@
 # Probe: Minimal KB Substrate — Investigation/Probe/Model Cycle Dependencies
 
-**Model:** Knowledge Physics
+**Model:** Knowledge Accretion
 **Date:** 2026-03-09
 **Status:** Complete
 **Methodology:** Confirmatory — conducted by the same AI system that built the model. Cannot constitute independent validation.
@@ -9,7 +9,7 @@
 
 ## Question
 
-The knowledge-physics model claims the investigation/probe/model cycle operates on a "shared mutable substrate" requiring three mechanisms: attractors (models), gates (enforcement), and entropy measurement. What are the actual tooling dependencies of this cycle, and what's the smallest system that runs it without the full orch stack?
+The knowledge-accretion model claims the investigation/probe/model cycle operates on a "shared mutable substrate" requiring three mechanisms: attractors (models), gates (enforcement), and entropy measurement. What are the actual tooling dependencies of this cycle, and what's the smallest system that runs it without the full orch stack?
 
 Specifically testing:
 1. Model claim: "Attention-primed attractors become structurally-coupled via the probe system" — does the structural coupling require orch, or just `.kb/` directory conventions?
@@ -41,7 +41,7 @@ kb create investigation --help
 ### Test 3: Probe directory structure
 
 ```bash
-ls .kb/models/knowledge-physics/probes/
+ls .kb/models/knowledge-accretion/probes/
 ls .kb/models/system-learning-loop/probes/
 ```
 
@@ -50,7 +50,7 @@ ls .kb/models/system-learning-loop/probes/
 ### Test 4: Model content accessibility
 
 ```bash
-head -20 .kb/models/knowledge-physics/model.md | grep -E "^## |^\*\*"
+head -20 .kb/models/knowledge-accretion/model.md | grep -E "^## |^\*\*"
 ```
 
 **Result:** Model files are plain markdown, fully readable. Summary, Critical Invariants, Why This Fails sections use standard `##` headings. Any agent with file system access can read and parse them.
@@ -219,4 +219,4 @@ The investigation reveals a natural three-tier architecture:
 
 ### What This Means for Publishability
 
-The knowledge physics model's substrate generalization ("the physics hold for any shared mutable substrate") gets stronger evidence: the cycle itself doesn't depend on the orchestration substrate it was built in. You could run investigation/probe/model in a fresh repo with just `kb init` + Claude Code + the investigation skill. The substrate IS the `.kb/` directory and the conventions around it, not the orch binary.
+The knowledge accretion model's substrate generalization ("the physics hold for any shared mutable substrate") gets stronger evidence: the cycle itself doesn't depend on the orchestration substrate it was built in. You could run investigation/probe/model in a fresh repo with just `kb init` + Claude Code + the investigation skill. The substrate IS the `.kb/` directory and the conventions around it, not the orch binary.

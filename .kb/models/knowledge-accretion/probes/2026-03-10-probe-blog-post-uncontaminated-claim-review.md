@@ -1,6 +1,6 @@
 # Probe: Blog Post Uncontaminated Claim Review
 
-**Model:** knowledge-physics
+**Model:** knowledge-accretion
 **Date:** 2026-03-10
 **Status:** Complete
 
@@ -8,20 +8,20 @@
 
 ## Question
 
-Do the published blog posts (Harness Engineering, Knowledge Physics, Coordination Demo) contain claims that assume the theory is validated or novel without sufficient evidence? Does language overclaim beyond what the data supports?
+Do the published blog posts (Harness Engineering, Knowledge Accretion, Coordination Demo) contain claims that assume the theory is validated or novel without sufficient evidence? Does language overclaim beyond what the data supports?
 
 ---
 
 ## What I Tested
 
-Read all three blog posts as an external reader with no prior exposure to the knowledge-physics or harness-engineering model framing. Systematically flagged every claim against three categories:
+Read all three blog posts as an external reader with no prior exposure to the knowledge-accretion or harness-engineering model framing. Systematically flagged every claim against three categories:
 1. **Validation assumptions** — claims that treat internal testing as proof
 2. **Novelty assumptions** — claims of absence from literature without systematic review
 3. **Overclaimed language** — language that goes beyond what the evidence demonstrates
 
 Posts reviewed:
 - `.kb/publications/harness-engineering-draft.md` (309 lines)
-- `.kb/publications/knowledge-physics-draft.md` (253 lines)
+- `.kb/publications/knowledge-accretion-draft.md` (253 lines)
 - `.kb/publications/coordination-failure-demo-post.md` (221 lines)
 
 ---
@@ -32,12 +32,12 @@ Posts reviewed:
 
 | Post | Line | Claim | Problem |
 |------|------|-------|---------|
-| Knowledge Physics | 3 | "applicable to any substrate where amnesiac agents contribute" | Universality claim from 2 substrates in 1 system operated by 1 person |
-| Knowledge Physics | 31 | "kept surviving every attempt to break it" | All "attempts to break it" were by agents operating inside the framework. Closed-loop validation. |
-| Knowledge Physics | 39 | "Five conditions predict whether a shared system will degrade" | Never tested predictively — fit to historical data. "Predict" implies forward-looking validation that hasn't occurred. |
-| Knowledge Physics | 71 | "these conditions produce accretion in any shared mutable substrate" | "any" is a universality claim from N=2 substrates |
-| Knowledge Physics | 89 | "No clean counterexample survived" | Every counterexample was resolved by the same framework that generated the theory. Could be retrofitting — categories broad enough to absorb any evidence. |
-| Knowledge Physics | 113 | "Accretion is measurable" → orphan rate drop evidence | Treating internal metrics from one system as validation of a general theory. Simpler explanation available: "adding structure to an unstructured system produces structure." |
+| Knowledge Accretion | 3 | "applicable to any substrate where amnesiac agents contribute" | Universality claim from 2 substrates in 1 system operated by 1 person |
+| Knowledge Accretion | 31 | "kept surviving every attempt to break it" | All "attempts to break it" were by agents operating inside the framework. Closed-loop validation. |
+| Knowledge Accretion | 39 | "Five conditions predict whether a shared system will degrade" | Never tested predictively — fit to historical data. "Predict" implies forward-looking validation that hasn't occurred. |
+| Knowledge Accretion | 71 | "these conditions produce accretion in any shared mutable substrate" | "any" is a universality claim from N=2 substrates |
+| Knowledge Accretion | 89 | "No clean counterexample survived" | Every counterexample was resolved by the same framework that generated the theory. Could be retrofitting — categories broad enough to absorb any evidence. |
+| Knowledge Accretion | 113 | "Accretion is measurable" → orphan rate drop evidence | Treating internal metrics from one system as validation of a general theory. Simpler explanation available: "adding structure to an unstructured system produces structure." |
 | Harness Engineering | 64 | "This makes harness engineering a permanent discipline, not a transitional one" | Requires the premise that coordination worsens with model improvement, which is under-evidenced |
 | Harness Engineering | 195 | "tested the framework against a TypeScript codebase and found it language-independent" | N=2 (Go + TypeScript) doesn't establish language-independence |
 
@@ -47,18 +47,18 @@ Posts reviewed:
 |------|------|-------|---------|
 | Harness Engineering | 217 | "absent from the published literature" | Novelty claim requires systematic literature review. Post cites 4 references. |
 | Harness Engineering | 293 | "The field is converging on 'harness' as a concept but hasn't yet grappled with the coordination problem" | Claims knowledge of the entire field's state. |
-| Knowledge Physics | 37 | "The closest comparison is Elinor Ostrom's institutional analysis of commons governance" | Comparing a 3-month, 1-person study to decades of multi-country empirical commons research elevates the work's status by association. |
+| Knowledge Accretion | 37 | "The closest comparison is Elinor Ostrom's institutional analysis of commons governance" | Comparing a 3-month, 1-person study to decades of multi-country empirical commons research elevates the work's status by association. |
 | Coordination Demo | 128 | "That's a compliance answer to a coordination question" | Dismisses MAST's proposed solution without testing whether "social reasoning" (agents aware of each other's work) would actually help — which is arguably what sequential execution does. |
 
 ### Category 3: Overclaimed Language
 
 | Post | Location | Language | Issue |
 |------|----------|----------|-------|
-| Knowledge Physics | Title | "Knowledge Physics" | Name implies law-like, substrate-independent universality. Honest Gaps section (line 185) says "Not a law of physics" but the name and rhetorical treatment contradict that hedging. |
-| Knowledge Physics | 14 | "thermodynamic tendency" (implicit via "accretion" definition) | Physics language for a software/organizational pattern |
-| Knowledge Physics | 51-59 | "four dynamics emerge — regardless of what the substrate is made of" | "regardless of substrate" from 2 substrates in 1 system |
-| Knowledge Physics | 143-144 | "Greater capability created greater divergence" | Stated as general finding from N=1 complex task trial |
-| Knowledge Physics | 167 | "Every one of these cases meets the five conditions. Every one exhibits the predicted dynamics." | Every external case is post-hoc classified, not predicted. Framework explains everything = explains nothing risk. |
+| Knowledge Accretion | Title | "Knowledge Accretion" | Name implies law-like, substrate-independent universality. Honest Gaps section (line 185) says "Not a law of physics" but the name and rhetorical treatment contradict that hedging. |
+| Knowledge Accretion | 14 | "thermodynamic tendency" (implicit via "accretion" definition) | Physics language for a software/organizational pattern |
+| Knowledge Accretion | 51-59 | "four dynamics emerge — regardless of what the substrate is made of" | "regardless of substrate" from 2 substrates in 1 system |
+| Knowledge Accretion | 143-144 | "Greater capability created greater divergence" | Stated as general finding from N=1 complex task trial |
+| Knowledge Accretion | 167 | "Every one of these cases meets the five conditions. Every one exhibits the predicted dynamics." | Every external case is post-hoc classified, not predicted. Framework explains everything = explains nothing risk. |
 | Harness Engineering | 14 | "thermodynamic tendency of multi-agent codebases toward entropy" | Metaphor presented as mechanism. Actual thermodynamics has well-defined entropy measures; code complexity doesn't. |
 | Harness Engineering | 15 | "faster, more capable agents accrete more code per session with higher confidence" | Stated as fact. The merge experiment shows equal conflict rates, not worse ones. The daemon.go data doesn't isolate model capability as a variable. |
 | Harness Engineering | 297 | "The physics appear to be substrate-independent" | "Physics" for pattern observations across 2 substrates |
@@ -68,7 +68,7 @@ Posts reviewed:
 
 ### Structural Observations
 
-**Hedging is present but misplaced.** The Knowledge Physics post has an "Honest Gaps" section (lines 219-229) that acknowledges "One system, one operator" and "Two confirmed substrates." But this section comes after 200+ lines of confident claims. The framing effect: readers absorb the confident claims in the body and skim the caveats at the end. The coordination demo post handles this better — "I think is underappreciated" (line 119) hedges inline.
+**Hedging is present but misplaced.** The Knowledge Accretion post has an "Honest Gaps" section (lines 219-229) that acknowledges "One system, one operator" and "Two confirmed substrates." But this section comes after 200+ lines of confident claims. The framing effect: readers absorb the confident claims in the body and skim the caveats at the end. The coordination demo post handles this better — "I think is underappreciated" (line 119) hedges inline.
 
 **The Ostrom comparison cuts both ways.** Ostrom studied hundreds of commons across dozens of countries over decades. This is one system, one operator, three months. The comparison is apt in type (structural conditions predicting outcomes) but not in evidence base. Readers familiar with Ostrom may see the comparison as claiming comparable rigor.
 
@@ -88,7 +88,7 @@ Posts reviewed:
 
 ### Specific Recommendations
 
-1. **Rename or justify "Knowledge Physics."** Either scope the name to acknowledge it's aspirational, or provide evidence commensurate with the claim. "Knowledge Coordination Patterns" or "Accretion Dynamics" would be more proportionate to the evidence.
+1. **Rename or justify "Knowledge Accretion."** Either scope the name to acknowledge it's aspirational, or provide evidence commensurate with the claim. "Knowledge Coordination Patterns" or "Accretion Dynamics" would be more proportionate to the evidence.
 
 2. **Move hedging inline.** Don't bury "one system, one operator" in a late section. Include caveats near the claims they qualify. "In our system..." instead of "in any substrate..."
 
@@ -112,4 +112,4 @@ Posts reviewed:
 
 This probe was conducted as an adversarial external review — reading the posts as a reader with no exposure to the internal models would. The posts are well-written and the evidence base (when described) is genuine. The core observation — that coordination failure is distinct from compliance failure — is valuable regardless of whether it's novel. The main risk is that overclaimed language and validation assumptions undermine credibility with readers who would otherwise find the framework useful.
 
-The coordination demo post is the strongest of the three — it has clear methodology, reproducible experiment, and proportionate claims. The knowledge physics post is the most overclaimed — the gap between evidence (1 system, 1 person, 3 months) and claim scope (universal "physics") is the largest. The harness engineering post falls in between — solid operational evidence with some unjustified generalizations.
+The coordination demo post is the strongest of the three — it has clear methodology, reproducible experiment, and proportionate claims. The knowledge accretion post is the most overclaimed — the gap between evidence (1 system, 1 person, 3 months) and claim scope (universal "physics") is the largest. The harness engineering post falls in between — solid operational evidence with some unjustified generalizations.

@@ -14,7 +14,7 @@ Do the published blog posts ("Soft Harness Doesn't Work" and "Building Blind") m
 
 ## What I Tested
 
-Read both published blog posts WITHOUT reading the knowledge-physics or harness-engineering models first. Evaluated each post against four criteria:
+Read both published blog posts WITHOUT reading the knowledge-accretion or harness-engineering models first. Evaluated each post against four criteria:
 1. Claims that assume theory is validated
 2. Novelty language without external citation
 3. Restatements of known concepts presented as novel

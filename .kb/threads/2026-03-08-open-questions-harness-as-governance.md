@@ -3,7 +3,7 @@ title: "Open questions in harness-as-governance"
 status: resolved
 created: 2026-03-08
 updated: 2026-03-10
-resolved_to: ".kb/models/knowledge-physics/probes/2026-03-10-probe-falsifiability-counterexamples.md"
+resolved_to: ".kb/models/knowledge-accretion/probes/2026-03-10-probe-falsifiability-counterexamples.md"
 ---
 
 # Open questions in harness-as-governance

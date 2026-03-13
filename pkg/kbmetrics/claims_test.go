@@ -151,7 +151,7 @@ One simple claim.
 
 ## Core Claim
 
-Knowledge physics claim.
+Knowledge accretion claim.
 
 ## Critical Invariants
 

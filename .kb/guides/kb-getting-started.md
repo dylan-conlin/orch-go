@@ -433,5 +433,5 @@ A healthy knowledge base has:
 ## What's Next
 
 - **Scale:** When you're running multiple AI agents on investigations simultaneously, look into orchestration tools (orch, beads) for tracking and quality gates
-- **Theory:** The investigation/probe/model cycle follows predictable dynamics described in the knowledge-physics model — accretion, attractors, gates, and entropy are substrate-independent
+- **Theory:** The investigation/probe/model cycle follows predictable dynamics described in the knowledge-accretion model — accretion, attractors, gates, and entropy are substrate-independent
 - **Gates:** As your knowledge base grows, consider adding pre-commit hooks or tooling checks to enforce conventions (like requiring probes to reference their parent model)

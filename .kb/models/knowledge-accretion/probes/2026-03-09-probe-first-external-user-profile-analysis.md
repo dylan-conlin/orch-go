@@ -1,6 +1,6 @@
 # Probe: First External User Profile Analysis
 
-**Model:** knowledge-physics
+**Model:** knowledge-accretion
 **Date:** 2026-03-09
 **Status:** Complete
 **Methodology:** Confirmatory — conducted by the same AI system that built the model. Cannot constitute independent validation.
@@ -9,7 +9,7 @@
 
 ## Question
 
-The knowledge-physics model claims the ideal domain is "any organization where institutional amnesia is expensive — regulated R&D, defense, finance, high-turnover teams." The harness-publication plan asks: who runs the kb system first? R&D lab, solo researcher, startup with turnover?
+The knowledge-accretion model claims the ideal domain is "any organization where institutional amnesia is expensive — regulated R&D, defense, finance, high-turnover teams." The harness-publication plan asks: who runs the kb system first? R&D lab, solo researcher, startup with turnover?
 
 Testing: Which user profile best matches (a) the system's current capabilities and dependencies, (b) the four conditions for substrate physics to emerge (multiple agents, amnesiac, locally correct, no structural coordination), and (c) the lowest adoption friction for a v1 standalone system?
 
@@ -49,7 +49,7 @@ Walked through the workflow:
 5. **Reflect:** `kb reflect` detects synthesis opportunities (3+ investigations on same topic)
 6. **Context injection:** `kb context "query"` returns relevant artifacts for agent/human priming
 
-**Critical gap:** No `kb create model` or `kb create probe` commands. These are the most structurally important artifacts (models are "the fundamental unit" per the knowledge-physics model) yet they have no tooling support. Users must manually create directories and files.
+**Critical gap:** No `kb create model` or `kb create probe` commands. These are the most structurally important artifacts (models are "the fundamental unit" per the knowledge-accretion model) yet they have no tooling support. Users must manually create directories and files.
 
 ### Test 3: Onboarding experience audit — what would a new user's first hour look like?
 
@@ -65,7 +65,7 @@ kb init --help
 
 No guided onboarding. After `kb init`, user has an empty .kb/ directory and no guidance on what to create first. No tutorial, no example model, no "your first investigation" workflow.
 
-**Additional finding:** `kb init` creates only 3 directories: `investigations/`, `decisions/`, `guides/`. It does NOT create `models/` — the artifact the knowledge-physics model calls "the fundamental unit of knowledge organization." Tested:
+**Additional finding:** `kb init` creates only 3 directories: `investigations/`, `decisions/`, `guides/`. It does NOT create `models/` — the artifact the knowledge-accretion model calls "the fundamental unit of knowledge organization." Tested:
 
 ```bash
 cd /tmp && mkdir kb-test && cd kb-test && git init -q && kb init
@@ -104,7 +104,7 @@ Bottom-up adoption is stickier. Top-down support is necessary but not sufficient
 
 ### Test 5: Four-condition analysis per user profile
 
-The knowledge-physics model requires four conditions for substrate dynamics to emerge:
+The knowledge-accretion model requires four conditions for substrate dynamics to emerge:
 1. Multiple agents write to the substrate
 2. Agents are amnesiac
 3. Contributions are locally correct
@@ -222,7 +222,7 @@ This is the classic bottom-up adoption pattern. The first external user is NOT t
 
 ## Model Impact
 
-- [x] **Extends** model with: First external user profile analysis — the knowledge-physics model identifies the ideal domain (institutional amnesia) but doesn't specify adoption sequencing. The finding is that the ideal *first* user is not the ideal *domain* — the solo technical researcher with AI agents has the lowest adoption friction and fastest time to value, even though R&D labs have the strongest pain. The four conditions for substrate physics apply to all three profiles, so the differentiator is adoption friction, not physics applicability. Bottom-up adoption (solo → team → org) matches proven knowledge-tool adoption patterns (Zettelkasten, ADRs, lab notebooks). The model should note that identifying the ideal domain for the *physics* is different from identifying the ideal first *user* of the system.
+- [x] **Extends** model with: First external user profile analysis — the knowledge-accretion model identifies the ideal domain (institutional amnesia) but doesn't specify adoption sequencing. The finding is that the ideal *first* user is not the ideal *domain* — the solo technical researcher with AI agents has the lowest adoption friction and fastest time to value, even though R&D labs have the strongest pain. The four conditions for substrate physics apply to all three profiles, so the differentiator is adoption friction, not physics applicability. Bottom-up adoption (solo → team → org) matches proven knowledge-tool adoption patterns (Zettelkasten, ADRs, lab notebooks). The model should note that identifying the ideal domain for the *physics* is different from identifying the ideal first *user* of the system.
 
 - [x] **Extends** model with: Tooling gap discovery — the model's critical invariant #2 ("models are the fundamental unit of knowledge organization") is contradicted by the tooling: no `kb create model` or `kb create probe` commands exist. The most important artifacts have the least tooling support. For external adoption, this gap must be closed — the first user can't be expected to manually create directory structures and templates for the artifacts the system considers fundamental.
 

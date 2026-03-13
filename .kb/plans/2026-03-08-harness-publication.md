@@ -1,8 +1,8 @@
 ## Summary (D.E.K.N.)
 
-**Delta:** Publish the empirical knowledge system — the investigation/probe/model cycle as the core product, with knowledge physics as the theory and harness engineering as evidence. Path B: we're building a system that compounds understanding, not agent tooling.
+**Delta:** Publish the empirical knowledge system — the investigation/probe/model cycle as the core product, with knowledge accretion as the theory and harness engineering as evidence. Path B: we're building a system that compounds understanding, not agent tooling.
 
-**Evidence:** Knowledge physics model (32nd model describing the other 31), harness engineering model (code substrate), 1,166 investigations measured, 85.5%→52% orphan rate with probes, 265 contrastive trials, daemon.go +892 lines (coordination failure), 3 entropy spirals, 1,625 lost commits, compliance vs coordination distinction.
+**Evidence:** Knowledge accretion model (32nd model describing the other 31), harness engineering model (code substrate), 1,166 investigations measured, 85.5%→52% orphan rate with probes, 265 contrastive trials, daemon.go +892 lines (coordination failure), 3 entropy spirals, 1,625 lost commits, compliance vs coordination distinction.
 
 **Knowledge:** The investigation/probe/model cycle is the automated scientific method. The system's unique value is compounding understanding across amnesiac contributors — not agent coordination. Path B chosen 2026-03-09: empirical knowledge system, not AI agent tooling.
 
@@ -10,13 +10,13 @@
 
 ---
 
-# Plan: Knowledge Physics Publication
+# Plan: Knowledge Accretion Publication
 
 **Date:** 2026-03-08 (reframed 2026-03-09)
 **Status:** Active
 **Owner:** Dylan
 
-**Extracted-From:** Harness engineering plan (complete), knowledge-physics model, thread "knowledge-physics-does-knowledge-have", thread "harness-engineering-as-strategic-position"
+**Extracted-From:** Harness engineering plan (complete), knowledge-accretion model, thread "knowledge-accretion-does-knowledge-have", thread "harness-engineering-as-strategic-position"
 **Supersedes:** Original harness-publication plan (code-only framing)
 **Superseded-By:** N/A
 
@@ -27,7 +27,7 @@
 Publish the empirical knowledge system and the theory behind it. The system automates the scientific method: investigations observe, probes test hypotheses against models, models formalize understanding, and the cycle compounds. The 32nd model the system produced describes the physics of the other 31.
 
 The publication serves two purposes:
-1. **Establish the theory** (knowledge physics) with unassailable dual-substrate evidence
+1. **Establish the theory** (knowledge accretion) with unassailable dual-substrate evidence
 2. **Introduce the product** (the investigation/probe/model cycle) as something others can run
 
 Path B (decided 2026-03-09): We are not building agent tooling. We are building an empirical knowledge system that happens to use AI agents as investigators. The ideal domain is any organization where institutional amnesia is expensive — regulated R&D, defense, finance, high-turnover teams.
@@ -38,9 +38,9 @@ Success = publication that makes people want to run the system, not just read ab
 
 ## Substrate Consulted
 
-- **Models:** `knowledge-physics` (substrate-independent dynamics, dual evidence), `harness-engineering` (code substrate instance, 5 layers), `system-learning-loop` (proto-knowledge-physics), `skill-content-transfer` (attention primers vs action directives)
+- **Models:** `knowledge-accretion` (substrate-independent dynamics, dual evidence), `harness-engineering` (code substrate instance, 5 layers), `system-learning-loop` (proto-knowledge-accretion), `skill-content-transfer` (attention primers vs action directives)
 - **Decisions:** Three-layer hotspot enforcement (2026-02-26), harness plan phases 1-6 (complete)
-- **Threads:** "Knowledge physics — does knowledge have the same accretion/attractor/gate dynamics as code?", "Harness engineering as strategic position"
+- **Threads:** "Knowledge accretion — does knowledge have the same accretion/attractor/gate dynamics as code?", "Harness engineering as strategic position"
 - **Constraints:** Coordination failure demo needed before claiming "stronger models need more coordination gates." First hard knowledge gate needed to show the physics predict interventions, not just describe patterns.
 
 ---
@@ -55,7 +55,7 @@ Success = publication that makes people want to run the system, not just read ab
 - Implement `kb create investigation --model X` as required flag (or explicit `--orphan` to opt out)
 - Measure orphan rate before/after over 2-4 weeks
 - If adding structural coupling drops orphan rate (as probes did: 94.7%→52%), we have causal evidence that the physics predict interventions
-- This is also the answer to knowledge-physics open question #6
+- This is also the answer to knowledge-accretion open question #6
 
 **Experiment B: Coordination Failure Demo** (`orch-go-qrfhe`)
 - Same task, same codebase, Haiku vs Opus (or similar capability gap)
@@ -78,7 +78,7 @@ Success = publication that makes people want to run the system, not just read ab
 1. **The meta-story** (hook) — One person built a system where AI agents investigate, test hypotheses, and formalize understanding. The knowledge compounds instead of evaporating. The 32nd model describes the physics of the other 31.
 2. **The problem** — Institutional amnesia. Organizations re-learn things they already know because no contributor remembers what happened before. This costs billions in regulated industries. AI agents have the same problem at 100x speed.
 3. **The system** — Investigation/probe/model cycle as automated scientific method. How it works, what it produces, why knowledge compounds instead of accreting.
-4. **The theory** — Knowledge physics. Four conditions → substrate-independent dynamics. Why this applies to any shared mutable substrate with amnesiac contributors.
+4. **The theory** — Knowledge accretion. Four conditions → substrate-independent dynamics. Why this applies to any shared mutable substrate with amnesiac contributors.
 5. **Evidence: Code substrate** — daemon.go +892, 265 contrastive trials, 3 entropy spirals, hard/soft harness, compliance vs coordination
 6. **Evidence: Knowledge substrate** — 1,166 investigations, orphan rate trajectory, model behaviors, first hard gate experiment results
 7. **The sharp claim** — Stronger models/contributors need more coordination infrastructure, not less. The system is permanent, not transitional.
@@ -145,7 +145,7 @@ Success = publication that makes people want to run the system, not just read ab
 - Knowledge substrate dynamics: orphan rate, model behaviors, gate deficit (1,166 investigations)
 - Probe system as structural coupling fix (94.7%→52% orphan rate)
 - Soft instructions dilute under pressure (265 contrastive trials)
-- System-learning-loop is proto-knowledge-physics (mapping confirmed)
+- System-learning-loop is proto-knowledge-accretion (mapping confirmed)
 
 **What's untested:**
 - Whether adding hard knowledge gates reduces orphan rate further (Experiment A)

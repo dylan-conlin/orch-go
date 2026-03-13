@@ -28,7 +28,7 @@
 | Investigation | Relationship | Verified | Conflicts |
 |--------------|--------------|----------|-----------|
 | `.kb/threads/2026-03-10-closed-loop-risk-ai-agents.md` | deepens | yes | none |
-| `.kb/plans/2026-03-10-knowledge-physics-publication.md` | confirms | yes | yes - plan still assumed theory publication readiness before the adversarial pattern was fully named |
+| `.kb/plans/2026-03-10-knowledge-accretion-publication.md` | confirms | yes | yes - plan still assumed theory publication readiness before the adversarial pattern was fully named |
 
 **Relationship types:** extends, confirms, contradicts, deepens
 **Verified:** Did you check claims against primary sources?
@@ -62,7 +62,7 @@
 
 **Evidence:** The publication plan now says external validation must happen before the essay, because internal consistency is not external validation, but that plan is a one-off sequencing correction rather than a system-level gate. The repo already has claim and orphan metrics, which means the infrastructure supports machine-readable KB checks; what is missing is a publication-specific validity gate.
 
-**Source:** `.kb/plans/2026-03-10-knowledge-physics-publication.md:69-87`, `.kb/plans/2026-03-10-knowledge-physics-publication.md:121-136`, `cmd/orch/kb.go:133-177`
+**Source:** `.kb/plans/2026-03-10-knowledge-accretion-publication.md:69-87`, `.kb/plans/2026-03-10-knowledge-accretion-publication.md:121-136`, `cmd/orch/kb.go:133-177`
 
 **Significance:** The project already accepts measurement-oriented KB tooling. The right fix is not “be more careful”; it is a structural gate added to the artifact lifecycle.
 
@@ -188,7 +188,7 @@ The required architecture is an asymmetric `challenge` stage inserted between `p
 
 **Files Examined:**
 - `.kb/threads/2026-03-10-closed-loop-risk-ai-agents.md` - Failure pattern and external puncture evidence
-- `.kb/plans/2026-03-10-knowledge-physics-publication.md` - Existing plan and validate-then-publish constraint
+- `.kb/plans/2026-03-10-knowledge-accretion-publication.md` - Existing plan and validate-then-publish constraint
 - `cmd/orch/complete_pipeline.go` - Current pipeline shape and absence of challenge stage
 - `cmd/orch/kb.go` - Existing KB metrics/commands that show how machine-readable gates fit the system
 - `docs/designs/2026-03-10-adversarial-gate-knowledge-pipeline.md` - Resulting implementation-ready design
@@ -205,7 +205,7 @@ bd update orch-go-yvndh --status in_progress
 
 # Read evidence and code paths
 sed -n '1,240p' .kb/investigations/2026-03-10-inv-design-adversarial-layer-knowledge-pipeline.md
-sed -n '1,220p' .kb/plans/2026-03-10-knowledge-physics-publication.md
+sed -n '1,220p' .kb/plans/2026-03-10-knowledge-accretion-publication.md
 sed -n '1,220p' .kb/threads/2026-03-10-closed-loop-risk-ai-agents.md
 sed -n '1,260p' cmd/orch/complete_pipeline.go
 sed -n '1,260p' cmd/orch/kb.go
@@ -216,7 +216,7 @@ sed -n '1,260p' cmd/orch/kb.go
 
 **Related Artifacts:**
 - **Thread:** `.kb/threads/2026-03-10-closed-loop-risk-ai-agents.md` - Captures the failure mode this design addresses
-- **Plan:** `.kb/plans/2026-03-10-knowledge-physics-publication.md` - Shows why external validation became necessary
+- **Plan:** `.kb/plans/2026-03-10-knowledge-accretion-publication.md` - Shows why external validation became necessary
 - **Design:** `docs/designs/2026-03-10-adversarial-gate-knowledge-pipeline.md` - Proposed gate architecture
 
 ---

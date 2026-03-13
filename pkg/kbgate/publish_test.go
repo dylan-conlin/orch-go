@@ -143,7 +143,7 @@ claim_refs:
   - .kb/models/test/claims.md
 ---
 
-# Knowledge Physics
+# Knowledge Accretion
 
 This is a new physics of knowledge.
 `,

@@ -88,7 +88,7 @@ The patterns appear in our system under specific conditions.
 func TestScanNoveltyLanguage_PhysicsInFilename(t *testing.T) {
 	dir := t.TempDir()
 	kbDir := filepath.Join(dir, ".kb")
-	modDir := filepath.Join(kbDir, "models", "knowledge-physics")
+	modDir := filepath.Join(kbDir, "models", "knowledge-accretion")
 	os.MkdirAll(modDir, 0755)
 
 	// "physics" appears in filename path but not as a claim in body
