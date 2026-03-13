@@ -35,5 +35,11 @@ These principles emerged from practice, not theory. Each traces to a specific in
 | **Share Patterns Not Tools** | Dec 26, 2025 | skillc verify and orch-go both needed skill output verification | `.kb/decisions/2025-12-26-share-patterns-not-tools.md` |
 | **Observation Infrastructure** | Jan 8, 2026 | 11 investigations revealed system performing better than it appeared - 89% completion showed as 72% | `.kb/decisions/2026-01-08-observation-infrastructure-principle.md` |
 | **Escape Hatches** | Jan 21, 2026 | Critical orchestration paths lacked an independent fallback when primary infrastructure failed | `.kb/investigations/2026-01-21-inv-scan-kb-quick-constraints-promotion.md` |
+| **Redundancy is Load-Bearing** | Mar 1, 2026 | Skill compression (2,185→619 lines) immediately degraded delegation compliance | Grammar Design Discipline synthesis, behavioral testing baseline |
+| **Legibility Over Compliance** | Mar 1, 2026 | 14 commits of compliance gates in 18 days showed negligible improvement (39% vs 38% vs 30% bare) | Grammar Design Discipline synthesis, revert spiral investigation |
+| **Deploy or Delete** | Mar 5, 2026 | 18 configuration-drift investigations in 30 days all traced to incomplete migrations | Configuration-drift defect class analysis, orchestrator-skill model synthesis |
+| **Accretion Gravity** | Feb 2026 | spawn_cmd.go grew from 200 to 2,000 lines across 25 agents, each addition locally correct | Knowledge accretion model synthesis |
+| **Gate Over Remind** (measurement evolution) | Mar 12, 2026 | Gates existed for months without measurement — enforcement without measurement is theological | Harness engineering model, thread: "measurement-enforcement pairing" |
+| **Creation/Removal Asymmetry** | Mar 12, 2026 | Same accretion pattern across code (spawn_cmd.go), knowledge (1,200 investigations, 91% orphan rate), and config (dual verification systems) | Knowledge accretion model synthesis, thread: "creation/removal asymmetry" |
 
 **The test for new principles:** Can you trace it to a specific failure? If not, it's not a principle yet.

@@ -78,6 +78,10 @@ def build_category(category: dict) -> str:
     lines.append(f"## {category['title']}\n")
     lines.append(f"_{category['description']}_\n")
 
+    # Optional framing text between description and principles
+    if 'framing' in category:
+        lines.append(category['framing'].rstrip() + "\n")
+
     for principle_name in category['principles']:
         content = load_principle(category['name'], principle_name)
         lines.append(content)
@@ -115,6 +119,7 @@ def build_applying_section() -> str:
 - Check if concepts are conflated (evolve by distinction)
 - Check if evidence hierarchy is inverted (treating artifacts as truth)
 - Check if you're relying on reminders instead of gates
+- Check if you're solving compliance when the real problem is coordination
 
 **When adding new principles:**
 
