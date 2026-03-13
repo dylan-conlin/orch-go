@@ -104,6 +104,13 @@ func findPlaceholders(content string) []string {
 	return found
 }
 
+// readStagedFile reads the staged (index) version of a file.
+func readStagedFile(projectDir, file string) ([]byte, error) {
+	cmd := exec.Command("git", "show", ":"+file)
+	cmd.Dir = projectDir
+	return cmd.Output()
+}
+
 // FormatStagedModelStubError formats stub model files into a human-readable error.
 func FormatStagedModelStubError(result *StagedModelStubResult) string {
 	if result == nil || result.Passed {

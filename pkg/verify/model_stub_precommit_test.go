@@ -1,6 +1,8 @@
 package verify
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -202,5 +204,26 @@ func TestFormatStagedModelStubError(t *testing.T) {
 	// passed result returns empty
 	if FormatStagedModelStubError(&StagedModelStubResult{Passed: true}) != "" {
 		t.Error("passed result should return empty string")
+	}
+}
+
+func containsStr(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
+// createInvestigationFile creates a file at the given path with content, creating dirs as needed.
+func createInvestigationFile(t *testing.T, repoDir, relPath, content string) {
+	t.Helper()
+	fullPath := filepath.Join(repoDir, relPath)
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+		t.Fatalf("failed to create dir: %v", err)
+	}
+	if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write file %s: %v", relPath, err)
 	}
 }
