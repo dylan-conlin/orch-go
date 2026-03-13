@@ -359,185 +359,24 @@ func readSpawnTime(wsPath string) int64 {
 //   - EscalationNone/Info/Review: Mark ready-for-review (labeled, not closed)
 //   - EscalationBlock/Failed: Requires human review (no label, remains in_progress)
 func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig) CompletionResult {
-	result := CompletionResult{
-		BeadsID: agent.BeadsID,
-	}
-
-	// Use agent's project dir for cross-project operations, fall back to config
-	effectiveProjectDir := agent.ProjectDir
-	if effectiveProjectDir == "" {
-		effectiveProjectDir = config.ProjectDir
-	}
-
-	// Determine tier from workspace if available
-	tier := ""
-	if agent.WorkspacePath != "" {
-		tier = verify.ReadTierFromWorkspace(agent.WorkspacePath)
-	}
-
-	// Pre-fetch comments using the correct project directory.
-	// This avoids VerifyCompletionFullWithComments re-fetching from the wrong dir
-	// for cross-project agents (the daemon's cwd != the agent's project).
-	comments, err := verify.GetComments(agent.BeadsID, effectiveProjectDir)
-	if err != nil {
-		result.Error = fmt.Errorf("failed to fetch comments for %s (dir=%s): %w", agent.BeadsID, effectiveProjectDir, err)
-		result.Escalation = verify.EscalationFailed
-		return result
-	}
-
-	// Run full verification with pre-fetched comments
-	verificationResult, err := verify.VerifyCompletionFullWithComments(
-		agent.BeadsID,
-		agent.WorkspacePath,
-		effectiveProjectDir,
-		tier,
-		config.ServerURL,
-		comments,
-	)
-	if err != nil {
-		result.Error = fmt.Errorf("verification failed: %w", err)
-		result.Verification = verificationResult
-		result.Escalation = verify.EscalationFailed
-		return result
-	}
-
-	result.Verification = verificationResult
-
-	// Try to parse synthesis for escalation signals
-	var synthesis *verify.Synthesis
-	if agent.WorkspacePath != "" {
-		synthesis, _ = verify.ParseSynthesis(agent.WorkspacePath)
-	}
-
-	// Determine escalation level
-	escalation := verify.DetermineEscalationFromCompletion(
-		verificationResult,
-		synthesis,
-		agent.BeadsID,
-		agent.WorkspacePath,
-		effectiveProjectDir,
-	)
-	result.Escalation = escalation
-
-	// Check if verification passed
-	if !verificationResult.Passed {
-		result.Error = fmt.Errorf("verification failed: %s", strings.Join(verificationResult.Errors, "; "))
-		return result
-	}
-
-	// Check if escalation allows auto-completion
-	if !escalation.ShouldAutoComplete() {
-		reason := verify.ExplainEscalation(verify.EscalationInput{
-			VerificationPassed:  verificationResult.Passed,
-			VerificationErrors:  verificationResult.Errors,
-			NeedsVisualApproval: escalation == verify.EscalationBlock,
-		})
-		result.Error = fmt.Errorf("requires human review: %s", reason.Reason)
-		return result
-	}
-
-	// Build completion summary from phase summary
-	completionSummary := "Phase: Complete"
-	if agent.PhaseSummary != "" {
-		completionSummary = fmt.Sprintf("Phase: Complete - %s", agent.PhaseSummary)
-	}
-
-	// Determine review tier from workspace manifest
-	reviewTier := ""
-	if agent.WorkspacePath != "" {
-		reviewTier = verify.ReadReviewTierFromWorkspace(agent.WorkspacePath)
-	}
-
-	// Effort-based auto-complete: effort:small issues skip explain-back and verified gates.
-	// Uses LightAutoCompleter (targeted skips) rather than full --force.
-	// effort:medium and effort:large follow the normal path (tag ready-review).
-	if IsEffortSmall(agent.Labels) && d.AutoCompleter != nil && !config.DryRun {
-		var completeErr error
-		if lightCompleter, ok := d.AutoCompleter.(LightAutoCompleter); ok {
-			completeErr = lightCompleter.CompleteLight(agent.BeadsID, effectiveProjectDir)
-		} else {
-			// Fallback to full auto-complete if LightAutoCompleter not available
-			completeErr = d.AutoCompleter.Complete(agent.BeadsID, effectiveProjectDir)
-		}
-
-		if completeErr != nil {
-			// Light auto-complete failed — fall back to orchestrator review
-			result.Error = fmt.Errorf("light auto-complete failed for effort:small agent: %w", completeErr)
-			return result
-		}
-
-		result.Processed = true
-		result.AutoCompleted = true
-		result.CloseReason = completionSummary
-
-		// Record auto-completion for verification tracking
-		if d.VerificationTracker != nil {
-			shouldPause := d.VerificationTracker.RecordCompletion(agent.BeadsID)
-			if shouldPause && config.Verbose {
-				status := d.VerificationTracker.Status()
-				fmt.Printf("    Verification pause triggered: %d/%d auto-completions. Resume with: orch daemon resume\n",
-					status.CompletionsSinceVerification, status.Threshold)
-			}
-		}
-
-		return result
-	}
-
-	// Auto-tier: run orch complete directly instead of labeling for review.
-	// This closes the issue, archives workspace, and frees the slot automatically.
-	// If orch complete fails (gate failure, escalation), fall back to orchestrator review.
-	if reviewTier == "auto" && d.AutoCompleter != nil && !config.DryRun {
-		if err := d.AutoCompleter.Complete(agent.BeadsID, effectiveProjectDir); err != nil {
-			// Auto-complete failed — leave for orchestrator review
-			result.Error = fmt.Errorf("auto-complete failed for auto-tier agent: %w", err)
-			return result
-		}
-
-		result.Processed = true
-		result.AutoCompleted = true
-		result.CloseReason = completionSummary
-
-		// Record auto-completion for verification tracking
-		if d.VerificationTracker != nil {
-			shouldPause := d.VerificationTracker.RecordCompletion(agent.BeadsID)
-			if shouldPause && config.Verbose {
-				status := d.VerificationTracker.Status()
-				fmt.Printf("    Verification pause triggered: %d/%d auto-completions. Resume with: orch daemon resume\n",
-					status.CompletionsSinceVerification, status.Threshold)
-			}
-		}
-
-		return result
-	}
-
-	// Mark issue as ready for review (unless dry run)
-	// Non-auto tiers: add a label so Dylan can review via orchestrator
-	if !config.DryRun {
-		if err := verify.AddLabel(agent.BeadsID, LabelReadyReview, effectiveProjectDir); err != nil {
-			result.Error = fmt.Errorf("failed to mark ready for review: %w", err)
-			return result
-		}
-
-		// Remove triage:ready to prevent the spawn loop from re-picking up
-		// this issue. Without this, completed issues with both triage:ready
-		// and daemon:ready-review re-enter the spawn queue (spawn loop only
-		// checked triage:ready, not daemon:ready-review, before this fix).
-		verify.RemoveTriageLabels(agent.BeadsID, effectiveProjectDir)
-
-		// Record auto-completion for verification tracking.
-		// Only increments if this beads ID hasn't been counted yet (dedup across poll cycles).
-		if d.VerificationTracker != nil {
-			shouldPause := d.VerificationTracker.RecordCompletion(agent.BeadsID)
-			if shouldPause && config.Verbose {
-				status := d.VerificationTracker.Status()
-				fmt.Printf("    Verification pause triggered: %d/%d auto-completions. Resume with: orch daemon resume\n",
-					status.CompletionsSinceVerification, status.Threshold)
-			}
+	// Compliance: verify the completion meets quality/escalation requirements
+	signal := VerifyCompletionCompliance(agent, config)
+	if !signal.Passed {
+		return CompletionResult{
+			BeadsID:      agent.BeadsID,
+			Verification: signal.Verification,
+			Escalation:   signal.Escalation,
+			Error:        signal.Error,
 		}
 	}
 
-	result.Processed = true
-	result.CloseReason = completionSummary // Still used for logging/display
+	// Coordination: determine how to route this completion (auto-complete, label, etc.)
+	route := RouteCompletion(agent)
+
+	// Coordination: execute the routing decision
+	result := d.ExecuteCompletionRoute(agent, route, signal, config)
+	result.Verification = signal.Verification
+	result.Escalation = signal.Escalation
 	return result
 }
 

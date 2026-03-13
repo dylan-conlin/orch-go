@@ -278,48 +278,16 @@ func (d *Daemon) Once() (*OnceResult, error) {
 // If a worker pool is configured, it acquires a slot before spawning.
 // If a rate limiter is configured, it checks the hourly limit before spawning.
 func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
-	// Check verification pause BEFORE any other checks (including rate limit).
-	// This enforces the verifiability-first constraint: daemon pauses after N
-	// auto-completions without human verification.
-	if d.VerificationTracker != nil && d.VerificationTracker.IsPaused() {
-		status := d.VerificationTracker.Status()
+	// Compliance: pre-spawn gates (verification pause, completion health, rate limit)
+	gate := d.CheckPreSpawnGates()
+	if !gate.Allowed {
 		return &OnceResult{
 			Processed: false,
-			Message: fmt.Sprintf("Paused for human verification (%d/%d auto-completions). Resume with: orch daemon resume",
-				status.CompletionsSinceVerification, status.Threshold),
+			Message:   gate.Reason,
 		}, nil
 	}
 
-	// Check completion processing health BEFORE spawning.
-	// If completion processing has failed 3+ times consecutively, pause spawning.
-	// This prevents orphaning completed agents when completion processing is broken.
-	const completionFailureThreshold = 3
-	if d.CompletionFailureTracker != nil {
-		consecutiveFailures := d.CompletionFailureTracker.ConsecutiveFailures()
-		if consecutiveFailures >= completionFailureThreshold {
-			lastFailureTime, lastFailureReason := d.CompletionFailureTracker.LastFailure()
-			return &OnceResult{
-				Processed: false,
-				Message: fmt.Sprintf("Paused: completion processing has failed %d consecutive times (last: %v at %s). Fix completion processing before spawning more agents.",
-					consecutiveFailures, lastFailureReason, lastFailureTime.Format("15:04:05")),
-			}, nil
-		}
-	}
-
-	// Check rate limit first (before fetching issues)
-	if d.RateLimiter != nil {
-		canSpawn, count, msg := d.RateLimiter.CanSpawn()
-		if !canSpawn {
-			if d.Config.Verbose {
-				fmt.Printf("  Rate limited: %s\n", msg)
-			}
-			return &OnceResult{
-				Processed: false,
-				Message:   fmt.Sprintf("Rate limited: %d/%d spawns in the last hour", count, d.RateLimiter.MaxPerHour),
-			}, nil
-		}
-	}
-
+	// Coordination: issue selection
 	issue, err := d.NextIssueExcluding(skip)
 	if err != nil {
 		return nil, err
@@ -340,83 +308,35 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 	// Infer model from skill type
 	inferredModel := InferModelFromSkill(skill)
 
-	// Check for critical hotspots requiring pre-extraction.
-	// If the issue targets a file >800 lines, spawn an extraction agent first
-	// and block the original issue until extraction completes.
-	extractionSpawned := false
-	originalIssueID := ""
-	if d.HotspotChecker != nil {
-		extraction := CheckExtractionNeeded(issue, d.HotspotChecker)
-		if extraction != nil && extraction.Needed {
-			extractionID, err := d.resolveIssueQuerier().CreateExtractionIssue(extraction.ExtractionTask, issue.ID)
-			if err != nil {
-				// Extraction gate is non-negotiable: if setup fails, skip the issue
-				// and return error (fail-fast). Do not proceed with normal spawn.
-				if d.Config.Verbose {
-					fmt.Printf("  Extraction setup failed for %s: %v (skipping issue)\n", issue.ID, err)
-				}
-				return &OnceResult{
-					Processed: false,
-					Message:   fmt.Sprintf("Extraction setup failed for %s: %v (issue skipped, will retry on next poll)", issue.ID, err),
-				}, nil
-			}
-
-			if d.Config.Verbose {
-				fmt.Printf("  Auto-extraction: created %s blocking %s for %s (%d lines)\n",
-					extractionID, issue.ID, extraction.CriticalFile, extraction.Hotspot.Score)
-			}
-			// Replace issue and skill with extraction work.
-			// The original issue now has a blocking dependency and will be
-			// picked up on a future poll cycle after extraction completes.
-			originalIssueID = issue.ID
-			issue = &Issue{
-				ID:        extractionID,
-				Title:     extraction.ExtractionTask,
-				IssueType: "task",
-				Priority:  1,
-			}
-			skill = "feature-impl"
-			inferredModel = InferModelFromSkill(skill)
-			extractionSpawned = true
-		}
+	// Coordination: route skill through hotspot extraction and architect escalation
+	route, err := d.RouteIssueForSpawn(issue, skill, inferredModel)
+	if err != nil {
+		// Extraction setup failure — non-negotiable gate
+		return &OnceResult{
+			Processed: false,
+			Message:   err.Error(),
+		}, nil
 	}
 
-	// Layer 2: Architect escalation for hotspot areas.
-	// If the issue targets a hotspot area (any type, not just bloat-size >800)
-	// and the skill is an implementation skill (feature-impl, systematic-debugging),
-	// escalate to architect for architectural review before implementation.
-	// This only applies when extraction didn't already happen (extraction handles the most critical case).
-	architectEscalated := false
-	var escalationDetail *ArchitectEscalation
-	if !extractionSpawned && d.HotspotChecker != nil {
-		escalationDetail = CheckArchitectEscalation(issue, skill, d.HotspotChecker, d.PriorArchitectFinder)
-		if escalationDetail != nil && escalationDetail.Escalated {
-			if d.Config.Verbose {
-				fmt.Printf("  Architect escalation: %s targets hotspot %s (%s, score=%d)\n",
-					issue.ID, escalationDetail.HotspotFile, escalationDetail.HotspotType, escalationDetail.HotspotScore)
-			}
-			skill = "architect"
-			inferredModel = InferModelFromSkill(skill)
-			architectEscalated = true
-		}
+	// Apply routing: replace issue/skill/model if extraction spawned
+	if route.ExtractionSpawned {
+		issue = route.ReplacementIssue
 	}
+	skill = route.Skill
+	inferredModel = route.Model
 
-	// Session-level dedup: Check if there's an existing OpenCode session for this issue.
-	// This prevents duplicate spawns when:
-	// 1. SpawnedIssueTracker TTL expires (5min/6h) but agent is still running
-	// 2. Status update to "in_progress" failed silently
-	// 3. Multiple daemon instances try to spawn the same issue
+	// Spawn the issue
 	result, _, err := d.spawnIssue(issue, skill, inferredModel)
 	if result != nil {
-		if extractionSpawned {
+		if route.ExtractionSpawned {
 			result.ExtractionSpawned = true
-			result.OriginalIssueID = originalIssueID
+			result.OriginalIssueID = route.OriginalIssueID
 		}
-		if architectEscalated {
+		if route.ArchitectEscalated {
 			result.ArchitectEscalated = true
 		}
-		if escalationDetail != nil {
-			result.ArchitectEscalationDetail = escalationDetail
+		if route.ArchitectEscalationDetail != nil {
+			result.ArchitectEscalationDetail = route.ArchitectEscalationDetail
 		}
 	}
 	return result, err
