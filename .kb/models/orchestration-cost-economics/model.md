@@ -1,8 +1,8 @@
 # Model: Orchestration Cost Economics
 
 **Domain:** Agent Orchestration / Model Selection / Cost Management
-**Last Updated:** 2026-03-06
-**Synthesized From:** 15 investigations, 25+ kb quick entries, decisions spanning Nov 2025 - Feb 2026, probes 2026-02-20 through 2026-02-28 (stale references audit, account distribution design, wiring trace, staleness detection)
+**Last Updated:** 2026-03-13
+**Synthesized From:** 15 investigations, 25+ kb quick entries, decisions spanning Nov 2025 - Mar 2026, probes 2026-02-20 through 2026-03-13 (stale references audit, account distribution design, wiring trace, staleness detection, 1M context pricing)
 
 ---
 
@@ -46,6 +46,23 @@ Agent orchestration cost is driven by three factors: **model pricing** (10-100x 
 | Claude Sonnet    | $3.00        | $15.00        | Claude CLI (Max)  | **Default model** (claude-sonnet-4-5-20250929)     |
 | Claude Opus      | $5.00        | $25.00        | Claude CLI (Max)  | Highest quality, requires Claude backend           |
 | **Claude Max**   | $200/mo flat | -             | Claude CLI only   | Unlimited Sonnet + Opus. **Now the default path.** |
+
+### 1M Context Window: Standard Pricing on 4.6 Models (Mar 2026)
+
+**Claude Opus 4.6 and Sonnet 4.6 include 1M token context windows at standard pricing** — no premium long-context surcharge. A 900K-token request is billed at the same per-token rate as a 9K-token request. This is a fundamental change from legacy models where 1M required a beta header and 2x/1.5x premium pricing.
+
+| Model | Context Window | 1M Pricing |
+|-------|---------------|------------|
+| Opus 4.6 | 1M (native) | Standard — no premium |
+| Sonnet 4.6 | 1M (native) | Standard — no premium |
+| Opus 4.5 (legacy) | 200K | N/A |
+| Sonnet 4.5 (legacy) | 200K (1M via beta) | 2x input, 1.5x output premium |
+
+**Max subscription impact:** 1M context is fully covered by flat-rate Max subscription. No extra charges. The credit formula still applies — larger contexts consume more credits per request, but the per-token credit rate is unchanged. Claude Code v2.1.75 (Mar 13, 2026) enabled 1M by default for Max/Team/Enterprise subscribers.
+
+**Control:** `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` environment variable reverts to 200K behavior.
+
+**Economic trade-off:** More context per request = fewer requests before weekly quota exhaustion, but each request can accomplish more work (less compaction, fewer context-switching spawns). Net effect likely neutral or positive for agentic workloads.
 | OpenAI GPT-5     | Variable     | Variable      | OpenCode API      | First-class provider (12 aliases including Codex)  |
 
 ### Cost Equivalence Points
@@ -444,6 +461,7 @@ Originally blocked by 2,000 req/min TPM limit. Now **explicitly banned** in code
 - `.kb/models/orchestration-cost-economics/probes/2026-02-24-probe-automatic-account-distribution-design.md` — Found zero account distribution wiring at spawn level; designed CLAUDE_CONFIG_DIR injection pattern (CONTRADICTS prior model claim + EXTENDS)
 - `.kb/models/orchestration-cost-economics/probes/2026-02-26-probe-account-distribution-wiring-trace.md` — Confirmed full end-to-end wiring of account distribution (22 tests passing); clarified OpenCode backend correctly does not participate (CONFIRMS + EXTENDS)
 - `.kb/models/orchestration-cost-economics/probes/2026-02-28-probe-staleness-detection-false-positives.md` — Confirmed model content is current; identified tilde path expansion bug in staleness detector (now fixed) as source of false positives (CONFIRMS, no content changes needed)
+- `.kb/models/orchestration-cost-economics/probes/2026-03-13-probe-1m-context-max-plan-pricing.md` — Confirmed 1M context on Opus 4.6/Sonnet 4.6 is standard pricing (no premium), fully covered by Max subscription. Claude Code v2.1.75 enables by default for Max. Controllable via `CLAUDE_CODE_DISABLE_1M_CONTEXT` env var. (CONFIRMS cost model + EXTENDS with 1M context economics)
 
 **Primary Evidence (Verify These):**
 - Anthropic billing dashboard - Actual spend history showing $402 in ~2 weeks
