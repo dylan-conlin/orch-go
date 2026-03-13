@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/daemonconfig"
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/group"
 	"github.com/dylan-conlin/orch-go/pkg/modeldrift"
 )
@@ -163,6 +164,11 @@ type Daemon struct {
 	// Built from ProjectRegistry at daemon startup, used by GroupConfig.AccountForProjectDir.
 	KBProjects map[string]string
 
+	// Learning holds aggregated per-skill metrics from events.jsonl.
+	// When set, PrioritizeIssues uses skill-aware scoring instead of pure priority sort.
+	// Computed via events.ComputeLearning() at daemon startup or refresh.
+	Learning *events.LearningStore
+
 	// FocusGoal is the current focus goal text (from ~/.orch/focus.json).
 	// When set, issues from projects matching this goal get a priority boost.
 	FocusGoal string
@@ -187,12 +193,16 @@ func NewWithConfig(config Config) *Daemon {
 	if cachePath := DefaultSpawnCachePath(); cachePath != "" {
 		spawnTracker = NewSpawnedIssueTrackerWithFile(cachePath)
 	}
+	// Derive thresholds from compliance level
+	verificationThreshold := daemonconfig.DeriveVerificationThreshold(config.Compliance.Default)
+	invariantThreshold := daemonconfig.DeriveInvariantThreshold(config.Compliance.Default)
+
 	d := &Daemon{
 		Config:                   config,
 		Scheduler:                NewSchedulerFromConfig(config),
 		SpawnedIssues:            spawnTracker,
 		resumeAttempts:           make(map[string]time.Time),
-		VerificationTracker:      NewVerificationTracker(config.VerificationPauseThreshold),
+		VerificationTracker:      NewVerificationTracker(verificationThreshold),
 		CompletionFailureTracker: NewCompletionFailureTracker(),
 		VerificationRetryTracker: NewVerificationRetryTracker(),
 		Issues:                   &defaultIssueQuerier{},
@@ -215,9 +225,9 @@ func NewWithConfig(config Config) *Daemon {
 	if config.MaxAgents > 0 {
 		d.Pool = NewWorkerPool(config.MaxAgents)
 	}
-	// Initialize invariant checker if enabled
-	if config.InvariantCheckEnabled && config.InvariantViolationThreshold > 0 {
-		d.InvariantChecker = NewInvariantChecker(config.InvariantViolationThreshold, config.MaxAgents)
+	// Initialize invariant checker if enabled (threshold from compliance level)
+	if config.InvariantCheckEnabled && invariantThreshold > 0 {
+		d.InvariantChecker = NewInvariantChecker(invariantThreshold, config.MaxAgents)
 	}
 	// Initialize rate limiter if MaxSpawnsPerHour is set
 	if config.MaxSpawnsPerHour > 0 {

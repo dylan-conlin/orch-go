@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/dylan-conlin/orch-go/pkg/daemonconfig"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -78,7 +79,9 @@ func (d *Daemon) RouteIssueForSpawn(issue *Issue, skill, inferredModel string) (
 
 	// Layer 2: Architect escalation for hotspot areas.
 	// Only when extraction didn't happen (extraction handles the most critical case).
-	if d.HotspotChecker != nil {
+	// Gated by compliance level — relaxed/autonomous levels skip escalation.
+	complianceLevel := d.Config.Compliance.Resolve(skill, inferredModel)
+	if d.HotspotChecker != nil && daemonconfig.DeriveArchitectEscalationEnabled(complianceLevel) {
 		escalationDetail := CheckArchitectEscalation(issue, skill, d.HotspotChecker, d.PriorArchitectFinder)
 		if escalationDetail != nil {
 			route.ArchitectEscalationDetail = escalationDetail
@@ -98,7 +101,8 @@ func (d *Daemon) RouteIssueForSpawn(issue *Issue, skill, inferredModel string) (
 }
 
 // PrioritizeIssues applies coordination logic to order issues for selection:
-// epic expansion, focus boost, priority sort, project interleaving.
+// epic expansion, focus boost, allocation scoring (or priority sort), project interleaving.
+// When learning data is available, uses skill-aware scoring instead of pure priority sort.
 // Returns the ordered issues and a map of epic child IDs for label exemption.
 func (d *Daemon) PrioritizeIssues(issues []Issue) ([]Issue, map[string]bool, error) {
 	// Expand triage:ready epics by including their children
@@ -112,10 +116,19 @@ func (d *Daemon) PrioritizeIssues(issues []Issue) ([]Issue, map[string]bool, err
 		issues = applyFocusBoost(issues, d.FocusGoal, d.FocusBoostAmount, d.ProjectDirNames)
 	}
 
-	// Sort by priority (lower number = higher priority)
-	sort.Slice(issues, func(i, j int) bool {
-		return issues[i].Priority < issues[j].Priority
-	})
+	if d.Learning != nil && len(d.Learning.Skills) > 0 {
+		// Allocation scoring: blend priority with skill success rate
+		scored := ScoreIssues(issues, d.Learning)
+		issues = make([]Issue, len(scored))
+		for i, s := range scored {
+			issues[i] = s.Issue
+		}
+	} else {
+		// Fallback: sort by priority (lower number = higher priority)
+		sort.Slice(issues, func(i, j int) bool {
+			return issues[i].Priority < issues[j].Priority
+		})
+	}
 
 	// Round-robin across projects within each priority level
 	issues = interleaveByProject(issues)
