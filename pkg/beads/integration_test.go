@@ -297,7 +297,7 @@ func TestIntegration_Fallback_Show(t *testing.T) {
 	}
 	defer client.Close()
 
-	issues, err := client.List(&ListArgs{Limit: 1})
+	issues, err := client.List(&ListArgs{Limit: IntPtr(1)})
 	if err != nil || len(issues) == 0 {
 		t.Skip("No issues available for fallback test")
 	}

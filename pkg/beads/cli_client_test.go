@@ -81,26 +81,31 @@ func TestCLIClient_ListArgsBuilding(t *testing.T) {
 			name: "status only",
 			args: &ListArgs{Status: "open"},
 			wantArgs: []string{"/custom/bd", "list", "--json",
+				"--status", "open"},
+		},
+		{
+			name: "status with explicit no limit",
+			args: &ListArgs{Status: "open", Limit: IntPtr(0)},
+			wantArgs: []string{"/custom/bd", "list", "--json",
 				"--status", "open", "--limit", "0"},
 		},
 		{
 			name: "with labels (AND)",
 			args: &ListArgs{Status: "open", Labels: []string{"triage:review"}},
 			wantArgs: []string{"/custom/bd", "list", "--json",
-				"--status", "open", "-l", "triage:review", "--limit", "0"},
+				"--status", "open", "-l", "triage:review"},
 		},
 		{
 			name: "with multiple labels (AND)",
 			args: &ListArgs{Labels: []string{"triage:review", "priority:high"}},
 			wantArgs: []string{"/custom/bd", "list", "--json",
-				"-l", "triage:review", "-l", "priority:high", "--limit", "0"},
+				"-l", "triage:review", "-l", "priority:high"},
 		},
 		{
 			name: "with labels_any (OR)",
 			args: &ListArgs{LabelsAny: []string{"triage:review", "triage:ready"}},
 			wantArgs: []string{"/custom/bd", "list", "--json",
-				"--label-any", "triage:review", "--label-any", "triage:ready",
-				"--limit", "0"},
+				"--label-any", "triage:review", "--label-any", "triage:ready"},
 		},
 		{
 			name: "combined labels and labels_any",
@@ -112,14 +117,19 @@ func TestCLIClient_ListArgsBuilding(t *testing.T) {
 			wantArgs: []string{"/custom/bd", "list", "--json",
 				"--status", "open",
 				"-l", "triage:review",
-				"--label-any", "p0", "--label-any", "p1",
-				"--limit", "0"},
+				"--label-any", "p0", "--label-any", "p1"},
 		},
 		{
 			name: "with parent and type",
 			args: &ListArgs{IssueType: "bug", Parent: "epic-1"},
 			wantArgs: []string{"/custom/bd", "list", "--json",
-				"--type", "bug", "--parent", "epic-1", "--limit", "0"},
+				"--type", "bug", "--parent", "epic-1"},
+		},
+		{
+			name: "with explicit limit",
+			args: &ListArgs{Status: "open", Limit: IntPtr(50)},
+			wantArgs: []string{"/custom/bd", "list", "--json",
+				"--status", "open", "--limit", "50"},
 		},
 	}
 
@@ -143,7 +153,9 @@ func TestCLIClient_ListArgsBuilding(t *testing.T) {
 				for _, label := range tt.args.LabelsAny {
 					cmdArgs = append(cmdArgs, "--label-any", label)
 				}
-				cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", tt.args.Limit))
+				if tt.args.Limit != nil {
+				cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", *tt.args.Limit))
+			}
 			}
 			cmd, cancel := c.bdCommand(cmdArgs...)
 			defer cancel()

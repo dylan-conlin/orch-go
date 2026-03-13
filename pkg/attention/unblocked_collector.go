@@ -27,7 +27,7 @@ func (c *UnblockedCollector) Collect(role string) ([]AttentionItem, error) {
 	// Query open/in_progress issues
 	args := &beads.ListArgs{
 		Status: "open,in_progress",
-		Limit:  0, // Get all
+		Limit:  beads.IntPtr(0), // Get all
 	}
 
 	issues, err := c.client.List(args)

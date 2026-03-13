@@ -1100,7 +1100,7 @@ func TestStaleArgs_JSON(t *testing.T) {
 	args := StaleArgs{
 		Days:   30,
 		Status: "open",
-		Limit:  10,
+		Limit:  IntPtr(10),
 	}
 
 	data, err := json.Marshal(args)

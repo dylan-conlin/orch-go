@@ -5,6 +5,14 @@ package beads
 
 import "encoding/json"
 
+// IntPtr returns a pointer to the given int value.
+// Use IntPtr(0) to explicitly send limit=0 (no limit) in RPC requests.
+// Without this, omitempty drops the zero value, causing the beads daemon
+// to use its default limit (typically 10).
+func IntPtr(v int) *int {
+	return &v
+}
+
 // RPC operation constants matching beads internal/rpc/protocol.go
 const (
 	OpPing        = "ping"
@@ -96,7 +104,9 @@ type ListArgs struct {
 	Labels    []string `json:"labels,omitempty"`
 	LabelsAny []string `json:"labels_any,omitempty"`
 	IDs       []string `json:"ids,omitempty"`
-	Limit     int      `json:"limit,omitempty"`
+	// Limit controls the maximum number of results returned.
+	// Use IntPtr(0) for no limit. When nil, the beads daemon uses its default (10).
+	Limit *int `json:"limit,omitempty"`
 	// Title filters by title text (case-insensitive substring match).
 	Title string `json:"title,omitempty"`
 	// Parent filters by parent issue ID (shows children of specified issue).
@@ -115,7 +125,9 @@ type ReadyArgs struct {
 	Unassigned bool     `json:"unassigned,omitempty"`
 	Priority   *int     `json:"priority,omitempty"`
 	Type       string   `json:"type,omitempty"`
-	Limit      int      `json:"limit,omitempty"`
+	// Limit controls the maximum number of results returned.
+	// Use IntPtr(0) for no limit. When nil, the beads daemon uses its default (10).
+	Limit      *int     `json:"limit,omitempty"`
 	SortPolicy string   `json:"sort_policy,omitempty"`
 	Labels     []string `json:"labels,omitempty"`
 	LabelsAny  []string `json:"labels_any,omitempty"`
@@ -322,7 +334,9 @@ type DeleteArgs struct {
 type StaleArgs struct {
 	Days   int    `json:"days,omitempty"`
 	Status string `json:"status,omitempty"`
-	Limit  int    `json:"limit,omitempty"`
+	// Limit controls the maximum number of results returned.
+	// Use IntPtr(0) for no limit. When nil, the beads daemon uses its default.
+	Limit *int `json:"limit,omitempty"`
 }
 
 // DepAddArgs represents arguments for adding a dependency.

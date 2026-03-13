@@ -34,7 +34,7 @@ func NewCompetingCollector(client beads.BeadsClient, threshold float64) *Competi
 func (c *CompetingCollector) Collect(role string) ([]AttentionItem, error) {
 	issues, err := c.client.List(&beads.ListArgs{
 		Status: "open",
-		Limit:  0,
+		Limit:  beads.IntPtr(0),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query open issues: %w", err)

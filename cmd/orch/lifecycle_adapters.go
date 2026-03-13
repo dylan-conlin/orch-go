@@ -88,7 +88,7 @@ func (a *beadsAdapter) GetComments(beadsID string) ([]string, error) {
 }
 
 func (a *beadsAdapter) ListByLabel(label string) ([]agent.TrackedIssue, error) {
-	issues, err := a.client.List(&beads.ListArgs{Status: "open", Limit: 0})
+	issues, err := a.client.List(&beads.ListArgs{Status: "open", Limit: beads.IntPtr(0)})
 	if err != nil {
 		return nil, err
 	}

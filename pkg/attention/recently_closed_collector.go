@@ -38,7 +38,7 @@ func (c *RecentlyClosedCollector) Collect(role string) ([]AttentionItem, error) 
 	// Query beads for closed issues
 	args := &beads.ListArgs{
 		Status: "closed",
-		Limit:  0, // Get all closed issues
+		Limit:  beads.IntPtr(0), // Get all closed issues
 	}
 
 	closedIssues, err := c.client.List(args)

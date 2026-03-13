@@ -32,7 +32,7 @@ func (c *StaleIssueCollector) Collect(role string) ([]AttentionItem, error) {
 	// Query all open issues
 	issues, err := c.client.List(&beads.ListArgs{
 		Status: "open",
-		Limit:  0, // All open issues
+		Limit:  beads.IntPtr(0), // All open issues
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query open issues: %w", err)

@@ -154,7 +154,7 @@ func listTrackedIssuesLocal() ([]beads.Issue, error) {
 			defer client.Close()
 			issues, err := client.List(&beads.ListArgs{
 				LabelsAny: []string{"orch:agent"},
-				Limit:     0,
+				Limit:     beads.IntPtr(0),
 			})
 			if err == nil {
 				return issues, nil
@@ -172,7 +172,7 @@ func listTrackedIssuesForDir(dir string) ([]beads.Issue, error) {
 			defer client.Close()
 			issues, err := client.List(&beads.ListArgs{
 				LabelsAny: []string{"orch:agent"},
-				Limit:     0,
+				Limit:     beads.IntPtr(0),
 			})
 			if err == nil {
 				return issues, nil

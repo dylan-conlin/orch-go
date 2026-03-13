@@ -263,7 +263,7 @@ func BeadsActiveCount() int {
 			issues, err := client.List(&beads.ListArgs{
 				Status:    "in_progress",
 				LabelsAny: []string{orchAgentLabel},
-				Limit:     0,
+				Limit:     beads.IntPtr(0),
 			})
 			if err == nil {
 				count := 0

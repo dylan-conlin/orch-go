@@ -176,7 +176,7 @@ func listOpenBeadsIDs() (map[string]bool, error) {
 		if err := client.Connect(); err == nil {
 			defer client.Close()
 			for _, status := range []string{"open", "in_progress"} {
-				issues, err := client.List(&beads.ListArgs{Status: status, Limit: 0})
+				issues, err := client.List(&beads.ListArgs{Status: status, Limit: beads.IntPtr(0)})
 				if err == nil {
 					for _, issue := range issues {
 						result[issue.ID] = true

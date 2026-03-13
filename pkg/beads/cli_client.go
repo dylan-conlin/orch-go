@@ -108,8 +108,8 @@ func (c *CLIClient) Ready(args *ReadyArgs) ([]Issue, error) {
 	// Handle limit - default to 0 (no limit) to get ALL ready issues
 	// bd ready defaults to limit 10, which truncates results
 	limit := 0
-	if args != nil && args.Limit > 0 {
-		limit = args.Limit
+	if args != nil && args.Limit != nil {
+		limit = *args.Limit
 	}
 	cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", limit))
 
@@ -169,9 +169,11 @@ func (c *CLIClient) List(args *ListArgs) ([]Issue, error) {
 		for _, label := range args.LabelsAny {
 			cmdArgs = append(cmdArgs, "--label-any", label)
 		}
-		// Always include limit when args provided to override CLI default (50).
-		// Use 0 for unlimited.
-		cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", args.Limit))
+		// Include limit when explicitly set to override CLI default (50).
+		// Use IntPtr(0) for unlimited.
+		if args.Limit != nil {
+			cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", *args.Limit))
+		}
 	}
 
 	cmd, cancel := c.bdCommand(cmdArgs...)

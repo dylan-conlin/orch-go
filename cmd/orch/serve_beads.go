@@ -387,7 +387,7 @@ func handleQuestions(w http.ResponseWriter, r *http.Request) {
 	// Get all questions including closed (recent)
 	allQuestions, err := cliClient.List(&beads.ListArgs{
 		IssueType: "question",
-		Limit:     100, // Reasonable limit for dashboard
+		Limit:     beads.IntPtr(100), // Reasonable limit for dashboard
 	})
 	if err != nil {
 		resp := QuestionsAPIResponse{

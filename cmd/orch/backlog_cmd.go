@@ -112,7 +112,7 @@ func runBacklogCull() error {
 	// Query all open issues (P3 and P4 will be filtered in code)
 	issues, err := client.List(&beads.ListArgs{
 		Status: "open",
-		Limit:  0,
+		Limit:  beads.IntPtr(0),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to list issues: %w", err)
@@ -121,7 +121,7 @@ func runBacklogCull() error {
 	// Also get in_progress issues
 	inProgressIssues, err := client.List(&beads.ListArgs{
 		Status: "in_progress",
-		Limit:  0,
+		Limit:  beads.IntPtr(0),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to list in_progress issues: %w", err)

@@ -37,8 +37,8 @@ func ListReadyIssues() ([]Issue, error) {
 		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
 		if err := client.Connect(); err == nil {
 			defer client.Close()
-			// Use Limit: 0 to get ALL ready issues (bd ready defaults to limit 10)
-			beadsIssues, err := client.Ready(&beads.ReadyArgs{Limit: 0})
+			// Use IntPtr(0) to get ALL ready issues (bd ready defaults to limit 10)
+			beadsIssues, err := client.Ready(&beads.ReadyArgs{Limit: beads.IntPtr(0)})
 			if err == nil {
 				return convertBeadsIssues(beadsIssues), nil
 			}
@@ -97,7 +97,7 @@ func ListEpicChildren(epicID string) ([]Issue, error) {
 		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
 		if err := client.Connect(); err == nil {
 			defer client.Close()
-			beadsIssues, err := client.List(&beads.ListArgs{Parent: epicID, Limit: 0})
+			beadsIssues, err := client.List(&beads.ListArgs{Parent: epicID, Limit: beads.IntPtr(0)})
 			if err == nil {
 				return convertBeadsIssues(beadsIssues), nil
 			}
@@ -129,7 +129,7 @@ func ListIssuesWithLabel(label string) ([]Issue, error) {
 			defer client.Close()
 			beadsIssues, err := client.List(&beads.ListArgs{
 				LabelsAny: []string{label},
-				Limit:     0,
+				Limit:     beads.IntPtr(0),
 			})
 			if err == nil {
 				// Filter to open/in_progress only (RPC list returns all statuses)
@@ -321,7 +321,7 @@ func FindInProgressByTitle(title string) *Issue {
 			beadsIssues, err := client.List(&beads.ListArgs{
 				Status: "in_progress",
 				Title:  title,
-				Limit:  1,
+				Limit:  beads.IntPtr(1),
 			})
 			if err == nil && len(beadsIssues) > 0 {
 				issues := convertBeadsIssues(beadsIssues)
@@ -387,7 +387,7 @@ func ListReadyIssuesForProject(projectDir string) ([]Issue, error) {
 		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
 		if err := client.Connect(); err == nil {
 			defer client.Close()
-			beadsIssues, err := client.Ready(&beads.ReadyArgs{Limit: 0})
+			beadsIssues, err := client.Ready(&beads.ReadyArgs{Limit: beads.IntPtr(0)})
 			if err == nil {
 				issues := convertBeadsIssues(beadsIssues)
 				for i := range issues {
@@ -567,7 +567,7 @@ func ListIssuesWithLabelForProject(label, projectDir string) ([]Issue, error) {
 			defer client.Close()
 			beadsIssues, err := client.List(&beads.ListArgs{
 				LabelsAny: []string{label},
-				Limit:     0,
+				Limit:     beads.IntPtr(0),
 			})
 			if err == nil {
 				var filtered []Issue
