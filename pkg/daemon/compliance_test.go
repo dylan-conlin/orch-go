@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/daemonconfig"
 )
 
 func TestCheckPreSpawnGates_AllPass(t *testing.T) {
@@ -151,5 +153,74 @@ func TestCheckIssueCompliance_EpicChildExemptFromLabel(t *testing.T) {
 	result := d.CheckIssueCompliance(issue, nil, epicChildIDs)
 	if !result.Passed {
 		t.Errorf("CheckIssueCompliance() should allow epic child without label; Reason: %s", result.Reason)
+	}
+}
+
+// --- Compliance-level-aware gate tests ---
+
+func TestNewWithConfig_ComplianceDerivedVerificationThreshold(t *testing.T) {
+	// When compliance default is "relaxed", verification threshold should be derived (20)
+	cfg := DefaultConfig()
+	cfg.Compliance = daemonconfig.ComplianceConfig{Default: daemonconfig.ComplianceRelaxed}
+	d := NewWithConfig(cfg)
+
+	status := d.VerificationTracker.Status()
+	want := daemonconfig.DeriveVerificationThreshold(daemonconfig.ComplianceRelaxed)
+	if status.Threshold != want {
+		t.Errorf("VerificationTracker threshold = %d, want %d (derived from relaxed)", status.Threshold, want)
+	}
+}
+
+func TestNewWithConfig_ComplianceDerivedInvariantThreshold(t *testing.T) {
+	// When compliance default is "standard", invariant threshold should be derived (5)
+	cfg := DefaultConfig()
+	cfg.Compliance = daemonconfig.ComplianceConfig{Default: daemonconfig.ComplianceStandard}
+	d := NewWithConfig(cfg)
+
+	if d.InvariantChecker == nil {
+		t.Fatal("InvariantChecker should be initialized")
+	}
+	// The invariant checker's threshold is internal; test via behavior.
+	// With standard level, threshold is 5. Record 4 violation cycles — should not pause.
+	for i := 0; i < 4; i++ {
+		d.InvariantChecker.Check(&InvariantInput{
+			ActiveCount: -1, // trigger a violation
+			MaxAgents:   5,
+		})
+	}
+	if d.InvariantChecker.IsPaused() {
+		t.Error("InvariantChecker should NOT be paused after 4 violations with standard threshold (5)")
+	}
+	// 5th violation should trigger pause
+	d.InvariantChecker.Check(&InvariantInput{
+		ActiveCount: -1,
+		MaxAgents:   5,
+	})
+	if !d.InvariantChecker.IsPaused() {
+		t.Error("InvariantChecker should be paused after 5 violations with standard threshold (5)")
+	}
+}
+
+func TestNewWithConfig_ComplianceStrictPreservesDefaults(t *testing.T) {
+	// With strict compliance (default), thresholds should match the derive functions
+	cfg := DefaultConfig()
+	// No compliance override — defaults to strict
+	d := NewWithConfig(cfg)
+
+	status := d.VerificationTracker.Status()
+	want := daemonconfig.DeriveVerificationThreshold(daemonconfig.ComplianceStrict)
+	if status.Threshold != want {
+		t.Errorf("VerificationTracker threshold = %d, want %d (derived from strict)", status.Threshold, want)
+	}
+}
+
+func TestNewWithConfig_ComplianceAutonomousDisablesVerification(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Compliance = daemonconfig.ComplianceConfig{Default: daemonconfig.ComplianceAutonomous}
+	d := NewWithConfig(cfg)
+
+	status := d.VerificationTracker.Status()
+	if status.Threshold != 0 {
+		t.Errorf("VerificationTracker threshold = %d, want 0 (autonomous disables)", status.Threshold)
 	}
 }

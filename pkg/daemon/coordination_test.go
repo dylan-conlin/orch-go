@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/daemonconfig"
 )
 
 func TestRouteCompletion_EffortSmall(t *testing.T) {
@@ -97,5 +99,102 @@ func TestSkillRoute_PassthroughWhenNoHotspot(t *testing.T) {
 	}
 	if route.Skill != "feature-impl" {
 		t.Errorf("RouteIssueForSpawn() Skill = %q, want %q", route.Skill, "feature-impl")
+	}
+}
+
+// --- Compliance-level-aware architect escalation tests ---
+
+func TestRouteIssueForSpawn_RelaxedComplianceSkipsArchitectEscalation(t *testing.T) {
+	// With relaxed compliance for feature-impl, architect escalation should be skipped
+	// even when a hotspot match exists
+	d := &Daemon{
+		Config: Config{
+			Compliance: daemonconfig.ComplianceConfig{
+				Default: daemonconfig.ComplianceRelaxed,
+			},
+		},
+		HotspotChecker: &mockHotspotChecker{
+			hotspots: []HotspotWarning{
+				{Path: "pkg/daemon/daemon.go", Type: "fix-density", Score: 5},
+			},
+		},
+	}
+
+	issue := &Issue{
+		ID:        "proj-1",
+		Title:     "Fix daemon.go retry logic",
+		IssueType: "feature",
+	}
+	route, err := d.RouteIssueForSpawn(issue, "feature-impl", "opus")
+	if err != nil {
+		t.Fatalf("RouteIssueForSpawn() error: %v", err)
+	}
+	if route.ArchitectEscalated {
+		t.Error("RouteIssueForSpawn() should NOT escalate to architect when compliance is relaxed")
+	}
+	if route.Skill != "feature-impl" {
+		t.Errorf("RouteIssueForSpawn() Skill = %q, want %q (unchanged)", route.Skill, "feature-impl")
+	}
+}
+
+func TestRouteIssueForSpawn_StrictComplianceAllowsArchitectEscalation(t *testing.T) {
+	// With strict compliance, architect escalation should proceed normally
+	d := &Daemon{
+		Config: Config{
+			Compliance: daemonconfig.ComplianceConfig{
+				Default: daemonconfig.ComplianceStrict,
+			},
+		},
+		HotspotChecker: &mockHotspotChecker{
+			hotspots: []HotspotWarning{
+				{Path: "pkg/daemon/daemon.go", Type: "fix-density", Score: 5},
+			},
+		},
+	}
+
+	issue := &Issue{
+		ID:        "proj-1",
+		Title:     "Fix daemon.go retry logic",
+		IssueType: "feature",
+	}
+	route, err := d.RouteIssueForSpawn(issue, "feature-impl", "opus")
+	if err != nil {
+		t.Fatalf("RouteIssueForSpawn() error: %v", err)
+	}
+	if !route.ArchitectEscalated {
+		t.Error("RouteIssueForSpawn() should escalate to architect when compliance is strict")
+	}
+	if route.Skill != "architect" {
+		t.Errorf("RouteIssueForSpawn() Skill = %q, want %q", route.Skill, "architect")
+	}
+}
+
+func TestRouteIssueForSpawn_PerSkillComplianceOverride(t *testing.T) {
+	// Compliance is strict by default, but relaxed for feature-impl specifically
+	d := &Daemon{
+		Config: Config{
+			Compliance: daemonconfig.ComplianceConfig{
+				Default: daemonconfig.ComplianceStrict,
+				Skills:  map[string]daemonconfig.ComplianceLevel{"feature-impl": daemonconfig.ComplianceRelaxed},
+			},
+		},
+		HotspotChecker: &mockHotspotChecker{
+			hotspots: []HotspotWarning{
+				{Path: "pkg/daemon/daemon.go", Type: "fix-density", Score: 5},
+			},
+		},
+	}
+
+	issue := &Issue{
+		ID:        "proj-1",
+		Title:     "Fix daemon.go retry logic",
+		IssueType: "feature",
+	}
+	route, err := d.RouteIssueForSpawn(issue, "feature-impl", "opus")
+	if err != nil {
+		t.Fatalf("RouteIssueForSpawn() error: %v", err)
+	}
+	if route.ArchitectEscalated {
+		t.Error("RouteIssueForSpawn() should NOT escalate when skill-level compliance is relaxed")
 	}
 }
