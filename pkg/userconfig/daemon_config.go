@@ -151,6 +151,23 @@ type DaemonConfig struct {
 	// Path is a list of directories to add to the daemon's PATH environment variable.
 	// These are prepended to the system PATH.
 	Path []string `yaml:"path,omitempty"`
+
+	// Compliance holds per-spawn compliance level configuration.
+	// Levels: strict (default), standard, relaxed, autonomous.
+	Compliance *ComplianceYAMLConfig `yaml:"compliance,omitempty"`
+}
+
+// ComplianceYAMLConfig is the YAML representation of compliance configuration.
+// All levels are strings ("strict", "standard", "relaxed", "autonomous").
+type ComplianceYAMLConfig struct {
+	// Default is the global compliance level. Defaults to "strict".
+	Default string `yaml:"default,omitempty"`
+	// Skills maps skill names to compliance levels.
+	Skills map[string]string `yaml:"skills,omitempty"`
+	// Models maps model names to compliance levels.
+	Models map[string]string `yaml:"models,omitempty"`
+	// Combos maps "model+skill" keys to compliance levels (highest precedence).
+	Combos map[string]string `yaml:"combos,omitempty"`
 }
 
 // DaemonPollInterval returns the daemon poll interval in seconds.
@@ -472,6 +489,12 @@ func (c *Config) DaemonWorkingDirectory() string {
 		return filepath.Join(home, c.Daemon.WorkingDirectory[1:])
 	}
 	return c.Daemon.WorkingDirectory
+}
+
+// DaemonComplianceConfig returns the parsed compliance YAML config.
+// Returns nil if no compliance section is configured.
+func (c *Config) DaemonComplianceConfig() *ComplianceYAMLConfig {
+	return c.Daemon.Compliance
 }
 
 // DaemonPath returns the PATH directories to add to the daemon environment.

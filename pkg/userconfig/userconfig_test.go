@@ -1147,6 +1147,88 @@ func TestLoadMissingDaemonSection(t *testing.T) {
 	}
 }
 
+func TestLoadDaemonComplianceConfig(t *testing.T) {
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	configDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	configContent := `daemon:
+  compliance:
+    default: standard
+    skills:
+      architect: strict
+      issue-creation: autonomous
+    models:
+      opus: relaxed
+    combos:
+      "opus+feature-impl": standard
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	cc := cfg.DaemonComplianceConfig()
+	if cc == nil {
+		t.Fatal("DaemonComplianceConfig() = nil, want non-nil")
+	}
+	if cc.Default != "standard" {
+		t.Errorf("Compliance.Default = %q, want standard", cc.Default)
+	}
+	if cc.Skills["architect"] != "strict" {
+		t.Errorf("Compliance.Skills[architect] = %q, want strict", cc.Skills["architect"])
+	}
+	if cc.Skills["issue-creation"] != "autonomous" {
+		t.Errorf("Compliance.Skills[issue-creation] = %q, want autonomous", cc.Skills["issue-creation"])
+	}
+	if cc.Models["opus"] != "relaxed" {
+		t.Errorf("Compliance.Models[opus] = %q, want relaxed", cc.Models["opus"])
+	}
+	if cc.Combos["opus+feature-impl"] != "standard" {
+		t.Errorf("Compliance.Combos[opus+feature-impl] = %q, want standard", cc.Combos["opus+feature-impl"])
+	}
+}
+
+func TestLoadDaemonComplianceConfig_Missing(t *testing.T) {
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	configDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	configContent := `daemon:
+  poll_interval: 30
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cc := cfg.DaemonComplianceConfig(); cc != nil {
+		t.Errorf("DaemonComplianceConfig() = %v, want nil (no compliance section)", cc)
+	}
+}
+
 // =============================================================================
 // Tests for SessionConfig - Checkpoint Thresholds
 // =============================================================================

@@ -295,6 +295,91 @@ func TestFromUserConfig_AllFieldsCustom(t *testing.T) {
 	}
 }
 
+func TestFromUserConfig_ComplianceNil(t *testing.T) {
+	cfg := userconfig.DefaultConfig()
+	result := FromUserConfig(cfg)
+
+	// No compliance config = default to Strict
+	if result.Compliance.Default != ComplianceStrict {
+		t.Errorf("Compliance.Default = %v, want strict", result.Compliance.Default)
+	}
+	if got := result.Compliance.Resolve("feature-impl", "opus"); got != ComplianceStrict {
+		t.Errorf("Compliance.Resolve() = %v, want strict", got)
+	}
+}
+
+func TestFromUserConfig_ComplianceWithOverrides(t *testing.T) {
+	cfg := &userconfig.Config{
+		Daemon: userconfig.DaemonConfig{
+			Compliance: &userconfig.ComplianceYAMLConfig{
+				Default: "standard",
+				Skills: map[string]string{
+					"architect": "strict",
+					"issue-creation": "autonomous",
+				},
+				Models: map[string]string{
+					"opus": "relaxed",
+				},
+				Combos: map[string]string{
+					"opus+feature-impl": "standard",
+				},
+			},
+		},
+	}
+
+	result := FromUserConfig(cfg)
+
+	if result.Compliance.Default != ComplianceStandard {
+		t.Errorf("Compliance.Default = %v, want standard", result.Compliance.Default)
+	}
+
+	// Combo overrides everything
+	if got := result.Compliance.Resolve("feature-impl", "opus"); got != ComplianceStandard {
+		t.Errorf("Resolve combo = %v, want standard", got)
+	}
+	// Skill override
+	if got := result.Compliance.Resolve("architect", "sonnet"); got != ComplianceStrict {
+		t.Errorf("Resolve skill = %v, want strict", got)
+	}
+	// Model override
+	if got := result.Compliance.Resolve("investigation", "opus"); got != ComplianceRelaxed {
+		t.Errorf("Resolve model = %v, want relaxed", got)
+	}
+	// Default fallthrough
+	if got := result.Compliance.Resolve("investigation", "sonnet"); got != ComplianceStandard {
+		t.Errorf("Resolve default = %v, want standard", got)
+	}
+}
+
+func TestFromUserConfig_ComplianceInvalidLevel(t *testing.T) {
+	cfg := &userconfig.Config{
+		Daemon: userconfig.DaemonConfig{
+			Compliance: &userconfig.ComplianceYAMLConfig{
+				Default: "invalid_level",
+				Skills: map[string]string{
+					"feature-impl": "also_invalid",
+					"architect":    "strict",
+				},
+			},
+		},
+	}
+
+	result := FromUserConfig(cfg)
+
+	// Invalid default falls back to strict (zero value)
+	if result.Compliance.Default != ComplianceStrict {
+		t.Errorf("Compliance.Default = %v, want strict (invalid ignored)", result.Compliance.Default)
+	}
+	// Invalid skill level should be skipped
+	if _, ok := result.Compliance.Skills["feature-impl"]; ok {
+		t.Error("Invalid skill level should not be in Skills map")
+	}
+	// Valid skill level should be present
+	if got, ok := result.Compliance.Skills["architect"]; !ok || got != ComplianceStrict {
+		t.Errorf("Skills[architect] = %v, want strict", got)
+	}
+}
+
 func TestFromUserConfig_ReflectConfig(t *testing.T) {
 	enabled := false
 	interval := 120

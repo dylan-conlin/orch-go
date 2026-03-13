@@ -217,6 +217,10 @@ type Config struct {
 	// SynthesisAutoCreateThreshold is the minimum number of investigations in a cluster
 	// before auto-creating a synthesis issue. Default is 5.
 	SynthesisAutoCreateThreshold int
+
+	// Compliance holds per-spawn compliance level configuration.
+	// When nil/zero-value, defaults to ComplianceStrict (current behavior).
+	Compliance ComplianceConfig
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.

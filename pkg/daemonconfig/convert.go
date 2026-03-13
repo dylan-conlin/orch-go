@@ -58,5 +58,49 @@ func FromUserConfig(cfg *userconfig.Config) Config {
 
 		InvariantCheckEnabled:       cfg.DaemonInvariantCheckEnabled(),
 		InvariantViolationThreshold: cfg.DaemonInvariantViolationThreshold(),
+
+		Compliance: complianceFromYAML(cfg.DaemonComplianceConfig()),
 	}
+}
+
+// complianceFromYAML converts a userconfig YAML compliance config to runtime ComplianceConfig.
+func complianceFromYAML(yamlCfg *userconfig.ComplianceYAMLConfig) ComplianceConfig {
+	if yamlCfg == nil {
+		return ComplianceConfig{} // Default = ComplianceStrict (zero value)
+	}
+
+	cc := ComplianceConfig{}
+
+	if level, ok := ParseComplianceLevel(yamlCfg.Default); ok {
+		cc.Default = level
+	}
+
+	if len(yamlCfg.Skills) > 0 {
+		cc.Skills = make(map[string]ComplianceLevel, len(yamlCfg.Skills))
+		for k, v := range yamlCfg.Skills {
+			if level, ok := ParseComplianceLevel(v); ok {
+				cc.Skills[k] = level
+			}
+		}
+	}
+
+	if len(yamlCfg.Models) > 0 {
+		cc.Models = make(map[string]ComplianceLevel, len(yamlCfg.Models))
+		for k, v := range yamlCfg.Models {
+			if level, ok := ParseComplianceLevel(v); ok {
+				cc.Models[k] = level
+			}
+		}
+	}
+
+	if len(yamlCfg.Combos) > 0 {
+		cc.Combos = make(map[string]ComplianceLevel, len(yamlCfg.Combos))
+		for k, v := range yamlCfg.Combos {
+			if level, ok := ParseComplianceLevel(v); ok {
+				cc.Combos[k] = level
+			}
+		}
+	}
+
+	return cc
 }
