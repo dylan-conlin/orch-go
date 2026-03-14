@@ -142,6 +142,10 @@ type Daemon struct {
 	// for investigation clusters lacking model directories.
 	SynthesisAutoCreate SynthesisAutoCreateService
 
+	// ProactiveExtraction provides periodic scanning for files approaching the
+	// critical 1500-line threshold. Creates architect issues at 1200 lines.
+	ProactiveExtraction ProactiveExtractionService
+
 	// CompletionDedupTracker prevents re-processing the same Phase: Complete
 	// across poll cycles. Defense-in-depth for when daemon:ready-review label
 	// fails to persist (beads flakiness, label removed externally).

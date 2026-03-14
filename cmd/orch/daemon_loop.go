@@ -136,6 +136,9 @@ func daemonSetup() (*daemonLoopState, error) {
 	// Wire beads health service (reuses collectHealthSnapshot from doctor_health.go)
 	d.BeadsHealth = daemon.NewDefaultBeadsHealthService(collectHealthSnapshot, getHealthStore())
 
+	// Wire proactive extraction service (creates architect issues at 1200 lines)
+	d.ProactiveExtraction = daemon.NewDefaultProactiveExtractionService()
+
 	// Wire focus-aware priority boost
 	wireFocusBoost(d)
 

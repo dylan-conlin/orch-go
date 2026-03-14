@@ -139,6 +139,11 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 		}
 	}
 
+	// Proactive extraction (1200-line threshold architect issue creation)
+	if r := d.RunPeriodicProactiveExtraction(); r != nil {
+		handleProactiveExtractionResult(r, timestamp, verbose, logger)
+	}
+
 	return result
 }
 
@@ -486,6 +491,29 @@ func handlePlanStalenessResult(r *daemon.PlanStalenessResult, timestamp string, 
 			"scanned":  r.ScannedCount,
 			"slugs":    slugs,
 			"message":  r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+	}
+}
+
+func handleProactiveExtractionResult(r *daemon.ProactiveExtractionResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Proactive extraction error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.proactive_extraction", map[string]interface{}{
+			"created": 0,
+			"error":   r.Error.Error(),
+			"message": r.Message,
+		})
+	} else if r.Created > 0 {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		logDaemonEvent(logger, "daemon.proactive_extraction", map[string]interface{}{
+			"created":          r.Created,
+			"skipped":          r.Skipped,
+			"skipped_critical": r.SkippedCritical,
+			"scanned":          r.Scanned,
+			"created_issues":   r.CreatedIssues,
+			"message":          r.Message,
 		})
 	} else if verbose {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)

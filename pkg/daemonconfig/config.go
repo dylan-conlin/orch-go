@@ -240,6 +240,15 @@ type Config struct {
 	// PlanStalenessInterval is how often to check for stale plans (0 = disabled).
 	// Default is 30 minutes.
 	PlanStalenessInterval time.Duration
+
+	// ProactiveExtractionEnabled controls whether periodic proactive extraction scanning is enabled.
+	// When enabled, the daemon scans source files and creates architect issues for files
+	// crossing 1200 lines (before they hit the 1500-line critical threshold that blocks spawning).
+	ProactiveExtractionEnabled bool
+
+	// ProactiveExtractionInterval is how often to scan for files approaching critical size.
+	// Default is 6 hours.
+	ProactiveExtractionInterval time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -299,5 +308,7 @@ func DefaultConfig() Config {
 		LearningRefreshInterval:          time.Hour, // Hourly learning refresh + compliance auto-adjust
 		PlanStalenessEnabled:             true,
 		PlanStalenessInterval:            30 * time.Minute, // Check every 30 minutes
+		ProactiveExtractionEnabled:       true,
+		ProactiveExtractionInterval:      6 * time.Hour, // Every 6 hours
 	}
 }
