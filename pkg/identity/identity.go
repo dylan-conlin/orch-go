@@ -17,11 +17,12 @@ import (
 )
 
 // ProjectRegistry maps issue ID prefixes to project directories.
-// This enables cross-project operations by resolving which project
-// directory an issue belongs to.
+// Multiple directories can share the same prefix (e.g., when two projects
+// configure the same issue-prefix in .beads/config.yaml). This ensures
+// all project directories are queried for issues even when prefixes collide.
 type ProjectRegistry struct {
-	prefixToDir map[string]string
-	currentDir  string
+	prefixToDirs map[string][]string
+	currentDir   string
 }
 
 // ProjectEntry represents a registered project with its prefix and directory.
@@ -41,22 +42,34 @@ type kbProject struct {
 	Path string `json:"path"`
 }
 
+// addPrefix appends a directory to the prefix's directory list, deduplicating.
+func (r *ProjectRegistry) addPrefix(prefix, dir string) {
+	for _, existing := range r.prefixToDirs[prefix] {
+		if existing == dir {
+			return
+		}
+	}
+	r.prefixToDirs[prefix] = append(r.prefixToDirs[prefix], dir)
+}
+
 // NewProjectRegistryFromMap creates a ProjectRegistry from an explicit prefix-to-directory
 // mapping. Useful for testing and for callers that already have project data.
+// Each prefix maps to a single directory; use addPrefix for multi-dir registries.
 func NewProjectRegistryFromMap(prefixToDir map[string]string, currentDir string) *ProjectRegistry {
-	m := make(map[string]string, len(prefixToDir))
+	m := make(map[string][]string, len(prefixToDir))
 	for k, v := range prefixToDir {
-		m[k] = v
+		m[k] = []string{v}
 	}
 	return &ProjectRegistry{
-		prefixToDir: m,
-		currentDir:  currentDir,
+		prefixToDirs: m,
+		currentDir:   currentDir,
 	}
 }
 
 // NewProjectRegistry builds a registry by querying `kb projects list --json`
 // and reading each project's .beads/config.yaml for the issue prefix.
 // Falls back to using the directory basename as the prefix.
+// Multiple projects may share a prefix; all are retained.
 func NewProjectRegistry() (*ProjectRegistry, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -75,14 +88,14 @@ func NewProjectRegistry() (*ProjectRegistry, error) {
 	}
 
 	registry := &ProjectRegistry{
-		prefixToDir: make(map[string]string),
-		currentDir:  currentDir,
+		prefixToDirs: make(map[string][]string),
+		currentDir:   currentDir,
 	}
 
 	for _, proj := range projects {
 		prefix := resolvePrefix(proj.Path)
 		if prefix != "" {
-			registry.prefixToDir[prefix] = proj.Path
+			registry.addPrefix(prefix, proj.Path)
 		}
 	}
 
@@ -111,15 +124,15 @@ func NewProjectRegistryWithGroups() (*ProjectRegistry, error) {
 	kbProjects, kbNameToPath := listKBProjects()
 
 	registry := &ProjectRegistry{
-		prefixToDir: make(map[string]string),
-		currentDir:  currentDir,
+		prefixToDirs: make(map[string][]string),
+		currentDir:   currentDir,
 	}
 
 	// Add all kb-registered projects
 	for _, proj := range kbProjects {
 		prefix := resolvePrefix(proj.Path)
 		if prefix != "" {
-			registry.prefixToDir[prefix] = proj.Path
+			registry.addPrefix(prefix, proj.Path)
 		}
 	}
 
@@ -127,7 +140,7 @@ func NewProjectRegistryWithGroups() (*ProjectRegistry, error) {
 	groupsCfg, err := group.Load()
 	if err != nil {
 		// No groups.yaml — return kb-only registry
-		if len(registry.prefixToDir) == 0 {
+		if len(registry.prefixToDirs) == 0 {
 			return nil, fmt.Errorf("no projects found (kb projects list empty, no groups.yaml)")
 		}
 		return registry, nil
@@ -167,7 +180,7 @@ func NewProjectRegistryWithGroups() (*ProjectRegistry, error) {
 
 			prefix := resolvePrefix(memberPath)
 			if prefix != "" {
-				registry.prefixToDir[prefix] = memberPath
+				registry.addPrefix(prefix, memberPath)
 			}
 		}
 	}
@@ -224,12 +237,23 @@ func (r *ProjectRegistry) Equal(other *ProjectRegistry) bool {
 	if r == nil || other == nil {
 		return false
 	}
-	if len(r.prefixToDir) != len(other.prefixToDir) {
+	if len(r.prefixToDirs) != len(other.prefixToDirs) {
 		return false
 	}
-	for k, v := range r.prefixToDir {
-		if other.prefixToDir[k] != v {
+	for k, dirs := range r.prefixToDirs {
+		otherDirs, ok := other.prefixToDirs[k]
+		if !ok || len(dirs) != len(otherDirs) {
 			return false
+		}
+		// Compare as sets (order may differ)
+		set := make(map[string]bool, len(dirs))
+		for _, d := range dirs {
+			set[d] = true
+		}
+		for _, d := range otherDirs {
+			if !set[d] {
+				return false
+			}
 		}
 	}
 	return true
@@ -238,18 +262,18 @@ func (r *ProjectRegistry) Equal(other *ProjectRegistry) bool {
 // Diff returns the prefixes added to and removed from the other registry
 // compared to this one. Useful for logging registry changes.
 func (r *ProjectRegistry) Diff(other *ProjectRegistry) (added, removed []string) {
-	var old, new_ map[string]string
+	var old, new_ map[string][]string
 	if r != nil {
-		old = r.prefixToDir
+		old = r.prefixToDirs
 	}
 	if old == nil {
-		old = map[string]string{}
+		old = map[string][]string{}
 	}
 	if other != nil {
-		new_ = other.prefixToDir
+		new_ = other.prefixToDirs
 	}
 	if new_ == nil {
-		new_ = map[string]string{}
+		new_ = map[string][]string{}
 	}
 
 	for k := range new_ {
@@ -285,13 +309,16 @@ func resolvePrefix(projectPath string) string {
 }
 
 // Projects returns all registered projects as prefix-directory pairs.
+// When multiple directories share a prefix, each gets its own entry.
 func (r *ProjectRegistry) Projects() []ProjectEntry {
 	if r == nil {
 		return nil
 	}
-	entries := make([]ProjectEntry, 0, len(r.prefixToDir))
-	for prefix, dir := range r.prefixToDir {
-		entries = append(entries, ProjectEntry{Prefix: prefix, Dir: dir})
+	var entries []ProjectEntry
+	for prefix, dirs := range r.prefixToDirs {
+		for _, dir := range dirs {
+			entries = append(entries, ProjectEntry{Prefix: prefix, Dir: dir})
+		}
 	}
 	return entries
 }
@@ -311,12 +338,14 @@ func (r *ProjectRegistry) FilterByDirs(allowedDirs map[string]bool) *ProjectRegi
 		return nil
 	}
 	filtered := &ProjectRegistry{
-		prefixToDir: make(map[string]string),
-		currentDir:  r.currentDir,
+		prefixToDirs: make(map[string][]string),
+		currentDir:   r.currentDir,
 	}
-	for prefix, dir := range r.prefixToDir {
-		if allowedDirs[dir] {
-			filtered.prefixToDir[prefix] = dir
+	for prefix, dirs := range r.prefixToDirs {
+		for _, dir := range dirs {
+			if allowedDirs[dir] {
+				filtered.addPrefix(prefix, dir)
+			}
 		}
 	}
 	return filtered
@@ -333,7 +362,7 @@ func (r *ProjectRegistry) ExtractPrefix(issueID string) string {
 	// Try longest-match against registered prefixes.
 	// This handles multi-segment prefixes like "orch-go" correctly.
 	bestMatch := ""
-	for prefix := range r.prefixToDir {
+	for prefix := range r.prefixToDirs {
 		if strings.HasPrefix(issueID, prefix+"-") && len(prefix) > len(bestMatch) {
 			bestMatch = prefix
 		}
@@ -353,6 +382,7 @@ func (r *ProjectRegistry) ExtractPrefix(issueID string) string {
 // Resolve returns the project directory for an issue ID.
 // Returns empty string if the issue belongs to the current project
 // (no --workdir needed) or if the prefix is not found in the registry.
+// When multiple directories share a prefix, returns the first non-current directory.
 func (r *ProjectRegistry) Resolve(issueID string) string {
 	if r == nil {
 		return ""
@@ -363,17 +393,20 @@ func (r *ProjectRegistry) Resolve(issueID string) string {
 		return ""
 	}
 
-	dir, ok := r.prefixToDir[prefix]
-	if !ok {
+	dirs, ok := r.prefixToDirs[prefix]
+	if !ok || len(dirs) == 0 {
 		return ""
 	}
 
-	// If it resolves to the current directory, no workdir needed
-	if dir == r.currentDir {
-		return ""
+	// Return first non-currentDir match
+	for _, dir := range dirs {
+		if dir != r.currentDir {
+			return dir
+		}
 	}
 
-	return dir
+	// All dirs are currentDir → no workdir needed
+	return ""
 }
 
 // ResolveProjectDirectory determines the project directory and name.

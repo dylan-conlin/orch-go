@@ -8,9 +8,9 @@ import (
 
 func TestExtractPrefix_MultiSegment(t *testing.T) {
 	r := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
-			"bd":      "/home/user/beads",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
+			"bd":      {"/home/user/beads"},
 		},
 	}
 
@@ -35,9 +35,9 @@ func TestExtractPrefix_MultiSegment(t *testing.T) {
 
 func TestExtractPrefix_LongestMatch(t *testing.T) {
 	r := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch":    "/home/user/orch-cli",
-			"orch-go": "/home/user/orch-go",
+		prefixToDirs: map[string][]string{
+			"orch":    {"/home/user/orch-cli"},
+			"orch-go": {"/home/user/orch-go"},
 		},
 	}
 
@@ -62,9 +62,9 @@ func TestExtractPrefix_NilRegistry(t *testing.T) {
 
 func TestResolve_CrossProject(t *testing.T) {
 	r := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
-			"bd":      "/home/user/beads",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
+			"bd":      {"/home/user/beads"},
 		},
 		currentDir: "/home/user/orch-go",
 	}
@@ -90,6 +90,28 @@ func TestResolve_NilRegistry(t *testing.T) {
 	got := r.Resolve("orch-go-1169")
 	if got != "" {
 		t.Errorf("Resolve on nil registry = %q, want empty string", got)
+	}
+}
+
+func TestResolve_PrefixCollision(t *testing.T) {
+	// Two projects share the same prefix — Resolve returns the first non-current dir
+	r := &ProjectRegistry{
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go", "/home/user/harness"},
+		},
+		currentDir: "/home/user/orch-go",
+	}
+
+	got := r.Resolve("orch-go-1169")
+	if got != "/home/user/harness" {
+		t.Errorf("Resolve(orch-go-1169) = %q, want '/home/user/harness' (first non-current)", got)
+	}
+
+	// When current dir is harness, should resolve to orch-go
+	r.currentDir = "/home/user/harness"
+	got = r.Resolve("orch-go-1169")
+	if got != "/home/user/orch-go" {
+		t.Errorf("Resolve(orch-go-1169) = %q, want '/home/user/orch-go' (first non-current)", got)
 	}
 }
 
@@ -121,9 +143,9 @@ func TestResolvePrefix_FallbackToBasename(t *testing.T) {
 
 func TestProjects_ReturnsAllEntries(t *testing.T) {
 	r := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
-			"bd":      "/home/user/beads",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
+			"bd":      {"/home/user/beads"},
 		},
 		currentDir: "/home/user/orch-go",
 	}
@@ -145,6 +167,37 @@ func TestProjects_ReturnsAllEntries(t *testing.T) {
 	}
 }
 
+func TestProjects_PrefixCollision(t *testing.T) {
+	// Two projects share the same prefix — both should appear in Projects()
+	r := &ProjectRegistry{
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go", "/home/user/harness"},
+			"bd":      {"/home/user/beads"},
+		},
+		currentDir: "/home/user/orch-go",
+	}
+
+	projects := r.Projects()
+	if len(projects) != 3 {
+		t.Fatalf("Projects() returned %d entries, want 3 (2 for orch-go + 1 for bd)", len(projects))
+	}
+
+	// Verify all dirs are present
+	dirs := make(map[string]bool)
+	for _, p := range projects {
+		dirs[p.Dir] = true
+	}
+	if !dirs["/home/user/orch-go"] {
+		t.Error("Projects() missing /home/user/orch-go")
+	}
+	if !dirs["/home/user/harness"] {
+		t.Error("Projects() missing /home/user/harness")
+	}
+	if !dirs["/home/user/beads"] {
+		t.Error("Projects() missing /home/user/beads")
+	}
+}
+
 func TestProjects_NilRegistry(t *testing.T) {
 	var r *ProjectRegistry
 	projects := r.Projects()
@@ -155,8 +208,8 @@ func TestProjects_NilRegistry(t *testing.T) {
 
 func TestProjects_EmptyRegistry(t *testing.T) {
 	r := &ProjectRegistry{
-		prefixToDir: make(map[string]string),
-		currentDir:  "/home/user/orch-go",
+		prefixToDirs: make(map[string][]string),
+		currentDir:   "/home/user/orch-go",
 	}
 	projects := r.Projects()
 	if len(projects) != 0 {
@@ -166,8 +219,8 @@ func TestProjects_EmptyRegistry(t *testing.T) {
 
 func TestCurrentDir_ReturnsDir(t *testing.T) {
 	r := &ProjectRegistry{
-		prefixToDir: map[string]string{},
-		currentDir:  "/home/user/orch-go",
+		prefixToDirs: map[string][]string{},
+		currentDir:   "/home/user/orch-go",
 	}
 	if got := r.CurrentDir(); got != "/home/user/orch-go" {
 		t.Errorf("CurrentDir() = %q, want '/home/user/orch-go'", got)
@@ -237,8 +290,8 @@ func TestResolveProjectDirectory_NonexistentWorkdir(t *testing.T) {
 func TestResolveProjectFrom_WorkdirOverride(t *testing.T) {
 	tmpDir := t.TempDir()
 	r := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
 		},
 		currentDir: "/home/user/orch-go",
 	}
@@ -255,9 +308,9 @@ func TestResolveProjectFrom_WorkdirOverride(t *testing.T) {
 
 func TestResolveProjectFrom_RegistryLookup(t *testing.T) {
 	r := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
-			"pw":      "/home/user/price-watch",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
+			"pw":      {"/home/user/price-watch"},
 		},
 		currentDir: "/home/user/orch-go",
 	}
@@ -274,8 +327,8 @@ func TestResolveProjectFrom_RegistryLookup(t *testing.T) {
 
 func TestResolveProjectFrom_SameProjectFallsToCWD(t *testing.T) {
 	r := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
 		},
 		currentDir: "/home/user/orch-go",
 	}
@@ -306,8 +359,8 @@ func TestResolveProjectFrom_NilRegistry(t *testing.T) {
 
 func TestResolveProjectFrom_EmptyBeadsID(t *testing.T) {
 	r := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
 		},
 		currentDir: "/home/user/orch-go",
 	}
@@ -325,16 +378,16 @@ func TestResolveProjectFrom_EmptyBeadsID(t *testing.T) {
 
 func TestEqual_SameRegistries(t *testing.T) {
 	r1 := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
-			"bd":      "/home/user/beads",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
+			"bd":      {"/home/user/beads"},
 		},
 		currentDir: "/home/user/orch-go",
 	}
 	r2 := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
-			"bd":      "/home/user/beads",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
+			"bd":      {"/home/user/beads"},
 		},
 		currentDir: "/home/user/orch-go",
 	}
@@ -345,14 +398,14 @@ func TestEqual_SameRegistries(t *testing.T) {
 
 func TestEqual_DifferentRegistries(t *testing.T) {
 	r1 := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
 		},
 	}
 	r2 := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
-			"bd":      "/home/user/beads",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
+			"bd":      {"/home/user/beads"},
 		},
 	}
 	if r1.Equal(r2) {
@@ -366,23 +419,39 @@ func TestEqual_NilRegistries(t *testing.T) {
 		t.Error("Equal should return true for two nil registries")
 	}
 
-	r3 := &ProjectRegistry{prefixToDir: map[string]string{}}
+	r3 := &ProjectRegistry{prefixToDirs: map[string][]string{}}
 	if r1.Equal(r3) {
 		t.Error("Equal should return false for nil vs non-nil")
 	}
 }
 
-func TestDiff_AddedAndRemoved(t *testing.T) {
+func TestEqual_PrefixCollision(t *testing.T) {
 	r1 := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
-			"bd":      "/home/user/beads",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go", "/home/user/harness"},
 		},
 	}
 	r2 := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
-			"pw":      "/home/user/price-watch",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/harness", "/home/user/orch-go"},
+		},
+	}
+	if !r1.Equal(r2) {
+		t.Error("Equal should return true when same dirs in different order")
+	}
+}
+
+func TestDiff_AddedAndRemoved(t *testing.T) {
+	r1 := &ProjectRegistry{
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
+			"bd":      {"/home/user/beads"},
+		},
+	}
+	r2 := &ProjectRegistry{
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
+			"pw":      {"/home/user/price-watch"},
 		},
 	}
 	added, removed := r1.Diff(r2)
@@ -397,8 +466,8 @@ func TestDiff_AddedAndRemoved(t *testing.T) {
 func TestDiff_NilRegistries(t *testing.T) {
 	var r1 *ProjectRegistry
 	r2 := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
 		},
 	}
 	added, removed := r1.Diff(r2)
@@ -469,10 +538,10 @@ func TestDiscoverProjectPath_NoBeadsDir(t *testing.T) {
 
 func TestFilterByDirs(t *testing.T) {
 	r := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
-			"bd":      "/home/user/beads",
-			"pw":      "/home/user/price-watch",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
+			"bd":      {"/home/user/beads"},
+			"pw":      {"/home/user/price-watch"},
 		},
 		currentDir: "/home/user/orch-go",
 	}
@@ -502,6 +571,27 @@ func TestFilterByDirs(t *testing.T) {
 	}
 }
 
+func TestFilterByDirs_PrefixCollision(t *testing.T) {
+	r := &ProjectRegistry{
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go", "/home/user/harness"},
+		},
+		currentDir: "/home/user/orch-go",
+	}
+
+	// Only allow orch-go dir
+	allowed := map[string]bool{"/home/user/orch-go": true}
+	filtered := r.FilterByDirs(allowed)
+
+	projects := filtered.Projects()
+	if len(projects) != 1 {
+		t.Fatalf("FilterByDirs returned %d entries, want 1", len(projects))
+	}
+	if projects[0].Dir != "/home/user/orch-go" {
+		t.Errorf("FilterByDirs kept wrong dir: %q", projects[0].Dir)
+	}
+}
+
 func TestFilterByDirs_NilRegistry(t *testing.T) {
 	var r *ProjectRegistry
 	got := r.FilterByDirs(map[string]bool{"/foo": true})
@@ -517,9 +607,9 @@ func TestBuildProjectDirNames(t *testing.T) {
 	}
 
 	r := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"orch-go": "/home/user/orch-go",
-			"pw":      "/home/user/price-watch",
+		prefixToDirs: map[string][]string{
+			"orch-go": {"/home/user/orch-go"},
+			"pw":      {"/home/user/price-watch"},
 		},
 	}
 	names = BuildProjectDirNames(r)
@@ -528,5 +618,41 @@ func TestBuildProjectDirNames(t *testing.T) {
 	}
 	if names["pw"] != "price-watch" {
 		t.Errorf("names[pw] = %q, want 'price-watch'", names["pw"])
+	}
+}
+
+func TestNewProjectRegistryFromMap(t *testing.T) {
+	r := NewProjectRegistryFromMap(map[string]string{
+		"orch-go": "/home/user/orch-go",
+		"bd":      "/home/user/beads",
+	}, "/home/user/orch-go")
+
+	projects := r.Projects()
+	if len(projects) != 2 {
+		t.Fatalf("NewProjectRegistryFromMap returned %d entries, want 2", len(projects))
+	}
+
+	// Verify it works with Resolve
+	got := r.Resolve("bd-123")
+	if got != "/home/user/beads" {
+		t.Errorf("Resolve(bd-123) = %q, want '/home/user/beads'", got)
+	}
+}
+
+func TestAddPrefix_Deduplication(t *testing.T) {
+	r := &ProjectRegistry{
+		prefixToDirs: make(map[string][]string),
+	}
+
+	r.addPrefix("orch-go", "/home/user/orch-go")
+	r.addPrefix("orch-go", "/home/user/orch-go") // duplicate
+	r.addPrefix("orch-go", "/home/user/harness")
+
+	dirs := r.prefixToDirs["orch-go"]
+	if len(dirs) != 2 {
+		t.Fatalf("addPrefix should deduplicate, got %d dirs: %v", len(dirs), dirs)
+	}
+	if dirs[0] != "/home/user/orch-go" || dirs[1] != "/home/user/harness" {
+		t.Errorf("unexpected dirs: %v", dirs)
 	}
 }
