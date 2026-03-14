@@ -150,7 +150,8 @@ func (d *Detector) FindDuplicates(funcs []FuncInfo) []DupPair {
 // FindDuplicatesAgainst compares each function in "modified" against all
 // functions in "corpus" (plus modified-vs-modified). This is O(M×N) where
 // M=len(modified) instead of O(N²) for the full corpus.
-// Functions in modified should NOT also appear in corpus — deduplicate before calling.
+// Self-matches (same name + identical fingerprint across partitions) are
+// automatically suppressed to avoid false positives from pre-existing copies.
 func (d *Detector) FindDuplicatesAgainst(modified, corpus []FuncInfo) []DupPair {
 	var pairs []DupPair
 
@@ -162,6 +163,12 @@ func (d *Detector) FindDuplicatesAgainst(modified, corpus []FuncInfo) []DupPair 
 			}
 			sim := similarity(modified[i].Fingerprint, corpus[j].Fingerprint)
 			if sim >= d.Threshold {
+				// Skip self-matches: same function name with identical fingerprint
+				// in both partitions indicates a pre-existing literal copy across
+				// files, not agent-introduced duplication.
+				if modified[i].Name == corpus[j].Name && fingerprintEqual(modified[i].Fingerprint, corpus[j].Fingerprint) {
+					continue
+				}
 				if len(d.Allowlist) > 0 && isAllowlisted(modified[i].Name, corpus[j].Name, d.Allowlist) {
 					continue
 				}
@@ -285,6 +292,19 @@ func fingerprint(body *ast.BlockStmt) []string {
 		return true
 	})
 	return tokens
+}
+
+// fingerprintEqual returns true if two fingerprints are identical.
+func fingerprintEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // canMeetThreshold is a cheap O(1) pre-filter. The LCS-based similarity

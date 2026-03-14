@@ -293,6 +293,176 @@ func corpusDupB(entries []string) {
 	}
 }
 
+func TestFindDuplicatesAgainst_SkipsSelfMatch(t *testing.T) {
+	// Bug: when the same function (identical name + fingerprint) exists in both
+	// a modified file and a corpus file, the detector flags it as a duplicate.
+	// This is a pre-existing literal copy, not agent-introduced duplication.
+	//
+	// Example: inferSkillFromBeadsIssue exists in both cmd/orch/work_cmd.go and
+	// pkg/orch/spawn_inference.go. Modifying work_cmd.go puts the function in
+	// the modified partition while the corpus copy triggers a 100% self-match.
+	identicalBody := `package foo
+
+func inferSkillFromIssue(issue string) string {
+	if strings.Contains(issue, "bug") {
+		return "debugging"
+	}
+	if strings.Contains(issue, "feature") {
+		return "feature-impl"
+	}
+	return "investigation"
+}
+`
+	d := NewDetector()
+	d.MinBodyLines = 3
+	d.Threshold = 0.80
+
+	modifiedFuncs, err := d.ParseSource("cmd/work_cmd.go", identicalBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	corpusFuncs, err := d.ParseSource("pkg/spawn_inference.go", identicalBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pairs := d.FindDuplicatesAgainst(modifiedFuncs, corpusFuncs)
+
+	// Self-match (same name, identical fingerprint) should be suppressed
+	for _, p := range pairs {
+		if p.FuncA.Name == p.FuncB.Name && p.Similarity >= 1.0-1e-9 {
+			t.Errorf("self-match not suppressed: %s (%s) ↔ %s (%s) at %.1f%%",
+				p.FuncA.Name, p.FuncA.File, p.FuncB.Name, p.FuncB.File, p.Similarity*100)
+		}
+	}
+}
+
+func TestFindDuplicatesAgainst_KeepsRenamedClone(t *testing.T) {
+	// Ensure the fix doesn't suppress legitimate renamed clones.
+	// processItems ↔ handleEntries should still be detected.
+	src1 := `package foo
+
+func processItems(items []string) {
+	for _, item := range items {
+		result := strings.TrimSpace(item)
+		if result == "" {
+			continue
+		}
+		fmt.Println(result)
+	}
+}
+`
+	src2 := `package foo
+
+func handleEntries(entries []string) {
+	for _, entry := range entries {
+		cleaned := strings.TrimSpace(entry)
+		if cleaned == "" {
+			continue
+		}
+		fmt.Println(cleaned)
+	}
+}
+`
+	d := NewDetector()
+	d.MinBodyLines = 3
+	d.Threshold = 0.80
+
+	modifiedFuncs, _ := d.ParseSource("modified.go", src2)
+	corpusFuncs, _ := d.ParseSource("existing.go", src1)
+
+	pairs := d.FindDuplicatesAgainst(modifiedFuncs, corpusFuncs)
+	if len(pairs) == 0 {
+		t.Fatal("renamed clone should still be detected")
+	}
+}
+
+func TestFindDuplicatesAgainst_KeepsSameNameDiverged(t *testing.T) {
+	// Same-named function in two files but bodies have diverged.
+	// This should still be flagged — the bodies are different enough
+	// to be interesting but similar enough to exceed threshold.
+	src1 := `package foo
+
+func processItems(items []string) {
+	for _, item := range items {
+		result := strings.TrimSpace(item)
+		if result == "" {
+			continue
+		}
+		fmt.Println(result)
+	}
+}
+`
+	src2 := `package bar
+
+func processItems(items []string) {
+	for _, item := range items {
+		result := strings.TrimSpace(item)
+		if result == "" {
+			continue
+		}
+		fmt.Println(result)
+		fmt.Println("extra line")
+	}
+}
+`
+	d := NewDetector()
+	d.MinBodyLines = 3
+	d.Threshold = 0.80
+
+	modifiedFuncs, _ := d.ParseSource("modified.go", src2)
+	corpusFuncs, _ := d.ParseSource("corpus.go", src1)
+
+	pairs := d.FindDuplicatesAgainst(modifiedFuncs, corpusFuncs)
+	// Same name but different bodies — should still be flagged if above threshold
+	if len(pairs) == 0 {
+		t.Fatal("diverged same-name functions should still be detected")
+	}
+}
+
+func TestCheckModifiedFilesProject_SelfMatchSuppressed(t *testing.T) {
+	// Integration test: same function exists as literal copy in two packages.
+	// Modifying one file should NOT flag the pre-existing copy.
+	dir := t.TempDir()
+
+	pkg1 := filepath.Join(dir, "pkg1")
+	pkg2 := filepath.Join(dir, "pkg2")
+	os.MkdirAll(pkg1, 0755)
+	os.MkdirAll(pkg2, 0755)
+
+	identicalFunc := `func inferSkill(issue string) string {
+	if strings.Contains(issue, "bug") {
+		return "debugging"
+	}
+	if strings.Contains(issue, "feature") {
+		return "feature-impl"
+	}
+	return "investigation"
+}
+`
+	// Both files have the EXACT same function
+	os.WriteFile(filepath.Join(pkg1, "work.go"), []byte("package pkg1\n\n"+identicalFunc), 0644)
+	os.WriteFile(filepath.Join(pkg2, "spawn.go"), []byte("package pkg2\n\n"+identicalFunc), 0644)
+
+	d := NewDetector()
+	d.MinBodyLines = 3
+	d.Threshold = 0.80
+
+	// Only pkg1/work.go was modified — the copy in pkg2 is pre-existing
+	pairs, err := d.CheckModifiedFilesProject(dir, []string{"pkg1/work.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Self-match should be suppressed
+	for _, p := range pairs {
+		if p.FuncA.Name == p.FuncB.Name && p.Similarity >= 1.0-1e-9 {
+			t.Errorf("self-match not suppressed in project scan: %s (%s) ↔ %s (%s)",
+				p.FuncA.Name, p.FuncA.File, p.FuncB.Name, p.FuncB.File)
+		}
+	}
+}
+
 // BenchmarkFindDuplicates_AllVsAll benchmarks the old O(N²) approach.
 func BenchmarkFindDuplicates_AllVsAll(b *testing.B) {
 	funcs := generateSyntheticFuncs(500, 50)
