@@ -1,0 +1,38 @@
+---
+# Verification Spec for: Measure Spawn Rate Limiter and Concurrency Gate
+# Issue: orch-go-y7i1p
+
+verification:
+  type: investigation
+  tier: full
+
+outcomes:
+  - name: "4-property measurement table completed"
+    status: pass
+    evidence: "Investigation findings section contains cost/coverage/precision/calibration for all 4 mechanisms"
+    command: "grep -c 'Cost\\|Coverage\\|Precision\\|Calibration' .kb/investigations/2026-03-13-inv-measure-spawn-rate-limiter-concurrency.md"
+
+  - name: "Benchmark tests created and passing"
+    status: pass
+    evidence: "11 benchmarks in rate_limiter_bench_test.go, all passing"
+    command: "go test ./pkg/daemon/ -bench 'Benchmark' -benchmem -count=1 -run '^$' 2>&1 | grep -c 'Benchmark'"
+    expected: "11"
+
+  - name: "Existing tests still pass"
+    status: pass
+    evidence: "Rate limiter, worker pool, and spawn gate tests all pass"
+    commands:
+      - "go test ./pkg/daemon/ -run 'TestRateLimiter|TestWorkerPool' -count=1"
+      - "go test ./pkg/spawn/gates/ -run 'TestDefault|TestUsage' -count=1"
+
+  - name: "Double-gating architecture documented"
+    status: pass
+    evidence: "Finding 2 in investigation documents daemon.SpawnWork → orch work → RunPreFlightChecks"
+
+  - name: "Zero block rate documented with event log evidence"
+    status: pass
+    evidence: "Finding 3: 0 blocks across 406 spawns, 54 warnings"
+
+manual_verification:
+  - "Review investigation file for accuracy of double-gating claim"
+  - "Decide whether daemon-side gates should be instrumented (implementation) or whether double-gating should be resolved (architectural)"
