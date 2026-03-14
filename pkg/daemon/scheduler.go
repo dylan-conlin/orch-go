@@ -21,6 +21,8 @@ const (
 	TaskLearningRefresh       = "learning_refresh"
 	TaskPlanStaleness         = "plan_staleness"
 	TaskProactiveExtraction   = "proactive_extraction"
+	TaskTriggerScan           = "trigger_scan"
+	TaskDigest                = "digest"
 )
 
 // periodicTask holds the scheduling state for a single periodic task.
@@ -132,6 +134,8 @@ func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s.Register(TaskLearningRefresh, cfg.LearningRefreshEnabled, cfg.LearningRefreshInterval)
 	s.Register(TaskPlanStaleness, cfg.PlanStalenessEnabled, cfg.PlanStalenessInterval)
 	s.Register(TaskProactiveExtraction, cfg.ProactiveExtractionEnabled, cfg.ProactiveExtractionInterval)
+	s.Register(TaskTriggerScan, cfg.TriggerScanEnabled, cfg.TriggerScanInterval)
+	s.Register(TaskDigest, cfg.DigestEnabled, cfg.DigestInterval)
 	return s
 }
 

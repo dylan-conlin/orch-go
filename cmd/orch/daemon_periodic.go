@@ -144,6 +144,11 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 		handleProactiveExtractionResult(r, timestamp, verbose, logger)
 	}
 
+	// Trigger scan (pattern detectors create issues for recurring problems)
+	if r := d.RunPeriodicTriggerScan(d.TriggerDetectors); r != nil {
+		handleTriggerScanResult(r, timestamp, verbose, logger)
+	}
+
 	return result
 }
 
@@ -514,6 +519,30 @@ func handleProactiveExtractionResult(r *daemon.ProactiveExtractionResult, timest
 			"scanned":          r.Scanned,
 			"created_issues":   r.CreatedIssues,
 			"message":          r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+	}
+}
+
+func handleTriggerScanResult(r *daemon.TriggerScanResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Trigger scan error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.trigger_scan", map[string]interface{}{
+			"created": 0,
+			"error":   r.Error.Error(),
+			"message": r.Message,
+		})
+	} else if r.Created > 0 {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		logDaemonEvent(logger, "daemon.trigger_scan", map[string]interface{}{
+			"created":        r.Created,
+			"detected":       r.Detected,
+			"skipped":        r.Skipped,
+			"skipped_budget": r.SkippedBudget,
+			"skipped_dedup":  r.SkippedDedup,
+			"created_issues": r.CreatedIssues,
+			"message":        r.Message,
 		})
 	} else if verbose {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)

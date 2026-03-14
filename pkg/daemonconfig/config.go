@@ -249,6 +249,26 @@ type Config struct {
 	// ProactiveExtractionInterval is how often to scan for files approaching critical size.
 	// Default is 6 hours.
 	ProactiveExtractionInterval time.Duration
+
+	// TriggerScanEnabled controls whether periodic pattern detection trigger scanning is enabled.
+	// When enabled, the daemon runs pattern detectors that surface recurring bugs,
+	// orphaned investigations, stale threads, etc. as beads issues.
+	TriggerScanEnabled bool
+
+	// TriggerScanInterval is how often to run the trigger scan (0 = disabled).
+	// Default is 1 hour.
+	TriggerScanInterval time.Duration
+
+	// TriggerBudgetMax is the maximum number of open daemon:trigger issues allowed.
+	// Prevents creation/removal asymmetry from bloating the issue queue.
+	// Default is 10.
+	TriggerBudgetMax int
+
+	// DigestEnabled controls whether the periodic digest producer is enabled.
+	DigestEnabled bool
+
+	// DigestInterval is how often to scan for artifact changes and produce digests.
+	DigestInterval time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -310,5 +330,10 @@ func DefaultConfig() Config {
 		PlanStalenessInterval:            30 * time.Minute, // Check every 30 minutes
 		ProactiveExtractionEnabled:       true,
 		ProactiveExtractionInterval:      6 * time.Hour, // Every 6 hours
+		TriggerScanEnabled:              true,
+		TriggerScanInterval:             time.Hour, // Hourly trigger scan
+		TriggerBudgetMax:                10,         // Max 10 open trigger issues
+		DigestEnabled:                    true,
+		DigestInterval:                   30 * time.Minute,
 	}
 }
