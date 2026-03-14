@@ -1,0 +1,35 @@
+verification:
+  type: investigation
+  probe_path: .kb/models/harness-engineering/probes/2026-03-13-probe-duplication-detector-precision-measurement.md
+  model_updated: .kb/models/harness-engineering/model.md
+
+  checks:
+    - name: probe_file_exists
+      command: "test -f .kb/models/harness-engineering/probes/2026-03-13-probe-duplication-detector-precision-measurement.md"
+      expected: "exit 0"
+      status: passed
+
+    - name: model_updated_with_precision_data
+      command: "grep -c '64.6% precision' .kb/models/harness-engineering/model.md"
+      expected: ">=1"
+      status: passed
+
+    - name: all_four_probe_sections_filled
+      command: "grep -c '^## ' .kb/models/harness-engineering/probes/2026-03-13-probe-duplication-detector-precision-measurement.md"
+      expected: ">=4 (Question, What I Tested, What I Observed, Model Impact)"
+      status: passed
+
+    - name: synthesis_exists
+      command: "test -f .orch/workspace/og-inv-add-precision-measurement-13mar-0a4d/SYNTHESIS.md"
+      expected: "exit 0"
+      status: passed
+
+  key_findings:
+    - "Precision: 64.6% (164 TP / 90 FP across 259 occurrences)"
+    - "FP rate: 35.4% — contradicts assumed 0%"
+    - "Root causes: structural coincidence (40%), different semantics (47%), self-match (7%), opposite ops (7%)"
+    - "Confirms model invariant 7: enforcement without measurement is theological"
+
+  manual_verification:
+    - "Review probe classifications — are the 15 FP pairs correctly classified?"
+    - "Review model updates — do the three edits accurately reflect findings?"
