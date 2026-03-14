@@ -1,7 +1,7 @@
 # Model: Harness Engineering
 
 **Domain:** Multi-Agent Code Quality Practices
-**Last Updated:** 2026-03-11
+**Last Updated:** 2026-03-13
 **Validation Status:** WORKING HYPOTHESIS — practices are grounded in one system (orch-go, 3 months). Independent external review (Codex, Mar 10) identified the framework as "software architecture + CI/policy enforcement + tech debt management with agent vocabulary" — strongest as internal operating model, weakest when claiming to be a new discipline. The practices (hard/soft distinction, gate layering, attractor + gate pattern) work in this system. The generalizations are untested. See `.kb/threads/2026-03-10-closed-loop-risk-ai-agents.md`.
 **Synthesized From:**
 - `.kb/investigations/2026-03-07-inv-analyze-accretion-pattern-orch-go.md` — Accretion structural analysis (daemon.go +892 lines, 6 cross-cutting concerns)
@@ -47,7 +47,7 @@ Every harness component is either hard or soft:
 | Mechanism | What It Prevents | Source | Status |
 |-----------|-----------------|--------|--------|
 | Pre-commit growth gate | Accretion past 800/600 line thresholds | `pkg/verify/accretion_precommit.go`, `scripts/pre-commit-exec-start-cleanup.sh` | **Shipped** — hard block >1500, warning-only >800 (+30 net) / >600 (+50 net). Wired via `orch precommit accretion` (orch-go-t7te8) |
-| Spawn hotspot gate | Feature-impl/debugging on CRITICAL (>1500 line) files | `pkg/spawn/gates/hotspot.go` | Shipped, blocking |
+| Spawn hotspot gate | Feature-impl/debugging on CRITICAL (>1500 line) files | `pkg/spawn/gates/hotspot.go` | Shipped, blocking — **currently dormant** (0/201 fires in 30d, no CRITICAL files exist, ~300ms cost per eval). See Mar 13 probe. |
 | Build gate (`go build`) | Broken compilation reaching completion | `pkg/verify/check.go` — unfakeable gate (Go-specific; TypeScript has no equivalent — see cross-language probe) | Shipped |
 | Completion accretion gate | Agent-caused growth past thresholds | `pkg/verify/accretion.go` (800/1500 thresholds, ±50 delta) | Shipped, **exempts pre-existing bloat** — files already over 1500 get warning, not block (Mar 8 probe) |
 | Architecture lint tests | Forbidden lifecycle state packages/imports | `cmd/orch/architecture_lint_test.go` (4 tests) | Shipped, not in CI |
@@ -154,7 +154,7 @@ OpenAI's Codex team (~1M lines, 1,500 PRs, 3-7 engineers, 5 months, zero manual 
 |---|---|---|
 | Duplication detector (hard, deterministic) | No timing telemetry | 111s per completion — invisible until manually profiled. O(n²) cost was architectural, not a bug. |
 | Completion pipeline (hard+soft, 15 gates) | 52% of agent.completed events lacked skill/outcome fields | Cannot calculate gate accuracy — no denominator data. Measured survivors, not decisions. |
-| Spawn gates (hard, blocking) | 0 gate_decision events emitted | Knew gates existed but not how often they fired, what they blocked, or whether blocks were correct |
+| Spawn gates (hard, blocking) | 0 gate_decision events emitted (fixed Mar 11); hotspot gate 0/201 fires in 30d (Mar 13 probe) | Knew gates existed but not how often they fired, what they blocked, or whether blocks were correct. After instrumentation: hotspot gate confirmed dormant — evaluates every spawn (~300ms) but has never blocked because no CRITICAL files exist in codebase. |
 | Accretion delta (hard, per-completion) | 4.7% coverage (path filter bug) | 95% of completions silently skipped — gate appeared active but was nearly blind |
 | Health score gate (soft masquerading as hard) | Score formula calibrated to pass existing state | 89% of 37→73 improvement was recalibration, not structural. Gate that never fires = false assurance |
 
@@ -364,6 +364,26 @@ A useful way to think about agent failures, though in practice most failures are
 
 **Fix:** Pair every enforcement layer with measurement from day one. The measurement plan (Mar 11) shipped instrumentation across all 4 gaps: pipeline timing, gate_decision events, accretion coverage fix, field enrichment.
 
+### 7b. Gate Dormancy (Enforcement Cost Without Value)
+
+**What happens:** A gate evaluates correctly — its logic is sound, it has tests, it's wired into the pipeline — but its triggering condition doesn't exist in the current environment. The gate imposes cost (evaluation time, code complexity, cognitive overhead) while providing zero enforcement value.
+
+**Evidence (Mar 13 probe):** The spawn hotspot gate:
+- **Cost:** 233ms mean per invocation (319ms median, 358ms P95). 33.6s total across 144 completions.
+- **Precision:** 0 blocks out of 201 evaluations = 0.0% fire rate.
+- **Root cause:** No files in the codebase currently exceed 1500 lines (largest non-test Go file: 1040 lines). Successful extraction efforts eliminated all CRITICAL files.
+- **Secondary precision gap:** 56% of feature-impl/debugging task descriptions lack file paths. The gate's `extractPathsFromTask` regex can only match explicit file path patterns, so even with CRITICAL files, the gate would miss the majority of targeting tasks.
+- **All three layers dormant:** Layer 1 (spawn gate): 0/201 blocks. Layer 2 (daemon escalation): 0/30 escalations. Layer 3 (context advisory): 0 firings.
+
+**Three causes of dormancy:**
+1. **Threshold exceeded by prior success** — CRITICAL files were extracted below the 1500-line threshold. The gate was needed, it motivated extraction, and now its job is done. This is the best case for dormancy.
+2. **Input format mismatch** — The gate matches file paths in task text, but 56% of tasks describe work semantically ("fix daemon polling"), not by path. Even an active gate would have a structural blind spot.
+3. **Coverage gap** — Only 49.5% of spawns are evaluated by the hotspot gate (rest are daemon-driven or lack checker injection).
+
+**Why dormancy is distinct from other failure modes:** It's not a false positive (gate fires incorrectly) or false negative (gate fails to fire when it should). It's an environmental condition where the gate evaluates correctly but the world has changed such that it can't fire. Without measurement, dormancy is invisible — the gate appears to be providing protection when it's actually providing only cost.
+
+**The lifecycle pattern:** A gate can transition: **needed → shipped → active → dormant → needed again**. The hotspot gate is currently in the "dormant" phase (successful extraction eliminated triggers). If a file grows past 1500 lines again, the gate will reactivate. This is healthy — dormancy isn't permanent failure. But the cost is permanent: ~300ms per spawn regardless of dormancy state.
+
 ### 8. Measurement Artifacts in Soft Harness
 
 **What happens:** Soft harness appears to work based on flawed measurement, creating false confidence.
@@ -463,6 +483,8 @@ A useful way to think about agent failures, though in practice most failures are
 
 **2026-03-11:** Measurement reframed as first-class paired surface. Instrumentation audit (52% field gaps, 0 gate events, 111s invisible dupdetect cost, 4.7% accretion coverage) proved enforcement without measurement is operationally broken. Model updated from "3-layer enforcement stack" to "paired enforcement+measurement surfaces." Invariant #7 added. New failure mode (#7: Enforcement Without Measurement) added. Phase 1-3 of measurement plan shipped: field enrichment, gate_decision events, duplication.detected events, pipeline timing, accretion coverage fix.
 
+**2026-03-13:** Hotspot gate cost+precision probe. Gate evaluated 201 times, blocked 0. All three enforcement layers dormant — no CRITICAL files exist (largest non-test Go file: 1040 lines). ~300ms/eval cost for zero enforcement value. New failure mode: dormancy (gate evaluates correctly but triggering condition doesn't exist). Secondary precision gap: 56% of tasks lack file paths the gate needs to match. Test contamination: 132 fake hotspot_bypassed events in events.jsonl from test leaks.
+
 **2026-03-08 (evening):** Compliance vs coordination failure mode distinction crystallized. daemon.go +892 was coordination failure (30 agents each correct, collectively incoherent), not compliance failure. Stronger models fix compliance but worsen coordination — faster agents accrete more confidently. Harness engineering reframed as permanent discipline (coordination infrastructure) rather than transitional (training wheels). Publication plan created with 4 phases: deepen model → cross-language evidence → publication draft → portable tooling.
 
 ---
@@ -495,6 +517,9 @@ A useful way to think about agent failures, though in practice most failures are
 - OpenAI: https://openai.com/index/harness-engineering/
 - Fowler/Bockeler: https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html
 - Anthropic: https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents — Single-agent, multi-session. "Harness" = orchestration framework for context continuity. Does NOT address multi-agent coordination.
+
+**Merged Probes:**
+- `.kb/models/harness-engineering/probes/2026-03-13-probe-hotspot-gate-cost-precision-measurement.md` — Hotspot gate dormancy: 0/201 blocks, ~300ms/eval, 56% task text path-matching gap. New failure mode #7b (dormancy). Test contamination: 132 fake events in events.jsonl. (CONFIRMS invariant #7, EXTENDS with dormancy failure mode)
 - Cemri et al., "Why Do Multi-Agent LLM Systems Fail?" arXiv:2503.13657 — MAST taxonomy: 1,600+ traces, 14 failure modes, 3 categories. FC2 (inter-agent misalignment) = ~32% of failures. Frames solution as "deeper social reasoning" (model improvement), not architecture. Their FC1/FC2/FC3 maps to our compliance/coordination/verification but they don't recognize opposite model-improvement trajectories.
 
 **Primary Evidence (Verify These):**
