@@ -146,6 +146,22 @@ type Daemon struct {
 	// critical 1500-line threshold. Creates architect issues at 1200 lines.
 	ProactiveExtraction ProactiveExtractionService
 
+	// TriggerScan provides periodic pattern detection that creates beads issues
+	// for recurring bugs, orphaned investigations, stale threads, etc.
+	TriggerScan TriggerScanService
+
+	// TriggerDetectors holds the registered pattern detectors for the trigger scan system.
+	// Constructed at daemon startup, used by RunPeriodicTriggerScan.
+	TriggerDetectors []PatternDetector
+
+	// Digest provides periodic scanning of .kb/ artifacts and production
+	// of consumable digest products in ~/.orch/digest/.
+	Digest DigestService
+	// DigestDir is the directory where digest product files are stored.
+	DigestDir string
+	// DigestStatePath is the path to the digest scan state file.
+	DigestStatePath string
+
 	// CompletionDedupTracker prevents re-processing the same Phase: Complete
 	// across poll cycles. Defense-in-depth for when daemon:ready-review label
 	// fails to persist (beads flakiness, label removed externally).
