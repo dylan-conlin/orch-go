@@ -16,7 +16,7 @@ SOURCE_DIR ?= $(shell pwd)
 GIT_HASH ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.sourceDir=$(SOURCE_DIR) -X main.gitHash=$(GIT_HASH)"
 
-.PHONY: all build clean test install install-restart fmt lint docs version
+.PHONY: all build clean test install install-restart fmt lint lint-arch docs version
 
 # Default target
 all: build
@@ -65,6 +65,10 @@ clean:
 fmt:
 	go fmt ./...
 
+# Run architecture lint tests
+lint-arch:
+	go test -v -run 'TestArchitectureLint' -count=1 ./cmd/orch/
+
 # Run linter
 lint:
 	golangci-lint run
@@ -101,6 +105,7 @@ help:
 	@echo "  clean           - Clean build artifacts"
 	@echo "  fmt             - Format code"
 	@echo "  lint            - Run linter"
+	@echo "  lint-arch       - Run architecture lint tests"
 	@echo "  vet             - Run go vet"
 	@echo "  tidy            - Tidy modules"
 	@echo "  run             - Build and run"

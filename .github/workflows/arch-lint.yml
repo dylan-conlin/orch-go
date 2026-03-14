@@ -1,0 +1,23 @@
+name: Architecture Lint
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  arch-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for git diff in lint tests
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Architecture lint tests
+        run: go test -v -run 'TestArchitectureLint' -count=1 ./cmd/orch/
