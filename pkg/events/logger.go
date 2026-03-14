@@ -93,7 +93,12 @@ func NewDefaultLogger() *Logger {
 }
 
 // DefaultLogPath returns the default path to events.jsonl.
+// If ORCH_EVENTS_PATH is set, it overrides the default (~/.orch/events.jsonl).
+// This is used by tests to prevent writing to the production log.
 func DefaultLogPath() string {
+	if p := os.Getenv("ORCH_EVENTS_PATH"); p != "" {
+		return p
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ".orch/events.jsonl"

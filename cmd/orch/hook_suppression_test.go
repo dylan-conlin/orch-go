@@ -38,10 +38,14 @@ func TestOnCloseHookRunsWithoutOrchCompleting(t *testing.T) {
 		t.Skip("on_close hook not found at expected path")
 	}
 
-	// Run without ORCH_COMPLETING — hook should attempt orch emit (which may fail
-	// in test env, but we verify it doesn't exit early)
+	// Redirect events to a temp file to avoid polluting production events.jsonl.
+	// The hook calls `orch emit` which uses ORCH_EVENTS_PATH if set.
+	tmpDir := t.TempDir()
+	tmpEventsPath := filepath.Join(tmpDir, "events.jsonl")
+
+	// Run without ORCH_COMPLETING — hook should attempt orch emit
 	cmd := exec.Command("bash", hookPath, "test-issue-456", "close")
-	// Explicitly unset ORCH_COMPLETING to ensure it's not inherited
+	// Explicitly unset ORCH_COMPLETING and set ORCH_EVENTS_PATH to temp file
 	env := os.Environ()
 	filteredEnv := make([]string, 0, len(env))
 	for _, e := range env {
@@ -49,6 +53,7 @@ func TestOnCloseHookRunsWithoutOrchCompleting(t *testing.T) {
 			filteredEnv = append(filteredEnv, e)
 		}
 	}
+	filteredEnv = append(filteredEnv, "ORCH_EVENTS_PATH="+tmpEventsPath)
 	cmd.Env = filteredEnv
 	cmd.Stdin = nil
 

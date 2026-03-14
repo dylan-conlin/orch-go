@@ -71,6 +71,11 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, for
 		}
 		if forceHotspot && hotspotResult != nil && hotspotResult.HasCriticalHotspot {
 			logGateDecision("hotspot", "bypass", input.SkillName, input.IssueID, overrideReason, hotspotResult.CriticalFiles)
+		} else if hotspotResult != nil && hotspotResult.HasCriticalHotspot {
+			// Critical hotspot existed but gate returned nil (no error) — auto-detected
+			// prior architect review bypassed the block. Log as "bypass" so fire rate
+			// computation counts this correctly.
+			logGateDecision("hotspot", "bypass", input.SkillName, input.IssueID, "auto-detected prior architect review", hotspotResult.CriticalFiles)
 		} else if hotspotResult == nil || !hotspotResult.HasCriticalHotspot {
 			// Gate evaluated, no critical hotspots — log "allow" for true fire rate
 			logGateDecision("hotspot", "allow", input.SkillName, input.IssueID, "no critical hotspot files", nil)

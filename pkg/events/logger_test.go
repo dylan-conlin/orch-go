@@ -32,6 +32,22 @@ func TestDefaultLogPath(t *testing.T) {
 	}
 }
 
+func TestDefaultLogPath_EnvOverride(t *testing.T) {
+	// ORCH_EVENTS_PATH overrides the default log path, preventing test leakage
+	// into production events.jsonl.
+	tmpDir := t.TempDir()
+	customPath := filepath.Join(tmpDir, "custom-events.jsonl")
+
+	original := os.Getenv("ORCH_EVENTS_PATH")
+	os.Setenv("ORCH_EVENTS_PATH", customPath)
+	defer os.Setenv("ORCH_EVENTS_PATH", original)
+
+	got := DefaultLogPath()
+	if got != customPath {
+		t.Errorf("DefaultLogPath() = %q, want %q (ORCH_EVENTS_PATH override)", got, customPath)
+	}
+}
+
 func TestLogEvent_Basic(t *testing.T) {
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "events.jsonl")

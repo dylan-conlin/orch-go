@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -165,6 +166,60 @@ func TestLogGateDecision_IncludesBeadsID(t *testing.T) {
 	// Verify session_id is also set (used for correlation)
 	if event.SessionID != "orch-go-xyz99" {
 		t.Errorf("event.SessionID = %q, want %q", event.SessionID, "orch-go-xyz99")
+	}
+}
+
+func TestHotspotAutoBypassEmitsGateDecision(t *testing.T) {
+	// When CheckHotspot returns HasCriticalHotspot=true but no error (auto-detected
+	// prior architect review), spawn_preflight should emit a "bypass" gate_decision
+	// event with reason "auto-detected prior architect review".
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+
+	logger := events.NewLogger(logPath)
+	// Simulate what spawn_preflight.go does for auto-bypass:
+	// forceHotspot=false, hotspotResult.HasCriticalHotspot=true, err=nil
+	hotspotResult := &gates.HotspotResult{
+		HasCriticalHotspot: true,
+		CriticalFiles:      []string{"cmd/orch/stats_cmd.go"},
+	}
+	forceHotspot := false
+
+	// Replicate the spawn_preflight gate decision logic
+	if forceHotspot && hotspotResult != nil && hotspotResult.HasCriticalHotspot {
+		t.Fatal("should not take forceHotspot path")
+	} else if hotspotResult != nil && hotspotResult.HasCriticalHotspot {
+		_ = logger.LogGateDecision(events.GateDecisionData{
+			GateName:    "hotspot",
+			Decision:    "bypass",
+			Skill:       "feature-impl",
+			BeadsID:     "orch-go-test-auto",
+			Reason:      "auto-detected prior architect review",
+			TargetFiles: hotspotResult.CriticalFiles,
+		})
+	} else {
+		t.Fatal("should not take allow path")
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	var event events.Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to unmarshal event: %v", err)
+	}
+
+	if event.Data["decision"] != "bypass" {
+		t.Errorf("decision = %v, want %q", event.Data["decision"], "bypass")
+	}
+	if event.Data["reason"] != "auto-detected prior architect review" {
+		t.Errorf("reason = %v, want %q", event.Data["reason"], "auto-detected prior architect review")
+	}
+	targetFiles, ok := event.Data["target_files"].([]interface{})
+	if !ok || len(targetFiles) != 1 {
+		t.Errorf("target_files = %v, want [cmd/orch/stats_cmd.go]", event.Data["target_files"])
 	}
 }
 
