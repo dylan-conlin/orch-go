@@ -149,6 +149,11 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 		handleTriggerScanResult(r, timestamp, verbose, logger)
 	}
 
+	// Digest producer (scans .kb/ artifacts, creates thinking products)
+	if r := d.RunPeriodicDigest(); r != nil {
+		handleDigestResult(r, timestamp, verbose, logger)
+	}
+
 	return result
 }
 
@@ -543,6 +548,27 @@ func handleTriggerScanResult(r *daemon.TriggerScanResult, timestamp string, verb
 			"skipped_dedup":  r.SkippedDedup,
 			"created_issues": r.CreatedIssues,
 			"message":        r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+	}
+}
+
+func handleDigestResult(r *daemon.DigestResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Digest error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.digest", map[string]interface{}{
+			"produced": 0,
+			"error":    r.Error.Error(),
+			"message":  r.Message,
+		})
+	} else if r.Produced > 0 {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		logDaemonEvent(logger, "daemon.digest", map[string]interface{}{
+			"produced": r.Produced,
+			"skipped":  r.Skipped,
+			"scanned":  r.Scanned,
+			"message":  r.Message,
 		})
 	} else if verbose {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)

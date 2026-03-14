@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -138,6 +139,15 @@ func daemonSetup() (*daemonLoopState, error) {
 
 	// Wire proactive extraction service (creates architect issues at 1200 lines)
 	d.ProactiveExtraction = daemon.NewDefaultProactiveExtractionService()
+
+	// Wire digest producer (scans .kb/ artifacts, produces thinking products)
+	{
+		projectDir, _ := os.Getwd()
+		d.Digest = daemon.NewDefaultDigestService(projectDir)
+		homeDir, _ := os.UserHomeDir()
+		d.DigestDir = filepath.Join(homeDir, ".orch", "digest")
+		d.DigestStatePath = filepath.Join(homeDir, ".orch", "digest-state.json")
+	}
 
 	// Wire focus-aware priority boost
 	wireFocusBoost(d)

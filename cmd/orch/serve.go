@@ -424,6 +424,18 @@ func runServe(portNum int) error {
 	// POST /api/attention/verify-failed/reset-status - reset issue status to open
 	mux.HandleFunc("/api/attention/verify-failed/reset-status", corsHandler(handleVerifyFailedResetStatus))
 
+	// GET /api/digest - list digest products with optional state/type/limit filters
+	mux.HandleFunc("/api/digest", corsHandler(handleDigest))
+
+	// GET /api/digest/stats - unread/read/starred/total counts
+	mux.HandleFunc("/api/digest/stats", corsHandler(handleDigestStats))
+
+	// PATCH /api/digest/update?id=PRODUCT_ID - update product state (read/starred/archived)
+	mux.HandleFunc("/api/digest/update", corsHandler(handleDigestUpdate))
+
+	// POST /api/digest/archive-read?older_than=7d - bulk archive old read products
+	mux.HandleFunc("/api/digest/archive-read", corsHandler(handleDigestArchiveRead))
+
 	// GET /api/harness - harness pipeline visualization data (gate deflection, measurement status, falsification verdicts)
 	mux.HandleFunc("/api/harness", corsHandler(handleHarnessReport))
 
