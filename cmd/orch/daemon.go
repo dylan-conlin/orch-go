@@ -30,7 +30,8 @@ func runDaemonLoop() error {
 
 	s.logDaemonConfig()
 
-	// Main polling loop
+	// Main polling loop — structured as OODA: Sense → Orient → Decide → Act.
+	// Each cycle feeds back into the next via the Act phase's spawn outcomes.
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -42,12 +43,9 @@ func runDaemonLoop() error {
 		s.cycles++
 		timestamp := time.Now().Format("15:04:05")
 
-		// Reconcile pool with actual running agents FIRST.
-		// This handles two cases:
-		// 1. Agents completed without daemon knowing → free stale slots
-		// 2. After daemon restart, agents from prior run still active → add synthetic
-		//    slots to prevent over-spawning past the concurrency cap
-		// Must happen before status write so status shows accurate counts.
+		// ── SENSE: gather signals from the environment ───────────────
+		// Reconcile pool state, process completions, check health signals.
+
 		reconcileResult := s.d.ReconcileWithOpenCode()
 		if reconcileResult.Freed > 0 {
 			s.dlog.Printf("[%s] Reconciled: freed %d stale slots\n", timestamp, reconcileResult.Freed)
@@ -58,25 +56,18 @@ func runDaemonLoop() error {
 
 		s.checkDaemonSignals(timestamp)
 
-		// Check verification pause BEFORE spawning
 		if s.checkVerificationPause(timestamp) {
 			continue
 		}
 
-		// Run all periodic maintenance tasks (reflection, cleanup, recovery, etc.)
 		periodicResult := runPeriodicTasks(s.d, timestamp, daemonVerbose, s.logger)
 
-		// Process completions
 		completionResult := s.processDaemonCompletions(timestamp)
 
-		// Run self-check invariants
 		if s.checkInvariants(timestamp, completionResult) {
 			continue
 		}
 
-		// Check beads circuit breaker — if beads is unhealthy, skip polling and back off.
-		// This prevents the lock cascade where daemon keeps spawning bd processes
-		// that pile up behind a stuck JSONL lock.
 		if s.d.BeadsCircuitBreaker != nil && s.d.BeadsCircuitBreaker.IsOpen() {
 			backoff := s.d.BeadsCircuitBreaker.BackoffDuration()
 			failures := s.d.BeadsCircuitBreaker.ConsecutiveFailures()
@@ -91,7 +82,6 @@ func runDaemonLoop() error {
 			}
 		}
 
-		// Get ready issues count for status (multi-project when registry available)
 		readyIssues, readyErr := daemon.ListReadyIssuesMultiProject(s.d.ProjectRegistry)
 		if readyErr != nil {
 			if s.d.BeadsCircuitBreaker != nil {
@@ -103,18 +93,21 @@ func runDaemonLoop() error {
 				s.d.BeadsCircuitBreaker.RecordSuccess()
 			}
 		}
+
+		// ── ORIENT: analyze and contextualize ────────────────────────
+		// Work graph dedup/overlap detection, spawnable count.
+
 		readyCount := s.d.CountSpawnable(readyIssues)
 
-		// Work Graph: per-cycle Orient phase — detect duplicates, overlaps, and chains.
-		// Computed fresh each cycle (no local state). Surfaces removal candidates as questions.
 		if readyErr == nil && len(readyIssues) > 1 {
 			s.runWorkGraphAnalysis(readyIssues, timestamp)
 		}
 
-		// Write daemon status file AFTER reconciliation and completions so counts are accurate
+		// ── DECIDE: determine what to do this cycle ──────────────────
+		// Write status, check capacity, decide whether to enter spawn cycle.
+
 		s.writeDaemonStatusFile(readyCount, periodicResult)
 
-		// Check capacity before polling
 		if s.d.AtCapacity() {
 			activeCount := s.d.ActiveCount()
 			if daemonVerbose {
@@ -122,7 +115,6 @@ func runDaemonLoop() error {
 					timestamp, activeCount, daemonMaxAgents)
 			}
 
-			// Stuck detection: all slots full with no activity for 10+ min
 			stuckThreshold := 10 * time.Minute
 			stuckCooldown := 30 * time.Minute
 			if checkDaemonStuck(s.lastSpawn, s.lastCompletion, s.lastStuckNotification, stuckThreshold, stuckCooldown) {
@@ -134,7 +126,6 @@ func runDaemonLoop() error {
 				s.lastStuckNotification = time.Now()
 			}
 
-			// Wait for poll interval before checking again
 			select {
 			case <-s.ctx.Done():
 				s.dlog.Printf("%s", s.stopMessage())
@@ -144,24 +135,27 @@ func runDaemonLoop() error {
 			}
 		}
 
+		// ── ACT: execute spawn cycle ─────────────────────────────────
+		// Inner loop calls Daemon.OnceExcluding (which itself runs
+		// Sense → Orient → Decide → Act per-issue via ooda.go).
+
 		if daemonVerbose {
 			s.dlog.Printf("[%s] Polling for issues...\n", timestamp)
 		}
 
-		// Run the inner spawn cycle
 		cycleResult := s.runDaemonSpawnCycle(timestamp)
 		if cycleResult.cancelled {
 			s.dlog.Printf("%s", s.stopMessage())
 			return nil
 		}
 
-		// If poll interval is 0, run once and exit
+		// ── FEEDBACK: Act results feed into next Sense cycle ─────────
+
 		if s.config.PollInterval == 0 {
 			s.dlog.Printf("Run-once mode. Spawned %d, completed %d.\n", s.processed, s.completed)
 			return nil
 		}
 
-		// Wait for next poll cycle
 		if daemonVerbose {
 			s.dlog.Printf("[%s] Spawned %d this cycle, waiting %s before next poll...\n",
 				timestamp, cycleResult.spawned, formatDaemonDuration(s.config.PollInterval))

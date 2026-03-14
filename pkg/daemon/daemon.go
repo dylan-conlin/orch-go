@@ -281,75 +281,24 @@ func (d *Daemon) Once() (*OnceResult, error) {
 }
 
 // OnceExcluding processes a single issue from the queue, excluding skipped issues.
-// This allows the daemon to skip issues that failed to spawn (e.g., due to failure
-// report gate) and continue processing other issues in the queue.
+// Structured as an OODA loop: Sense → Orient → Decide → Act.
+// See ooda.go for the individual phase implementations.
 //
 // The skip map should contain issue IDs that should be skipped this cycle.
 // If a worker pool is configured, it acquires a slot before spawning.
 // If a rate limiter is configured, it checks the hourly limit before spawning.
 func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
-	// Compliance: pre-spawn gates (verification pause, completion health, rate limit)
-	gate := d.CheckPreSpawnGates()
-	if !gate.Allowed {
-		return &OnceResult{
-			Processed: false,
-			Message:   gate.Reason,
-		}, nil
-	}
+	// SENSE: gather raw signals (gates + issue queue)
+	sense := d.Sense(skip)
 
-	// Coordination: issue selection
-	issue, err := d.NextIssueExcluding(skip)
-	if err != nil {
-		return nil, err
-	}
+	// ORIENT: prioritize and contextualize
+	orient := d.Orient(sense)
 
-	if issue == nil {
-		return &OnceResult{
-			Processed: false,
-			Message:   "No spawnable issues in queue",
-		}, nil
-	}
+	// DECIDE: select issue, infer skill/model, apply routing
+	decision := d.Decide(orient, skip)
 
-	skill, err := InferSkillFromIssue(issue)
-	if err != nil {
-		return nil, fmt.Errorf("failed to infer skill: %w", err)
-	}
-
-	// Infer model from skill type
-	inferredModel := InferModelFromSkill(skill)
-
-	// Coordination: route skill through hotspot extraction and architect escalation
-	route, err := d.RouteIssueForSpawn(issue, skill, inferredModel)
-	if err != nil {
-		// Extraction setup failure — non-negotiable gate
-		return &OnceResult{
-			Processed: false,
-			Message:   err.Error(),
-		}, nil
-	}
-
-	// Apply routing: replace issue/skill/model if extraction spawned
-	if route.ExtractionSpawned {
-		issue = route.ReplacementIssue
-	}
-	skill = route.Skill
-	inferredModel = route.Model
-
-	// Spawn the issue
-	result, _, err := d.spawnIssue(issue, skill, inferredModel)
-	if result != nil {
-		if route.ExtractionSpawned {
-			result.ExtractionSpawned = true
-			result.OriginalIssueID = route.OriginalIssueID
-		}
-		if route.ArchitectEscalated {
-			result.ArchitectEscalated = true
-		}
-		if route.ArchitectEscalationDetail != nil {
-			result.ArchitectEscalationDetail = route.ArchitectEscalationDetail
-		}
-	}
-	return result, err
+	// ACT: execute the spawn decision
+	return d.Act(decision)
 }
 
 // OnceWithSlot processes a single issue and returns the acquired slot.
