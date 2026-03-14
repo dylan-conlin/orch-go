@@ -384,6 +384,169 @@ func TestFormatProbeModelMergeFailure_Failed(t *testing.T) {
 	}
 }
 
+func TestCheckProbeModelMerge_ContradictsWithModelUpdateNoEvidenceQuality(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	if err := initGitRepo(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create model with evidence quality annotation
+	modelDir := filepath.Join(tmpDir, ".kb", "models", "test-model")
+	os.MkdirAll(filepath.Join(modelDir, "probes"), 0755)
+	originalModel := `# Test Model
+
+## Core Claims
+
+1. **X is always true.** This is well established.
+
+**Evidence quality:** Replicated (3 sources).
+`
+	os.WriteFile(filepath.Join(modelDir, "model.md"), []byte(originalModel), 0644)
+	gitRun(t, tmpDir, "add", filepath.Join(modelDir, "model.md"))
+	gitRun(t, tmpDir, "commit", "-m", "initial model")
+	baseline := gitOutput(t, tmpDir, "rev-parse", "HEAD")
+
+	workspacePath := filepath.Join(tmpDir, ".orch", "workspace", "og-feat-test-13mar-abc1")
+	os.MkdirAll(workspacePath, 0755)
+	manifestContent := fmt.Sprintf(`{"workspace_name":"og-feat-test-13mar-abc1","git_baseline":"%s","spawn_time":"%s","project_dir":"%s"}`,
+		baseline, time.Now().Add(-1*time.Hour).Format(time.RFC3339), tmpDir)
+	os.WriteFile(filepath.Join(workspacePath, "AGENT_MANIFEST.json"), []byte(manifestContent), 0644)
+
+	// Create probe with "contradicts" verdict
+	probeContent := `# Probe: X is not always true
+
+**Model:** test-model
+
+---
+
+## Question
+
+Is X always true?
+
+---
+
+## Model Impact
+
+**Verdict:** contradicts — X is false in edge cases
+`
+	os.WriteFile(filepath.Join(modelDir, "probes", "2026-03-13-contradiction.md"), []byte(probeContent), 0644)
+
+	// Update model.md content BUT don't update Evidence quality annotation
+	updatedModel := `# Test Model
+
+## Core Claims
+
+1. **X is true in most cases but false in edge cases.** Corrected by probe.
+
+**Evidence quality:** Replicated (3 sources).
+`
+	os.WriteFile(filepath.Join(modelDir, "model.md"), []byte(updatedModel), 0644)
+
+	gitRun(t, tmpDir, "add", filepath.Join(modelDir, "probes", "2026-03-13-contradiction.md"))
+	gitRun(t, tmpDir, "add", filepath.Join(modelDir, "model.md"))
+	gitRun(t, tmpDir, "commit", "-m", "probe and model update without evidence quality change")
+
+	result := CheckProbeModelMerge(workspacePath, tmpDir)
+	// Gate should pass (model was updated) but with a warning about evidence quality
+	if result == nil {
+		t.Fatal("Expected non-nil result with warning")
+	}
+	if !result.Passed {
+		t.Errorf("Expected gate to pass (model was updated), but it failed: %v", result.Errors)
+	}
+	if len(result.Warnings) == 0 {
+		t.Error("Expected warning about evidence quality annotation not updated")
+	}
+
+	hasEvidenceWarning := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "evidence quality") || strings.Contains(w, "Evidence quality") {
+			hasEvidenceWarning = true
+			break
+		}
+	}
+	if !hasEvidenceWarning {
+		t.Errorf("Expected warning about evidence quality, got warnings: %v", result.Warnings)
+	}
+}
+
+func TestCheckProbeModelMerge_ContradictsWithEvidenceQualityUpdate(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	if err := initGitRepo(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	modelDir := filepath.Join(tmpDir, ".kb", "models", "test-model")
+	os.MkdirAll(filepath.Join(modelDir, "probes"), 0755)
+	originalModel := `# Test Model
+
+## Core Claims
+
+1. **X is always true.** This is well established.
+
+**Evidence quality:** Replicated (3 sources).
+`
+	os.WriteFile(filepath.Join(modelDir, "model.md"), []byte(originalModel), 0644)
+	gitRun(t, tmpDir, "add", filepath.Join(modelDir, "model.md"))
+	gitRun(t, tmpDir, "commit", "-m", "initial model")
+	baseline := gitOutput(t, tmpDir, "rev-parse", "HEAD")
+
+	workspacePath := filepath.Join(tmpDir, ".orch", "workspace", "og-feat-test-13mar-abc1")
+	os.MkdirAll(workspacePath, 0755)
+	manifestContent := fmt.Sprintf(`{"workspace_name":"og-feat-test-13mar-abc1","git_baseline":"%s","spawn_time":"%s","project_dir":"%s"}`,
+		baseline, time.Now().Add(-1*time.Hour).Format(time.RFC3339), tmpDir)
+	os.WriteFile(filepath.Join(workspacePath, "AGENT_MANIFEST.json"), []byte(manifestContent), 0644)
+
+	probeContent := `# Probe: X is not always true
+
+**Model:** test-model
+
+---
+
+## Question
+
+Is X always true?
+
+---
+
+## Model Impact
+
+**Verdict:** contradicts — X is false in edge cases
+`
+	os.WriteFile(filepath.Join(modelDir, "probes", "2026-03-13-contradiction.md"), []byte(probeContent), 0644)
+
+	// Update model AND evidence quality annotation
+	updatedModel := `# Test Model
+
+## Core Claims
+
+1. **X is true in most cases but false in edge cases.** Corrected by probe.
+
+**Evidence quality:** Contradicted — probe 2026-03-13 found edge cases where X is false.
+`
+	os.WriteFile(filepath.Join(modelDir, "model.md"), []byte(updatedModel), 0644)
+
+	gitRun(t, tmpDir, "add", filepath.Join(modelDir, "probes", "2026-03-13-contradiction.md"))
+	gitRun(t, tmpDir, "add", filepath.Join(modelDir, "model.md"))
+	gitRun(t, tmpDir, "commit", "-m", "probe and model update with evidence quality change")
+
+	result := CheckProbeModelMerge(workspacePath, tmpDir)
+	// Should pass with NO evidence quality warning
+	if result != nil && !result.Passed {
+		t.Errorf("Expected gate to pass, but failed: %v", result.Errors)
+	}
+
+	if result != nil {
+		for _, w := range result.Warnings {
+			if strings.Contains(w, "evidence quality") || strings.Contains(w, "Evidence quality") {
+				t.Errorf("Should NOT have evidence quality warning when annotation was updated, got: %s", w)
+			}
+		}
+	}
+}
+
 // gitOutput runs a git command and returns its trimmed stdout.
 func gitOutput(t *testing.T, dir string, args ...string) string {
 	t.Helper()

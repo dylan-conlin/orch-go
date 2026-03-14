@@ -80,6 +80,19 @@ func CheckProbeModelMerge(workspacePath, projectDir string) *ProbeModelMergeResu
 		}
 	}
 
+	// For "contradicts" probes that DO have model updates, check if
+	// the evidence quality annotation was also updated in the diff.
+	for _, probe := range actionableProbes {
+		if probe.Verdict != "contradicts" || !modifiedModelSet[probe.ModelName] {
+			continue
+		}
+		if !modelDiffContainsEvidenceQuality(projectDir, workspacePath, probe.ModelName) {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Probe '%s' contradicts model '%s' but no **Evidence quality:** annotation was updated — consider revising the annotation to reflect the contradiction",
+					filepath.Base(probe.ProbePath), probe.ModelName))
+		}
+	}
+
 	if len(result.UnmergedProbes) > 0 {
 		result.Passed = false
 		result.GatesFailed = append(result.GatesFailed, GateProbeModelMerge)
@@ -99,6 +112,45 @@ func CheckProbeModelMerge(workspacePath, projectDir string) *ProbeModelMergeResu
 	}
 
 	return result
+}
+
+// modelDiffContainsEvidenceQuality checks whether the git diff of a model's model.md
+// includes changes to **Evidence quality:** lines. This detects when a contradicting
+// probe's merge updated the model text but forgot to revise the evidence annotation.
+func modelDiffContainsEvidenceQuality(projectDir, workspacePath, modelName string) bool {
+	manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+	baseline := manifest.GitBaseline
+
+	// Cross-repo check
+	if baseline != "" && manifest.ProjectDir != "" && filepath.Clean(manifest.ProjectDir) != filepath.Clean(projectDir) {
+		baseline = ""
+	}
+
+	if baseline == "" {
+		return true // Can't verify without baseline — don't warn
+	}
+
+	modelPath := filepath.Join(".kb", "models", modelName, "model.md")
+
+	// Get the unified diff for this specific model file
+	cmd := exec.Command("git", "diff", baseline, "--", modelPath)
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		return true // Can't verify — don't warn
+	}
+
+	// Check if any added or removed lines contain "Evidence quality"
+	for _, line := range strings.Split(string(output), "\n") {
+		if (strings.HasPrefix(line, "+") || strings.HasPrefix(line, "-")) &&
+			!strings.HasPrefix(line, "+++") && !strings.HasPrefix(line, "---") {
+			if strings.Contains(line, "Evidence quality") {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // getModifiedModelFiles returns files modified since spawn time, filtered to .kb/models/ paths.
