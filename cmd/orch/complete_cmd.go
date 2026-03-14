@@ -44,7 +44,6 @@ var (
 	completeSkipExplainBack    bool
 	completeSkipAccretion           bool
 	completeSkipArchitecturalChoices bool
-	completeSkipSelfReview          bool
 	completeSkipProbeModelMerge     bool
 	completeSkipArchitectHandoff    bool
 	completeSkipReason              string // Required for all --skip-* flags (min 10 chars)
@@ -186,7 +185,6 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeSkipExplainBack, "skip-explain-back", false, "Skip explain-back verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipAccretion, "skip-accretion", false, "Skip accretion (file size growth) verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipArchitecturalChoices, "skip-architectural-choices", false, "Skip architectural choices verification gate (requires --skip-reason)")
-	completeCmd.Flags().BoolVar(&completeSkipSelfReview, "skip-self-review", false, "Skip automated self-review gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipProbeModelMerge, "skip-probe-model-merge", false, "Skip probe-to-model merge gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipArchitectHandoff, "skip-architect-handoff", false, "Skip architect handoff (recommendation) gate (requires --skip-reason)")
 	completeCmd.Flags().StringVar(&completeSkipReason, "skip-reason", "", "Reason for skip (required for all --skip-* flags, min 10 chars)")
@@ -218,7 +216,6 @@ func getSkipConfig() verify.SkipConfig {
 		ExplainBack:          completeSkipExplainBack,
 		Accretion:            completeSkipAccretion,
 		ArchitecturalChoices: completeSkipArchitecturalChoices,
-		SelfReview:           completeSkipSelfReview,
 		ProbeModelMerge:      completeSkipProbeModelMerge,
 		ArchitectHandoff:     completeSkipArchitectHandoff,
 		Reason:               completeSkipReason,

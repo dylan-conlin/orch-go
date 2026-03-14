@@ -102,14 +102,14 @@ High-confidence items: use `triage:ready` instead.
 
 ---
 
-## Automated Checks (run at `orch complete`)
+## Previously-Automated Checks (now manual)
 
-The following are enforced by the `self_review` verification gate — you do NOT need to manually check these:
+The `self_review` gate was removed due to 79% false positive rate (0 true positives across 71 events). These checks are now your responsibility during self-review:
 
-- **Debug statements** — `console.log`, `fmt.Print`, `debugger`, `pdb.set_trace` in production files
-- **Commit format** — WIP/temp/fixup commits blocked
-- **Placeholder data** — John Doe, lorem ipsum, test@example.com, 555-xxxx in production files
-- **Orphaned Go files** — New `.go` files in packages not imported anywhere
+- **Debug statements** — Remove leftover `console.log`, `fmt.Print` (in pkg/ files), `debugger`, `pdb.set_trace` from production files you changed
+- **Commit format** — No WIP/temp/fixup commits left in history
+- **Placeholder data** — No John Doe, lorem ipsum, test@example.com in production code
+- **Orphaned files** — New files should be imported/used somewhere
 
 ---
 

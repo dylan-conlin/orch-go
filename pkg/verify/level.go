@@ -15,7 +15,6 @@ var gatesByLevel = map[string][]string{
 		GateConstraint,
 		GateDecisionPatchLimit,
 		GateArchitecturalChoices,
-		GateSelfReview,
 		GateProbeModelMerge,
 		GateArchitectHandoff,
 	},
