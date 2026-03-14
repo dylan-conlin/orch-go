@@ -711,6 +711,108 @@ func TestLogDuplicationDetected_Minimal(t *testing.T) {
 	}
 }
 
+// Test LogDuplicationSuppressed logs allowlist-suppressed pairs
+func TestLogDuplicationSuppressed(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogDuplicationSuppressed(DuplicationSuppressedData{
+		BeadsID:   "orch-go-abc1",
+		Workspace: "og-feat-test",
+		Count:     2,
+		Matches: []DuplicationSuppressedMatch{
+			{
+				FuncA:      "(Logger).LogSpawn",
+				FuncB:      "(Logger).LogCompleted",
+				Similarity: 0.95,
+				Pattern:    "(Logger).Log*",
+			},
+			{
+				FuncA:      "handleOrphanResult",
+				FuncB:      "handleRecoveryResult",
+				Similarity: 0.88,
+				Pattern:    "handle*Result",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("LogDuplicationSuppressed() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	raw := string(data)
+
+	// Verify event type
+	if !strings.Contains(raw, EventTypeDuplicationSuppressed) {
+		t.Error("Expected event type 'duplication.suppressed'")
+	}
+
+	// Verify match data includes pattern
+	if !strings.Contains(raw, "(Logger).Log*") {
+		t.Error("Expected pattern '(Logger).Log*' in matches")
+	}
+	if !strings.Contains(raw, "handle*Result") {
+		t.Error("Expected pattern 'handle*Result' in matches")
+	}
+	if !strings.Contains(raw, "(Logger).LogSpawn") {
+		t.Error("Expected function name in matches")
+	}
+
+	// Parse and verify structure
+	var event Event
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &event); err != nil {
+		t.Fatalf("Failed to parse event JSON: %v", err)
+	}
+	if event.Type != EventTypeDuplicationSuppressed {
+		t.Errorf("Event type = %v, want %v", event.Type, EventTypeDuplicationSuppressed)
+	}
+	count, ok := event.Data["count"].(float64)
+	if !ok || int(count) != 2 {
+		t.Errorf("Expected count=2, got %v", event.Data["count"])
+	}
+}
+
+// Test LogDuplicationSuppressed with minimal data
+func TestLogDuplicationSuppressed_Minimal(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogDuplicationSuppressed(DuplicationSuppressedData{
+		Count: 1,
+		Matches: []DuplicationSuppressedMatch{
+			{
+				FuncA:      "foo",
+				FuncB:      "bar",
+				Similarity: 0.90,
+				Pattern:    "*",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("LogDuplicationSuppressed() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	raw := string(data)
+	// beads_id and workspace should be omitted
+	if strings.Contains(raw, "beads_id") {
+		t.Error("Expected beads_id to be omitted when empty")
+	}
+	if strings.Contains(raw, "workspace") {
+		t.Error("Expected workspace to be omitted when empty")
+	}
+}
+
 // Test LogAgentCompleted omits pipeline timing when empty
 func TestLogAgentCompleted_NoPipelineTiming(t *testing.T) {
 	tmpDir := t.TempDir()

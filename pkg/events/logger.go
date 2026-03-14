@@ -53,6 +53,9 @@ const (
 	EventTypeReviewTierEscalated = "review_tier.escalated"
 	// EventTypeDuplicationDetected indicates the duplication detector found similar function pairs.
 	EventTypeDuplicationDetected = "duplication.detected"
+	// EventTypeDuplicationSuppressed indicates allowlist-matched pairs were suppressed.
+	// Used for passive precision measurement: precision = detected / (detected + suppressed).
+	EventTypeDuplicationSuppressed = "duplication.suppressed"
 	// EventTypeSpawnGateDecision logs every gate evaluation (block, bypass, or allow).
 	EventTypeSpawnGateDecision = "spawn.gate_decision"
 	// EventTypeAccretionSnapshot logs periodic directory-level line count snapshots for velocity tracking.
@@ -602,6 +605,43 @@ func (l *Logger) LogDuplicationDetected(data DuplicationDetectedData) error {
 
 	return l.Log(Event{
 		Type:      EventTypeDuplicationDetected,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// DuplicationSuppressedMatch represents a single allowlist-suppressed pair for event logging.
+type DuplicationSuppressedMatch struct {
+	FuncA      string  `json:"func_a"`
+	FuncB      string  `json:"func_b"`
+	Similarity float64 `json:"similarity"`
+	Pattern    string  `json:"pattern"` // the allowlist pattern that matched
+}
+
+// DuplicationSuppressedData contains the data for a duplication.suppressed event.
+type DuplicationSuppressedData struct {
+	BeadsID   string                        `json:"beads_id,omitempty"`
+	Workspace string                        `json:"workspace,omitempty"`
+	Matches   []DuplicationSuppressedMatch  `json:"matches"`
+	Count     int                           `json:"count"`
+}
+
+// LogDuplicationSuppressed logs pairs suppressed by the allowlist for precision tracking.
+func (l *Logger) LogDuplicationSuppressed(data DuplicationSuppressedData) error {
+	eventData := map[string]interface{}{
+		"matches": data.Matches,
+		"count":   data.Count,
+	}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	if data.Workspace != "" {
+		eventData["workspace"] = data.Workspace
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeDuplicationSuppressed,
 		SessionID: data.BeadsID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,

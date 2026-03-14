@@ -27,18 +27,29 @@ func countDuplicationAdvisoryMatches(projectDir, workspacePath string) int {
 	return len(findDuplicationInModifiedFiles(projectDir, workspacePath))
 }
 
+// duplicationResult holds both detected and suppressed pairs from a scan.
+type duplicationResult struct {
+	Pairs      []dupdetect.DupPair
+	Suppressed []dupdetect.SuppressedPair
+}
+
 // findDuplicationInModifiedFiles returns duplicate pairs involving the agent's
 // modified Go files. Shared logic for both advisory formatting and counting.
 func findDuplicationInModifiedFiles(projectDir, workspacePath string) []dupdetect.DupPair {
+	return findDuplicationWithSuppressed(projectDir, workspacePath).Pairs
+}
+
+// findDuplicationWithSuppressed returns both detected and suppressed pairs.
+func findDuplicationWithSuppressed(projectDir, workspacePath string) duplicationResult {
 	if projectDir == "" {
-		return nil
+		return duplicationResult{}
 	}
 
 	// Reuse readHotspotBaseline — reads the same AGENT_MANIFEST.json field
 	baseline := readHotspotBaseline(workspacePath)
 	modifiedFiles, err := getModifiedFilesSinceBaseline(projectDir, baseline, 5)
 	if err != nil || len(modifiedFiles) == 0 {
-		return nil
+		return duplicationResult{}
 	}
 
 	var goFiles []string
@@ -48,7 +59,7 @@ func findDuplicationInModifiedFiles(projectDir, workspacePath string) []dupdetec
 		}
 	}
 	if len(goFiles) == 0 {
-		return nil
+		return duplicationResult{}
 	}
 
 	d := dupdetect.NewDetector()
@@ -62,7 +73,7 @@ func findDuplicationInModifiedFiles(projectDir, workspacePath string) []dupdetec
 
 	pairs, err := d.CheckModifiedFilesProject(projectDir, goFiles)
 	if err != nil {
-		return nil
+		return duplicationResult{}
 	}
-	return pairs
+	return duplicationResult{Pairs: pairs, Suppressed: d.Suppressed}
 }

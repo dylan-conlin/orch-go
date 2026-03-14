@@ -33,11 +33,21 @@ type DupPair struct {
 	Similarity float64
 }
 
+// SuppressedPair records a pair that was suppressed by the allowlist,
+// along with the pattern that matched. Used for passive precision measurement.
+type SuppressedPair struct {
+	FuncA   FuncInfo
+	FuncB   FuncInfo
+	Similarity float64
+	Pattern    string // the allowlist pattern that matched both sides
+}
+
 // Detector configures and runs duplication detection.
 type Detector struct {
 	MinBodyLines int      // skip functions smaller than this (default 10)
 	Threshold    float64  // similarity threshold 0.0-1.0 (default 0.80)
 	Allowlist    []string // function name patterns — pairs where both match same pattern are suppressed
+	Suppressed   []SuppressedPair // populated after Find* calls — pairs suppressed by allowlist
 }
 
 // NewDetector returns a Detector with sensible defaults.
@@ -119,7 +129,9 @@ func (d *Detector) ParseSource(filename, src string) ([]FuncInfo, error) {
 }
 
 // FindDuplicates compares all function pairs and returns those above threshold.
+// Pairs suppressed by the allowlist are recorded in d.Suppressed.
 func (d *Detector) FindDuplicates(funcs []FuncInfo) []DupPair {
+	d.Suppressed = nil
 	var pairs []DupPair
 
 	for i := 0; i < len(funcs); i++ {
@@ -129,8 +141,16 @@ func (d *Detector) FindDuplicates(funcs []FuncInfo) []DupPair {
 			}
 			sim := similarity(funcs[i].Fingerprint, funcs[j].Fingerprint)
 			if sim >= d.Threshold {
-				if len(d.Allowlist) > 0 && isAllowlisted(funcs[i].Name, funcs[j].Name, d.Allowlist) {
-					continue
+				if len(d.Allowlist) > 0 {
+					if pattern, matched := allowlistedPattern(funcs[i].Name, funcs[j].Name, d.Allowlist); matched {
+						d.Suppressed = append(d.Suppressed, SuppressedPair{
+							FuncA:      funcs[i],
+							FuncB:      funcs[j],
+							Similarity: sim,
+							Pattern:    pattern,
+						})
+						continue
+					}
 				}
 				pairs = append(pairs, DupPair{
 					FuncA:      funcs[i],
@@ -153,6 +173,7 @@ func (d *Detector) FindDuplicates(funcs []FuncInfo) []DupPair {
 // Self-matches (same name + identical fingerprint across partitions) are
 // automatically suppressed to avoid false positives from pre-existing copies.
 func (d *Detector) FindDuplicatesAgainst(modified, corpus []FuncInfo) []DupPair {
+	d.Suppressed = nil
 	var pairs []DupPair
 
 	// modified vs corpus (M × N)
@@ -169,8 +190,16 @@ func (d *Detector) FindDuplicatesAgainst(modified, corpus []FuncInfo) []DupPair 
 				if modified[i].Name == corpus[j].Name && fingerprintEqual(modified[i].Fingerprint, corpus[j].Fingerprint) {
 					continue
 				}
-				if len(d.Allowlist) > 0 && isAllowlisted(modified[i].Name, corpus[j].Name, d.Allowlist) {
-					continue
+				if len(d.Allowlist) > 0 {
+					if pattern, matched := allowlistedPattern(modified[i].Name, corpus[j].Name, d.Allowlist); matched {
+						d.Suppressed = append(d.Suppressed, SuppressedPair{
+							FuncA:      modified[i],
+							FuncB:      corpus[j],
+							Similarity: sim,
+							Pattern:    pattern,
+						})
+						continue
+					}
 				}
 				pairs = append(pairs, DupPair{
 					FuncA:      modified[i],
@@ -189,8 +218,16 @@ func (d *Detector) FindDuplicatesAgainst(modified, corpus []FuncInfo) []DupPair 
 			}
 			sim := similarity(modified[i].Fingerprint, modified[j].Fingerprint)
 			if sim >= d.Threshold {
-				if len(d.Allowlist) > 0 && isAllowlisted(modified[i].Name, modified[j].Name, d.Allowlist) {
-					continue
+				if len(d.Allowlist) > 0 {
+					if pattern, matched := allowlistedPattern(modified[i].Name, modified[j].Name, d.Allowlist); matched {
+						d.Suppressed = append(d.Suppressed, SuppressedPair{
+							FuncA:      modified[i],
+							FuncB:      modified[j],
+							Similarity: sim,
+							Pattern:    pattern,
+						})
+						continue
+					}
 				}
 				pairs = append(pairs, DupPair{
 					FuncA:      modified[i],

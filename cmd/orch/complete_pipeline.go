@@ -483,13 +483,14 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 			}
 		} else {
 			t0 := time.Now()
-			pairs := findDuplicationInModifiedFiles(target.WorkProjectDir, target.WorkspacePath)
-			if len(pairs) > 0 {
-				fmt.Print(dupdetect.FormatDuplicationAdvisory(pairs))
+			result := findDuplicationWithSuppressed(target.WorkProjectDir, target.WorkspacePath)
+			logger := events.NewDefaultLogger()
+			if len(result.Pairs) > 0 {
+				fmt.Print(dupdetect.FormatDuplicationAdvisory(result.Pairs))
 
 				// Log duplication.detected event for queryability
-				matches := make([]events.DuplicationMatch, len(pairs))
-				for i, p := range pairs {
+				matches := make([]events.DuplicationMatch, len(result.Pairs))
+				for i, p := range result.Pairs {
 					matches[i] = events.DuplicationMatch{
 						FileA:      p.FuncA.File,
 						FuncA:      p.FuncA.Name,
@@ -498,14 +499,33 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 						Similarity: p.Similarity,
 					}
 				}
-				logger := events.NewDefaultLogger()
 				if err := logger.LogDuplicationDetected(events.DuplicationDetectedData{
 					BeadsID:   target.BeadsID,
 					Workspace: target.AgentName,
 					Matches:   matches,
-					Count:     len(pairs),
+					Count:     len(result.Pairs),
 				}); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to log duplication event: %v\n", err)
+				}
+			}
+			// Log suppressed pairs for passive precision measurement
+			if len(result.Suppressed) > 0 {
+				suppMatches := make([]events.DuplicationSuppressedMatch, len(result.Suppressed))
+				for i, s := range result.Suppressed {
+					suppMatches[i] = events.DuplicationSuppressedMatch{
+						FuncA:      s.FuncA.Name,
+						FuncB:      s.FuncB.Name,
+						Similarity: s.Similarity,
+						Pattern:    s.Pattern,
+					}
+				}
+				if err := logger.LogDuplicationSuppressed(events.DuplicationSuppressedData{
+					BeadsID:   target.BeadsID,
+					Workspace: target.AgentName,
+					Matches:   suppMatches,
+					Count:     len(result.Suppressed),
+				}); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log duplication suppressed event: %v\n", err)
 				}
 			}
 			step.DurationMs = int(time.Since(t0).Milliseconds())
