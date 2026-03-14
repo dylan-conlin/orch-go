@@ -70,6 +70,8 @@ const (
 	EventTypeExplorationSynthesized = "exploration.synthesized"
 	// EventTypeExplorationIterated logs when a judge-triggered re-exploration round occurs.
 	EventTypeExplorationIterated = "exploration.iterated"
+	// EventTypeDecisionMade logs a daemon decision with its classification tier.
+	EventTypeDecisionMade = "decision.made"
 )
 
 // Event is a loggable event for events.jsonl.

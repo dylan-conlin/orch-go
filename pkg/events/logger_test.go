@@ -1174,6 +1174,154 @@ func TestLogExplorationIterated(t *testing.T) {
 	}
 }
 
+func TestLogDecisionMade(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogDecisionMade(DecisionMadeData{
+		DecisionID:      "dec-abc123",
+		Class:           "auto_complete_light",
+		Category:        "completion",
+		Tier:            "propose-and-act",
+		BaseTier:        "propose-and-act",
+		ComplianceLevel: "standard",
+		Target:          "orch-go-xyz1",
+		Reason:          "Light-tier agent reported Phase: Complete",
+		Outcome:         "executed",
+	})
+	if err != nil {
+		t.Fatalf("LogDecisionMade() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	var event Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to unmarshal event: %v", err)
+	}
+
+	if event.Type != EventTypeDecisionMade {
+		t.Errorf("event.Type = %q, want %q", event.Type, EventTypeDecisionMade)
+	}
+	if event.SessionID != "orch-go-xyz1" {
+		t.Errorf("event.SessionID = %q, want %q", event.SessionID, "orch-go-xyz1")
+	}
+	if event.Data["decision_id"] != "dec-abc123" {
+		t.Errorf("data.decision_id = %v, want %q", event.Data["decision_id"], "dec-abc123")
+	}
+	if event.Data["class"] != "auto_complete_light" {
+		t.Errorf("data.class = %v, want %q", event.Data["class"], "auto_complete_light")
+	}
+	if event.Data["category"] != "completion" {
+		t.Errorf("data.category = %v, want %q", event.Data["category"], "completion")
+	}
+	if event.Data["tier"] != "propose-and-act" {
+		t.Errorf("data.tier = %v, want %q", event.Data["tier"], "propose-and-act")
+	}
+	if event.Data["base_tier"] != "propose-and-act" {
+		t.Errorf("data.base_tier = %v, want %q", event.Data["base_tier"], "propose-and-act")
+	}
+	if event.Data["compliance_level"] != "standard" {
+		t.Errorf("data.compliance_level = %v, want %q", event.Data["compliance_level"], "standard")
+	}
+	if event.Data["target"] != "orch-go-xyz1" {
+		t.Errorf("data.target = %v, want %q", event.Data["target"], "orch-go-xyz1")
+	}
+	if event.Data["reason"] != "Light-tier agent reported Phase: Complete" {
+		t.Errorf("data.reason = %v, want expected string", event.Data["reason"])
+	}
+	if event.Data["outcome"] != "executed" {
+		t.Errorf("data.outcome = %v, want %q", event.Data["outcome"], "executed")
+	}
+}
+
+func TestLogDecisionMade_Minimal(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogDecisionMade(DecisionMadeData{
+		DecisionID:      "dec-min1",
+		Class:           "select_issue",
+		Category:        "spawn",
+		Tier:            "autonomous",
+		BaseTier:        "autonomous",
+		ComplianceLevel: "standard",
+	})
+	if err != nil {
+		t.Fatalf("LogDecisionMade() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	raw := string(data)
+	// Optional fields should be omitted when empty
+	if strings.Contains(raw, `"target"`) {
+		t.Error("Expected target to be omitted when empty")
+	}
+	if strings.Contains(raw, `"reason"`) {
+		t.Error("Expected reason to be omitted when empty")
+	}
+	if strings.Contains(raw, `"outcome"`) {
+		t.Error("Expected outcome to be omitted when empty")
+	}
+	// Required fields should always be present
+	if !strings.Contains(raw, "decision.made") {
+		t.Error("Expected event type 'decision.made'")
+	}
+	if !strings.Contains(raw, "dec-min1") {
+		t.Error("Expected decision_id in event")
+	}
+}
+
+func TestLogDecisionMade_ComplianceModulation(t *testing.T) {
+	// Test that strict compliance shows different tier than base
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogDecisionMade(DecisionMadeData{
+		DecisionID:      "dec-strict1",
+		Class:           "select_issue",
+		Category:        "spawn",
+		Tier:            "propose-and-act",  // promoted from autonomous by strict
+		BaseTier:        "autonomous",
+		ComplianceLevel: "strict",
+		Target:          "orch-go-test1",
+	})
+	if err != nil {
+		t.Fatalf("LogDecisionMade() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	var event Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to unmarshal event: %v", err)
+	}
+
+	// Verify tier differs from base_tier (compliance modulation visible in event)
+	if event.Data["tier"] == event.Data["base_tier"] {
+		t.Error("Expected tier to differ from base_tier under strict compliance")
+	}
+	if event.Data["tier"] != "propose-and-act" {
+		t.Errorf("data.tier = %v, want propose-and-act", event.Data["tier"])
+	}
+	if event.Data["base_tier"] != "autonomous" {
+		t.Errorf("data.base_tier = %v, want autonomous", event.Data["base_tier"])
+	}
+}
+
 func TestLogGateDecision_AccretionPrecommit(t *testing.T) {
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "events.jsonl")
