@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -745,5 +747,106 @@ func TestCrossProjectResolution_WorkdirOverride(t *testing.T) {
 	}
 	if target.BeadsProjectDir != beadsProject {
 		t.Errorf("BeadsProjectDir should be %s (from beads ID prefix), got %s", beadsProject, target.BeadsProjectDir)
+	}
+}
+
+// TestFindIssueInAlternateProjects_SharedPrefix tests that when a beads ID prefix
+// maps to one project but the issue lives in a different project with the same
+// prefix, the fallback search finds the correct project.
+// This is the core test for the cross-project shared-prefix bug fix.
+// Requires: bd CLI and kb CLI available, harness project registered with issue-prefix "orch-go".
+func TestFindIssueInAlternateProjects_SharedPrefix(t *testing.T) {
+	// Skip if bd/kb not available (CI environment)
+	if _, err := exec.LookPath("bd"); err != nil {
+		t.Skip("bd CLI not available")
+	}
+	if _, err := exec.LookPath("kb"); err != nil {
+		t.Skip("kb CLI not available")
+	}
+
+	// Verify harness project exists and has shared prefix
+	harnessDir := filepath.Join(os.Getenv("HOME"), "Documents", "personal", "harness")
+	if _, err := os.Stat(filepath.Join(harnessDir, ".beads")); os.IsNotExist(err) {
+		t.Skip("harness project not found at expected location")
+	}
+
+	orchGoDir := filepath.Join(os.Getenv("HOME"), "Documents", "personal", "orch-go")
+
+	// Create a test issue in harness beads
+	cmd := exec.Command("bd", "create", "test-shared-prefix-fallback", "--type", "task", "-l", "test:ephemeral")
+	cmd.Dir = harnessDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Failed to create test issue in harness: %v\n%s", err, output)
+	}
+
+	// Extract the created issue ID from output (format: "Created: orch-go-xxxx")
+	testIssueID := ""
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.Contains(line, "orch-go-") {
+			// Find the issue ID in the line
+			for _, word := range strings.Fields(line) {
+				if strings.HasPrefix(word, "orch-go-") {
+					testIssueID = strings.TrimRight(word, ".,;:")
+					break
+				}
+			}
+		}
+	}
+	if testIssueID == "" {
+		t.Fatalf("Failed to extract issue ID from bd create output: %s", output)
+	}
+
+	// Cleanup: close the test issue after test
+	defer func() {
+		closeCmd := exec.Command("bd", "close", testIssueID, "--force", "-r", "test cleanup")
+		closeCmd.Dir = harnessDir
+		_ = closeCmd.Run()
+	}()
+
+	// Verify the issue does NOT exist in orch-go's beads
+	_, orchErr := verify.GetIssue(testIssueID, orchGoDir)
+	if orchErr == nil {
+		t.Fatal("Expected issue to NOT exist in orch-go beads (it should only be in harness)")
+	}
+
+	// Verify the issue DOES exist in harness's beads
+	harnessIssue, harnessErr := verify.GetIssue(testIssueID, harnessDir)
+	if harnessErr != nil {
+		t.Fatalf("Expected issue to exist in harness beads: %v", harnessErr)
+	}
+	if harnessIssue.Status == "closed" {
+		t.Fatal("Test issue should not be closed yet")
+	}
+
+	// Test the fallback function: should find the issue in harness
+	prefix := extractProjectFromBeadsID(testIssueID)
+	if prefix != "orch-go" {
+		t.Fatalf("Expected prefix 'orch-go', got %q", prefix)
+	}
+
+	altDir := findIssueInAlternateProjects(testIssueID, prefix, orchGoDir)
+	if altDir == "" {
+		t.Fatal("findIssueInAlternateProjects should find the issue in harness")
+	}
+	if altDir != harnessDir {
+		t.Errorf("Expected alternate project to be %s (harness), got %s", harnessDir, altDir)
+	}
+}
+
+// TestFindIssueInAlternateProjects_NoMatch verifies that the fallback returns
+// empty string when no alternate project contains the issue.
+func TestFindIssueInAlternateProjects_NoMatch(t *testing.T) {
+	// Skip if kb not available
+	if _, err := exec.LookPath("kb"); err != nil {
+		t.Skip("kb CLI not available")
+	}
+
+	orchGoDir := filepath.Join(os.Getenv("HOME"), "Documents", "personal", "orch-go")
+
+	// Use a non-existent issue ID — no project should have it
+	result := findIssueInAlternateProjects("orch-go-zzzzznonexistent", "orch-go", orchGoDir)
+	if result != "" {
+		t.Errorf("Expected empty string for non-existent issue, got %s", result)
 	}
 }

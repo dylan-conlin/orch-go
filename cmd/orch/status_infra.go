@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
 // InfraServiceStatus represents the health status of an infrastructure service.
@@ -277,5 +278,31 @@ func findProjectDirByName(projectName string) string {
 		}
 	}
 
+	return ""
+}
+
+// findIssueInAlternateProjects searches registered projects (other than excludeDir)
+// that share the same beads issue prefix for a specific issue ID.
+// This handles scenarios where multiple projects use the same issue-prefix
+// (e.g., harness repo with issue-prefix: "orch-go").
+// Returns the project directory containing the issue, or empty string if not found.
+func findIssueInAlternateProjects(beadsID, prefix, excludeDir string) string {
+	for _, project := range getKBProjectsWithNames() {
+		if project.Path == excludeDir {
+			continue
+		}
+		// Check if this project has a .beads directory
+		beadsPath := filepath.Join(project.Path, ".beads")
+		if info, err := os.Stat(beadsPath); err != nil || !info.IsDir() {
+			continue
+		}
+		// Check if this project uses the same beads prefix
+		if projectPrefix := getBeadsIssuePrefix(project.Path); projectPrefix == prefix {
+			// Try to find the issue in this project's beads
+			if _, err := verify.GetIssue(beadsID, project.Path); err == nil {
+				return project.Path
+			}
+		}
+	}
 	return ""
 }

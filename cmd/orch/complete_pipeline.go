@@ -216,6 +216,18 @@ func resolveCompletionTarget(identifier, workdir string) (CompletionTarget, erro
 	} else {
 		issue, err := verify.GetIssue(target.BeadsID, target.BeadsProjectDir)
 		if err != nil {
+			// Issue not found in prefix-resolved project — search other projects
+			// that share the same beads prefix. This handles scenarios like the
+			// harness repo using issue-prefix: "orch-go", where the prefix resolves
+			// to orch-go's directory but the issue actually lives in harness's beads.
+			prefix := extractProjectFromBeadsID(target.BeadsID)
+			if altDir := findIssueInAlternateProjects(target.BeadsID, prefix, target.BeadsProjectDir); altDir != "" {
+				target.BeadsProjectDir = altDir
+				fmt.Printf("Found issue in alternate project: %s (shared prefix %q)\n", filepath.Base(altDir), prefix)
+				issue, err = verify.GetIssue(target.BeadsID, target.BeadsProjectDir)
+			}
+		}
+		if err != nil {
 			projectName := filepath.Base(target.BeadsProjectDir)
 			issuePrefix := strings.Split(target.BeadsID, "-")[0]
 			if len(strings.Split(target.BeadsID, "-")) > 1 {
