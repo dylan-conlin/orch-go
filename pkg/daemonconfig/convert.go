@@ -59,6 +59,9 @@ func FromUserConfig(cfg *userconfig.Config) Config {
 		InvariantCheckEnabled:       cfg.DaemonInvariantCheckEnabled(),
 		InvariantViolationThreshold: cfg.DaemonInvariantViolationThreshold(),
 
+		PlanStalenessEnabled:  cfg.DaemonPlanStalenessEnabled(),
+		PlanStalenessInterval: time.Duration(cfg.DaemonPlanStalenessIntervalMinutes()) * time.Minute,
+
 		Compliance: complianceFromYAML(cfg.DaemonComplianceConfig()),
 	}
 }

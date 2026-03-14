@@ -19,6 +19,7 @@ const (
 	TaskRegistryRefresh       = "registry_refresh"
 	TaskSynthesisAutoCreate   = "synthesis_auto_create"
 	TaskLearningRefresh       = "learning_refresh"
+	TaskPlanStaleness         = "plan_staleness"
 )
 
 // periodicTask holds the scheduling state for a single periodic task.
@@ -128,6 +129,7 @@ func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s.Register(TaskRegistryRefresh, cfg.RegistryRefreshEnabled, cfg.RegistryRefreshInterval)
 	s.Register(TaskSynthesisAutoCreate, cfg.SynthesisAutoCreateEnabled, cfg.SynthesisAutoCreateInterval)
 	s.Register(TaskLearningRefresh, cfg.LearningRefreshEnabled, cfg.LearningRefreshInterval)
+	s.Register(TaskPlanStaleness, cfg.PlanStalenessEnabled, cfg.PlanStalenessInterval)
 	return s
 }
 

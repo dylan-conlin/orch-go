@@ -229,6 +229,17 @@ type Config struct {
 	// LearningRefreshInterval is how often to recompute learning metrics
 	// and evaluate compliance auto-downgrades. Default is 1 hour.
 	LearningRefreshInterval time.Duration
+
+	// PlanStalenessEnabled controls whether periodic plan staleness detection is enabled.
+	// When enabled, the daemon scans active plans in .kb/plans/ and detects:
+	// - Unhydrated plans (active but no beads issues)
+	// - Phase advancement stalls (completed phases with unstarted successors)
+	// - No-progress plans (hydrated but no phases in progress or complete)
+	PlanStalenessEnabled bool
+
+	// PlanStalenessInterval is how often to check for stale plans (0 = disabled).
+	// Default is 30 minutes.
+	PlanStalenessInterval time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -286,5 +297,7 @@ func DefaultConfig() Config {
 		SynthesisAutoCreateThreshold:     5,             // 5+ investigations triggers auto-create
 		LearningRefreshEnabled:           true,
 		LearningRefreshInterval:          time.Hour, // Hourly learning refresh + compliance auto-adjust
+		PlanStalenessEnabled:             true,
+		PlanStalenessInterval:            30 * time.Minute, // Check every 30 minutes
 	}
 }

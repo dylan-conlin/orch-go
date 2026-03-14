@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/plan"
 )
 
 func TestParsePlanFile(t *testing.T) {
@@ -64,35 +66,35 @@ Integrate toolshed pricing panel with priceworks data.
 - [x] API contract defined
 `
 
-	plan := parsePlanContent(content, "2026-03-05-plan-toolshed-pw.md")
+	p := plan.ParseContent(content, "2026-03-05-plan-toolshed-pw.md")
 
-	if plan.Title != "Toolshed PriceWorks Integration" {
-		t.Errorf("title = %q, want %q", plan.Title, "Toolshed PriceWorks Integration")
+	if p.Title != "Toolshed PriceWorks Integration" {
+		t.Errorf("title = %q, want %q", p.Title, "Toolshed PriceWorks Integration")
 	}
-	if plan.Status != "active" {
-		t.Errorf("status = %q, want %q", plan.Status, "active")
+	if p.Status != "active" {
+		t.Errorf("status = %q, want %q", p.Status, "active")
 	}
-	if plan.Date != "2026-03-05" {
-		t.Errorf("date = %q, want %q", plan.Date, "2026-03-05")
+	if p.Date != "2026-03-05" {
+		t.Errorf("date = %q, want %q", p.Date, "2026-03-05")
 	}
-	if plan.Owner != "dylan" {
-		t.Errorf("owner = %q, want %q", plan.Owner, "dylan")
+	if p.Owner != "dylan" {
+		t.Errorf("owner = %q, want %q", p.Owner, "dylan")
 	}
-	if plan.Filename != "2026-03-05-plan-toolshed-pw.md" {
-		t.Errorf("filename = %q, want %q", plan.Filename, "2026-03-05-plan-toolshed-pw.md")
+	if p.Filename != "2026-03-05-plan-toolshed-pw.md" {
+		t.Errorf("filename = %q, want %q", p.Filename, "2026-03-05-plan-toolshed-pw.md")
 	}
-	if len(plan.Projects) != 2 {
-		t.Fatalf("projects len = %d, want 2", len(plan.Projects))
+	if len(p.Projects) != 2 {
+		t.Fatalf("projects len = %d, want 2", len(p.Projects))
 	}
-	if plan.Projects[0] != "toolshed" || plan.Projects[1] != "price-watch" {
-		t.Errorf("projects = %v, want [toolshed, price-watch]", plan.Projects)
+	if p.Projects[0] != "toolshed" || p.Projects[1] != "price-watch" {
+		t.Errorf("projects = %v, want [toolshed, price-watch]", p.Projects)
 	}
-	if len(plan.Phases) != 3 {
-		t.Fatalf("phases len = %d, want 3", len(plan.Phases))
+	if len(p.Phases) != 3 {
+		t.Fatalf("phases len = %d, want 3", len(p.Phases))
 	}
 
 	// Phase 1
-	p1 := plan.Phases[0]
+	p1 := p.Phases[0]
 	if p1.Name != "Wire PriceCurvePanel" {
 		t.Errorf("phase1 name = %q", p1.Name)
 	}
@@ -107,7 +109,7 @@ Integrate toolshed pricing panel with priceworks data.
 	}
 
 	// Phase 2
-	p2 := plan.Phases[1]
+	p2 := p.Phases[1]
 	if p2.Name != "Forward Simulation" {
 		t.Errorf("phase2 name = %q", p2.Name)
 	}
@@ -119,7 +121,7 @@ Integrate toolshed pricing panel with priceworks data.
 	}
 
 	// Phase 3
-	p3 := plan.Phases[2]
+	p3 := p.Phases[2]
 	if p3.Name != "Strategic Landscape" {
 		t.Errorf("phase3 name = %q", p3.Name)
 	}
@@ -135,16 +137,16 @@ func TestParsePlanFile_MinimalContent(t *testing.T) {
 **Status:** completed
 `
 
-	plan := parsePlanContent(content, "2026-03-01-plan-simple.md")
+	p := plan.ParseContent(content, "2026-03-01-plan-simple.md")
 
-	if plan.Title != "Simple Task" {
-		t.Errorf("title = %q, want %q", plan.Title, "Simple Task")
+	if p.Title != "Simple Task" {
+		t.Errorf("title = %q, want %q", p.Title, "Simple Task")
 	}
-	if plan.Status != "completed" {
-		t.Errorf("status = %q, want %q", plan.Status, "completed")
+	if p.Status != "completed" {
+		t.Errorf("status = %q, want %q", p.Status, "completed")
 	}
-	if len(plan.Phases) != 0 {
-		t.Errorf("phases len = %d, want 0", len(plan.Phases))
+	if len(p.Phases) != 0 {
+		t.Errorf("phases len = %d, want 0", len(p.Phases))
 	}
 }
 
@@ -156,13 +158,13 @@ func TestParsePlanFile_SupersededStatus(t *testing.T) {
 **Superseded-By:** .kb/plans/2026-03-01-plan-new.md
 `
 
-	plan := parsePlanContent(content, "2026-02-01-plan-old.md")
+	p := plan.ParseContent(content, "2026-02-01-plan-old.md")
 
-	if plan.Status != "superseded" {
-		t.Errorf("status = %q, want %q", plan.Status, "superseded")
+	if p.Status != "superseded" {
+		t.Errorf("status = %q, want %q", p.Status, "superseded")
 	}
-	if plan.SupersededBy != ".kb/plans/2026-03-01-plan-new.md" {
-		t.Errorf("superseded_by = %q", plan.SupersededBy)
+	if p.SupersededBy != ".kb/plans/2026-03-01-plan-new.md" {
+		t.Errorf("superseded_by = %q", p.SupersededBy)
 	}
 }
 
@@ -193,9 +195,9 @@ func TestScanPlansDir(t *testing.T) {
 	os.WriteFile(filepath.Join(plansDir, "2026-01-15-plan-superseded.md"), []byte(plan3), 0o644)
 	os.WriteFile(filepath.Join(plansDir, ".gitkeep"), []byte(""), 0o644) // Should be ignored
 
-	plans, err := scanPlansDir(plansDir)
+	plans, err := plan.ScanDir(plansDir)
 	if err != nil {
-		t.Fatalf("scanPlansDir error: %v", err)
+		t.Fatalf("ScanDir error: %v", err)
 	}
 
 	if len(plans) != 3 {
@@ -222,12 +224,12 @@ func TestScanPlansDir_FilterActive(t *testing.T) {
 	os.WriteFile(filepath.Join(plansDir, "2026-03-05-plan-active.md"), []byte(plan1), 0o644)
 	os.WriteFile(filepath.Join(plansDir, "2026-02-01-plan-completed.md"), []byte(plan2), 0o644)
 
-	plans, err := scanPlansDir(plansDir)
+	plans, err := plan.ScanDir(plansDir)
 	if err != nil {
-		t.Fatalf("scanPlansDir error: %v", err)
+		t.Fatalf("ScanDir error: %v", err)
 	}
 
-	active := filterPlansByStatus(plans, "active")
+	active := plan.FilterByStatus(plans, "active")
 	if len(active) != 1 {
 		t.Fatalf("active plans len = %d, want 1", len(active))
 	}
@@ -237,7 +239,7 @@ func TestScanPlansDir_FilterActive(t *testing.T) {
 }
 
 func TestCollectAllBeadsIDs(t *testing.T) {
-	plan := &PlanFile{
+	p := &PlanFile{
 		Phases: []PlanPhase{
 			{BeadsIDs: []string{"abc", "def"}},
 			{BeadsIDs: []string{"ghi"}},
@@ -245,14 +247,14 @@ func TestCollectAllBeadsIDs(t *testing.T) {
 		},
 	}
 
-	ids := collectAllBeadsIDs(plan)
+	ids := plan.CollectAllBeadsIDs(p)
 	if len(ids) != 3 {
 		t.Fatalf("ids len = %d, want 3", len(ids))
 	}
 }
 
 func TestFormatPlanShow(t *testing.T) {
-	plan := &PlanFile{
+	p := &PlanFile{
 		Title:    "Test Plan",
 		Status:   "active",
 		Date:     "2026-03-05",
@@ -273,7 +275,7 @@ func TestFormatPlanShow(t *testing.T) {
 		},
 	}
 
-	output := formatPlanShow(plan, nil)
+	output := formatPlanShow(p, nil)
 
 	// Should contain key elements
 	if !planTestContains(output, "Test Plan") {
@@ -332,13 +334,13 @@ func TestParsePlanFile_CoordinationPlanTitle(t *testing.T) {
 **Status:** active
 `
 
-	plan := parsePlanContent(content, "2026-03-05-plan-coord.md")
+	p := plan.ParseContent(content, "2026-03-05-plan-coord.md")
 
-	if plan.Title != "My Coordination Plan" {
-		t.Errorf("title = %q, want %q", plan.Title, "My Coordination Plan")
+	if p.Title != "My Coordination Plan" {
+		t.Errorf("title = %q, want %q", p.Title, "My Coordination Plan")
 	}
-	if plan.Status != "active" {
-		t.Errorf("status = %q, want %q", plan.Status, "active")
+	if p.Status != "active" {
+		t.Errorf("status = %q, want %q", p.Status, "active")
 	}
 }
 
@@ -352,10 +354,10 @@ func TestParsePlanFile_StatusNotOverriddenByPhaseStatus(t *testing.T) {
 **Status:** in-progress
 `
 
-	plan := parsePlanContent(content, "test.md")
+	p := plan.ParseContent(content, "test.md")
 
-	if plan.Status != "active" {
-		t.Errorf("status = %q, want %q (phase status should not override plan status)", plan.Status, "active")
+	if p.Status != "active" {
+		t.Errorf("status = %q, want %q (phase status should not override plan status)", p.Status, "active")
 	}
 }
 
@@ -371,14 +373,14 @@ func TestParsePlanPhaseBeads(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := parseBeadsLine(tt.line)
+		got := plan.ParseBeadsLine(tt.line)
 		if len(got) != len(tt.want) {
-			t.Errorf("parseBeadsLine(%q) len = %d, want %d", tt.line, len(got), len(tt.want))
+			t.Errorf("ParseBeadsLine(%q) len = %d, want %d", tt.line, len(got), len(tt.want))
 			continue
 		}
 		for i := range got {
 			if got[i] != tt.want[i] {
-				t.Errorf("parseBeadsLine(%q)[%d] = %q, want %q", tt.line, i, got[i], tt.want[i])
+				t.Errorf("ParseBeadsLine(%q)[%d] = %q, want %q", tt.line, i, got[i], tt.want[i])
 			}
 		}
 	}

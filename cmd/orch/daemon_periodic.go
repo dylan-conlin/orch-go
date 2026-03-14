@@ -23,6 +23,7 @@ type periodicTasksResult struct {
 	AgreementCheckSnapshot         *daemon.AgreementCheckSnapshot
 	BeadsHealthSnapshot            *daemon.BeadsHealthSnapshot
 	FrictionAccumulationSnapshot   *daemon.FrictionAccumulationSnapshot
+	PlanStalenessSnapshot          *daemon.PlanStalenessSnapshot
 }
 
 // runPeriodicTasks runs all periodic maintenance tasks and handles their output.
@@ -127,6 +128,15 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 	// Learning refresh + compliance auto-adjust
 	if r := d.RunPeriodicLearningRefresh(); r != nil {
 		handleLearningRefreshResult(r, timestamp, verbose, logger)
+	}
+
+	// Plan staleness detection
+	if r := d.RunPeriodicPlanStaleness(); r != nil {
+		handlePlanStalenessResult(r, timestamp, verbose, logger)
+		if r.Error == nil {
+			snapshot := r.Snapshot()
+			result.PlanStalenessSnapshot = &snapshot
+		}
 	}
 
 	return result
@@ -439,6 +449,43 @@ func handleLearningRefreshResult(r *daemon.LearningRefreshResult, timestamp stri
 		logDaemonEvent(logger, "daemon.learning_refresh", map[string]interface{}{
 			"downgrades_applied": r.DowngradesApplied,
 			"message":            r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+	}
+}
+
+func handlePlanStalenessResult(r *daemon.PlanStalenessResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Plan staleness error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.plan_staleness", map[string]interface{}{
+			"stale":   0,
+			"error":   r.Error.Error(),
+			"message": r.Message,
+		})
+	} else if len(r.StalePlans) > 0 {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		for _, sp := range r.StalePlans {
+			fmt.Printf("[%s]   %s: %s (%s)\n", timestamp, sp.Slug, sp.Reason, sp.StalenessType)
+		}
+
+		// Send desktop notification for stale plans
+		notifier := notify.Default()
+		for _, sp := range r.StalePlans {
+			if err := notifier.Send("Plan Stale: "+sp.Title, sp.Reason); err != nil {
+				fmt.Fprintf(os.Stderr, "[%s] Failed to send plan staleness notification: %v\n", timestamp, err)
+			}
+		}
+
+		slugs := make([]string, 0, len(r.StalePlans))
+		for _, sp := range r.StalePlans {
+			slugs = append(slugs, sp.Slug)
+		}
+		logDaemonEvent(logger, "daemon.plan_staleness", map[string]interface{}{
+			"stale":    len(r.StalePlans),
+			"scanned":  r.ScannedCount,
+			"slugs":    slugs,
+			"message":  r.Message,
 		})
 	} else if verbose {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)

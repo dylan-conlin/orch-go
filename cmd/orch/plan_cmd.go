@@ -9,28 +9,13 @@ import (
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/plan"
 	"github.com/spf13/cobra"
 )
 
-// PlanFile represents a parsed .kb/plans/ artifact.
-type PlanFile struct {
-	Title        string
-	Date         string
-	Status       string // active, completed, superseded
-	Owner        string
-	Filename     string
-	Projects     []string
-	SupersededBy string
-	Phases       []PlanPhase
-}
-
-// PlanPhase represents a phase within a plan.
-type PlanPhase struct {
-	Name      string
-	Goal      string
-	DependsOn string
-	BeadsIDs  []string
-}
+// Type aliases for backward compatibility with plan_hydrate.go and other files.
+type PlanFile = plan.File
+type PlanPhase = plan.Phase
 
 var (
 	planShowAll bool // Show all plans (not just active)
@@ -68,7 +53,7 @@ Examples:
 		projectDir, _ := os.Getwd()
 		plansDir := filepath.Join(projectDir, ".kb", "plans")
 
-		plans, err := scanPlansDir(plansDir)
+		plans, err := plan.ScanDir(plansDir)
 		if err != nil {
 			return fmt.Errorf("failed to scan plans: %w", err)
 		}
@@ -82,21 +67,21 @@ Examples:
 		// If slug argument provided, find and show that specific plan
 		if len(args) > 0 {
 			slug := args[0]
-			plan := findPlanBySlug(plans, slug)
-			if plan == nil {
+			p := plan.FindBySlug(plans, slug)
+			if p == nil {
 				return fmt.Errorf("no plan matching %q found", slug)
 			}
 
 			// Query beads for issue statuses
-			statusMap := queryBeadsStatuses(plan)
-			fmt.Print(formatPlanShow(plan, statusMap))
+			statusMap := queryBeadsStatuses(p)
+			fmt.Print(formatPlanShow(p, statusMap))
 			return nil
 		}
 
 		// Show filtered plans
 		filtered := plans
 		if !planShowAll {
-			filtered = filterPlansByStatus(plans, "active")
+			filtered = plan.FilterByStatus(plans, "active")
 		}
 
 		if len(filtered) == 0 {
@@ -104,12 +89,12 @@ Examples:
 			return nil
 		}
 
-		for i, plan := range filtered {
+		for i, p := range filtered {
 			if i > 0 {
 				fmt.Println()
 			}
-			statusMap := queryBeadsStatuses(&plan)
-			fmt.Print(formatPlanShow(&plan, statusMap))
+			statusMap := queryBeadsStatuses(&p)
+			fmt.Print(formatPlanShow(&p, statusMap))
 		}
 		return nil
 	},
@@ -126,7 +111,7 @@ Examples:
 		projectDir, _ := os.Getwd()
 		plansDir := filepath.Join(projectDir, ".kb", "plans")
 
-		plans, err := scanPlansDir(plansDir)
+		plans, err := plan.ScanDir(plansDir)
 		if err != nil {
 			return fmt.Errorf("failed to scan plans: %w", err)
 		}
@@ -175,202 +160,23 @@ func init() {
 	planShowCmd.Flags().BoolVar(&planShowAll, "all", false, "Show all plans (including completed/superseded)")
 }
 
-// scanPlansDir reads all .md files from the plans directory and parses them.
-func scanPlansDir(dir string) ([]PlanFile, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	var plans []PlanFile
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
-			continue
-		}
-		content, err := os.ReadFile(filepath.Join(dir, entry.Name()))
-		if err != nil {
-			continue
-		}
-		plan := parsePlanContent(string(content), entry.Name())
-		plans = append(plans, plan)
-	}
-
-	return plans, nil
-}
-
-// parsePlanContent extracts metadata and phases from a plan markdown file.
-func parsePlanContent(content, filename string) PlanFile {
-	plan := PlanFile{
-		Filename: filename,
-	}
-
-	lines := strings.Split(content, "\n")
-
-	var currentPhase *PlanPhase
-	inPhases := false
-	statusFound := false
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		// Title: "# Plan: Title Here" or "# Coordination Plan: Title Here"
-		if strings.HasPrefix(trimmed, "# Plan: ") {
-			plan.Title = strings.TrimPrefix(trimmed, "# Plan: ")
-			continue
-		}
-		if strings.HasPrefix(trimmed, "# Coordination Plan: ") {
-			plan.Title = strings.TrimPrefix(trimmed, "# Coordination Plan: ")
-			continue
-		}
-
-		// Metadata fields (only parse plan-level Status before Phases section)
-		if strings.HasPrefix(trimmed, "**Date:**") && !inPhases {
-			plan.Date = extractMetaValue(trimmed, "**Date:**")
-			continue
-		}
-		if strings.HasPrefix(trimmed, "**Status:**") && !inPhases && !statusFound {
-			plan.Status = extractMetaValue(trimmed, "**Status:**")
-			statusFound = true
-			continue
-		}
-		if strings.HasPrefix(trimmed, "**Owner:**") {
-			plan.Owner = extractMetaValue(trimmed, "**Owner:**")
-			continue
-		}
-		if strings.HasPrefix(trimmed, "**Projects:**") {
-			val := extractMetaValue(trimmed, "**Projects:**")
-			if val != "" {
-				for _, p := range strings.Split(val, ",") {
-					p = strings.TrimSpace(p)
-					if p != "" {
-						plan.Projects = append(plan.Projects, p)
-					}
-				}
-			}
-			continue
-		}
-		if strings.HasPrefix(trimmed, "**Superseded-By:**") {
-			plan.SupersededBy = extractMetaValue(trimmed, "**Superseded-By:**")
-			continue
-		}
-
-		// Phases section
-		if trimmed == "## Phases" {
-			inPhases = true
-			continue
-		}
-		// End of phases section (next ## heading)
-		if inPhases && strings.HasPrefix(trimmed, "## ") && !strings.HasPrefix(trimmed, "### ") {
-			if currentPhase != nil {
-				plan.Phases = append(plan.Phases, *currentPhase)
-				currentPhase = nil
-			}
-			inPhases = false
-			continue
-		}
-
-		if !inPhases {
-			continue
-		}
-
-		// Phase heading: "### Phase N: Name"
-		if strings.HasPrefix(trimmed, "### Phase ") {
-			if currentPhase != nil {
-				plan.Phases = append(plan.Phases, *currentPhase)
-			}
-			// Extract name after "### Phase N: "
-			name := trimmed
-			if idx := strings.Index(trimmed, ": "); idx >= 0 {
-				name = trimmed[idx+2:]
-			}
-			currentPhase = &PlanPhase{Name: name}
-			continue
-		}
-
-		if currentPhase == nil {
-			continue
-		}
-
-		// Phase metadata
-		if strings.HasPrefix(trimmed, "**Goal:**") {
-			currentPhase.Goal = extractMetaValue(trimmed, "**Goal:**")
-		}
-		if strings.HasPrefix(trimmed, "**Depends on:**") {
-			currentPhase.DependsOn = extractMetaValue(trimmed, "**Depends on:**")
-		}
-		if strings.HasPrefix(trimmed, "**Beads:**") {
-			currentPhase.BeadsIDs = parseBeadsLine(trimmed)
-		}
-	}
-
-	// Don't forget the last phase
-	if currentPhase != nil {
-		plan.Phases = append(plan.Phases, *currentPhase)
-	}
-
-	return plan
-}
-
-// extractMetaValue extracts the value from a "**Key:** value" line.
-func extractMetaValue(line, prefix string) string {
-	val := strings.TrimPrefix(line, prefix)
-	return strings.TrimSpace(val)
-}
-
-// parseBeadsLine extracts beads IDs from a "**Beads:** id1, id2" line.
-func parseBeadsLine(line string) []string {
-	val := extractMetaValue(line, "**Beads:**")
-	if val == "" || val == "none" {
-		return nil
-	}
-
-	var ids []string
-	for _, id := range strings.Split(val, ",") {
-		id = strings.TrimSpace(id)
-		if id != "" {
-			ids = append(ids, id)
-		}
-	}
-	return ids
-}
-
-// filterPlansByStatus returns plans matching the given status.
-func filterPlansByStatus(plans []PlanFile, status string) []PlanFile {
-	var result []PlanFile
-	for _, p := range plans {
-		if p.Status == status {
-			result = append(result, p)
-		}
-	}
-	return result
-}
-
-// findPlanBySlug finds a plan whose filename contains the slug.
-func findPlanBySlug(plans []PlanFile, slug string) *PlanFile {
-	for i, p := range plans {
-		if strings.Contains(p.Filename, slug) {
-			return &plans[i]
-		}
-	}
-	return nil
-}
-
-// collectAllBeadsIDs gathers all beads IDs from all phases of a plan.
-func collectAllBeadsIDs(plan *PlanFile) []string {
-	var ids []string
-	for _, phase := range plan.Phases {
-		ids = append(ids, phase.BeadsIDs...)
-	}
-	return ids
-}
+// Package-level aliases for plan package functions.
+// Used by tests and by plan_hydrate.go to avoid plan/plan naming collisions.
+var (
+	scanPlansDir            = plan.ScanDir
+	findPlanBySlug          = plan.FindBySlug
+	filterPlansByStatus     = plan.FilterByStatus
+	collectAllBeadsIDs      = plan.CollectAllBeadsIDs
+	parsePlanContent        = plan.ParseContent
+	parseBeadsLine          = plan.ParseBeadsLine
+	extractSlugFromFilename = plan.ExtractSlugFromFilename
+	parseDependsOn          = plan.ParseDependsOn
+)
 
 // queryBeadsStatuses queries beads for the status of all referenced issues.
 // Returns a map of beads ID -> issue status. Returns nil on error.
-func queryBeadsStatuses(plan *PlanFile) map[string]string {
-	ids := collectAllBeadsIDs(plan)
+func queryBeadsStatuses(p *plan.File) map[string]string {
+	ids := plan.CollectAllBeadsIDs(p)
 	if len(ids) == 0 {
 		return nil
 	}
@@ -391,32 +197,32 @@ func queryBeadsStatuses(plan *PlanFile) map[string]string {
 }
 
 // formatPlanShow formats a single plan for display with optional beads status overlay.
-func formatPlanShow(plan *PlanFile, statusMap map[string]string) string {
+func formatPlanShow(p *plan.File, statusMap map[string]string) string {
 	var b strings.Builder
 
 	// Header
-	fmt.Fprintf(&b, "Plan: %s\n", plan.Title)
-	fmt.Fprintf(&b, "Status: %s\n", plan.Status)
-	fmt.Fprintf(&b, "Date: %s\n", plan.Date)
-	if plan.Owner != "" {
-		fmt.Fprintf(&b, "Owner: %s\n", plan.Owner)
+	fmt.Fprintf(&b, "Plan: %s\n", p.Title)
+	fmt.Fprintf(&b, "Status: %s\n", p.Status)
+	fmt.Fprintf(&b, "Date: %s\n", p.Date)
+	if p.Owner != "" {
+		fmt.Fprintf(&b, "Owner: %s\n", p.Owner)
 	}
-	if len(plan.Projects) > 0 {
-		fmt.Fprintf(&b, "Projects: %s\n", strings.Join(plan.Projects, ", "))
+	if len(p.Projects) > 0 {
+		fmt.Fprintf(&b, "Projects: %s\n", strings.Join(p.Projects, ", "))
 	}
-	if plan.SupersededBy != "" {
-		fmt.Fprintf(&b, "Superseded-By: %s\n", plan.SupersededBy)
+	if p.SupersededBy != "" {
+		fmt.Fprintf(&b, "Superseded-By: %s\n", p.SupersededBy)
 	}
-	fmt.Fprintf(&b, "File: .kb/plans/%s\n", plan.Filename)
+	fmt.Fprintf(&b, "File: .kb/plans/%s\n", p.Filename)
 
-	if len(plan.Phases) == 0 {
+	if len(p.Phases) == 0 {
 		return b.String()
 	}
 
 	fmt.Fprintln(&b)
 	fmt.Fprintln(&b, "Phases:")
 
-	for i, phase := range plan.Phases {
+	for i, phase := range p.Phases {
 		phaseNum := i + 1
 
 		// Compute phase status from beads issues
@@ -509,7 +315,7 @@ func issueStatusIcon(status string) string {
 }
 
 // formatPlanStatus formats a summary view of all plans.
-func formatPlanStatus(plans []PlanFile) string {
+func formatPlanStatus(plans []plan.File) string {
 	var b strings.Builder
 
 	// Count by status
@@ -535,11 +341,11 @@ func formatPlanStatus(plans []PlanFile) string {
 	}
 	fmt.Fprintln(&b)
 
-	for _, plan := range plans {
-		statusIcon := planStatusIcon(plan.Status)
-		phaseCount := len(plan.Phases)
-		fmt.Fprintf(&b, "  %s %s (%s, %d phases)\n", statusIcon, plan.Title, plan.Status, phaseCount)
-		fmt.Fprintf(&b, "    File: .kb/plans/%s\n", plan.Filename)
+	for _, p := range plans {
+		statusIcon := planStatusIcon(p.Status)
+		phaseCount := len(p.Phases)
+		fmt.Fprintf(&b, "  %s %s (%s, %d phases)\n", statusIcon, p.Title, p.Status, phaseCount)
+		fmt.Fprintf(&b, "    File: .kb/plans/%s\n", p.Filename)
 	}
 
 	return b.String()

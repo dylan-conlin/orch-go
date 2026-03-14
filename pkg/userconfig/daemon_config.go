@@ -152,6 +152,14 @@ type DaemonConfig struct {
 	// These are prepended to the system PATH.
 	Path []string `yaml:"path,omitempty"`
 
+	// PlanStalenessEnabled controls whether periodic plan staleness detection is enabled.
+	// Defaults to true if not specified.
+	PlanStalenessEnabled *bool `yaml:"plan_staleness_enabled,omitempty"`
+
+	// PlanStalenessIntervalMinutes is how often to check for stale plans (in minutes).
+	// Defaults to 30 if not specified.
+	PlanStalenessIntervalMinutes *int `yaml:"plan_staleness_interval_minutes,omitempty"`
+
 	// Compliance holds per-spawn compliance level configuration.
 	// Levels: strict (default), standard, relaxed, autonomous.
 	Compliance *ComplianceYAMLConfig `yaml:"compliance,omitempty"`
@@ -474,6 +482,24 @@ func (c *Config) DaemonInvariantViolationThreshold() int {
 		return 3
 	}
 	return *c.Daemon.InvariantViolationThreshold
+}
+
+// DaemonPlanStalenessEnabled returns whether periodic plan staleness detection is enabled.
+// Defaults to true if not configured.
+func (c *Config) DaemonPlanStalenessEnabled() bool {
+	if c.Daemon.PlanStalenessEnabled == nil {
+		return true
+	}
+	return *c.Daemon.PlanStalenessEnabled
+}
+
+// DaemonPlanStalenessIntervalMinutes returns how often to check for stale plans (in minutes).
+// Defaults to 30 if not configured.
+func (c *Config) DaemonPlanStalenessIntervalMinutes() int {
+	if c.Daemon.PlanStalenessIntervalMinutes == nil {
+		return 30
+	}
+	return *c.Daemon.PlanStalenessIntervalMinutes
 }
 
 // DaemonWorkingDirectory returns the daemon's working directory.

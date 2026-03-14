@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/plan"
 	"github.com/spf13/cobra"
 )
 
@@ -42,18 +41,18 @@ Examples:
 		projectDir, _ := os.Getwd()
 		plansDir := filepath.Join(projectDir, ".kb", "plans")
 
-		plans, err := scanPlansDir(plansDir)
+		plans, err := plan.ScanDir(plansDir)
 		if err != nil {
 			return fmt.Errorf("failed to scan plans: %w", err)
 		}
 
-		plan := findPlanBySlug(plans, slug)
-		if plan == nil {
+		found := plan.FindBySlug(plans, slug)
+		if found == nil {
 			return fmt.Errorf("no plan matching %q found in .kb/plans/", slug)
 		}
 
-		planPath := filepath.Join(plansDir, plan.Filename)
-		return hydratePlan(plan, planPath)
+		planPath := filepath.Join(plansDir, found.Filename)
+		return hydratePlan(found, planPath)
 	},
 }
 
@@ -64,27 +63,27 @@ func init() {
 }
 
 // hydratePlan creates beads issues for unhydrated phases and writes IDs back.
-func hydratePlan(plan *PlanFile, planPath string) error {
-	toHydrate := phasesNeedingHydration(*plan)
+func hydratePlan(p *PlanFile, planPath string) error {
+	toHydrate := phasesNeedingHydration(*p)
 	if len(toHydrate) == 0 {
 		fmt.Println("All phases already hydrated. Nothing to do.")
 		return nil
 	}
 
-	planSlug := extractSlugFromFilename(plan.Filename)
+	planSlug := plan.ExtractSlugFromFilename(p.Filename)
 
-	fmt.Printf("Plan: %s\n", plan.Title)
-	fmt.Printf("Phases to hydrate: %d of %d\n\n", len(toHydrate), len(plan.Phases))
+	fmt.Printf("Plan: %s\n", p.Title)
+	fmt.Printf("Phases to hydrate: %d of %d\n\n", len(toHydrate), len(p.Phases))
 
 	if hydrateDryRun {
-		return hydrateDryRunOutput(plan, toHydrate, planSlug)
+		return hydrateDryRunOutput(p, toHydrate, planSlug)
 	}
 
 	// Create issues for each unhydrated phase
 	phaseIDs := make(map[int]string) // phase index -> beads ID
 	// Also collect existing IDs for dependency wiring
 	allPhaseIDs := make(map[int]string)
-	for i, phase := range plan.Phases {
+	for i, phase := range p.Phases {
 		if len(phase.BeadsIDs) > 0 {
 			allPhaseIDs[i] = phase.BeadsIDs[0] // use first ID for dep wiring
 		}
@@ -93,11 +92,11 @@ func hydratePlan(plan *PlanFile, planPath string) error {
 	labels := []string{"triage:ready", "plan:" + planSlug}
 
 	for _, idx := range toHydrate {
-		phase := plan.Phases[idx]
+		phase := p.Phases[idx]
 		phaseNum := idx + 1
 
-		title := buildPhaseTitle(plan.Title, phaseNum, phase.Name)
-		description := buildPhaseDescription(phase, plan.Title, hydrateParentID)
+		title := buildPhaseTitle(p.Title, phaseNum, phase.Name)
+		description := buildPhaseDescription(phase, p.Title, hydrateParentID)
 
 		issue, err := beads.FallbackCreate(title, description, "task", 2, labels, "")
 		if err != nil {
@@ -112,8 +111,8 @@ func hydratePlan(plan *PlanFile, planPath string) error {
 	// Add inter-phase dependencies
 	depCount := 0
 	for _, idx := range toHydrate {
-		phase := plan.Phases[idx]
-		depIndices := parseDependsOn(phase.DependsOn)
+		phase := p.Phases[idx]
+		depIndices := plan.ParseDependsOn(phase.DependsOn)
 
 		for _, depIdx := range depIndices {
 			depID, ok := allPhaseIDs[depIdx]
@@ -144,16 +143,16 @@ func hydratePlan(plan *PlanFile, planPath string) error {
 }
 
 // hydrateDryRunOutput shows what would be created without creating anything.
-func hydrateDryRunOutput(plan *PlanFile, toHydrate []int, planSlug string) error {
+func hydrateDryRunOutput(p *PlanFile, toHydrate []int, planSlug string) error {
 	fmt.Println("[DRY RUN] Would create:")
 	for _, idx := range toHydrate {
-		phase := plan.Phases[idx]
+		phase := p.Phases[idx]
 		phaseNum := idx + 1
-		title := buildPhaseTitle(plan.Title, phaseNum, phase.Name)
+		title := buildPhaseTitle(p.Title, phaseNum, phase.Name)
 		fmt.Printf("  Phase %d: %s\n", phaseNum, title)
 		fmt.Printf("    Labels: triage:ready, plan:%s\n", planSlug)
 
-		deps := parseDependsOn(phase.DependsOn)
+		deps := plan.ParseDependsOn(phase.DependsOn)
 		if len(deps) > 0 {
 			depStrs := make([]string, len(deps))
 			for i, d := range deps {
@@ -174,53 +173,6 @@ func phasesNeedingHydration(plan PlanFile) []int {
 		}
 	}
 	return indices
-}
-
-// parseDependsOn extracts 0-indexed phase numbers from a "Depends on" field.
-// Handles: "Nothing", "none", "Phase 1", "Phase 1 (extra text)", "Phases 1-3", "Phase 1, Phase 3"
-func parseDependsOn(dep string) []int {
-	dep = strings.TrimSpace(dep)
-	lower := strings.ToLower(dep)
-
-	if lower == "" || lower == "nothing" || lower == "none" || strings.HasPrefix(lower, "nothing") {
-		return nil
-	}
-
-	var result []int
-
-	// Match "Phases N-M" range pattern (only first range)
-	rangeRe := regexp.MustCompile(`(?i)phases?\s+(\d+)\s*-\s*(\d+)`)
-	if m := rangeRe.FindStringSubmatch(dep); len(m) == 3 {
-		start, _ := strconv.Atoi(m[1])
-		end, _ := strconv.Atoi(m[2])
-		for i := start; i <= end; i++ {
-			result = append(result, i-1) // convert to 0-indexed
-		}
-		return result
-	}
-
-	// Match individual "Phase N" references
-	phaseRe := regexp.MustCompile(`(?i)phase\s+(\d+)`)
-	matches := phaseRe.FindAllStringSubmatch(dep, -1)
-	for _, m := range matches {
-		n, _ := strconv.Atoi(m[1])
-		result = append(result, n-1) // convert to 0-indexed
-	}
-
-	return result
-}
-
-// extractSlugFromFilename extracts the slug from a plan filename.
-// "2026-03-11-gate-signal-vs-noise.md" → "gate-signal-vs-noise"
-func extractSlugFromFilename(filename string) string {
-	// Remove .md extension
-	name := strings.TrimSuffix(filename, ".md")
-
-	// Remove date prefix (YYYY-MM-DD-)
-	dateRe := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}-`)
-	name = dateRe.ReplaceAllString(name, "")
-
-	return name
 }
 
 // buildPhaseTitle creates the beads issue title for a plan phase.

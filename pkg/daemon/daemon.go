@@ -169,6 +169,10 @@ type Daemon struct {
 	// Computed via events.ComputeLearning() at daemon startup or refresh.
 	Learning *events.LearningStore
 
+	// PlanStatusQuerier queries beads for plan phase issue statuses.
+	// When nil, uses defaultPlanStatusQuerier (shells out to bd).
+	PlanStatusQuerier PlanStatusQuerier
+
 	// FocusGoal is the current focus goal text (from ~/.orch/focus.json).
 	// When set, issues from projects matching this goal get a priority boost.
 	FocusGoal string
