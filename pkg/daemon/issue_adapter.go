@@ -87,12 +87,18 @@ func convertBeadsIssues(beadsIssues []beads.Issue) []Issue {
 // ListEpicChildren retrieves children of an epic by its ID.
 // Uses the beads RPC client if available, falling back to CLI.
 func ListEpicChildren(epicID string) ([]Issue, error) {
+	return ListEpicChildrenForProject(epicID, "")
+}
+
+// ListEpicChildrenForProject retrieves children of an epic in a specific project directory.
+// When projectDir is empty, falls back to FindSocketPath("") / CLI with inherited CWD.
+func ListEpicChildrenForProject(epicID, projectDir string) ([]Issue, error) {
 	if epicID == "" {
 		return []Issue{}, nil
 	}
 
 	// Try to use the beads RPC client first
-	socketPath, err := beads.FindSocketPath("")
+	socketPath, err := beads.FindSocketPath(projectDir)
 	if err == nil {
 		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
 		if err := client.Connect(); err == nil {
@@ -107,6 +113,13 @@ func ListEpicChildren(epicID string) ([]Issue, error) {
 	}
 
 	// Fallback to CLI if daemon unavailable
+	if projectDir != "" {
+		beadsIssues, err := beads.FallbackListByParent(epicID, projectDir)
+		if err != nil {
+			return nil, err
+		}
+		return convertBeadsIssues(beadsIssues), nil
+	}
 	beadsIssues, err := beads.FallbackListByParent(epicID, "")
 	if err != nil {
 		return nil, err
@@ -303,17 +316,24 @@ func GetBeadsIssueStatus(beadsID string) (string, error) {
 }
 
 // FindInProgressByTitle returns the first in_progress issue with a matching title.
+// Delegates to FindInProgressByTitleForProject with empty projectDir.
+func FindInProgressByTitle(title string) *Issue {
+	return FindInProgressByTitleForProject(title, "")
+}
+
+// FindInProgressByTitleForProject returns the first in_progress issue with a matching title
+// in a specific project directory. When projectDir is empty, uses FindSocketPath("") / inherited CWD.
 // Uses case-insensitive substring matching via beads List API.
 // Returns nil if no match found. Fails open (returns nil on error) to avoid blocking work.
 // This is the persistent layer of content-aware dedup - it survives daemon restarts
 // because it queries the beads database directly.
-func FindInProgressByTitle(title string) *Issue {
+func FindInProgressByTitleForProject(title, projectDir string) *Issue {
 	if title == "" {
 		return nil
 	}
 
 	// Try RPC first
-	socketPath, err := beads.FindSocketPath("")
+	socketPath, err := beads.FindSocketPath(projectDir)
 	if err == nil {
 		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
 		if err := client.Connect(); err == nil {
@@ -332,7 +352,7 @@ func FindInProgressByTitle(title string) *Issue {
 	}
 
 	// Fallback to CLI
-	beadsIssues, err := beads.FallbackList("in_progress", "")
+	beadsIssues, err := beads.FallbackList("in_progress", projectDir)
 	if err != nil {
 		return nil // fail-open
 	}
@@ -445,12 +465,8 @@ func ListReadyIssuesMultiProject(registry *ProjectRegistry) ([]Issue, error) {
 		}
 	}
 
-	// If no projects returned any issues, fall back to local query
-	// This handles the case where the registry has projects but none have beads sockets
-	if len(allIssues) == 0 && len(registry.Projects()) > 0 {
-		return ListReadyIssues()
-	}
-
+	// Zero issues is a valid result — do NOT fall back to ListReadyIssues()
+	// which uses FindSocketPath("") and returns wrong-project issues from launchd.
 	return allIssues, nil
 }
 

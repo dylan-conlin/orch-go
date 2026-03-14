@@ -67,24 +67,40 @@ type defaultIssueQuerier struct {
 	// registry is consulted for multi-project issue listing.
 	// When non-nil, ListReadyIssues uses ListReadyIssuesMultiProject.
 	registry *ProjectRegistry
+	// currentDir is the current project directory for socket resolution.
+	// Set from registry.CurrentDir() to avoid relying on os.Getwd(),
+	// which returns wrong values when daemon runs from launchd.
+	currentDir string
 }
 
 func (q *defaultIssueQuerier) ListReadyIssues() ([]Issue, error) {
 	if q.registry != nil {
 		return ListReadyIssuesMultiProject(q.registry)
 	}
+	if q.currentDir != "" {
+		return ListReadyIssuesForProject(q.currentDir)
+	}
 	return ListReadyIssues()
 }
 
 func (q *defaultIssueQuerier) GetIssueStatus(beadsID string) (string, error) {
+	if q.currentDir != "" {
+		return GetBeadsIssueStatusForProject(beadsID, q.currentDir)
+	}
 	return GetBeadsIssueStatus(beadsID)
 }
 
 func (q *defaultIssueQuerier) ListEpicChildren(epicID string) ([]Issue, error) {
+	if q.currentDir != "" {
+		return ListEpicChildrenForProject(epicID, q.currentDir)
+	}
 	return ListEpicChildren(epicID)
 }
 
 func (q *defaultIssueQuerier) ListIssuesWithLabel(label string) ([]Issue, error) {
+	if q.currentDir != "" {
+		return ListIssuesWithLabelForProject(label, q.currentDir)
+	}
 	return ListIssuesWithLabel(label)
 }
 
@@ -93,9 +109,17 @@ func (q *defaultIssueQuerier) CreateExtractionIssue(task, parentIssueID string) 
 }
 
 // defaultIssueUpdater is the production IssueUpdater backed by beads CLI.
-type defaultIssueUpdater struct{}
+type defaultIssueUpdater struct {
+	// currentDir is the current project directory for socket resolution.
+	// Set from registry.CurrentDir() to avoid relying on os.Getwd(),
+	// which returns wrong values when daemon runs from launchd.
+	currentDir string
+}
 
 func (u *defaultIssueUpdater) UpdateStatus(beadsID, status string) error {
+	if u.currentDir != "" {
+		return UpdateBeadsStatusForProject(beadsID, status, u.currentDir)
+	}
 	return UpdateBeadsStatus(beadsID, status)
 }
 

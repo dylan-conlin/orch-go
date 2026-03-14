@@ -64,16 +64,21 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 	// tracking leads to duplicate spawns when SpawnedIssueTracker TTL expires or daemon restarts.
 	// Fail-fast here prevents the Feb 14 2026 incident where 10 duplicate spawns occurred
 	// because UpdateBeadsStatus was failing silently.
-	// Resolve status updater: for cross-project issues with the default updater,
-	// use the project-specific variant.
+	// Resolve status updater: use project-specific variant when project dir
+	// is known (cross-project issues or local-project with registry).
+	// This avoids FindSocketPath("") which breaks when CWD is wrong (launchd).
 	statusUpdater := d.StatusUpdater
 	if statusUpdater == nil {
 		statusUpdater = &defaultIssueUpdater{}
 	}
-	if issue.ProjectDir != "" {
+	statusProjectDir := issue.ProjectDir
+	if statusProjectDir == "" && d.ProjectRegistry != nil {
+		statusProjectDir = d.ProjectRegistry.CurrentDir()
+	}
+	if statusProjectDir != "" {
 		if _, isDefault := statusUpdater.(*defaultIssueUpdater); isDefault {
 			statusUpdater = issueUpdaterFunc(func(beadsID, status string) error {
-				return UpdateBeadsStatusForProject(beadsID, status, issue.ProjectDir)
+				return UpdateBeadsStatusForProject(beadsID, status, statusProjectDir)
 			})
 		}
 	}
@@ -146,7 +151,7 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 		// database issues (connectivity, beads daemon unavailability, etc.) that need
 		// immediate attention. Continuing would leave the issue in an inconsistent state
 		// (marked in_progress but spawn failed), blocking future spawns and orphaning the issue.
-		if rollbackErr := UpdateBeadsStatusForProject(issue.ID, "open", issue.ProjectDir); rollbackErr != nil {
+		if rollbackErr := UpdateBeadsStatusForProject(issue.ID, "open", statusProjectDir); rollbackErr != nil {
 			// Log as ERROR (not warning) - this is a critical failure
 			fmt.Fprintf(os.Stderr, "ERROR: Failed to rollback status for %s after spawn failure: %v\n", issue.ID, rollbackErr)
 			// Return rollback error immediately - don't continue cleanup
@@ -203,12 +208,22 @@ func (d *Daemon) buildSpawnPipeline() *SpawnPipeline {
 		freshStatusGate.GetStatusForProjectFunc = GetBeadsIssueStatusForProject
 	}
 
+	// Build title dedup gate with project-aware lookup when registry is available.
+	// This avoids FindSocketPath("") which returns wrong socket from launchd.
+	titleDedupGate := &TitleDedupBeadsGate{}
+	if d.ProjectRegistry != nil {
+		currentDir := d.ProjectRegistry.CurrentDir()
+		titleDedupGate.FindFunc = func(title string) *Issue {
+			return FindInProgressByTitleForProject(title, currentDir)
+		}
+	}
+
 	return &SpawnPipeline{
 		Gates: []SpawnGate{
 			&SpawnTrackerGate{Tracker: d.SpawnedIssues},          // L1: Spawn cache (ID)
 			&SessionDedupGate{},                                   // L2: Session/tmux existence
 			&TitleDedupMemoryGate{Tracker: d.SpawnedIssues},      // L3: Title dedup (in-memory)
-			&TitleDedupBeadsGate{},                                // L4: Title dedup (beads DB)
+			titleDedupGate,                                        // L4: Title dedup (beads DB)
 			freshStatusGate,                                       // L5: Fresh status re-check
 		},
 		AdvisoryChecks: []AdvisoryCheck{

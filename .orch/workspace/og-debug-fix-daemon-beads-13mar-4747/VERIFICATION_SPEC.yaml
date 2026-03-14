@@ -1,0 +1,48 @@
+verification:
+  type: behavioral
+  issue: orch-go-q6y6j
+
+  reproduction:
+    description: |
+      Daemon's ListReadyIssues() calls beads.FindSocketPath("") which uses os.Getwd().
+      From launchd, CWD is wrong, so daemon queries wrong project's beads socket.
+      Result: daemon sees 51 issues but orch-go issues missing from set.
+    fixed: true
+
+  automated_tests:
+    - name: TestDaemon_resolveIssueQuerier_SetsCurrentDirFromRegistry
+      command: go test ./pkg/daemon/... -run TestDaemon_resolveIssueQuerier_SetsCurrentDirFromRegistry -v
+      expected: PASS
+      verifies: currentDir is propagated from registry to defaultIssueQuerier
+
+    - name: TestDaemon_resolveIssueQuerier_NoRegistryLeavesCurrentDirEmpty
+      command: go test ./pkg/daemon/... -run TestDaemon_resolveIssueQuerier_NoRegistryLeavesCurrentDirEmpty -v
+      expected: PASS
+      verifies: Without registry, currentDir stays empty (backward compatible)
+
+    - name: TestListReadyIssuesMultiProject_NoFallbackToFindSocketPath
+      command: go test ./pkg/daemon/... -run TestListReadyIssuesMultiProject_NoFallbackToFindSocketPath -v
+      expected: PASS
+      verifies: Zero issues from registry does NOT fall back to ListReadyIssues()
+
+    - name: TestSpawnIssue_UsesRegistryCurrentDirForLocalIssues
+      command: go test ./pkg/daemon/... -run TestSpawnIssue_UsesRegistryCurrentDirForLocalIssues -v
+      expected: PASS
+      verifies: Local-project status updates use registry dir, not CWD
+
+  full_suite:
+    command: go test ./pkg/daemon/... -count=1 -timeout 120s
+    expected: ok (15s, 0 failures)
+
+  manual_verification:
+    - step: "Restart daemon from launchd or run `orch daemon run`"
+      expected: "Daemon sees orch-go issues in its ready queue"
+    - step: "Compare `orch daemon preview` output with `bd ready` from orch-go dir"
+      expected: "orch-go issues appear in both outputs"
+
+  files_changed:
+    - pkg/daemon/interfaces.go
+    - pkg/daemon/issue_selection.go
+    - pkg/daemon/spawn_execution.go
+    - pkg/daemon/issue_adapter.go
+    - pkg/daemon/daemon_test.go

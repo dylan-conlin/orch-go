@@ -9,13 +9,20 @@ import (
 // If only ProjectRegistry is set (no custom Issues), wraps it into a defaultIssueQuerier.
 func (d *Daemon) resolveIssueQuerier() IssueQuerier {
 	if d.Issues != nil {
-		// If it's the default querier, update its registry pointer lazily
+		// If it's the default querier, update its registry and currentDir lazily
 		if dq, ok := d.Issues.(*defaultIssueQuerier); ok {
 			dq.registry = d.ProjectRegistry
+			if d.ProjectRegistry != nil {
+				dq.currentDir = d.ProjectRegistry.CurrentDir()
+			}
 		}
 		return d.Issues
 	}
-	return &defaultIssueQuerier{registry: d.ProjectRegistry}
+	var currentDir string
+	if d.ProjectRegistry != nil {
+		currentDir = d.ProjectRegistry.CurrentDir()
+	}
+	return &defaultIssueQuerier{registry: d.ProjectRegistry, currentDir: currentDir}
 }
 
 // issueMatchesLabel checks if an issue matches the daemon's configured label filter.
