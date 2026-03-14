@@ -11,6 +11,7 @@ import (
 
 var (
 	kbGateJSON            bool
+	kbGateModelJSON       bool
 	kbAcknowledgeClaims   bool
 	kbScanClaimsJSON      bool
 )
@@ -124,11 +125,55 @@ Examples:
 	},
 }
 
+var kbGateModelCmd = &cobra.Command{
+	Use:   "model <model-path>",
+	Short: "Check if a model has required claim ledger and vocabulary canonicalization",
+	Long: `Run Phase 2 adversarial gate checks on a model file.
+
+Checks:
+  1. Claim ledger table: model must contain a markdown table with columns
+     claim_id, claim_text, claim_type, scope, novelty_level, evidence_refs
+  2. Vocabulary canonicalization table: model must contain a markdown table with
+     columns term, plain_language, nearest_existing_concepts, claimed_delta, verdict
+  3. Claim entry validation: each claim must have valid type and novelty level
+  4. Evidence warnings: non-observation claims need evidence_refs;
+     generalization/novel claims with only model/probe refs get warned
+  5. Vocabulary inflation: empty claimed_delta with prior-art mapped = warning
+
+Exit code 1 if any required check fails. Warnings do not block.
+
+Examples:
+  orch kb gate model .kb/models/harness-engineering/model.md
+  orch kb gate model .kb/models/knowledge-accretion/model.md --json`,
+	Args:         cobra.ExactArgs(1),
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		result := kbgate.CheckModel(args[0])
+
+		if kbGateModelJSON {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			if err := enc.Encode(result); err != nil {
+				return err
+			}
+		} else {
+			fmt.Print(kbgate.FormatModelResult(result))
+		}
+
+		if !result.Pass {
+			return fmt.Errorf("model gate failed")
+		}
+		return nil
+	},
+}
+
 func init() {
 	kbGatePublishCmd.Flags().BoolVar(&kbGateJSON, "json", false, "Output as JSON")
 	kbGatePublishCmd.Flags().BoolVar(&kbAcknowledgeClaims, "acknowledge-claims", false, "Acknowledge claim-upgrade signals (downgrades to warnings)")
+	kbGateModelCmd.Flags().BoolVar(&kbGateModelJSON, "json", false, "Output as JSON")
 	kbScanClaimsCmd.Flags().BoolVar(&kbScanClaimsJSON, "json", false, "Output as JSON")
 	kbGateCmd.AddCommand(kbGatePublishCmd)
+	kbGateCmd.AddCommand(kbGateModelCmd)
 	kbCmd.AddCommand(kbGateCmd)
 	kbCmd.AddCommand(kbScanClaimsCmd)
 }
