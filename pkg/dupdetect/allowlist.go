@@ -16,12 +16,10 @@ const allowlistFilename = ".dupdetectignore"
 //   - One pattern per line
 //   - Lines starting with # are comments
 //   - Blank lines are ignored
-//   - Patterns use filepath.Match syntax (e.g., "(Logger).Log*")
-//
-// Semantics: A duplicate pair is suppressed when BOTH functions match the
-// SAME pattern line. This means intentionally parallel code (like Logger.Log*
-// methods) can be allowlisted without hiding real duplication involving those
-// functions.
+//   - Single patterns use filepath.Match syntax (e.g., "(Logger).Log*")
+//     Both functions in a pair must match the same pattern.
+//   - Pair patterns use "X <-> Y" syntax (e.g., "(Logger).Log* <-> WriteCheckpoint")
+//     Each side is a glob; the pair is suppressed if either ordering matches.
 func LoadAllowlistFile(projectDir string) ([]string, error) {
 	path := filepath.Join(projectDir, allowlistFilename)
 	f, err := os.Open(path)
@@ -49,12 +47,50 @@ func LoadAllowlistFile(projectDir string) ([]string, error) {
 // allowlist pattern. Each pattern is checked independently — the pair is
 // suppressed only when both sides match a single pattern.
 func isAllowlisted(a, b string, allowlist []string) bool {
+	_, matched := allowlistedPattern(a, b, allowlist)
+	return matched
+}
+
+// allowlistedPattern returns the pattern that suppressed a pair, and whether
+// a match was found. Returns ("", false) if no pattern matches.
+//
+// Two pattern formats are supported:
+//   - Single pattern: "Log*" — both functions must match the same pattern
+//   - Pair pattern: "FuncA <-> FuncB" — each side is a glob; the pair is
+//     suppressed if (a matches left AND b matches right) OR vice versa
+func allowlistedPattern(a, b string, allowlist []string) (string, bool) {
 	for _, pattern := range allowlist {
+		if left, right, ok := parsePairPattern(pattern); ok {
+			matchAL, _ := filepath.Match(left, a)
+			matchBR, _ := filepath.Match(right, b)
+			matchAR, _ := filepath.Match(right, a)
+			matchBL, _ := filepath.Match(left, b)
+			if (matchAL && matchBR) || (matchAR && matchBL) {
+				return pattern, true
+			}
+			continue
+		}
 		matchA, _ := filepath.Match(pattern, a)
 		matchB, _ := filepath.Match(pattern, b)
 		if matchA && matchB {
-			return true
+			return pattern, true
 		}
 	}
-	return false
+	return "", false
+}
+
+// parsePairPattern checks if a pattern uses pair syntax ("X <-> Y").
+// Returns the left and right globs and true, or zero values and false.
+func parsePairPattern(pattern string) (left, right string, ok bool) {
+	const sep = " <-> "
+	idx := strings.Index(pattern, sep)
+	if idx < 0 {
+		return "", "", false
+	}
+	left = strings.TrimSpace(pattern[:idx])
+	right = strings.TrimSpace(pattern[idx+len(sep):])
+	if left == "" || right == "" {
+		return "", "", false
+	}
+	return left, right, true
 }

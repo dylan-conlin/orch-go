@@ -154,6 +154,90 @@ func (a *Adapter) HandleB() {
 	}
 }
 
+func TestAllowlist_SuppressedPairsTracked(t *testing.T) {
+	// When pairs are suppressed by the allowlist, they should be recorded
+	// in d.Suppressed with the matching pattern.
+	src := `package foo
+func LogSpawn() {
+	x := 1
+	y := x + 2
+	z := y * 3
+	println(z)
+}
+func LogCompleted() {
+	x := 1
+	y := x + 2
+	z := y * 3
+	println(z)
+}
+func processItems() {
+	a := 10
+	b := a + 20
+	c := b * 30
+	println(c)
+}
+`
+	d := NewDetector()
+	d.MinBodyLines = 2
+	d.Allowlist = []string{"Log*"}
+
+	funcs, err := d.ParseSource("test.go", src)
+	if err != nil {
+		t.Fatalf("ParseSource failed: %v", err)
+	}
+	pairs := d.FindDuplicates(funcs)
+
+	// LogSpawn vs LogCompleted should be suppressed (both match Log*)
+	// LogSpawn vs processItems and LogCompleted vs processItems should be detected
+	if len(pairs) != 2 {
+		t.Errorf("expected 2 detected pairs, got %d", len(pairs))
+	}
+	if len(d.Suppressed) != 1 {
+		t.Fatalf("expected 1 suppressed pair, got %d", len(d.Suppressed))
+	}
+	if d.Suppressed[0].Pattern != "Log*" {
+		t.Errorf("expected pattern 'Log*', got %q", d.Suppressed[0].Pattern)
+	}
+	if d.Suppressed[0].FuncA.Name != "LogSpawn" || d.Suppressed[0].FuncB.Name != "LogCompleted" {
+		t.Errorf("expected LogSpawn vs LogCompleted, got %s vs %s",
+			d.Suppressed[0].FuncA.Name, d.Suppressed[0].FuncB.Name)
+	}
+}
+
+func TestAllowlist_SuppressedPairsResetBetweenCalls(t *testing.T) {
+	// Suppressed should be reset on each FindDuplicates call.
+	src := `package foo
+func LogA() {
+	x := 1
+	y := x + 2
+	z := y * 3
+	println(z)
+}
+func LogB() {
+	x := 1
+	y := x + 2
+	z := y * 3
+	println(z)
+}
+`
+	d := NewDetector()
+	d.MinBodyLines = 2
+	d.Allowlist = []string{"Log*"}
+
+	funcs, _ := d.ParseSource("test.go", src)
+	d.FindDuplicates(funcs)
+	if len(d.Suppressed) != 1 {
+		t.Fatalf("first call: expected 1 suppressed, got %d", len(d.Suppressed))
+	}
+
+	// Run again with no allowlist — suppressed should be empty
+	d.Allowlist = nil
+	d.FindDuplicates(funcs)
+	if len(d.Suppressed) != 0 {
+		t.Errorf("second call: expected 0 suppressed, got %d", len(d.Suppressed))
+	}
+}
+
 func TestAllowlist_EmptyAllowlist(t *testing.T) {
 	// Empty allowlist means nothing is suppressed.
 	src := `package foo
@@ -218,6 +302,155 @@ func TestLoadAllowlistFile_NoFile(t *testing.T) {
 	}
 	if len(patterns) != 0 {
 		t.Errorf("expected empty patterns for missing file, got %v", patterns)
+	}
+}
+
+func TestAllowlist_PairPattern(t *testing.T) {
+	// Pair patterns suppress specific cross-function FP pairs.
+	src := `package foo
+func LogEvent() {
+	x := 1
+	y := x + 2
+	z := y * 3
+	println(z)
+}
+func WriteCheckpoint() {
+	x := 1
+	y := x + 2
+	z := y * 3
+	println(z)
+}
+`
+	d := NewDetector()
+	d.MinBodyLines = 2
+	d.Allowlist = []string{"Log* <-> WriteCheckpoint"}
+
+	funcs, err := d.ParseSource("test.go", src)
+	if err != nil {
+		t.Fatalf("ParseSource failed: %v", err)
+	}
+	pairs := d.FindDuplicates(funcs)
+	if len(pairs) != 0 {
+		t.Errorf("expected pair pattern to suppress match, got %d pairs", len(pairs))
+	}
+}
+
+func TestAllowlist_PairPatternOrderIndependent(t *testing.T) {
+	// Pair pattern works regardless of which function is A vs B.
+	src := `package foo
+func alpha() {
+	x := 1
+	y := x + 2
+	z := y * 3
+	println(z)
+}
+func beta() {
+	x := 1
+	y := x + 2
+	z := y * 3
+	println(z)
+}
+`
+	d := NewDetector()
+	d.MinBodyLines = 2
+	d.Allowlist = []string{"beta <-> alpha"}
+
+	funcs, err := d.ParseSource("test.go", src)
+	if err != nil {
+		t.Fatalf("ParseSource failed: %v", err)
+	}
+	pairs := d.FindDuplicates(funcs)
+	if len(pairs) != 0 {
+		t.Errorf("expected pair pattern to work in either order, got %d pairs", len(pairs))
+	}
+}
+
+func TestAllowlist_PairPatternWithGlobs(t *testing.T) {
+	// Pair patterns support globs on both sides.
+	src := `package foo
+
+type Logger struct{}
+
+func (l *Logger) LogSpawn() {
+	x := 1
+	y := x + 2
+	z := y * 3
+	println(z)
+}
+func WriteCheckpoint() {
+	x := 1
+	y := x + 2
+	z := y * 3
+	println(z)
+}
+`
+	d := NewDetector()
+	d.MinBodyLines = 2
+	d.Allowlist = []string{"(Logger).Log* <-> Write*"}
+
+	funcs, err := d.ParseSource("test.go", src)
+	if err != nil {
+		t.Fatalf("ParseSource failed: %v", err)
+	}
+	pairs := d.FindDuplicates(funcs)
+	if len(pairs) != 0 {
+		t.Errorf("expected pair pattern with globs to suppress, got %d pairs", len(pairs))
+	}
+}
+
+func TestAllowlist_PairPatternDoesNotSuppressUnrelated(t *testing.T) {
+	// A pair pattern should NOT suppress pairs that don't match.
+	src := `package foo
+func alpha() {
+	x := 1
+	y := x + 2
+	z := y * 3
+	println(z)
+}
+func gamma() {
+	x := 1
+	y := x + 2
+	z := y * 3
+	println(z)
+}
+`
+	d := NewDetector()
+	d.MinBodyLines = 2
+	d.Allowlist = []string{"alpha <-> beta"}
+
+	funcs, err := d.ParseSource("test.go", src)
+	if err != nil {
+		t.Fatalf("ParseSource failed: %v", err)
+	}
+	pairs := d.FindDuplicates(funcs)
+	if len(pairs) == 0 {
+		t.Fatal("expected pair to be reported when it doesn't match the pair pattern")
+	}
+}
+
+func TestLoadAllowlistFile_PairPatterns(t *testing.T) {
+	dir := t.TempDir()
+	content := `# Single patterns
+(Logger).Log*
+
+# Pair patterns
+(Logger).Log* <-> WriteCheckpoint
+CloseIssue <-> GetComments
+`
+	os.WriteFile(filepath.Join(dir, ".dupdetectignore"), []byte(content), 0644)
+
+	patterns, err := LoadAllowlistFile(dir)
+	if err != nil {
+		t.Fatalf("LoadAllowlistFile failed: %v", err)
+	}
+	if len(patterns) != 3 {
+		t.Fatalf("expected 3 patterns, got %d: %v", len(patterns), patterns)
+	}
+	if patterns[0] != "(Logger).Log*" {
+		t.Errorf("expected single pattern, got %q", patterns[0])
+	}
+	if patterns[1] != "(Logger).Log* <-> WriteCheckpoint" {
+		t.Errorf("expected pair pattern, got %q", patterns[1])
 	}
 }
 

@@ -1,6 +1,9 @@
 # Intentionally parallel code — structurally identical by design.
 # A pair is suppressed only when BOTH functions match the SAME pattern.
 # Pattern syntax: filepath.Match globs against function names (e.g., "(Type).Method*").
+# Pair syntax: "FuncA <-> FuncB" — suppresses a specific cross-function pair.
+
+# === Same-pattern suppressions (both sides match one glob) ===
 
 # Event logger methods — each Log* method wraps l.Log() with event-specific data.
 # They are parallel by design; flagging them as clones buries real findings.
@@ -8,3 +11,64 @@
 
 # Event logger adapter methods — same pattern as Logger.
 (EventLoggerAdapter).Log*
+
+# Daemon periodic handlers — each handle*Result processes a different check
+# result type with identical error-handling structure.
+handle*Result
+
+# Beads line parsers — parseBeadsIDs and parseBeadsLine parse different formats
+# with similar AST shape. Same for ParseBeadsLine (exported variant).
+parseBeads*
+ParseBeads*
+
+# Threshold derivation — DeriveInvariantThreshold and DeriveVerificationThreshold
+# look up different threshold types with identical lookup structure.
+Derive*Threshold
+
+# Workspace field readers — ReadReviewTierFromWorkspace and ReadVerifyLevelFromWorkspace
+# read different YAML fields with identical file-read boilerplate.
+Read*FromWorkspace
+
+# Issue category finders — findPhantomIssues and findZombieIssues detect different
+# categories using the same iteration pattern.
+find*Issues
+
+# Beads issue inference — inferBrowserToolFromBeadsIssue and inferMCPFromBeadsIssue
+# infer different config from issue labels with identical branching structure.
+infer*FromBeadsIssue
+
+# SpawnTime getter variants — SpawnTime (method) and readSpawnTime (helper)
+# are a getter/reader pair with near-identical bodies.
+*SpawnTime
+
+# Self-match suppressions — identical function matched against itself due to
+# appearing in both modified and corpus partitions. (Detector bug, but suppress
+# until the dedup fix lands.)
+inferSkillFromBeadsIssue
+InferSkillFromIssueType
+
+# === Pair-pattern suppressions (cross-function FPs) ===
+
+# JSONL writers — Logger.Log writes events, WriteCheckpoint writes daemon state.
+# Both serialize to JSONL with identical marshal-and-append structure but
+# completely different domains.
+(Logger).Log* <-> WriteCheckpoint
+
+# Git diff parsers — getWebChangesFromRecentCommits looks for web/ paths,
+# hasGoChangesInRecentCommits looks for .go paths. Same git-log parsing,
+# different filters.
+getWebChangesFromRecentCommits <-> hasGoChangesInRecentCommits
+
+# Context generators — GenerateEcosystemContext builds spawn context,
+# loadOrchSkillContent and collectReflectSuggestions load skill/reflect data.
+# Similar file-read-and-concatenate shape, different purposes.
+GenerateEcosystemContext <-> loadOrchSkillContent
+GenerateEcosystemContext <-> collectReflectSuggestions
+
+# Opposite beads operations — CloseIssue and GetComments share CLI invocation
+# boilerplate but perform complementary operations.
+CloseIssue <-> GetComments
+
+# String extraction helpers — getBeadsIssuePrefix extracts issue ID prefix,
+# getGitBaseline reads git baseline. Both parse strings with similar structure.
+getBeadsIssuePrefix <-> getGitBaseline
