@@ -70,6 +70,20 @@ opencode    → agent execution        (Claude frontend, session management)
 | `config` | Config-as-code management |
 | `init` | Initialize orch scaffolding |
 | `doctor` | Check health of orch services |
+| `harness` | Control plane immutability (init, check, lock, unlock, audit, report) |
+| `control` | Lock/unlock control plane files (macOS chflags) |
+| `plan` | Coordination plan management (show, status, create) |
+| `thread` | Living threads for mid-session comprehension capture |
+| `audit` | Randomized completion audit selection |
+| `backlog` | Backlog maintenance (cull stale P3/P4) |
+| `patterns` | Surface behavioral patterns for orchestrator awareness |
+| `hook` | Test, validate, and trace Claude Code hooks |
+| `settings` | Programmatic settings.json modification (add-hook, remove-hook) |
+| `tokens` | Show token usage for sessions |
+| `retries` | Show issues with retry patterns |
+| `port` | Manage port allocations across projects |
+| `kb` | Knowledge base commands (extract, ask, claims, orphans, audit) |
+| `debrief` | Generate session debrief with auto-populated sections |
 
 ### orch spawn
 

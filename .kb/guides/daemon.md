@@ -23,52 +23,51 @@ The daemon is an autonomous agent spawner that:
 
 ### Core Package Structure (pkg/daemon/)
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `daemon.go` | ~700 | Main daemon struct, poll loop, Next/Once methods |
-| `pool.go` | ~250 | WorkerPool for capacity management |
-| `completion.go` | ~310 | SSE-based completion tracking (legacy) |
-| `completion_processing.go` | ~325 | Beads-polling completion detection |
-| `reflect.go` | ~270 | kb reflect integration for synthesis surfacing |
-| `status.go` | ~130 | Status file management |
-| `hotspot.go` | ~100 | Hotspot detection interface |
-| `skill_inference.go` | ~120 | Issue type → skill mapping |
-| `rate_limiter.go` | ~110 | Spawn rate limiting |
-| `issue_adapter.go` | ~90 | Beads integration |
-| `issue_queue.go` | ~60 | Issue filtering logic |
-| `active_count.go` | ~160 | OpenCode session counting |
-| `spawn_tracker.go` | ~360 | Spawn tracking: ID dedup (L1), title dedup (L3), disk persistence, thrash detection |
-| `session_dedup.go` | ~140 | Session/tmux existence checking (L2) |
+| File | Purpose |
+|------|---------|
+| `daemon.go` | Main daemon struct, poll loop, Next/Once methods |
+| `ooda.go` | OODA phase implementations: Sense, Orient, Decide, Act |
+| `pool.go` | WorkerPool for capacity management |
+| `completion_processing.go` | Beads-polling completion detection |
+| `status.go` | Status file management |
+| `hotspot.go` | Hotspot detection interface |
+| `skill_inference.go` | Issue type → skill mapping |
+| `rate_limiter.go` | Spawn rate limiting |
+| `issue_adapter.go` | Beads integration |
+| `issue_queue.go` | Issue filtering logic |
+| `active_count.go` | OpenCode session counting |
+| `spawn_tracker.go` | Spawn tracking: ID dedup (L1), title dedup (L3), thrash detection |
+| `session_dedup.go` | Session/tmux existence checking (L2) |
 
-### Poll Loop Flow
+**Related packages:**
+- `pkg/daemonconfig/` — ComplianceConfig, allocation profiles
+- `pkg/orient/` — Orient phase measurement, work graph
+- `cmd/orch/daemon_periodic.go` — Periodic tasks (backlog cull, plan advancement)
+
+### OODA Poll Loop
+
+The daemon uses an OODA (Observe-Orient-Decide-Act) cycle:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  orch daemon run                                                         │
 │                                                                          │
 │  Startup:                                                                │
-│    - Load config from ~/.orch/config.yaml                                │
-│    - Initialize WorkerPool with MaxAgents                                │
+│    - Acquire PID lock (single instance enforcement)                      │
+│    - Auto-lock control plane (chflags uchg)                              │
+│    - Load config, initialize WorkerPool                                  │
 │    - Start completion polling (separate interval)                        │
 │                                                                          │
-│  Poll Loop (every 60s default):                                          │
-│    1. Reconcile with OpenCode (free stale slots)                        │
-│    2. If periodic reflect due → run kb reflect                          │
-│    3. Poll beads: bd ready --limit 0                                    │
-│    4. Filter for triage:ready label                                     │
-│    5. For each ready issue (within capacity):                           │
-│       - Check rejection reasons (type, status, deps)                     │
-│       - Infer skill from issue type                                      │
-│       - Acquire slot from WorkerPool                                     │
-│       - Spawn agent: orch work <id>                                      │
-│    6. Sleep for poll interval                                            │
-│    7. Repeat                                                             │
+│  OODA Cycle (every 60s default):                                         │
+│    1. SENSE: Check compliance gates, poll beads for ready issues         │
+│    2. ORIENT: Score candidates (allocation profiles, measurement data)   │
+│    3. DECIDE: Select issues to spawn (within capacity, gate-allowed)     │
+│    4. ACT: Spawn agents via orch work <id>                               │
 │                                                                          │
-│  Completion Loop (every 60s):                                            │
-│    - Poll for Phase: Complete comments                                   │
-│    - Verify completion (check artifacts)                                 │
-│    - Close beads issues                                                  │
-│    - Release pool slots                                                  │
+│  Periodic Tasks:                                                         │
+│    - Backlog cull (surface stale P3/P4 issues)                          │
+│    - Plan lifecycle advancement (staleness detection)                    │
+│    - Completion polling (Phase: Complete → orch complete)                │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 

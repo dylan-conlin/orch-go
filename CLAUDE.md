@@ -22,40 +22,46 @@ Claude API / Gemini API
 cmd/orch/
 ├── main.go              # Entry point, Cobra root command setup
 ├── *_cmd.go             # Command implementations (spawn, complete, status, etc.)
-├── daemon.go            # Daemon autonomous processing
+├── daemon.go            # Daemon command setup
+├── daemon_loop.go       # Daemon OODA poll cycle (Sense/Orient/Decide/Act)
+├── daemon_periodic.go   # Daemon periodic tasks (backlog cull, plan advancement)
 ├── serve*.go            # HTTP API server and handlers (agents, beads, system)
-├── session.go           # Session management and state
-└── shared.go            # Shared utilities and helpers
+├── harness_*.go         # Harness governance (audit, report, init)
+├── plan_cmd.go          # Coordination plan management
+├── complete_*.go        # Completion pipeline, duplication detection
+├── kb*.go               # Knowledge base commands (audit, init, extract, ask)
+└── orient_cmd.go        # Session orientation
 
 pkg/
 ├── opencode/            # OpenCode HTTP client + SSE streaming
-│   ├── client.go       # Session/message management via REST API
-│   ├── sse.go          # Server-sent events for real-time monitoring
-│   └── types.go        # API response types
 ├── model/               # Model alias resolution
-│   └── model.go        # opus→anthropic/claude-opus, flash→google/gemini-2.5-flash
 ├── account/             # Claude Max account management
-│   └── account.go      # Read/write ~/.orch/accounts.yaml, token refresh
 ├── tmux/                # Tmux window management
-│   └── tmux.go         # Create windows, send keys, capture output
-├── spawn/               # Spawn context generation
-│   ├── config.go       # SpawnConfig struct
-│   └── context.go      # SPAWN_CONTEXT.md template generation
+├── spawn/               # Spawn context generation + gates
 ├── skills/              # Skill discovery and loading
-│   └── loader.go       # Parse ~/.claude/skills/{category}/{skill}/SKILL.md
 ├── verify/              # Completion verification
-│   ├── check.go        # Verify deliverables, phase, commits
-│   └── update.go       # Update beads issue on completion
-├── events/              # Event logging
-│   └── logger.go       # Append to ~/.orch/events.jsonl
+├── events/              # Event logging (events.jsonl)
 ├── notify/              # Desktop notifications
-│   └── notify.go       # macOS notification center integration
-├── daemon/              # Autonomous processing
-│   └── daemon.go       # Poll bd ready, spawn triage:ready issues
+├── daemon/              # Autonomous processing types
+├── daemonconfig/        # Daemon configuration (ComplianceConfig, allocation)
 ├── focus/               # North star tracking
-│   └── focus.go        # ~/.orch/focus.json for cross-project prioritization
-└── question/            # Question extraction
-    └── question.go     # Parse pending questions from agent output
+├── question/            # Question extraction
+├── dupdetect/           # Duplicate detection for completion pipeline
+├── plan/                # Coordination plan types
+├── orient/              # Daemon Orient phase (measurement, work graph)
+├── attention/           # Attention routing and prioritization
+├── beads/               # Beads client utilities
+├── discovery/           # Agent discovery
+├── hook/                # Claude Code hook management
+├── identity/            # Agent identity resolution
+├── kbmetrics/           # Knowledge base metrics
+├── kbgate/              # KB gate enforcement
+├── tree/                # File tree generation
+├── debrief/             # Session debrief generation
+├── artifactsync/        # Artifact drift detection
+├── claudemd/            # CLAUDE.md parsing
+├── userconfig/          # User configuration management
+└── config/              # Project config (.orch/config.yaml)
 ```
 
 ## Spawn Backends
@@ -193,9 +199,8 @@ orch-dashboard logs     # View service logs (overmind echo)
 ### cmd/orch/main.go (Entry Point)
 
 - Uses Cobra framework for CLI structure
-- All commands defined inline (spawn, status, complete, send, etc.)
 - Global `--server` flag for OpenCode URL
-- Subcommand groups: `account`, `daemon`
+- Subcommand groups: `account`, `daemon`, `harness`, `plan`, `control`, `hook`, `thread`, `audit`, `backlog`, `settings`, `kb`, `port`, `review`, `patterns`
 
 ### pkg/opencode/ (OpenCode Client)
 
@@ -203,7 +208,6 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `ListSessions()`, `GetSession()`, `CreateSession()`, `GetMessages()`
 - `SSEClient` for real-time event streaming
 - Session status polling for completion detection
-- `ExtractRecentText()` for extracting text from message history
 
 ### pkg/model/ (Model Resolution)
 
@@ -216,38 +220,53 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `LoadConfig()` reads `~/.orch/accounts.yaml`
 - `Switch(name)` refreshes OAuth tokens and updates OpenCode auth
 - Token sources: OpenCode auth file, macOS Keychain
-- Same config format as Python orch-cli for interop
 
 ### pkg/spawn/ (Spawn Context)
 
 - `SpawnConfig` struct with all spawn parameters
 - `GenerateContext()` creates SPAWN_CONTEXT.md content
 - Embeds skill content, task description, beads issue context
-- Sets deliverables paths for verification
-- Conditionally includes server context for UI-focused skills (feature-impl, systematic-debugging)
-
-### pkg/config/ (Project Config)
-
-- `Load()` reads `.orch/config.yaml` from project directory
-- `Config.Servers` maps service names to ports (e.g., `web: 5173`)
-- Used by `orch servers` commands and spawn context generation
+- Spawn gates in `pkg/spawn/gates/` (governance-protected)
 
 ### pkg/verify/ (Completion Verification)
 
-- `Check()` validates agent work before closing
+- `Check()` validates agent work before closing (governance-protected)
 - Verifies: Phase Complete, deliverables exist, commits present
 - `Update()` closes beads issue with completion reason
 
+### pkg/daemon/ + pkg/daemonconfig/ (Daemon)
+
+- OODA poll cycle: Sense → Orient → Decide → Act
+- `ComplianceConfig` for per-spawn resolution
+- Allocation profiles for skill-aware slot scoring
+- Learning Store for per-skill metrics from events.jsonl
+
+### pkg/dupdetect/ (Duplicate Detection)
+
+- Detects duplicate spawns during completion pipeline
+- Allowlist for known false positives
+
+### pkg/orient/ (Daemon Orient Phase)
+
+- Measurement feedback loop
+- Work graph for daemon prioritization
+
+### pkg/plan/ (Coordination Plans)
+
+- Plan types for multi-phase coordination
+- Beads status overlay integration
+
 ## Spawn Flow
 
-1. `orch spawn SKILL "task"` invokes spawn command in main.go
+1. `orch spawn SKILL "task"` invokes spawn command
 2. Resolves model alias via `pkg/model.Resolve()`
-3. Creates workspace: `.orch/workspace/{name}/`
-4. Generates `SPAWN_CONTEXT.md` via `pkg/spawn`
-5. **Default (headless):** Creates session via HTTP API, sends prompt
-6. **With --tmux:** Creates session + tmux window for monitoring (opt-in)
-7. **With --inline:** Runs OpenCode TUI in current terminal (blocking)
-8. Returns immediately (unless --inline)
+3. Runs spawn gates (`pkg/spawn/gates/`) — hotspot enforcement, duplication checks
+4. Creates workspace: `.orch/workspace/{name}/`
+5. Generates `SPAWN_CONTEXT.md` via `pkg/spawn`
+6. **Default (Claude CLI):** Spawns in tmux window via Claude CLI
+7. **Non-Anthropic models:** Creates headless session via OpenCode HTTP API
+8. **With --inline:** Runs in current terminal (blocking)
+9. Returns immediately (unless --inline)
 
 ## Commands
 
@@ -259,6 +278,10 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `complete <agent-id>` - Verify and close agent work
 - `abandon <agent-id>` - Mark stuck agent as abandoned
 - `clean` - Remove completed agents from registry
+- `rework <beads-id> [feedback]` - Spawn rework agent for completed issue
+- `swarm` - Batch spawn multiple agents with concurrency control
+- `resume <beads-id>` - Resume a previous agent session
+- `tokens <session-id|beads-id>` - Show token usage for sessions
 
 ### Monitoring
 
@@ -267,6 +290,25 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `tail <agent-id>` - Capture recent tmux output (requires `--tmux` spawn)
 - `question <agent-id>` - Extract pending question
 - `serve` - HTTP API server for web UI (port 3348)
+- `orient` - Session start orientation with throughput baseline
+- `debrief [focus]` - Generate session debrief with auto-populated sections
+- `history` - Show agent history
+- `retries` - Show issues with retry patterns (failed attempts)
+- `patterns` - Surface behavioral patterns for orchestrator awareness
+
+### Planning & Knowledge
+
+- `plan show [slug]` - Display plans with beads status overlay
+- `plan status` - Summary of all plans with progress
+- `plan create <slug>` - Create a new coordination plan
+- `thread new "title"` - Create a living thread for mid-session capture
+- `thread append <slug> "text"` - Append to existing thread
+- `thread list/show/resolve` - Manage threads
+- `kb extract <artifact-path>` - Extract knowledge from artifacts
+- `kb ask [question]` - Query knowledge base
+- `kb claims` - List claims in knowledge base
+- `kb orphans` - Find orphaned knowledge artifacts
+- `kb audit provenance` - Scan evidence quality annotations
 
 ### Account & Model
 
@@ -278,18 +320,34 @@ orch-dashboard logs     # View service logs (overmind echo)
 ### Automation
 
 - `work <issue-id>` - Spawn from beads issue with skill inference
-- `daemon run` - Run autonomous processing in foreground
+- `daemon run` - Run autonomous processing (OODA cycle) in foreground
 - `daemon run --replace` - Stop existing daemon first, then start (graceful takeover)
 - `daemon preview` - Show what would be spawned
+- `daemon install/uninstall` - Manage launchd daemon service
 
-### Server Management
+### Governance & Control
 
-- `servers list` - Show all projects with port allocations and running status
-- `servers start <project>` - Start servers via tmuxinator
-- `servers stop <project>` - Stop servers for a project
-- `servers attach <project>` - Attach to servers window
-- `servers open <project>` - Open web port in browser
-- `servers status` - Show summary view (running/stopped counts)
+- `harness init/check/lock/unlock/status/verify/snapshot` - Control plane immutability
+- `harness audit` - Audit gate invocations, fire rates, costs
+- `harness report` - Measurement report with falsification verdicts
+- `control lock/unlock/status/deny` - Lock control plane files (macOS chflags)
+- `audit select/list/install/uninstall` - Randomized completion audit
+
+### Infrastructure
+
+- `port allocate/list/release/tmuxinator` - Port allocation management
+- `hook test/validate/trace` - Claude Code hook testing and tracing
+- `settings add-hook/remove-hook/list-hooks` - Programmatic settings.json modification
+- `deploy` - Atomic deployment: rebuild, restart services, verify health
+- `doctor` - Health checks and diagnostics
+- `emit [event-type]` - Emit event to events.jsonl
+- `hotspot` - Check file size hotspots for accretion enforcement
+
+### Workflow
+
+- `backlog cull` - Surface stale P3/P4 issues for keep-or-close
+- `review triage/synthesize` - Review and triage agent work
+- `reconcile` - Reconcile agent state
 
 ## Development
 

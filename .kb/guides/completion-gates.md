@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for all gates that block `orch complete`. Read this before debugging completion issues or adding new gates.
 
-**Last verified:** Feb 26, 2026
+**Last verified:** Mar 14, 2026
 
 ---
 
@@ -419,6 +419,33 @@ bd comment <id> "Tests: go test ./pkg/... - ok (15 tests in 2.1s)"
 **Cause:** Agent claimed to modify files in SYNTHESIS.md but those files have no git changes.
 
 **Fix:** Either the agent made false claims (fix SYNTHESIS) or forgot to commit (commit changes).
+
+---
+
+## Completion Advisories (Non-Blocking)
+
+After verification gates pass, `orch complete` runs advisory checks. These are informational — they warn but do not block completion.
+
+### Duplication Advisory
+
+**File:** `cmd/orch/complete_duplication.go`
+
+**What it checks:** Scans Go files modified by the agent for near-clone functions (>85% similarity, >10 lines). Uses `pkg/dupdetect/` with allowlist support (`.dupdetectignore`).
+
+**Output:** Warning showing duplicate pairs. Does not block completion but may trigger review tier escalation.
+
+### Hotspot Advisory
+
+**What it checks:** Whether the agent added >50 lines to files already >800 lines. Warns about accretion.
+
+### Completion Pipeline Architecture
+
+The completion pipeline is decomposed into four phases in `cmd/orch/complete_pipeline.go`:
+
+1. `resolveCompletionTarget` — Resolve beads ID to workspace, project dir, issue
+2. `executeVerificationGates` — Run all blocking gates (V0-V3)
+3. `runCompletionAdvisories` — Non-blocking checks (duplication, hotspot, harness measurement)
+4. `executeLifecycleTransition` — Close issue, emit events, notify
 
 ---
 
