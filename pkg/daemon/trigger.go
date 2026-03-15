@@ -68,6 +68,14 @@ type TriggerScanService interface {
 	CreateTriggerIssue(s TriggerSuggestion) (string, error)
 }
 
+// TriggerSnapshot holds trigger layer status for dashboard display.
+type TriggerSnapshot struct {
+	ActiveDetectors int `json:"active_detectors"`
+	BudgetUsed      int `json:"budget_used"`
+	BudgetMax       int `json:"budget_max"`
+	IssuesCreated   int `json:"issues_created"`
+}
+
 // TriggerScanResult contains the result of running all pattern detectors.
 type TriggerScanResult struct {
 	// Detected is the total number of patterns found across all detectors.
@@ -88,6 +96,13 @@ type TriggerScanResult struct {
 	Message string
 	// Error is set if a fatal error occurred (e.g., budget count failed).
 	Error error
+}
+
+// Snapshot returns a dashboard-friendly snapshot of the trigger scan result.
+func (r *TriggerScanResult) Snapshot() TriggerSnapshot {
+	return TriggerSnapshot{
+		IssuesCreated: r.Created,
+	}
 }
 
 // RunPeriodicTriggerScan runs all pattern detectors and creates issues for findings.

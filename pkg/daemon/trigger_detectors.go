@@ -1,8 +1,16 @@
 // Package daemon provides autonomous overnight processing capabilities.
-// This file contains the Phase 1 pattern detectors for the trigger scan system:
+// This file contains pattern detectors for the trigger scan system:
+//
+// Phase 1:
 //   - recurring_bugs: detects issues that have been reworked 2+ times
 //   - investigation_orphans: detects active investigations with no matching open issue
 //   - thread_staleness: detects open threads older than 7 days without updates
+//
+// Phase 2:
+//   - model_contradictions: detects unresolved probe contradictions in kb models
+//   - hotspot_acceleration: detects files growing rapidly (>200 lines/30d)
+//   - knowledge_decay: detects models with no recent probes (30d+)
+//   - skill_performance_drift: detects skills whose success rate dropped significantly
 package daemon
 
 import (
@@ -13,7 +21,21 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/thread"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
+
+// DefaultTriggerDetectors returns the registered pattern detectors with default sources.
+func DefaultTriggerDetectors() []PatternDetector {
+	return []PatternDetector{
+		&RecurringBugsDetector{Source: &defaultRecurringBugsSource{}},
+		&InvestigationOrphansDetector{Source: &defaultInvestigationOrphansSource{}},
+		&ThreadStalenessDetector{Source: &defaultThreadStalenessSource{}},
+		&ModelContradictionsDetector{Source: &defaultModelContradictionsSource{}},
+		&HotspotAccelerationDetector{Source: &defaultHotspotAccelerationSource{}},
+		&KnowledgeDecayDetector{Source: &defaultKnowledgeDecaySource{}},
+		&SkillPerformanceDriftDetector{Source: &defaultSkillPerformanceDriftSource{}},
+	}
+}
 
 // --- Recurring Bugs Detector ---
 
@@ -308,6 +330,45 @@ func (s *defaultInvestigationOrphansSource) HasOpenIssueForInvestigation(slug st
 	}
 	for _, issue := range issues {
 		if issue.Status == "in_progress" && strings.Contains(strings.ToLower(issue.Title), strings.ToLower(slug)) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// defaultRecurringBugsSource uses events.jsonl retry patterns to find reworked issues.
+type defaultRecurringBugsSource struct{}
+
+func (s *defaultRecurringBugsSource) ListClosedIssuesWithRework(minReworks int) ([]ReworkedIssue, error) {
+	patterns, err := verify.GetAllRetryPatterns()
+	if err != nil {
+		return nil, err
+	}
+
+	var result []ReworkedIssue
+	for _, stats := range patterns {
+		// Count reworks as spawn attempts beyond the first
+		reworkCount := stats.SpawnCount - 1
+		if reworkCount < minReworks {
+			continue
+		}
+		result = append(result, ReworkedIssue{
+			ID:          stats.BeadsID,
+			Title:       stats.BeadsID, // Use beads ID as title fallback
+			ReworkCount: reworkCount,
+		})
+	}
+	return result, nil
+}
+
+func (s *defaultRecurringBugsSource) HasOpenIssue(issueID string) (bool, error) {
+	// Check if there's already an open trigger issue for this recurring bug
+	issues, err := ListIssuesWithLabel(TriggerLabel)
+	if err != nil {
+		return false, err
+	}
+	for _, issue := range issues {
+		if strings.Contains(issue.Title, issueID) {
 			return true, nil
 		}
 	}
