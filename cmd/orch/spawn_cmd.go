@@ -50,6 +50,7 @@ var (
 	spawnBypassTriage       bool   // Explicitly bypass triage (documents conscious decision to spawn directly)
 	spawnDesignWorkspace    string // Design workspace name for ui-design-session → feature-impl handoff
 	spawnForceHotspot       bool   // Bypass CRITICAL hotspot blocking gate
+	spawnForceDrainBypass   bool   // Bypass drain gate (reviewable completions exist)
 	spawnArchitectRef       string // Architect issue reference (required with --force-hotspot)
 	spawnAccount            string // Account name for Claude CLI spawns (overrides auto-selection)
 	spawnVerifyLevel        string // Verification level override (V0-V3)
@@ -193,6 +194,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnBypassTriage, "bypass-triage", false, "Acknowledge manual spawn bypasses daemon-driven triage workflow (required for manual spawns)")
 	spawnCmd.Flags().StringVar(&spawnDesignWorkspace, "design-workspace", "", "Design workspace name from ui-design-session for handoff to feature-impl (e.g., 'og-design-ready-queue-08jan')")
 	spawnCmd.Flags().BoolVar(&spawnForceHotspot, "force-hotspot", false, "Bypass CRITICAL hotspot blocking gate (requires --architect-ref)")
+	spawnCmd.Flags().BoolVar(&spawnForceDrainBypass, "force-drain-bypass", false, "Bypass drain gate when reviewable completions exist (requires --reason)")
 	spawnCmd.Flags().StringVar(&spawnArchitectRef, "architect-ref", "", "Architect issue ID proving area was reviewed (required with --force-hotspot)")
 	spawnCmd.Flags().StringVar(&spawnScope, "scope", "", "Session scope: small, medium, large (parsed from task if not set)")
 	spawnCmd.Flags().StringVar(&spawnAccount, "account", "", "Account name for Claude CLI spawns (e.g., 'work', 'personal')")
@@ -241,7 +243,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 
 	// Validate --reason is provided for override flags (min 10 chars)
 	if !daemonDriven {
-		needsReason := spawnBypassTriage || spawnForceHotspot
+		needsReason := spawnBypassTriage || spawnForceHotspot || spawnForceDrainBypass
 		if needsReason && spawnReason == "" {
 			var flags []string
 			if spawnBypassTriage {
@@ -249,6 +251,9 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 			}
 			if spawnForceHotspot {
 				flags = append(flags, "--force-hotspot")
+			}
+			if spawnForceDrainBypass {
+				flags = append(flags, "--force-drain-bypass")
 			}
 			return fmt.Errorf("--reason is required when using %s (min 10 chars)", strings.Join(flags, ", "))
 		}
@@ -334,7 +339,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 	agreementsCheckFunc := buildAgreementsChecker()
 	openQuestionCheckFunc := buildOpenQuestionChecker()
-	usageCheckResult, hotspotResult, _, _, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnForceHotspot, spawnArchitectRef, spawnReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc)
+	usageCheckResult, hotspotResult, _, _, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnForceHotspot, spawnForceDrainBypass, spawnArchitectRef, spawnReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc)
 	if err != nil {
 		return err
 	}
@@ -533,6 +538,9 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 	if spawnForceHotspot {
 		cfg.GatesBypassed = append(cfg.GatesBypassed, "hotspot")
+	}
+	if spawnForceDrainBypass {
+		cfg.GatesBypassed = append(cfg.GatesBypassed, "drain")
 	}
 
 	// 13. Validate and write context (atomic spawn Phase 1: beads tag + workspace)

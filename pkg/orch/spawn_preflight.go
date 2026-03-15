@@ -12,7 +12,7 @@ import (
 )
 
 // RunPreFlightChecks performs all pre-spawn validation checks.
-func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, forceHotspot bool, architectRef, overrideReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error), openQuestionCheckFunc gates.OpenQuestionChecker) (*gates.UsageCheckResult, *gates.HotspotResult, *gates.AgreementsResult, *gates.OpenQuestionResult, error) {
+func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, forceHotspot, forceDrainBypass bool, architectRef, overrideReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error), openQuestionCheckFunc gates.OpenQuestionChecker) (*gates.UsageCheckResult, *gates.HotspotResult, *gates.AgreementsResult, *gates.OpenQuestionResult, error) {
 	if err := gates.CheckTriageBypass(input.DaemonDriven, bypassTriage, input.SkillName, input.Task); err != nil {
 		logGateDecision("triage", "block", input.SkillName, input.IssueID, "manual spawn without --bypass-triage", nil)
 		return nil, nil, nil, nil, err
@@ -23,6 +23,16 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, for
 	} else if input.DaemonDriven {
 		// Daemon-driven spawns skip triage automatically — log "allow"
 		logGateDecision("triage", "allow", input.SkillName, input.IssueID, "daemon-driven spawn", nil)
+	}
+	// Drain gate: block spawn if reviewable completions exist (unless daemon-driven or bypassed)
+	if err := gates.CheckDrainGate(forceDrainBypass, overrideReason, input.DaemonDriven); err != nil {
+		logGateDecision("drain", "block", input.SkillName, input.IssueID, err.Error(), nil)
+		return nil, nil, nil, nil, err
+	}
+	if forceDrainBypass {
+		logGateDecision("drain", "bypass", input.SkillName, input.IssueID, overrideReason, nil)
+	} else {
+		logGateDecision("drain", "allow", input.SkillName, input.IssueID, "no reviewable completions", nil)
 	}
 	// Verification gate is ADVISORY — warns about unverified Tier 1 work but never blocks.
 	// Downgraded from blocking: 24/24 bypasses had identical reason "testing independent parallel work",
