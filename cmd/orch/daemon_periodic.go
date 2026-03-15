@@ -40,6 +40,11 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 	// Model drift reflection
 	if r := d.RunPeriodicModelDriftReflection(); r != nil {
 		handleModelDriftResult(r, timestamp, verbose)
+		if r.Error == nil && len(r.Created) > 0 {
+			for _, issueID := range r.Created {
+				logModelDriftDecision(logger, d.Config.Compliance.Default, issueID)
+			}
+		}
 	}
 
 	// Knowledge health
@@ -59,16 +64,29 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 	// Stuck agent recovery
 	if r := d.RunPeriodicRecovery(); r != nil {
 		handleRecoveryResult(r, timestamp, verbose, logger)
+		if r.Error == nil && r.ResumedCount > 0 {
+			logResumeStuckDecision(logger, d.Config.Compliance.Default, r.ResumedCount)
+		}
 	}
 
 	// Orphan detection
 	if r := d.RunPeriodicOrphanDetection(); r != nil {
 		handleOrphanDetectionResult(r, timestamp, verbose, logger)
+		if r.Error == nil && r.ResetCount > 0 {
+			for _, orphan := range r.Orphans {
+				logResetOrphanDecision(logger, d.Config.Compliance.Default, orphan.BeadsID)
+			}
+		}
 	}
 
 	// Phase timeout detection
 	if r := d.RunPeriodicPhaseTimeout(); r != nil {
 		handlePhaseTimeoutResult(r, timestamp, verbose, logger)
+		if r.Error == nil && r.UnresponsiveCount > 0 {
+			for _, a := range r.Agents {
+				logPhaseTimeoutDecision(logger, d.Config.Compliance.Default, a.BeadsID)
+			}
+		}
 		if r.Error == nil {
 			snapshot := r.Snapshot()
 			result.PhaseTimeoutSnapshot = &snapshot
@@ -87,6 +105,9 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 	// Agreement check
 	if r := d.RunPeriodicAgreementCheck(); r != nil {
 		handleAgreementCheckResult(r, timestamp, verbose, logger)
+		if r.Error == nil && r.IssuesCreated > 0 {
+			logAgreementIssueDecision(logger, d.Config.Compliance.Default, r.IssuesCreated)
+		}
 		if r.Error == nil {
 			snapshot := r.Snapshot()
 			result.AgreementCheckSnapshot = &snapshot
@@ -124,11 +145,21 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 	// Synthesis auto-create (creates issues for investigation clusters without models)
 	if r := d.RunPeriodicSynthesisAutoCreate(); r != nil {
 		handleSynthesisAutoCreateResult(r, timestamp, verbose, logger)
+		if r.Error == nil && r.Created > 0 {
+			for _, issueID := range r.CreatedIssues {
+				logSynthesisIssueDecision(logger, d.Config.Compliance.Default, issueID)
+			}
+		}
 	}
 
 	// Learning refresh + compliance auto-adjust
 	if r := d.RunPeriodicLearningRefresh(); r != nil {
 		handleLearningRefreshResult(r, timestamp, verbose, logger)
+		if r.Error == nil && r.DowngradesApplied > 0 {
+			for _, s := range r.Suggestions {
+				logComplianceDowngradeDecision(logger, d.Config.Compliance.Default, s.Skill, s.CurrentLevel, s.SuggestedLevel, s.SuccessRate, s.SampleSize)
+			}
+		}
 	}
 
 	// Plan staleness detection

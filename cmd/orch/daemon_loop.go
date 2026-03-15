@@ -356,6 +356,9 @@ func (s *daemonLoopState) processDaemonCompletions(timestamp string) *daemon.Com
 
 				// Push completion notification to dashboard (fire-and-forget)
 				notifyDashboardCompletion(cr.BeadsID, cr.CloseReason, cr.Escalation.String())
+
+				// Log decision protocol event for completion routing
+				logCompletionDecision(s.logger, s.d.Config.Compliance.Default, cr.BeadsID, cr.AutoCompleted, cr.CloseReason)
 			} else if cr.Error != nil && daemonVerbose {
 				s.dlog.Printf("[%s] Review required: %s - %v (escalation=%s)\n",
 					timestamp, cr.BeadsID, cr.Error, cr.Escalation)
@@ -492,6 +495,16 @@ func (s *daemonLoopState) runDaemonSpawnCycle(timestamp string) spawnCycleResult
 			}); err != nil {
 				s.dlog.Errorf("Warning: failed to log architect escalation event: %v\n", err)
 			}
+		}
+
+		// Log decision protocol events for spawn decisions
+		spawnCompliance := s.d.Config.Compliance.Resolve(result.Skill, result.Model)
+		logSpawnDecision(s.logger, spawnCompliance, result.Issue.ID, result.Skill, result.Model)
+		if result.ExtractionSpawned {
+			logExtractionDecision(s.logger, spawnCompliance, result.OriginalIssueID, result.Issue.ID)
+		}
+		if result.ArchitectEscalated {
+			logArchitectEscalateDecision(s.logger, spawnCompliance, result.Issue.ID)
 		}
 
 		// Delay before next spawn to avoid rate limits
@@ -738,6 +751,7 @@ func (s *daemonLoopState) runWorkGraphAnalysis(readyIssues []daemon.Issue, times
 	// Log detected signals
 	for _, c := range candidates {
 		s.dlog.Printf("[%s] Work graph: %s\n", timestamp, c.Detail)
+		logSurfaceRemovalDecision(s.logger, s.d.Config.Compliance.Default, c.IssueID, c.Detail)
 	}
 
 	// Surface as a question issue (only title duplicates — high confidence).
@@ -746,6 +760,7 @@ func (s *daemonLoopState) runWorkGraphAnalysis(readyIssues []daemon.Issue, times
 		if dup.Similarity >= 0.80 {
 			s.dlog.Printf("[%s] Work graph: high-confidence duplicate detected (%s <-> %s, %.0f%%), consider dedup\n",
 				timestamp, dup.IssueA, dup.IssueB, dup.Similarity*100)
+			logDetectDuplicateDecision(s.logger, s.d.Config.Compliance.Default, dup.IssueA, dup.IssueB, dup.Similarity)
 		}
 	}
 }
