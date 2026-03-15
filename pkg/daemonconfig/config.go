@@ -264,6 +264,20 @@ type Config struct {
 	// Default is 10.
 	TriggerBudgetMax int
 
+	// TriggerExpiryEnabled controls whether periodic trigger expiry is enabled.
+	// When enabled, the daemon auto-closes daemon:trigger issues not acted on
+	// within TriggerExpiryMaxAge, addressing creation/removal asymmetry.
+	TriggerExpiryEnabled bool
+
+	// TriggerExpiryInterval is how often to check for expired trigger issues.
+	// Default is 24 hours.
+	TriggerExpiryInterval time.Duration
+
+	// TriggerExpiryMaxAge is the maximum age for daemon:trigger issues before
+	// they are auto-closed. Issues older than this are expired with the
+	// daemon:expired label. Default is 14 days.
+	TriggerExpiryMaxAge time.Duration
+
 	// DigestEnabled controls whether the periodic digest producer is enabled.
 	DigestEnabled bool
 
@@ -333,6 +347,9 @@ func DefaultConfig() Config {
 		TriggerScanEnabled:              true,
 		TriggerScanInterval:             time.Hour, // Hourly trigger scan
 		TriggerBudgetMax:                10,         // Max 10 open trigger issues
+		TriggerExpiryEnabled:            true,
+		TriggerExpiryInterval:           24 * time.Hour,       // Daily expiry check
+		TriggerExpiryMaxAge:             14 * 24 * time.Hour,  // 14-day TTL for trigger issues
 		DigestEnabled:                    true,
 		DigestInterval:                   30 * time.Minute,
 	}

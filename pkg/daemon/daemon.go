@@ -154,6 +154,9 @@ type Daemon struct {
 	// Constructed at daemon startup, used by RunPeriodicTriggerScan.
 	TriggerDetectors []PatternDetector
 
+	// TriggerExpiry provides periodic expiry of stale daemon:trigger issues.
+	TriggerExpiry TriggerExpiryService
+
 	// Digest provides periodic scanning of .kb/ artifacts and production
 	// of consumable digest products in ~/.orch/digest/.
 	Digest DigestService

@@ -140,6 +140,13 @@ func daemonSetup() (*daemonLoopState, error) {
 	// Wire proactive extraction service (creates architect issues at 1200 lines)
 	d.ProactiveExtraction = daemon.NewDefaultProactiveExtractionService()
 
+	// Wire trigger scan service and detectors (pattern-based issue creation)
+	d.TriggerScan = daemon.NewDefaultTriggerScanService()
+	d.TriggerDetectors = daemon.DefaultTriggerDetectors()
+
+	// Wire trigger expiry service (auto-close stale daemon:trigger issues)
+	d.TriggerExpiry = daemon.NewDefaultTriggerExpiryService()
+
 	// Wire digest producer (scans .kb/ artifacts, produces thinking products)
 	{
 		projectDir, _ := os.Getwd()

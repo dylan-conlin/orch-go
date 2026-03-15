@@ -24,6 +24,7 @@ type periodicTasksResult struct {
 	BeadsHealthSnapshot            *daemon.BeadsHealthSnapshot
 	FrictionAccumulationSnapshot   *daemon.FrictionAccumulationSnapshot
 	PlanStalenessSnapshot          *daemon.PlanStalenessSnapshot
+	TriggerSnapshot                *daemon.TriggerSnapshot
 }
 
 // runPeriodicTasks runs all periodic maintenance tasks and handles their output.
@@ -147,6 +148,15 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 	// Trigger scan (pattern detectors create issues for recurring problems)
 	if r := d.RunPeriodicTriggerScan(d.TriggerDetectors); r != nil {
 		handleTriggerScanResult(r, timestamp, verbose, logger)
+		if r.Error == nil {
+			snapshot := r.Snapshot()
+			result.TriggerSnapshot = &snapshot
+		}
+	}
+
+	// Trigger expiry (auto-close stale daemon:trigger issues)
+	if r := d.RunPeriodicTriggerExpiry(); r != nil {
+		handleTriggerExpiryResult(r, timestamp, verbose, logger)
 	}
 
 	// Digest producer (scans .kb/ artifacts, creates thinking products)
@@ -547,6 +557,27 @@ func handleTriggerScanResult(r *daemon.TriggerScanResult, timestamp string, verb
 			"skipped_budget": r.SkippedBudget,
 			"skipped_dedup":  r.SkippedDedup,
 			"created_issues": r.CreatedIssues,
+			"message":        r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+	}
+}
+
+func handleTriggerExpiryResult(r *daemon.TriggerExpiryResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Trigger expiry error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.trigger_expiry", map[string]interface{}{
+			"expired": 0,
+			"error":   r.Error.Error(),
+			"message": r.Message,
+		})
+	} else if r.Expired > 0 {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		logDaemonEvent(logger, "daemon.trigger_expiry", map[string]interface{}{
+			"expired":        r.Expired,
+			"errors":         r.Errors,
+			"expired_issues": r.ExpiredIssues,
 			"message":        r.Message,
 		})
 	} else if verbose {
