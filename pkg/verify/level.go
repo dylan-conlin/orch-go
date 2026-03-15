@@ -17,6 +17,7 @@ var gatesByLevel = map[string][]string{
 		GateArchitecturalChoices,
 		GateProbeModelMerge,
 		GateArchitectHandoff,
+		GateArtifact,
 	},
 	spawn.VerifyV2: {
 		GateSynthesis,

@@ -46,6 +46,7 @@ var (
 	completeSkipArchitecturalChoices bool
 	completeSkipProbeModelMerge     bool
 	completeSkipArchitectHandoff    bool
+	completeSkipArtifact            bool
 	completeSkipReason              string // Required for all --skip-* flags (min 10 chars)
 
 	// Explain-back flag: orchestrator provides explanation text
@@ -187,6 +188,7 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeSkipArchitecturalChoices, "skip-architectural-choices", false, "Skip architectural choices verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipProbeModelMerge, "skip-probe-model-merge", false, "Skip probe-to-model merge gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipArchitectHandoff, "skip-architect-handoff", false, "Skip architect handoff (recommendation) gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipArtifact, "skip-artifact", false, "Skip COMPLETION.yaml artifact validation gate (requires --skip-reason)")
 	completeCmd.Flags().StringVar(&completeSkipReason, "skip-reason", "", "Reason for skip (required for all --skip-* flags, min 10 chars)")
 
 	// Explain-back flag
@@ -218,6 +220,7 @@ func getSkipConfig() verify.SkipConfig {
 		ArchitecturalChoices: completeSkipArchitecturalChoices,
 		ProbeModelMerge:      completeSkipProbeModelMerge,
 		ArchitectHandoff:     completeSkipArchitectHandoff,
+		Artifact:             completeSkipArtifact,
 		Reason:               completeSkipReason,
 	}
 }

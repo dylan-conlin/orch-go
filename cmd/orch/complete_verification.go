@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/checkpoint"
+	"github.com/dylan-conlin/orch-go/pkg/completion"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -155,6 +156,19 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 					fmt.Fprintf(os.Stderr, "Warning: failed to check model code references: %v\n", err)
 				} else if note := verify.FormatModelReferenceNote(matches); note != "" {
 					fmt.Println(note)
+				}
+			}
+
+			// Artifact gate: validate COMPLETION.yaml per work type (V1+)
+			if target.WorkspacePath != "" && target.Issue != nil &&
+				verify.ShouldRunGate(result.VerifyLevel, verify.GateArtifact) &&
+				!skipConfig.ShouldSkipGate(verify.GateArtifact) {
+				result.GatesRun = append(result.GatesRun, verify.GateArtifact)
+				artResult := completion.CheckArtifact(target.WorkspacePath, target.Issue.IssueType)
+				if !artResult.Passed {
+					result.Passed = false
+					result.Errors = append(result.Errors, artResult.Errors...)
+					result.GatesFailed = append(result.GatesFailed, verify.GateArtifact)
 				}
 			}
 

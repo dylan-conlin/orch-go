@@ -28,6 +28,7 @@ const (
 	GateVet                = "vet"                  // Go vet failed
 	GateDecisionPatchLimit = "decision_patch_limit" // Decision patch limit exceeded
 	GateExplainBack        = "explain_back"         // Human explanation of what was built required
+	GateArtifact           = "artifact"             // COMPLETION.yaml missing or invalid
 	// GateSelfReview removed — 79% FP rate, 0 TP across 71 events. See orch-go-ntkcz.
 	GateSelfReview = "self_review" // Kept for event history references only; gate no longer runs
 )
