@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
 
 // RejectedIssue captures why an issue was rejected for spawning.
@@ -69,31 +68,26 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 		return nil, fmt.Errorf("failed to list issues: %w", err)
 	}
 
-	// Expand triage:ready epics by including their children
-	issues, epicChildIDs, err := d.expandTriageReadyEpics(issues)
+	// Prioritize: epic expansion, focus boost, allocation scoring, interleaving.
+	// Uses the same PrioritizeIssues() as the poll loop for consistent ordering.
+	issues, epicChildIDs, err := d.PrioritizeIssues(issues)
 	if err != nil {
-		return nil, fmt.Errorf("failed to expand epics: %w", err)
+		return nil, fmt.Errorf("failed to prioritize issues: %w", err)
 	}
 
-	// Apply focus boost before sorting
-	if d.FocusGoal != "" && d.FocusBoostAmount > 0 {
-		issues = applyFocusBoost(issues, d.FocusGoal, d.FocusBoostAmount, d.ProjectDirNames)
+	if d.FocusGoal != "" {
 		result.FocusGoal = d.FocusGoal
 	}
 
-	// Sort by priority (lower number = higher priority)
-	sort.Slice(issues, func(i, j int) bool {
-		return issues[i].Priority < issues[j].Priority
-	})
-
 	var spawnable *Issue
 	for _, issue := range issues {
-		// Check each rejection reason in order and collect all rejected issues
-		reason := d.checkRejectionReasonWithEpicChildren(issue, epicChildIDs)
-		if reason != "" {
+		// Use CheckIssueCompliance — the same filter as the poll loop.
+		// This ensures Preview accurately reflects what the daemon will spawn.
+		filter := d.CheckIssueCompliance(issue, nil, epicChildIDs)
+		if !filter.Passed {
 			result.RejectedIssues = append(result.RejectedIssues, RejectedIssue{
 				Issue:  issue,
-				Reason: reason,
+				Reason: filter.Reason,
 			})
 			continue
 		}
@@ -152,72 +146,14 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 func (d *Daemon) CountSpawnable(issues []Issue) int {
 	count := 0
 	for _, issue := range issues {
-		if d.checkRejectionReason(issue) == "" {
+		filter := d.CheckIssueCompliance(issue, nil, nil)
+		if filter.Passed {
 			count++
 		}
 	}
 	return count
 }
 
-// checkRejectionReason checks if an issue should be rejected and returns the reason.
-// Returns empty string if the issue is spawnable.
-// This is the legacy version that doesn't consider epic children.
-func (d *Daemon) checkRejectionReason(issue Issue) string {
-	return d.checkRejectionReasonWithEpicChildren(issue, nil)
-}
-
-// checkRejectionReasonWithEpicChildren checks if an issue should be rejected and returns the reason.
-// The epicChildIDs map contains IDs of issues that are children of triage:ready epics.
-// These children are exempt from the label requirement check.
-// Returns empty string if the issue is spawnable.
-func (d *Daemon) checkRejectionReasonWithEpicChildren(issue Issue, epicChildIDs map[string]bool) string {
-	// Check for empty/missing type first (the main problem case from the bug report)
-	if issue.IssueType == "" {
-		return "missing type (required for skill inference)"
-	}
-
-	// Check for non-spawnable type
-	// Note: Epics with triage:ready are not spawnable themselves, but their children are.
-	// The message is informative to explain why epics are rejected.
-	if !IsSpawnableType(issue.IssueType) {
-		if issue.IssueType == "epic" && d.issueMatchesLabel(issue) {
-			return fmt.Sprintf("type 'epic' not spawnable (children will be processed instead)")
-		}
-		return fmt.Sprintf("type '%s' not spawnable (must be bug/feature/task/investigation)", issue.IssueType)
-	}
-
-	// Check for blocked status
-	if issue.Status == "blocked" {
-		return "status is blocked"
-	}
-
-	// Check for in_progress status
-	if issue.Status == "in_progress" {
-		return "status is in_progress (already being worked on)"
-	}
-
-	// Check for missing required label
-	// Recognizes equivalent labels (e.g., triage:approved ≈ triage:ready).
-	// Epic children are exempt from this check - they inherit triage status from parent
-	if !d.issueMatchesLabel(issue) {
-		if epicChildIDs == nil || !epicChildIDs[issue.ID] {
-			return fmt.Sprintf("missing label '%s'", d.Config.Label)
-		}
-		// Epic child - exempt from label requirement
-	}
-
-	// Check for blocking dependencies
-	blockers, err := beads.CheckBlockingDependencies(issue.ID)
-	if err == nil && len(blockers) > 0 {
-		var blockerIDs []string
-		for _, b := range blockers {
-			blockerIDs = append(blockerIDs, fmt.Sprintf("%s (%s)", b.ID, b.Status))
-		}
-		return fmt.Sprintf("blocked by dependencies: %s", strings.Join(blockerIDs, ", "))
-	}
-
-	return "" // Spawnable
-}
 
 // FormatPreview formats an issue for preview display.
 func FormatPreview(issue *Issue) string {

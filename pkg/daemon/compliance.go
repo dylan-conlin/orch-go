@@ -93,9 +93,18 @@ func (d *Daemon) CheckIssueCompliance(issue Issue, skip map[string]bool, epicChi
 		return IssueFilterResult{Passed: false, Reason: "recently spawned, awaiting status update"}
 	}
 
+	// Skip issues with missing type
+	if issue.IssueType == "" {
+		return IssueFilterResult{Passed: false, Reason: "missing type (required for skill inference)"}
+	}
+
 	// Skip non-spawnable types
 	if !IsSpawnableType(issue.IssueType) {
-		return IssueFilterResult{Passed: false, Reason: fmt.Sprintf("type %s not spawnable", issue.IssueType)}
+		// Epics with the required label get a helpful message explaining children will be processed
+		if issue.IssueType == "epic" && d.issueMatchesLabel(issue) {
+			return IssueFilterResult{Passed: false, Reason: "type 'epic' not spawnable (children will be processed instead)"}
+		}
+		return IssueFilterResult{Passed: false, Reason: fmt.Sprintf("type '%s' not spawnable (must be bug/feature/task/investigation)", issue.IssueType)}
 	}
 
 	// Skip blocked issues

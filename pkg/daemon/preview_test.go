@@ -391,6 +391,82 @@ func TestPreview_EpicWithTriageApprovedShowsHelpfulMessage(t *testing.T) {
 	}
 }
 
+
+// Regression test for orch-go-175vz: Preview must reject issues with completion
+// labels, matching the poll loop's CheckIssueCompliance behavior.
+func TestPreview_RejectsCompletionLabels(t *testing.T) {
+	for _, label := range []string{LabelReadyReview, LabelVerificationFailed} {
+		t.Run(label, func(t *testing.T) {
+			d := &Daemon{
+				Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+					return []Issue{
+						{ID: "proj-1", Title: "Has completion label", Priority: 0, IssueType: "feature", Status: "open", Labels: []string{label}},
+						{ID: "proj-2", Title: "Spawnable", Priority: 1, IssueType: "bug", Status: "open"},
+					}, nil
+				}},
+			}
+
+			result, err := d.Preview()
+			if err != nil {
+				t.Fatalf("Preview() unexpected error: %v", err)
+			}
+
+			if result.Issue != nil && result.Issue.ID == "proj-1" {
+				t.Errorf("Preview() selected issue with completion label %s", label)
+			}
+			if result.Issue == nil {
+				t.Fatal("Preview() expected spawnable issue proj-2, got nil")
+			}
+			if result.Issue.ID != "proj-2" {
+				t.Errorf("Preview() issue ID = %q, want 'proj-2'", result.Issue.ID)
+			}
+
+			found := false
+			for _, r := range result.RejectedIssues {
+				if r.Issue.ID == "proj-1" {
+					found = true
+					if !strings.Contains(r.Reason, "completion label") {
+						t.Errorf("rejection reason = %q, want 'completion label'", r.Reason)
+					}
+				}
+			}
+			if !found {
+				t.Error("Preview() should include proj-1 in rejected issues")
+			}
+		})
+	}
+}
+
+// Regression test for orch-go-175vz: Preview must reject recently spawned issues.
+func TestPreview_RejectsRecentlySpawnedIssues(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+	tracker.MarkSpawned("proj-1")
+
+	d := &Daemon{
+		SpawnedIssues: tracker,
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Recently spawned", Priority: 0, IssueType: "feature", Status: "open"},
+				{ID: "proj-2", Title: "Fresh issue", Priority: 1, IssueType: "bug", Status: "open"},
+			}, nil
+		}},
+	}
+
+	result, err := d.Preview()
+	if err != nil {
+		t.Fatalf("Preview() unexpected error: %v", err)
+	}
+
+	if result.Issue != nil && result.Issue.ID == "proj-1" {
+		t.Error("Preview() selected recently spawned issue")
+	}
+	if result.Issue == nil {
+		t.Fatal("Preview() expected spawnable issue proj-2, got nil")
+	}
+	if result.Issue.ID != "proj-2" {
+		t.Errorf("Preview() issue ID = %q, want 'proj-2'", result.Issue.ID)
+	}
+}
 func TestPreview_EpicWithTriageReadyShowsHelpfulMessage(t *testing.T) {
 	d := &Daemon{
 		Config: Config{Label: "triage:ready"},

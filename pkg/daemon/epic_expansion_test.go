@@ -128,40 +128,39 @@ func TestNextIssue_EpicChildrenIncludedInSpawnQueue(t *testing.T) {
 	_ = epicChildCalled
 }
 
-func TestCheckRejectionReasonWithEpicChildren_EpicChildExempt(t *testing.T) {
+func TestEpicExpansion_EpicChildExemptFromLabel(t *testing.T) {
 	d := &Daemon{
 		Config: Config{Label: "triage:ready"},
 	}
 
-	// Issue without triage:ready label
 	issue := Issue{
 		ID:        "proj-1",
 		Title:     "Feature",
 		IssueType: "feature",
 		Status:    "open",
-		Labels:    []string{}, // No triage:ready label
+		Labels:    []string{},
 	}
 
-	// Without being an epic child, should be rejected for missing label
-	reason := d.checkRejectionReasonWithEpicChildren(issue, nil)
-	if !strings.Contains(reason, "missing label") {
-		t.Errorf("checkRejectionReasonWithEpicChildren() = %q, want to contain 'missing label'", reason)
+	result := d.CheckIssueCompliance(issue, nil, nil)
+	if result.Passed {
+		t.Error("CheckIssueCompliance() should reject issue without required label")
+	}
+	if !strings.Contains(result.Reason, "missing label") {
+		t.Errorf("CheckIssueCompliance() reason = %q, want to contain 'missing label'", result.Reason)
 	}
 
-	// When marked as an epic child, should be accepted (empty reason)
 	epicChildIDs := map[string]bool{"proj-1": true}
-	reason = d.checkRejectionReasonWithEpicChildren(issue, epicChildIDs)
-	if reason != "" {
-		t.Errorf("checkRejectionReasonWithEpicChildren() for epic child = %q, want empty string", reason)
+	result = d.CheckIssueCompliance(issue, nil, epicChildIDs)
+	if !result.Passed {
+		t.Errorf("CheckIssueCompliance() should allow epic child without label; Reason: %s", result.Reason)
 	}
 }
 
-func TestCheckRejectionReasonWithEpicChildren_EpicWithLabelExplains(t *testing.T) {
+func TestEpicExpansion_EpicWithLabelExplainsChildProcessing(t *testing.T) {
 	d := &Daemon{
 		Config: Config{Label: "triage:ready"},
 	}
 
-	// Epic with triage:ready label
 	issue := Issue{
 		ID:        "proj-epic",
 		Title:     "Epic",
@@ -170,11 +169,12 @@ func TestCheckRejectionReasonWithEpicChildren_EpicWithLabelExplains(t *testing.T
 		Labels:    []string{"triage:ready"},
 	}
 
-	reason := d.checkRejectionReasonWithEpicChildren(issue, nil)
-
-	// Should explain that children will be processed instead
-	if !strings.Contains(reason, "children will be processed") {
-		t.Errorf("checkRejectionReasonWithEpicChildren() for triage:ready epic = %q, want to contain 'children will be processed'", reason)
+	result := d.CheckIssueCompliance(issue, nil, nil)
+	if result.Passed {
+		t.Error("CheckIssueCompliance() should reject epic (not spawnable)")
+	}
+	if !strings.Contains(result.Reason, "children will be processed") {
+		t.Errorf("CheckIssueCompliance() reason = %q, want to contain 'children will be processed'", result.Reason)
 	}
 }
 
