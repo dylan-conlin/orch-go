@@ -208,3 +208,20 @@ func TestDerivePhaseEnforcement(t *testing.T) {
 		}
 	}
 }
+
+func TestDeriveTriggerBudget(t *testing.T) {
+	tests := []struct {
+		level ComplianceLevel
+		want  int
+	}{
+		{ComplianceStrict, 10},
+		{ComplianceStandard, 10},
+		{ComplianceRelaxed, 15},
+		{ComplianceAutonomous, 20},
+	}
+	for _, tt := range tests {
+		if got := DeriveTriggerBudget(tt.level); got != tt.want {
+			t.Errorf("DeriveTriggerBudget(%v) = %d, want %d", tt.level, got, tt.want)
+		}
+	}
+}

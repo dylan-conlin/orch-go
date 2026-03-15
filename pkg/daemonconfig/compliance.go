@@ -146,3 +146,24 @@ func DerivePhaseEnforcement(level ComplianceLevel) string {
 	}
 	return "advisory"
 }
+
+// DeriveTriggerBudget returns the max open daemon:trigger issues for a compliance level.
+// Used as a compliance ceiling on the config TriggerBudgetMax.
+//   - Strict: conservative (10)
+//   - Standard: moderate (10)
+//   - Relaxed: generous (15)
+//   - Autonomous: maximum (20)
+func DeriveTriggerBudget(level ComplianceLevel) int {
+	switch level {
+	case ComplianceStrict:
+		return 10
+	case ComplianceStandard:
+		return 10
+	case ComplianceRelaxed:
+		return 15
+	case ComplianceAutonomous:
+		return 20
+	default:
+		return 10
+	}
+}

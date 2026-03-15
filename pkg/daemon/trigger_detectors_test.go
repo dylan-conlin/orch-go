@@ -450,8 +450,8 @@ func TestDaemon_RunPeriodicTriggerScan_WithRealDetectors(t *testing.T) {
 
 func TestDefaultTriggerDetectors_ReturnsAllDetectors(t *testing.T) {
 	detectors := DefaultTriggerDetectors()
-	if len(detectors) < 3 {
-		t.Fatalf("DefaultTriggerDetectors() returned %d detectors, want at least 3", len(detectors))
+	if len(detectors) != 7 {
+		t.Fatalf("DefaultTriggerDetectors() returned %d detectors, want 7", len(detectors))
 	}
 
 	names := make(map[string]bool)
@@ -459,10 +459,17 @@ func TestDefaultTriggerDetectors_ReturnsAllDetectors(t *testing.T) {
 		names[d.Name()] = true
 	}
 
-	// Phase 1 detectors must be present
+	// Phase 1 detectors
 	for _, want := range []string{"recurring_bugs", "investigation_orphans", "thread_staleness"} {
 		if !names[want] {
 			t.Errorf("missing Phase 1 detector %q", want)
+		}
+	}
+
+	// Phase 2 detectors
+	for _, want := range []string{"model_contradictions", "hotspot_acceleration", "knowledge_decay", "skill_performance_drift"} {
+		if !names[want] {
+			t.Errorf("missing Phase 2 detector %q", want)
 		}
 	}
 }
