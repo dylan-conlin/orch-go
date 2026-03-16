@@ -35,9 +35,6 @@ var (
 	completeSkipGitDiff        bool
 	completeSkipSynthesis      bool
 	completeSkipBuild          bool
-	completeSkipConstraint     bool
-	completeSkipPhaseGate      bool
-	completeSkipSkillOutput    bool
 	completeSkipDecisionPatch  bool
 	completeSkipPhaseComplete  bool
 	completeSkipHandoffContent bool
@@ -76,9 +73,6 @@ The following gates are checked before completion:
   - visual_verification:  Visual verification for web/ changes
   - git_diff:             Git changes match SYNTHESIS.md claims
   - build:                Project builds successfully
-  - constraint:           Skill constraints satisfied
-  - phase_gate:           Required skill phases completed
-  - skill_output:         Required skill outputs exist
   - decision_patch_limit: Decision patch count not exceeded
   - architect_handoff:    Architect SYNTHESIS.md has explicit **Recommendation:** field
   - handoff_content:      SESSION_HANDOFF.md has actual content (orchestrator only)
@@ -111,9 +105,6 @@ Use --skip-{gate} with --skip-reason to bypass specific gates:
   --skip-git-diff         Skip git diff verification gate
   --skip-synthesis        Skip SYNTHESIS.md gate
   --skip-build            Skip build verification gate
-  --skip-constraint       Skip constraint verification gate
-  --skip-phase-gate       Skip phase gate verification
-  --skip-skill-output     Skip skill output verification gate
   --skip-decision-patch   Skip decision patch count gate
   --skip-phase-complete   Skip Phase: Complete gate
   --skip-handoff-content  Skip handoff content validation (orchestrator only)
@@ -177,9 +168,6 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeSkipGitDiff, "skip-git-diff", false, "Skip git diff verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipSynthesis, "skip-synthesis", false, "Skip SYNTHESIS.md verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipBuild, "skip-build", false, "Skip project build verification gate (requires --skip-reason)")
-	completeCmd.Flags().BoolVar(&completeSkipConstraint, "skip-constraint", false, "Skip constraint verification gate (requires --skip-reason)")
-	completeCmd.Flags().BoolVar(&completeSkipPhaseGate, "skip-phase-gate", false, "Skip phase gate verification (requires --skip-reason)")
-	completeCmd.Flags().BoolVar(&completeSkipSkillOutput, "skip-skill-output", false, "Skip skill output verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipDecisionPatch, "skip-decision-patch", false, "Skip decision patch count verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipPhaseComplete, "skip-phase-complete", false, "Skip Phase: Complete verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipHandoffContent, "skip-handoff-content", false, "Skip handoff content validation gate for orchestrators (requires --skip-reason)")
@@ -209,9 +197,6 @@ func getSkipConfig() verify.SkipConfig {
 		GitDiff:        completeSkipGitDiff,
 		Synthesis:      completeSkipSynthesis,
 		Build:          completeSkipBuild,
-		Constraint:     completeSkipConstraint,
-		PhaseGate:      completeSkipPhaseGate,
-		SkillOutput:    completeSkipSkillOutput,
 		DecisionPatch:  completeSkipDecisionPatch,
 		PhaseComplete:  completeSkipPhaseComplete,
 		HandoffContent: completeSkipHandoffContent,

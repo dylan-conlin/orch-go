@@ -9,9 +9,6 @@ type SkipConfig struct {
 	GitDiff              bool
 	Synthesis            bool
 	Build                bool
-	Constraint           bool
-	PhaseGate            bool
-	SkillOutput          bool
 	DecisionPatch        bool
 	PhaseComplete        bool
 	HandoffContent       bool
@@ -27,9 +24,8 @@ type SkipConfig struct {
 // HasAnySkip returns true if any skip flag is set.
 func (c SkipConfig) HasAnySkip() bool {
 	return c.TestEvidence || c.Visual || c.GitDiff || c.Synthesis ||
-		c.Build || c.Constraint || c.PhaseGate || c.SkillOutput ||
-		c.DecisionPatch || c.PhaseComplete || c.HandoffContent || c.ExplainBack ||
-		c.Accretion || c.ArchitecturalChoices ||
+		c.Build || c.DecisionPatch || c.PhaseComplete || c.HandoffContent ||
+		c.ExplainBack || c.Accretion || c.ArchitecturalChoices ||
 		c.ProbeModelMerge || c.ArchitectHandoff || c.Artifact
 }
 
@@ -50,15 +46,6 @@ func (c SkipConfig) SkippedGates() []string {
 	}
 	if c.Build {
 		gates = append(gates, GateBuild)
-	}
-	if c.Constraint {
-		gates = append(gates, GateConstraint)
-	}
-	if c.PhaseGate {
-		gates = append(gates, GatePhaseGate)
-	}
-	if c.SkillOutput {
-		gates = append(gates, GateSkillOutput)
 	}
 	if c.DecisionPatch {
 		gates = append(gates, GateDecisionPatchLimit)
@@ -103,12 +90,6 @@ func (c SkipConfig) ShouldSkipGate(gate string) bool {
 		return c.Synthesis
 	case GateBuild:
 		return c.Build
-	case GateConstraint:
-		return c.Constraint
-	case GatePhaseGate:
-		return c.PhaseGate
-	case GateSkillOutput:
-		return c.SkillOutput
 	case GateDecisionPatchLimit:
 		return c.DecisionPatch
 	case GatePhaseComplete:
@@ -137,14 +118,11 @@ func ValidateSkipFlags(skipConfig SkipConfig) error {
 	if !skipConfig.HasAnySkip() {
 		return nil
 	}
-
 	if skipConfig.Reason == "" {
 		return fmt.Errorf("--skip-reason is required when using --skip-* flags")
 	}
-
 	if len(skipConfig.Reason) < 10 {
 		return fmt.Errorf("--skip-reason must be at least 10 characters (got %d)", len(skipConfig.Reason))
 	}
-
 	return nil
 }

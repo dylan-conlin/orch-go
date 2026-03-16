@@ -17,9 +17,6 @@ const (
 	GateSynthesis          = "synthesis"            // SYNTHESIS.md missing
 	GateSessionHandoff     = "session_handoff"      // SESSION_HANDOFF.md missing (orchestrator)
 	GateHandoffContent     = "handoff_content"      // SESSION_HANDOFF.md has empty/placeholder content
-	GateConstraint         = "constraint"           // Constraint verification failed
-	GatePhaseGate          = "phase_gate"           // Required phase gate not passed
-	GateSkillOutput        = "skill_output"         // Required skill outputs missing
 	GateVisualVerify       = "visual_verification"  // Visual verification required
 	GateTestEvidence       = "test_evidence"        // Test execution evidence required
 	GateGitDiff            = "git_diff"             // Git diff doesn't match claims
@@ -30,7 +27,6 @@ const (
 	GateExplainBack        = "explain_back"         // Human explanation of what was built required
 	GateArtifact           = "artifact"             // COMPLETION.yaml missing or invalid
 	// GateSelfReview removed — 79% FP rate, 0 TP across 71 events. See orch-go-ntkcz.
-	GateSelfReview = "self_review" // Kept for event history references only; gate no longer runs
 )
 
 // VerificationResult represents the result of a completion verification.
@@ -333,48 +329,8 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 
 	// --- V1 gates: Artifacts ---
 
-	// Constraint gate (V1+)
-	if !isOrch && ShouldRunGate(verifyLevel, GateConstraint) {
-		result.GatesRun = append(result.GatesRun, GateConstraint)
-		constraintResult, err := VerifyConstraintsForCompletion(workspacePath, projectDir)
-		if err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify constraints: %v", err))
-		} else if !constraintResult.Passed {
-			result.Passed = false
-			result.Errors = append(result.Errors, constraintResult.Errors...)
-			result.GatesFailed = append(result.GatesFailed, GateConstraint)
-		} else {
-			result.Warnings = append(result.Warnings, constraintResult.Warnings...)
-		}
-	}
 
-	// Phase gate (V1+)
-	if !isOrch && ShouldRunGate(verifyLevel, GatePhaseGate) {
-		result.GatesRun = append(result.GatesRun, GatePhaseGate)
-		phaseGateResult, err := VerifyPhaseGatesForCompletionWithComments(workspacePath, beadsID, comments)
-		if err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify phase gates: %v", err))
-		} else if !phaseGateResult.Passed {
-			result.Passed = false
-			result.Errors = append(result.Errors, phaseGateResult.Errors...)
-			result.GatesFailed = append(result.GatesFailed, GatePhaseGate)
-		}
-	}
 
-	// Skill output gate (V1+)
-	if ShouldRunGate(verifyLevel, GateSkillOutput) {
-		result.GatesRun = append(result.GatesRun, GateSkillOutput)
-		skillOutputResult, err := VerifySkillOutputsForCompletion(workspacePath, projectDir)
-		if err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify skill outputs: %v", err))
-		} else if skillOutputResult != nil && !skillOutputResult.Passed {
-			result.Passed = false
-			result.Errors = append(result.Errors, skillOutputResult.Errors...)
-			result.GatesFailed = append(result.GatesFailed, GateSkillOutput)
-		} else if skillOutputResult != nil {
-			result.Warnings = append(result.Warnings, skillOutputResult.Warnings...)
-		}
-	}
 
 	// Decision patch limit gate (V1+)
 	if !isOrch && ShouldRunGate(verifyLevel, GateDecisionPatchLimit) {

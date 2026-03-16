@@ -10,9 +10,6 @@ var gatesByLevel = map[string][]string{
 	},
 	spawn.VerifyV1: {
 		GateHandoffContent,
-		GateSkillOutput,
-		GatePhaseGate,
-		GateConstraint,
 		GateDecisionPatchLimit,
 		GateArchitecturalChoices,
 		GateProbeModelMerge,

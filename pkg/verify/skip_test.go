@@ -98,9 +98,6 @@ func TestSkipConfigSkippedGates(t *testing.T) {
 				GitDiff:              true,
 				Synthesis:            true,
 				Build:                true,
-				Constraint:           true,
-				PhaseGate:            true,
-				SkillOutput:          true,
 				DecisionPatch:        true,
 				PhaseComplete:        true,
 				HandoffContent:       true,
@@ -114,9 +111,6 @@ func TestSkipConfigSkippedGates(t *testing.T) {
 				"git_diff",
 				"synthesis",
 				"build",
-				"constraint",
-				"phase_gate",
-				"skill_output",
 				"decision_patch_limit",
 				"phase_complete",
 				"handoff_content",
@@ -161,7 +155,6 @@ func TestSkipConfigShouldSkipGate(t *testing.T) {
 		{"build", true},
 		{"synthesis", false},
 		{"visual_verification", false},
-		{"constraint", false},
 		{"unknown_gate", false},
 	}
 
