@@ -112,8 +112,8 @@ Gate: warn if `$fn > 128`, block if `$fn > 256`.
 
 | Layer | Type | Tool | Blocks? | Status |
 |-------|------|------|---------|--------|
-| 1 — Parameter validation | Execution (hard) | `assert()` in .scad | Yes | Implemented |
-| 2 — Geometry validation | Execution (hard) | `gates/geometry-check.sh` | Yes | Template ready |
+| 1 — Parameter validation | Execution (hard) | `assert()` in .scad via `lib/validate.scad` | Yes | Implemented + tested (9 tests) |
+| 2 — Geometry validation | Execution (hard) | `gates/geometry-check.sh` | Yes | Implemented + tested (5 tests) |
 | 3 — Printability | Execution (hard) | PrusaSlicer CLI | Yes | Not yet integrated |
 | 4 — Intent alignment | Judgment (soft) | LLM-as-gate | Advisory only | Not yet implemented |
 
