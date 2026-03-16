@@ -22,14 +22,18 @@ Claude API / Gemini API
 cmd/orch/
 ├── main.go              # Entry point, Cobra root command setup
 ├── *_cmd.go             # Command implementations (spawn, complete, status, etc.)
-├── daemon.go            # Daemon command setup
+├── daemon_commands.go   # Daemon command setup
 ├── daemon_loop.go       # Daemon OODA poll cycle (Sense/Orient/Decide/Act)
 ├── daemon_periodic.go   # Daemon periodic tasks (backlog cull, plan advancement)
 ├── serve*.go            # HTTP API server and handlers (agents, beads, system)
 ├── harness_*.go         # Harness governance (audit, report, init)
 ├── plan_cmd.go          # Coordination plan management
 ├── complete_*.go        # Completion pipeline, duplication detection
-├── kb*.go               # Knowledge base commands (audit, init, extract, ask)
+├── kb*.go               # Knowledge base commands (audit, init, extract, ask, gate, challenge)
+├── session*.go          # Session management (start, end, status, history)
+├── learn.go             # Learning system (suggestions, patterns, effects)
+├── servers.go           # Multi-project server management
+├── precommit_cmd.go     # Pre-commit checks (accretion, model-stub, duplication)
 └── orient_cmd.go        # Session orientation
 
 pkg/
@@ -51,6 +55,7 @@ pkg/
 ├── orient/              # Daemon Orient phase (measurement, work graph)
 ├── attention/           # Attention routing and prioritization
 ├── beads/               # Beads client utilities
+├── beadsutil/           # Beads helper utilities
 ├── discovery/           # Agent discovery
 ├── hook/                # Claude Code hook management
 ├── identity/            # Agent identity resolution
@@ -61,7 +66,29 @@ pkg/
 ├── artifactsync/        # Artifact drift detection
 ├── claudemd/            # CLAUDE.md parsing
 ├── userconfig/          # User configuration management
-└── config/              # Project config (.orch/config.yaml)
+├── config/              # Project config (.orch/config.yaml)
+├── agent/               # Agent lifecycle state machine
+├── completion/          # Completion pipeline logic
+├── coaching/            # Agent coaching plugins (loop/thrash detection)
+├── entropy/             # Codebase entropy measurement
+├── findingdedup/        # Finding deduplication for KB
+├── health/              # Health check infrastructure
+├── modeldrift/          # Model drift detection
+├── patterns/            # Behavioral pattern detection
+├── port/                # Port allocation management
+├── service/             # Service lifecycle management
+├── session/             # Session tracking (start/end/label)
+├── sessions/            # Session history and search
+├── state/               # Agent state management
+├── thread/              # Thread management
+├── timeline/            # Timeline generation
+├── urltomd/             # URL-to-markdown conversion
+├── workspace/           # Workspace management
+├── control/             # Control plane locking
+├── checkpoint/          # Session checkpointing
+├── activity/            # Activity tracking
+├── graph/               # Dependency graph utilities
+└── display/             # Terminal display helpers
 ```
 
 ## Spawn Backends
@@ -200,7 +227,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 
 - Uses Cobra framework for CLI structure
 - Global `--server` flag for OpenCode URL
-- Subcommand groups: `account`, `daemon`, `harness`, `plan`, `control`, `hook`, `thread`, `audit`, `backlog`, `settings`, `kb`, `port`, `review`, `patterns`
+- Subcommand groups: `account`, `daemon`, `harness`, `plan`, `control`, `hook`, `thread`, `audit`, `backlog`, `settings`, `kb`, `port`, `review`, `patterns`, `session`, `session-history`, `servers`, `learn`, `config`, `docs`, `precommit`, `model`, `logs`, `transcript`
 
 ### pkg/opencode/ (OpenCode Client)
 
@@ -282,6 +309,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `swarm` - Batch spawn multiple agents with concurrency control
 - `resume <beads-id>` - Resume a previous agent session
 - `tokens <session-id|beads-id>` - Show token usage for sessions
+- `attach <workspace>` - Attach to an existing agent workspace
 
 ### Monitoring
 
@@ -290,17 +318,38 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `tail <agent-id>` - Capture recent tmux output (requires `--tmux` spawn)
 - `question <agent-id>` - Extract pending question
 - `serve` - HTTP API server for web UI (port 3348)
+- `serve status` - Check serve health
 - `orient` - Session start orientation with throughput baseline
 - `debrief [focus]` - Generate session debrief with auto-populated sections
 - `history` - Show agent history
 - `retries` - Show issues with retry patterns (failed attempts)
 - `patterns` - Surface behavioral patterns for orchestrator awareness
+- `patterns suppress <index>` - Suppress a specific pattern
+- `stats` - Show aggregate statistics
+- `health` - Health check infrastructure status
+- `logs server/daemon` - View server or daemon logs
+- `transcript format <input-file>` - Format agent transcript
+
+### Session Management
+
+- `session start [goal]` - Start a new orchestrator session
+- `session status` - Show current session status
+- `session end` - End current session
+- `session resume` - Resume previous session
+- `session migrate` - Migrate session data
+- `session validate` - Validate session state
+- `session label [name]` - Label current session
+- `session-history list` - List past sessions
+- `session-history search [query]` - Search session history
+- `session-history show [session-id]` - Show session details
+- `sessions` - List untracked sessions
 
 ### Planning & Knowledge
 
 - `plan show [slug]` - Display plans with beads status overlay
 - `plan status` - Summary of all plans with progress
 - `plan create <slug>` - Create a new coordination plan
+- `plan hydrate <slug>` - Hydrate plan with beads data
 - `thread new "title"` - Create a living thread for mid-session capture
 - `thread append <slug> "text"` - Append to existing thread
 - `thread list/show/resolve` - Manage threads
@@ -308,22 +357,48 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `kb ask [question]` - Query knowledge base
 - `kb claims` - List claims in knowledge base
 - `kb orphans` - Find orphaned knowledge artifacts
+- `kb findings` - List findings
+- `kb create model <name>` - Create a new KB model
 - `kb audit provenance` - Scan evidence quality annotations
+- `kb gate publish/model/scan-claims` - KB publication and model gates
+- `kb challenge create/validate/packet` - KB challenge protocol
 
 ### Account & Model
 
 - `account list` - Show saved Claude Max accounts
 - `account switch <name>` - Switch to different account
 - `account remove <name>` - Remove saved account
+- `account add <name>` - Add new account
+- `account stats` - Show account statistics
 - `usage` - Show Claude Max usage (delegates to Python)
+- `model list` - List available models
+- `model recommend` - Get model recommendation for task
+- `model cache` - Show model cache status
 
 ### Automation
 
 - `work <issue-id>` - Spawn from beads issue with skill inference
 - `daemon run` - Run autonomous processing (OODA cycle) in foreground
 - `daemon run --replace` - Stop existing daemon first, then start (graceful takeover)
+- `daemon status` - Show daemon status
+- `daemon stop` - Stop running daemon
+- `daemon restart` - Restart daemon
+- `daemon once` - Run single OODA cycle
 - `daemon preview` - Show what would be spawned
+- `daemon reflect` - Trigger daemon reflection
+- `daemon resume` - Resume daemon
+- `daemon clean-stale` - Clean stale daemon state
 - `daemon install/uninstall` - Manage launchd daemon service
+
+### Learning System
+
+- `learn suggest` - Get learning suggestions from agent patterns
+- `learn patterns` - Show learned patterns
+- `learn skills` - Show skill-level learnings
+- `learn effects` - Show effect measurements
+- `learn act [index]` - Act on a learning suggestion
+- `learn resolve [index] [resolution]` - Resolve a learning item
+- `learn clear` - Clear learning state
 
 ### Governance & Control
 
@@ -332,6 +407,10 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `harness report` - Measurement report with falsification verdicts
 - `control lock/unlock/status/deny` - Lock control plane files (macOS chflags)
 - `audit select/list/install/uninstall` - Randomized completion audit
+- `precommit accretion` - Pre-commit accretion check
+- `precommit model-stub` - Pre-commit model stub validation
+- `precommit duplication` - Pre-commit duplication check
+- `guarded [name]` - Run guarded command
 
 ### Infrastructure
 
@@ -340,14 +419,36 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `settings add-hook/remove-hook/list-hooks` - Programmatic settings.json modification
 - `deploy` - Atomic deployment: rebuild, restart services, verify health
 - `doctor` - Health checks and diagnostics
+- `doctor install/uninstall` - Install/uninstall doctor checks
 - `emit [event-type]` - Emit event to events.jsonl
 - `hotspot` - Check file size hotspots for accretion enforcement
+- `entropy` - Codebase entropy measurement
+- `servers list/start/stop/attach/open/status` - Multi-project server management
+- `config show/set/get/generate` - Configuration management
+- `mode [dev|ops] [reason]` - Switch operational mode
 
 ### Workflow
 
 - `backlog cull` - Surface stale P3/P4 issues for keep-or-close
-- `review triage/synthesize` - Review and triage agent work
+- `review triage/synthesize/orphans/done` - Review and triage agent work
 - `reconcile` - Reconcile agent state
+- `focus [goal]` - Set north star goal
+- `focus clear` - Clear north star
+- `drift` - Check focus drift
+- `next` - Get next recommended action
+- `handoff` - Create session handoff
+- `changelog` - Generate changelog
+- `context` - Show context for current work
+
+### Utilities
+
+- `init` - Initialize orch in a project
+- `sync` - Sync state
+- `tree` - Generate file tree
+- `fetch-md [url]` - Fetch URL as markdown
+- `dupdetect [dir]` - Run duplicate detection on directory
+- `docs list/mark/unmark` - Documentation tracking
+- `automation list` - List automation rules
 
 ## Development
 
@@ -441,11 +542,42 @@ Agent lifecycle events are logged to `~/.orch/events.jsonl` for stats aggregatio
 
 ### Event Types
 
-| Event             | Source                             | Purpose             |
-| ----------------- | ---------------------------------- | ------------------- |
-| `session.spawned` | `orch spawn`                       | Agent created       |
+| Event | Source | Purpose |
+| --- | --- | --- |
+| `session.spawned` | `orch spawn` | Agent created |
+| `session.completed` | completion pipeline | Session finished |
+| `session.auto_completed` | daemon | Daemon auto-completed session |
+| `session.error` | error handler | Session error |
+| `session.status` | status poller | Status change (busy/idle) |
 | `agent.completed` | `orch complete` or `bd close` hook | Agent finished work |
-| `agent.abandoned` | `orch abandon`                     | Agent abandoned     |
+| `agent.abandoned` | `orch abandon` | Agent abandoned |
+| `agent.abandoned.telemetry` | `orch abandon` | Enriched abandonment data (skill, tokens, duration) |
+| `agent.reworked` | `orch rework` | Rework spawned |
+| `agent.resumed` | `orch resume` | Agent resumed |
+| `agent.crashed_with_artifacts` | GC | Orphaned agent with committed work |
+| `agent.force_completed` | GC | GC-initiated completion |
+| `agent.force_abandoned` | GC | GC-initiated abandonment |
+| `verification.failed` | verify pipeline | Verification gate failed |
+| `verification.bypassed` | `--skip-*` flags | Verification gate bypassed |
+| `verification.auto_skipped` | skill exemption | Verification auto-skipped |
+| `spawn.gate_decision` | spawn gates | Gate evaluation result |
+| `spawn.hotspot_bypassed` | `--force-hotspot` | Hotspot gate bypassed |
+| `spawn.skill_inferred` | `orch work` | Skill inferred for issue |
+| `daemon.spawn` | daemon | Daemon spawn decision |
+| `daemon.architect_escalation` | daemon | Hotspot routing to architect |
+| `decision.made` | daemon | Decision with classification tier |
+| `accretion.delta` | completion | File growth/shrinkage during session |
+| `accretion.snapshot` | periodic | Directory-level line counts |
+| `duplication.detected` | dupdetect | Similar function pairs found |
+| `service.crashed` | service monitor | Service PID changed |
+| `service.restarted` | service monitor | Service auto-restarted |
+| `exploration.decomposed` | exploration | Question decomposed into subproblems |
+| `exploration.judged` | exploration | Judge verdicts on findings |
+| `exploration.synthesized` | exploration | Final synthesis produced |
+| `swarm.start` | `orch swarm` | Swarm session started |
+| `swarm.spawn` | `orch swarm` | Swarm agent spawned |
+| `swarm.complete` | `orch swarm` | Swarm session completed |
+| `review_tier.escalated` | review | Review tier auto-escalated |
 
 ### Beads Close Hook
 
