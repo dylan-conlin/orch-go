@@ -26,7 +26,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
-	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
@@ -251,22 +250,6 @@ func ExtractBugReproInfo(beadsID string, noTrack bool) (isBug bool, reproSteps s
 		}
 	}
 	return isBug, reproSteps
-}
-
-// BuildUsageInfo converts rate limit check result to UsageInfo struct.
-// Returns nil if no usage check result available.
-func BuildUsageInfo(usageCheckResult *gates.UsageCheckResult) *spawn.UsageInfo {
-	if usageCheckResult == nil || usageCheckResult.CapacityInfo == nil {
-		return nil
-	}
-
-	return &spawn.UsageInfo{
-		FiveHourUsed: usageCheckResult.CapacityInfo.FiveHourUsed,
-		SevenDayUsed: usageCheckResult.CapacityInfo.SevenDayUsed,
-		AccountEmail: usageCheckResult.CapacityInfo.Email,
-		AutoSwitched: usageCheckResult.Switched,
-		SwitchReason: usageCheckResult.SwitchReason,
-	}
 }
 
 // BuildSpawnConfig constructs the spawn.Config from SpawnContext.

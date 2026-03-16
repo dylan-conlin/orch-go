@@ -151,7 +151,7 @@ func runRework(beadsID, feedback string) error {
 
 	agreementsCheckFunc := buildAgreementsChecker()
 	openQuestionCheckFunc := buildOpenQuestionChecker()
-	usageCheckResult, hotspotResult, _, _, err := orch.RunPreFlightChecks(input, projectDir, reworkBypassTriage, false, false, "", "", 0, extractBeadsIDFromTitle, hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc)
+	hotspotResult, _, _, err := orch.RunPreFlightChecks(input, projectDir, reworkBypassTriage, false, "", "", hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc)
 	if err != nil {
 		return err
 	}
@@ -219,8 +219,6 @@ func runRework(beadsID, feedback string) error {
 	}
 
 	isBug, reproSteps := orch.ExtractBugReproInfo(beadsID, false)
-	usageInfo := orch.BuildUsageInfo(usageCheckResult)
-
 	reworkCount, err := spawn.CountReworks(beadsID, projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to count rework attempts: %w", err)
@@ -288,7 +286,6 @@ func runRework(beadsID, feedback string) error {
 		ReworkNumber:      reworkNumber,
 		PriorSynthesis:    priorSynthesis,
 		PriorWorkspace:    priorWorkspace,
-		UsageInfo:         usageInfo,
 		SpawnBackend:      resolved.Settings.Backend.Value,
 		Tier:              resolved.Settings.Tier.Value,
 		HotspotArea:          hotspotResult != nil && hotspotResult.HasHotspots,

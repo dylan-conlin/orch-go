@@ -179,7 +179,7 @@ var (
 		"AbandonClaude":              true, // Claude CLI cleanup (tmux by design)
 		"startHeadlessSession":       true, // OpenCode headless (by design)
 		"runSpawnInline":             true, // OpenCode inline (by design)
-		"EnsureOpenCodeRunning":      true, // OpenCode health check
+		"EnsureRunning":              true, // OpenCode health check (pkg/opencode)
 		"readFromOpenCodeMetadata":   true, // OpenCode-specific metadata
 		"handleCompletion":           true, // OpenCode completion handler
 		"checkOpenCode":              true, // doctor: OpenCode health check

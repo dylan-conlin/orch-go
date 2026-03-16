@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
-	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 )
 func TestParseBeadsCreateOutput(t *testing.T) {
 	tests := []struct {
@@ -1878,18 +1877,6 @@ func TestOrchestratorSkipsBeadsIssue(t *testing.T) {
 	}
 }
 
-// TestDefaultUsageThresholds tests the default usage monitoring thresholds.
-// Threshold logic now lives in pkg/spawn/gates; this validates the public API.
-func TestDefaultUsageThresholds(t *testing.T) {
-	thresholds := gates.DefaultUsageThresholds()
-
-	if thresholds.WarnThreshold != 80 {
-		t.Errorf("WarnThreshold = %v, want 80", thresholds.WarnThreshold)
-	}
-	if thresholds.BlockThreshold != 95 {
-		t.Errorf("BlockThreshold = %v, want 95", thresholds.BlockThreshold)
-	}
-}
 
 // TestAddUsageInfoToEventData tests the usage info telemetry helper.
 func TestAddUsageInfoToEventData(t *testing.T) {

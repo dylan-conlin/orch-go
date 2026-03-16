@@ -38,7 +38,6 @@ var (
 	spawnNoTrack            bool   // Opt-out of beads tracking
 	spawnMCP                string // MCP server config (e.g., "playwright")
 	spawnSkipArtifactCheck  bool   // Bypass pre-spawn kb context check
-	spawnMaxAgents          int    // Maximum concurrent agents (-1 = use default or env var, 0 = unlimited)
 	spawnAutoInit           bool   // Auto-initialize .orch and .beads if missing
 	spawnLight              bool   // Light tier spawn (skips SYNTHESIS.md requirement)
 	spawnFull               bool   // Full tier spawn (requires SYNTHESIS.md)
@@ -50,7 +49,6 @@ var (
 	spawnBypassTriage       bool   // Explicitly bypass triage (documents conscious decision to spawn directly)
 	spawnDesignWorkspace    string // Design workspace name for ui-design-session → feature-impl handoff
 	spawnForceHotspot       bool   // Bypass CRITICAL hotspot blocking gate
-	spawnForceDrainBypass   bool   // Bypass drain gate (reviewable completions exist)
 	spawnArchitectRef       string // Architect issue reference (required with --force-hotspot)
 	spawnAccount            string // Account name for Claude CLI spawns (overrides auto-selection)
 	spawnVerifyLevel        string // Verification level override (V0-V3)
@@ -123,11 +121,6 @@ Dependency Checking (--issue spawns only):
     Error: orch-go-xyz is blocked by orch-go-abc (open)
     Use --force to override
 
-Concurrency Limiting:
-  By default, limits concurrent agents to 5. This prevents runaway agent spawning.
-  Configure via --max-agents flag or ORCH_MAX_AGENTS environment variable.
-  Set to 0 to disable the limit (not recommended).
-
 Auto-Initialization:
   Use --auto-init to automatically run 'orch init' if .orch/ or .beads/ are missing.
   This is useful for spawning in new projects without prior setup.
@@ -182,7 +175,6 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Deprecated: creates lightweight beads issue instead (use --light)")
 	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server preset (e.g., 'playwright' for Playwright MCP server). Default browser path is playwright-cli via needs:playwright label")
 	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
-	spawnCmd.Flags().IntVar(&spawnMaxAgents, "max-agents", -1, "Maximum concurrent agents (default 5, 0 to disable limit, or use ORCH_MAX_AGENTS env var)")
 	spawnCmd.Flags().BoolVar(&spawnAutoInit, "auto-init", false, "Auto-initialize .orch and .beads if missing")
 	spawnCmd.Flags().BoolVar(&spawnLight, "light", false, "Light tier spawn (skips SYNTHESIS.md requirement on completion)")
 	spawnCmd.Flags().BoolVar(&spawnFull, "full", false, "Full tier spawn (requires SYNTHESIS.md for knowledge externalization)")
@@ -194,7 +186,6 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnBypassTriage, "bypass-triage", false, "Acknowledge manual spawn bypasses daemon-driven triage workflow (required for manual spawns)")
 	spawnCmd.Flags().StringVar(&spawnDesignWorkspace, "design-workspace", "", "Design workspace name from ui-design-session for handoff to feature-impl (e.g., 'og-design-ready-queue-08jan')")
 	spawnCmd.Flags().BoolVar(&spawnForceHotspot, "force-hotspot", false, "Bypass CRITICAL hotspot blocking gate (requires --architect-ref)")
-	spawnCmd.Flags().BoolVar(&spawnForceDrainBypass, "force-drain-bypass", false, "Bypass drain gate when reviewable completions exist (requires --reason)")
 	spawnCmd.Flags().StringVar(&spawnArchitectRef, "architect-ref", "", "Architect issue ID proving area was reviewed (required with --force-hotspot)")
 	spawnCmd.Flags().StringVar(&spawnScope, "scope", "", "Session scope: small, medium, large (parsed from task if not set)")
 	spawnCmd.Flags().StringVar(&spawnAccount, "account", "", "Account name for Claude CLI spawns (e.g., 'work', 'personal')")
@@ -243,7 +234,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 
 	// Validate --reason is provided for override flags (min 10 chars)
 	if !daemonDriven {
-		needsReason := spawnBypassTriage || spawnForceHotspot || spawnForceDrainBypass
+		needsReason := spawnBypassTriage || spawnForceHotspot
 		if needsReason && spawnReason == "" {
 			var flags []string
 			if spawnBypassTriage {
@@ -251,9 +242,6 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 			}
 			if spawnForceHotspot {
 				flags = append(flags, "--force-hotspot")
-			}
-			if spawnForceDrainBypass {
-				flags = append(flags, "--force-drain-bypass")
 			}
 			return fmt.Errorf("--reason is required when using %s (min 10 chars)", strings.Join(flags, ", "))
 		}
@@ -339,7 +327,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 	agreementsCheckFunc := buildAgreementsChecker()
 	openQuestionCheckFunc := buildOpenQuestionChecker()
-	usageCheckResult, hotspotResult, _, _, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnForceHotspot, spawnForceDrainBypass, spawnArchitectRef, spawnReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc)
+	hotspotResult, _, _, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnForceHotspot, spawnArchitectRef, spawnReason, hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc)
 	if err != nil {
 		return err
 	}
@@ -453,10 +441,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// 7. Extract bug reproduction info
 	isBug, reproSteps := orch.ExtractBugReproInfo(beadsID, spawnNoTrack || isOrchestrator || isMetaOrchestrator)
 
-	// 8. Build usage info
-	usageInfo := orch.BuildUsageInfo(usageCheckResult)
-
-	// 9. Load design artifacts
+	// 8. Load design artifacts
 	designMockupPath, designPromptPath, designNotes := orch.LoadDesignArtifacts(spawnDesignWorkspace, projectDir)
 
 	// 9b. Gather prior art for overlapping work
@@ -502,7 +487,6 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		PrimaryModelPath:   primaryModelPath,
 		IsBug:              isBug,
 		ReproSteps:         reproSteps,
-		UsageInfo:          usageInfo,
 		Account:            resolvedAccountName,
 		AccountConfigDir:   resolvedAccountConfigDir,
 		SpawnBackend:       resolved.Settings.Backend.Value,
@@ -538,9 +522,6 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 	if spawnForceHotspot {
 		cfg.GatesBypassed = append(cfg.GatesBypassed, "hotspot")
-	}
-	if spawnForceDrainBypass {
-		cfg.GatesBypassed = append(cfg.GatesBypassed, "drain")
 	}
 
 	// 13. Validate and write context (atomic spawn Phase 1: beads tag + workspace)

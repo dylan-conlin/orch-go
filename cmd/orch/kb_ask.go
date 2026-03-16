@@ -12,7 +12,6 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 )
 
 // KBContextResult represents the JSON output from kb context.
@@ -376,7 +375,7 @@ func readArtifactSummary(path string) (string, error) {
 // synthesizeAnswer sends context to LLM and gets synthesized answer.
 func synthesizeAnswer(question, context string) (string, error) {
 	// Ensure OpenCode is running
-	if err := gates.EnsureOpenCodeRunning(serverURL); err != nil {
+	if err := opencode.EnsureRunning(serverURL); err != nil {
 		return "", fmt.Errorf("OpenCode not available: %w", err)
 	}
 

@@ -2,7 +2,6 @@ package orch
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
@@ -12,56 +11,19 @@ import (
 )
 
 // RunPreFlightChecks performs all pre-spawn validation checks.
-func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, forceHotspot, forceDrainBypass bool, architectRef, overrideReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error), openQuestionCheckFunc gates.OpenQuestionChecker) (*gates.UsageCheckResult, *gates.HotspotResult, *gates.AgreementsResult, *gates.OpenQuestionResult, error) {
+// Gates removed (zero fires in 30d): verification, concurrency, ratelimit, drain.
+func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, forceHotspot bool, architectRef, overrideReason string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error), openQuestionCheckFunc gates.OpenQuestionChecker) (*gates.HotspotResult, *gates.AgreementsResult, *gates.OpenQuestionResult, error) {
 	if err := gates.CheckTriageBypass(input.DaemonDriven, bypassTriage, input.SkillName, input.Task); err != nil {
 		logGateDecision("triage", "block", input.SkillName, input.IssueID, "manual spawn without --bypass-triage", nil)
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, err
 	}
 	if !input.DaemonDriven && bypassTriage {
 		gates.LogTriageBypass(input.SkillName, input.Task, overrideReason)
 		logGateDecision("triage", "bypass", input.SkillName, input.IssueID, overrideReason, nil)
 	} else if input.DaemonDriven {
-		// Daemon-driven spawns skip triage automatically — log "allow"
 		logGateDecision("triage", "allow", input.SkillName, input.IssueID, "daemon-driven spawn", nil)
 	}
-	// Drain gate: block spawn if reviewable completions exist (unless daemon-driven or bypassed)
-	if err := gates.CheckDrainGate(forceDrainBypass, overrideReason, input.DaemonDriven); err != nil {
-		logGateDecision("drain", "block", input.SkillName, input.IssueID, err.Error(), nil)
-		return nil, nil, nil, nil, err
-	}
-	if forceDrainBypass {
-		logGateDecision("drain", "bypass", input.SkillName, input.IssueID, overrideReason, nil)
-	} else {
-		logGateDecision("drain", "allow", input.SkillName, input.IssueID, "no reviewable completions", nil)
-	}
-	// Verification gate is ADVISORY — warns about unverified Tier 1 work but never blocks.
-	// Downgraded from blocking: 24/24 bypasses had identical reason "testing independent parallel work",
-	// indicating the gate was a speed bump for legitimate parallel workflows, not a real filter.
-	if err := gates.CheckVerificationGate(false, ""); err != nil {
-		// Advisory: log warning and continue (don't block spawn)
-		if !input.DaemonDriven {
-			fmt.Fprintf(os.Stderr, "\n⚠️  Advisory: %v\n", err)
-			fmt.Fprintf(os.Stderr, "   Spawning anyway — verification gate is advisory for parallel work.\n\n")
-		}
-		logGateDecision("verification", "advisory", input.SkillName, input.IssueID, "unverified Tier 1 work exists (advisory, not blocking)", nil)
-	} else {
-		logGateDecision("verification", "allow", input.SkillName, input.IssueID, "no unverified work", nil)
-	}
-	if err := gates.CheckConcurrency(input.ServerURL, maxAgents, extractBeadsIDFunc); err != nil {
-		logGateDecision("concurrency", "block", input.SkillName, input.IssueID, err.Error(), nil)
-		return nil, nil, nil, nil, err
-	}
-	logGateDecision("concurrency", "allow", input.SkillName, input.IssueID, "within concurrency limit", nil)
 
-	usageCheckResult, usageErr := gates.CheckRateLimit()
-	if usageErr != nil {
-		// Block event already emitted inside CheckRateLimit() as spawn.blocked.rate_limit
-		logGateDecision("ratelimit", "block", input.SkillName, input.IssueID, usageErr.Error(), nil)
-		return nil, nil, nil, nil, usageErr
-	}
-	logGateDecision("ratelimit", "allow", input.SkillName, input.IssueID, "usage within threshold", nil)
-
-	// Governance file detection — warn if task targets protected paths (advisory only)
 	CheckGovernance(input.Task, input.SkillName, input.DaemonDriven)
 
 	var hotspotResult *gates.HotspotResult
@@ -71,23 +33,18 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, for
 		var err error
 		hotspotResult, err = gates.CheckHotspot(preCheckDir, input.Task, input.SkillName, input.DaemonDriven, forceHotspot, architectRef, overrideReason, hotspotCheckFunc, architectVerifier, architectFinder)
 		if err != nil {
-			// Hotspot gate blocked the spawn
 			var targetFiles []string
 			if hotspotResult != nil {
 				targetFiles = hotspotResult.CriticalFiles
 			}
 			logGateDecision("hotspot", "block", input.SkillName, input.IssueID, err.Error(), targetFiles)
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, err
 		}
 		if forceHotspot && hotspotResult != nil && hotspotResult.HasCriticalHotspot {
 			logGateDecision("hotspot", "bypass", input.SkillName, input.IssueID, overrideReason, hotspotResult.CriticalFiles)
 		} else if hotspotResult != nil && hotspotResult.HasCriticalHotspot {
-			// Critical hotspot existed but gate returned nil (no error) — auto-detected
-			// prior architect review bypassed the block. Log as "bypass" so fire rate
-			// computation counts this correctly.
 			logGateDecision("hotspot", "bypass", input.SkillName, input.IssueID, "auto-detected prior architect review", hotspotResult.CriticalFiles)
 		} else if hotspotResult == nil || !hotspotResult.HasCriticalHotspot {
-			// Gate evaluated, no critical hotspots — log "allow" for true fire rate
 			logGateDecision("hotspot", "allow", input.SkillName, input.IssueID, "no critical hotspot files", nil)
 		}
 	}
@@ -97,13 +54,12 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, for
 		agreementsResult, _ = gates.CheckAgreements(preCheckDir, input.DaemonDriven, agreementsCheckFunc)
 	}
 
-	// Check for open questions in transitive dependency chain (warning only)
 	var openQuestionResult *gates.OpenQuestionResult
 	if openQuestionCheckFunc != nil && input.IssueID != "" {
 		openQuestionResult, _ = gates.CheckOpenQuestions(input.IssueID, input.DaemonDriven, openQuestionCheckFunc)
 	}
 
-	return usageCheckResult, hotspotResult, agreementsResult, openQuestionResult, nil
+	return hotspotResult, agreementsResult, openQuestionResult, nil
 }
 
 func buildArchitectVerifier() gates.ArchitectVerifier {
@@ -128,37 +84,25 @@ func buildArchitectFinder() gates.ArchitectFinder {
 	}
 }
 
-// FindPriorArchitectReview searches for a closed architect issue that reviewed
-// any of the given critical files.
 func FindPriorArchitectReview(criticalFiles []string) (string, error) {
 	if len(criticalFiles) == 0 {
 		return "", nil
 	}
-
 	searchTerms := extractSearchTerms(criticalFiles)
 	if len(searchTerms) == 0 {
 		return "", nil
 	}
-
 	socketPath, err := beads.FindSocketPath("")
 	if err != nil {
 		return "", nil
 	}
 	client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
 	defer client.Close()
-
-	issues, err := client.List(&beads.ListArgs{
-		Status: "closed",
-		Labels: []string{"skill:architect"},
-	})
+	issues, err := client.List(&beads.ListArgs{Status: "closed", Labels: []string{"skill:architect"}})
 	if err != nil {
 		return "", nil
 	}
-
-	titleIssues, err := client.List(&beads.ListArgs{
-		Status: "closed",
-		Title:  "architect:",
-	})
+	titleIssues, err := client.List(&beads.ListArgs{Status: "closed", Title: "architect:"})
 	if err == nil {
 		seen := make(map[string]bool)
 		for _, i := range issues {
@@ -170,7 +114,6 @@ func FindPriorArchitectReview(criticalFiles []string) (string, error) {
 			}
 		}
 	}
-
 	for _, issue := range issues {
 		titleLower := strings.ToLower(issue.Title)
 		for _, term := range searchTerms {
@@ -179,14 +122,12 @@ func FindPriorArchitectReview(criticalFiles []string) (string, error) {
 			}
 		}
 	}
-
 	return "", nil
 }
 
 func extractSearchTerms(criticalFiles []string) []string {
 	seen := make(map[string]bool)
 	var terms []string
-
 	for _, file := range criticalFiles {
 		normalized := strings.ToLower(strings.TrimSpace(file))
 		if normalized == "" {
@@ -204,7 +145,6 @@ func extractSearchTerms(criticalFiles []string) []string {
 			seen[nameOnly] = true
 		}
 	}
-
 	return terms
 }
 
@@ -220,7 +160,6 @@ func isArchitectIssue(issue *verify.Issue) bool {
 	return false
 }
 
-// logGateDecision logs a spawn.gate_decision event for allow, block, or bypass decisions.
 func logGateDecision(gateName, decision, skill, beadsID, reason string, targetFiles []string) {
 	logger := events.NewLogger(events.DefaultLogPath())
 	_ = logger.LogGateDecision(events.GateDecisionData{

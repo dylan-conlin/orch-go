@@ -224,38 +224,13 @@ func TestHotspotAutoBypassEmitsGateDecision(t *testing.T) {
 }
 
 func TestLogGateDecision_AllowDecisions(t *testing.T) {
-	// Verify that allow events for concurrency/ratelimit gates
-	// produce valid spawn.gate_decision events with correct fields.
+	// Verify that allow events for gates produce valid spawn.gate_decision events.
 	tests := []struct {
 		name     string
 		gate     string
 		decision string
 		reason   string
 	}{
-		{
-			name:     "concurrency allow",
-			gate:     "concurrency",
-			decision: "allow",
-			reason:   "within concurrency limit",
-		},
-		{
-			name:     "concurrency block",
-			gate:     "concurrency",
-			decision: "block",
-			reason:   "concurrency limit reached: 5 active agents (max 5)",
-		},
-		{
-			name:     "ratelimit allow",
-			gate:     "ratelimit",
-			decision: "allow",
-			reason:   "usage within threshold",
-		},
-		{
-			name:     "ratelimit block",
-			gate:     "ratelimit",
-			decision: "block",
-			reason:   "usage critical: 5h session at 97.0%",
-		},
 		{
 			name:     "accretion_precommit allow",
 			gate:     "accretion_precommit",
