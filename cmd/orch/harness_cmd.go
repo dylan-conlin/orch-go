@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/spf13/cobra"
 )
 
@@ -88,9 +90,34 @@ var harnessLockCmd = harnessDelegate("lock", "Lock control plane files (chflags 
 var harnessUnlockCmd = harnessDelegate("unlock", "Unlock control plane files (chflags nouchg)")
 var harnessStatusCmd = harnessDelegate("status", "Show lock state of all control plane files")
 var harnessVerifyCmd = harnessDelegate("verify", "Verify all control plane files are locked (for pre-commit hooks)")
-var harnessSnapshotCmd = harnessDelegate("snapshot", "Capture directory-level line count snapshot for accretion velocity tracking")
+var harnessSnapshotJSON bool
+var harnessSnapshotType string
+
+var harnessSnapshotCmd = &cobra.Command{
+	Use:   "snapshot",
+	Short: "Capture directory-level line count snapshot for accretion velocity tracking",
+	Long: `Capture a codebase snapshot and emit an accretion.snapshot event to events.jsonl.
+
+This is the native snapshot command — it both displays the snapshot AND records it
+for harness report velocity calculations. The harness report requires 2+ snapshots
+to compute velocity trends.
+
+Use --type to label the snapshot: "baseline" (first capture), "weekly" (periodic),
+or "manual" (ad-hoc).
+
+Examples:
+  orch harness snapshot                  # Emit snapshot (type: manual)
+  orch harness snapshot --type baseline  # Emit baseline snapshot
+  orch harness snapshot --json           # Machine-readable output`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runHarnessSnapshot()
+	},
+}
 
 func init() {
+	harnessSnapshotCmd.Flags().BoolVar(&harnessSnapshotJSON, "json", false, "Machine-readable JSON output")
+	harnessSnapshotCmd.Flags().StringVar(&harnessSnapshotType, "type", "manual", "Snapshot type: baseline, weekly, manual")
+
 	harnessCmd.AddCommand(harnessInitCmd)
 	harnessCmd.AddCommand(harnessCheckCmd)
 	harnessCmd.AddCommand(harnessLockCmd)
@@ -98,4 +125,63 @@ func init() {
 	harnessCmd.AddCommand(harnessStatusCmd)
 	harnessCmd.AddCommand(harnessVerifyCmd)
 	harnessCmd.AddCommand(harnessSnapshotCmd)
+}
+
+func runHarnessSnapshot() error {
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("getting working directory: %w", err)
+	}
+
+	snapshots := collectAllSnapshots(projectDir)
+	if len(snapshots) == 0 {
+		return fmt.Errorf("no code directories found in %s", projectDir)
+	}
+
+	// Emit event to events.jsonl
+	logger := events.NewDefaultLogger()
+	data := events.AccretionSnapshotData{
+		Directories:  snapshots,
+		SnapshotType: harnessSnapshotType,
+	}
+	if err := logger.LogAccretionSnapshot(data); err != nil {
+		return fmt.Errorf("emitting snapshot event: %w", err)
+	}
+
+	// Display
+	totalLines := 0
+	totalFiles := 0
+	for _, s := range snapshots {
+		totalLines += s.TotalLines
+		totalFiles += s.FileCount
+	}
+
+	if harnessSnapshotJSON {
+		out := map[string]interface{}{
+			"directories":     snapshots,
+			"total_lines":     totalLines,
+			"total_files":     totalFiles,
+			"directory_count": len(snapshots),
+			"snapshot_type":   harnessSnapshotType,
+			"emitted":         true,
+		}
+		enc, err := json.MarshalIndent(out, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(enc))
+		return nil
+	}
+
+	fmt.Printf("Snapshot: %d directories, %d files, %d lines (type: %s)\n",
+		len(snapshots), totalFiles, totalLines, harnessSnapshotType)
+	for _, s := range snapshots {
+		fmt.Printf("  %-20s %6d lines, %d files", s.Directory, s.TotalLines, s.FileCount)
+		if s.LargestFile != "" {
+			fmt.Printf(" (largest: %s @ %d)", s.LargestFile, s.LargestLines)
+		}
+		fmt.Println()
+	}
+	fmt.Printf("\nEvent emitted to events.jsonl (type: %s)\n", harnessSnapshotType)
+	return nil
 }
