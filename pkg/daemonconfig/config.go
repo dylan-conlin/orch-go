@@ -283,74 +283,90 @@ type Config struct {
 
 	// DigestInterval is how often to scan for artifact changes and produce digests.
 	DigestInterval time.Duration
+
+	// InvestigationOrphanEnabled controls whether periodic investigation orphan surfacing is enabled.
+	// When enabled, the daemon surfaces investigations that have been in_progress for longer than
+	// InvestigationOrphanThreshold without completion, creating closure pressure via notifications.
+	InvestigationOrphanEnabled bool
+
+	// InvestigationOrphanInterval is how often to check for orphaned investigations (0 = disabled).
+	// Default is 1 hour.
+	InvestigationOrphanInterval time.Duration
+
+	// InvestigationOrphanThreshold is how long an investigation can be in_progress without
+	// completion before being flagged as orphaned. Default is 48 hours.
+	InvestigationOrphanThreshold time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
 func DefaultConfig() Config {
 	return Config{
-		PollInterval:                15 * time.Second, // Faster polling for responsive dashboard updates
-		MaxAgents:                   5,
-		MaxSpawnsPerHour:            20, // Prevents runaway spawning
-		Label:                       "triage:ready",
-		SpawnDelay:                  3 * time.Second, // Reduced from 10s - dedup cache prevents duplicates
-		DryRun:                      false,
-		Verbose:                     false,
-		ReflectEnabled:              true,
-		ReflectInterval:             time.Hour, // Hourly by default
-		ReflectCreateIssues:         true,
-		ReflectOpenEnabled:          true,
-		ReflectModelDriftEnabled:    true,
-		ReflectModelDriftInterval:   4 * time.Hour,
-		CleanupEnabled:              true,
-		CleanupInterval:             6 * time.Hour, // Every 6 hours by default
-		CleanupAgeDays:              7,             // 7 days threshold
-		CleanupPreserveOrchestrator: true,          // Preserve orchestrator sessions
-		CleanupServerURL:            "http://127.0.0.1:4096",
-		CleanupArchivedTTLDays:      30, // 30-day TTL for archived workspace expiry
-		RecoveryEnabled:             true,
-		RecoveryInterval:            5 * time.Minute,  // Check every 5 minutes
-		RecoveryIdleThreshold:       10 * time.Minute, // Idle >10min triggers recovery
-		RecoveryRateLimit:           time.Hour,        // 1 resume per agent per hour
-		VerificationPauseThreshold:  5,                // Pause after 5 unique auto-completions
-		KnowledgeHealthEnabled:      true,
-		KnowledgeHealthInterval:     2 * time.Hour, // Every 2 hours
-		KnowledgeHealthThreshold:    50,            // Flag when 50+ active entries
-		OrphanDetectionEnabled:      true,
-		OrphanDetectionInterval:     30 * time.Minute, // Check every 30 minutes
-		OrphanAgeThreshold:          time.Hour,        // 1 hour before considering orphaned
-		PhaseTimeoutEnabled:         true,
-		PhaseTimeoutInterval:        5 * time.Minute,  // Check every 5 minutes
-		PhaseTimeoutThreshold:       30 * time.Minute, // Flag after 30 minutes without phase update
-		AgreementCheckEnabled:       true,
-		AgreementCheckInterval:      30 * time.Minute, // Check every 30 minutes
-		InvariantCheckEnabled:        true,
-		InvariantViolationThreshold:  3, // Pause after 3 consecutive violation cycles
-		BeadsHealthEnabled:           true,
-		BeadsHealthInterval:          time.Hour, // Every hour
-		FrictionAccumulationEnabled:  true,
-		FrictionAccumulationInterval: time.Hour, // Every hour
-		ArtifactSyncEnabled:              true,
-		ArtifactSyncInterval:             24 * time.Hour, // Daily cadence
-		ArtifactSyncAutoSpawn:            false,          // Issues only by default
-		ArtifactSyncAutoSpawnThreshold:   3,              // 3+ entries triggers auto-spawn
-		RegistryRefreshEnabled:           true,
-		RegistryRefreshInterval:          5 * time.Minute, // Refresh every 5 minutes
-		SynthesisAutoCreateEnabled:       true,
-		SynthesisAutoCreateInterval:      2 * time.Hour, // Every 2 hours (after reflection)
-		SynthesisAutoCreateThreshold:     5,             // 5+ investigations triggers auto-create
-		LearningRefreshEnabled:           true,
-		LearningRefreshInterval:          time.Hour, // Hourly learning refresh + compliance auto-adjust
-		PlanStalenessEnabled:             true,
-		PlanStalenessInterval:            30 * time.Minute, // Check every 30 minutes
-		ProactiveExtractionEnabled:       true,
-		ProactiveExtractionInterval:      6 * time.Hour, // Every 6 hours
-		TriggerScanEnabled:              true,
-		TriggerScanInterval:             time.Hour, // Hourly trigger scan
-		TriggerBudgetMax:                10,         // Max 10 open trigger issues
-		TriggerExpiryEnabled:            true,
-		TriggerExpiryInterval:           24 * time.Hour,       // Daily expiry check
-		TriggerExpiryMaxAge:             14 * 24 * time.Hour,  // 14-day TTL for trigger issues
-		DigestEnabled:                    true,
-		DigestInterval:                   30 * time.Minute,
+		PollInterval:                   15 * time.Second, // Faster polling for responsive dashboard updates
+		MaxAgents:                      5,
+		MaxSpawnsPerHour:               20, // Prevents runaway spawning
+		Label:                          "triage:ready",
+		SpawnDelay:                     3 * time.Second, // Reduced from 10s - dedup cache prevents duplicates
+		DryRun:                         false,
+		Verbose:                        false,
+		ReflectEnabled:                 true,
+		ReflectInterval:                time.Hour, // Hourly by default
+		ReflectCreateIssues:            true,
+		ReflectOpenEnabled:             true,
+		ReflectModelDriftEnabled:       true,
+		ReflectModelDriftInterval:      4 * time.Hour,
+		CleanupEnabled:                 true,
+		CleanupInterval:                6 * time.Hour, // Every 6 hours by default
+		CleanupAgeDays:                 7,             // 7 days threshold
+		CleanupPreserveOrchestrator:    true,          // Preserve orchestrator sessions
+		CleanupServerURL:               "http://127.0.0.1:4096",
+		CleanupArchivedTTLDays:         30, // 30-day TTL for archived workspace expiry
+		RecoveryEnabled:                true,
+		RecoveryInterval:               5 * time.Minute,  // Check every 5 minutes
+		RecoveryIdleThreshold:          10 * time.Minute, // Idle >10min triggers recovery
+		RecoveryRateLimit:              time.Hour,        // 1 resume per agent per hour
+		VerificationPauseThreshold:     5,                // Pause after 5 unique auto-completions
+		KnowledgeHealthEnabled:         true,
+		KnowledgeHealthInterval:        2 * time.Hour, // Every 2 hours
+		KnowledgeHealthThreshold:       50,            // Flag when 50+ active entries
+		OrphanDetectionEnabled:         true,
+		OrphanDetectionInterval:        30 * time.Minute, // Check every 30 minutes
+		OrphanAgeThreshold:             time.Hour,        // 1 hour before considering orphaned
+		PhaseTimeoutEnabled:            true,
+		PhaseTimeoutInterval:           5 * time.Minute,  // Check every 5 minutes
+		PhaseTimeoutThreshold:          30 * time.Minute, // Flag after 30 minutes without phase update
+		AgreementCheckEnabled:          true,
+		AgreementCheckInterval:         30 * time.Minute, // Check every 30 minutes
+		InvariantCheckEnabled:          true,
+		InvariantViolationThreshold:    3, // Pause after 3 consecutive violation cycles
+		BeadsHealthEnabled:             true,
+		BeadsHealthInterval:            time.Hour, // Every hour
+		FrictionAccumulationEnabled:    true,
+		FrictionAccumulationInterval:   time.Hour, // Every hour
+		ArtifactSyncEnabled:            true,
+		ArtifactSyncInterval:           24 * time.Hour, // Daily cadence
+		ArtifactSyncAutoSpawn:          false,          // Issues only by default
+		ArtifactSyncAutoSpawnThreshold: 3,              // 3+ entries triggers auto-spawn
+		RegistryRefreshEnabled:         true,
+		RegistryRefreshInterval:        5 * time.Minute, // Refresh every 5 minutes
+		SynthesisAutoCreateEnabled:     true,
+		SynthesisAutoCreateInterval:    2 * time.Hour, // Every 2 hours (after reflection)
+		SynthesisAutoCreateThreshold:   5,             // 5+ investigations triggers auto-create
+		LearningRefreshEnabled:         true,
+		LearningRefreshInterval:        time.Hour, // Hourly learning refresh + compliance auto-adjust
+		PlanStalenessEnabled:           true,
+		PlanStalenessInterval:          30 * time.Minute, // Check every 30 minutes
+		ProactiveExtractionEnabled:     true,
+		ProactiveExtractionInterval:    6 * time.Hour, // Every 6 hours
+		TriggerScanEnabled:             true,
+		TriggerScanInterval:            time.Hour, // Hourly trigger scan
+		TriggerBudgetMax:               10,        // Max 10 open trigger issues
+		TriggerExpiryEnabled:           true,
+		TriggerExpiryInterval:          24 * time.Hour,      // Daily expiry check
+		TriggerExpiryMaxAge:            14 * 24 * time.Hour, // 14-day TTL for trigger issues
+		DigestEnabled:                  true,
+		DigestInterval:                 30 * time.Minute,
+		InvestigationOrphanEnabled:     true,
+		InvestigationOrphanInterval:    time.Hour,      // Hourly check
+		InvestigationOrphanThreshold:   48 * time.Hour, // 48h before flagging
 	}
 }

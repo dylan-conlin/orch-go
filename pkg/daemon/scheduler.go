@@ -4,26 +4,27 @@ import "time"
 
 // Task name constants for the periodic scheduler.
 const (
-	TaskReflect               = "reflect"
-	TaskModelDriftReflect     = "model_drift_reflect"
-	TaskKnowledgeHealth       = "knowledge_health"
-	TaskCleanup               = "cleanup"
-	TaskRecovery              = "recovery"
-	TaskOrphanDetection       = "orphan_detection"
-	TaskPhaseTimeout          = "phase_timeout"
-	TaskQuestionDetection     = "question_detection"
-	TaskAgreementCheck        = "agreement_check"
-	TaskBeadsHealth           = "beads_health"
-	TaskFrictionAccumulation  = "friction_accumulation"
-	TaskArtifactSync          = "artifact_sync"
-	TaskRegistryRefresh       = "registry_refresh"
-	TaskSynthesisAutoCreate   = "synthesis_auto_create"
-	TaskLearningRefresh       = "learning_refresh"
-	TaskPlanStaleness         = "plan_staleness"
-	TaskProactiveExtraction   = "proactive_extraction"
-	TaskTriggerScan           = "trigger_scan"
-	TaskTriggerExpiry         = "trigger_expiry"
-	TaskDigest                = "digest"
+	TaskReflect              = "reflect"
+	TaskModelDriftReflect    = "model_drift_reflect"
+	TaskKnowledgeHealth      = "knowledge_health"
+	TaskCleanup              = "cleanup"
+	TaskRecovery             = "recovery"
+	TaskOrphanDetection      = "orphan_detection"
+	TaskPhaseTimeout         = "phase_timeout"
+	TaskQuestionDetection    = "question_detection"
+	TaskAgreementCheck       = "agreement_check"
+	TaskBeadsHealth          = "beads_health"
+	TaskFrictionAccumulation = "friction_accumulation"
+	TaskArtifactSync         = "artifact_sync"
+	TaskRegistryRefresh      = "registry_refresh"
+	TaskSynthesisAutoCreate  = "synthesis_auto_create"
+	TaskLearningRefresh      = "learning_refresh"
+	TaskPlanStaleness        = "plan_staleness"
+	TaskProactiveExtraction  = "proactive_extraction"
+	TaskTriggerScan          = "trigger_scan"
+	TaskTriggerExpiry        = "trigger_expiry"
+	TaskDigest               = "digest"
+	TaskInvestigationOrphan  = "investigation_orphan"
 )
 
 // periodicTask holds the scheduling state for a single periodic task.
@@ -138,6 +139,7 @@ func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s.Register(TaskTriggerScan, cfg.TriggerScanEnabled, cfg.TriggerScanInterval)
 	s.Register(TaskTriggerExpiry, cfg.TriggerExpiryEnabled, cfg.TriggerExpiryInterval)
 	s.Register(TaskDigest, cfg.DigestEnabled, cfg.DigestInterval)
+	s.Register(TaskInvestigationOrphan, cfg.InvestigationOrphanEnabled, cfg.InvestigationOrphanInterval)
 	return s
 }
 

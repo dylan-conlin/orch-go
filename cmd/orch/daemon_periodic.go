@@ -17,14 +17,15 @@ import (
 
 // periodicTasksResult holds outputs from periodic tasks needed downstream.
 type periodicTasksResult struct {
-	KnowledgeHealthSnapshot        *daemon.KnowledgeHealthSnapshot
-	PhaseTimeoutSnapshot           *daemon.PhaseTimeoutSnapshot
-	QuestionDetectionSnapshot      *daemon.QuestionDetectionSnapshot
-	AgreementCheckSnapshot         *daemon.AgreementCheckSnapshot
-	BeadsHealthSnapshot            *daemon.BeadsHealthSnapshot
-	FrictionAccumulationSnapshot   *daemon.FrictionAccumulationSnapshot
-	PlanStalenessSnapshot          *daemon.PlanStalenessSnapshot
-	TriggerSnapshot                *daemon.TriggerSnapshot
+	KnowledgeHealthSnapshot      *daemon.KnowledgeHealthSnapshot
+	PhaseTimeoutSnapshot         *daemon.PhaseTimeoutSnapshot
+	QuestionDetectionSnapshot    *daemon.QuestionDetectionSnapshot
+	AgreementCheckSnapshot       *daemon.AgreementCheckSnapshot
+	BeadsHealthSnapshot          *daemon.BeadsHealthSnapshot
+	FrictionAccumulationSnapshot *daemon.FrictionAccumulationSnapshot
+	PlanStalenessSnapshot        *daemon.PlanStalenessSnapshot
+	TriggerSnapshot              *daemon.TriggerSnapshot
+	InvestigationOrphanSnapshot  *daemon.InvestigationOrphanSnapshot
 }
 
 // runPeriodicTasks runs all periodic maintenance tasks and handles their output.
@@ -193,6 +194,15 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 	// Digest producer (scans .kb/ artifacts, creates thinking products)
 	if r := d.RunPeriodicDigest(); r != nil {
 		handleDigestResult(r, timestamp, verbose, logger)
+	}
+
+	// Investigation orphan surfacing (investigations in_progress >48h)
+	if r := d.RunPeriodicInvestigationOrphan(); r != nil {
+		handleInvestigationOrphanResult(r, timestamp, verbose, logger)
+		if r.Error == nil {
+			snapshot := r.Snapshot()
+			result.InvestigationOrphanSnapshot = &snapshot
+		}
 	}
 
 	return result
@@ -482,11 +492,11 @@ func handleSynthesisAutoCreateResult(r *daemon.SynthesisAutoCreateResult, timest
 	} else if r.Created > 0 {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)
 		logDaemonEvent(logger, "daemon.synthesis_auto_create", map[string]interface{}{
-			"created":       r.Created,
-			"skipped":       r.Skipped,
-			"evaluated":     r.Evaluated,
+			"created":        r.Created,
+			"skipped":        r.Skipped,
+			"evaluated":      r.Evaluated,
 			"created_issues": r.CreatedIssues,
-			"message":       r.Message,
+			"message":        r.Message,
 		})
 	} else if verbose {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)
@@ -538,10 +548,10 @@ func handlePlanStalenessResult(r *daemon.PlanStalenessResult, timestamp string, 
 			slugs = append(slugs, sp.Slug)
 		}
 		logDaemonEvent(logger, "daemon.plan_staleness", map[string]interface{}{
-			"stale":    len(r.StalePlans),
-			"scanned":  r.ScannedCount,
-			"slugs":    slugs,
-			"message":  r.Message,
+			"stale":   len(r.StalePlans),
+			"scanned": r.ScannedCount,
+			"slugs":   slugs,
+			"message": r.Message,
 		})
 	} else if verbose {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)
@@ -631,6 +641,44 @@ func handleDigestResult(r *daemon.DigestResult, timestamp string, verbose bool, 
 			"skipped":  r.Skipped,
 			"scanned":  r.Scanned,
 			"message":  r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+	}
+}
+
+func handleInvestigationOrphanResult(r *daemon.InvestigationOrphanResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Investigation orphan error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.investigation_orphan", map[string]interface{}{
+			"orphans": 0,
+			"error":   r.Error.Error(),
+			"message": r.Message,
+		})
+	} else if r.OrphanCount > 0 {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		for _, o := range r.Orphans {
+			fmt.Printf("[%s]   %s: %s (age %s)\n", timestamp, o.BeadsID, o.Title, o.Age.Round(time.Hour))
+		}
+
+		// Send desktop notification for orphaned investigations
+		notifier := notify.Default()
+		if err := notifier.Send(
+			fmt.Sprintf("%d orphaned investigations", r.OrphanCount),
+			fmt.Sprintf("Investigations in_progress >%s without completion", r.Orphans[0].Age.Round(time.Hour)),
+		); err != nil {
+			fmt.Fprintf(os.Stderr, "[%s] Failed to send investigation orphan notification: %v\n", timestamp, err)
+		}
+
+		orphanIDs := make([]string, 0, len(r.Orphans))
+		for _, o := range r.Orphans {
+			orphanIDs = append(orphanIDs, o.BeadsID)
+		}
+		logDaemonEvent(logger, "daemon.investigation_orphan", map[string]interface{}{
+			"orphans":    r.OrphanCount,
+			"scanned":    r.ScannedCount,
+			"orphan_ids": orphanIDs,
+			"message":    r.Message,
 		})
 	} else if verbose {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)
