@@ -47,10 +47,11 @@ var skipBloatDirs = map[string]bool{
 	".nuxt":       true,
 	".output":     true,
 	// Tool/workspace directories (not source code)
-	".opencode": true,
-	".orch":     true,
-	".beads":    true,
-	".claude":   true,
+	".opencode":    true,
+	".orch":        true,
+	".beads":       true,
+	".claude":      true,
+	"experiments":  true,
 }
 
 // additionalSkipPrefixes are multi-segment path prefixes that can't be expressed

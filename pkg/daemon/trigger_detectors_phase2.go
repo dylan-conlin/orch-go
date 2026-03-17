@@ -308,6 +308,54 @@ func (s *defaultModelContradictionsSource) ListUnresolvedContradictions() ([]Unr
 	return result, nil
 }
 
+// skipAccelerationDirs are directory names excluded from hotspot acceleration detection.
+// Mirrors skipBloatDirs in cmd/orch/hotspot.go plus experiments/ (static artifacts).
+var skipAccelerationDirs = map[string]bool{
+	".git":         true,
+	"node_modules": true,
+	"vendor":       true,
+	".svelte-kit":  true,
+	"dist":         true,
+	"build":        true,
+	"__pycache__":  true,
+	".next":        true,
+	".nuxt":        true,
+	".output":      true,
+	".opencode":    true,
+	".orch":        true,
+	".beads":       true,
+	".claude":      true,
+	"experiments":  true,
+}
+
+// isAccelerationExcluded returns true if the path should be excluded from
+// hotspot acceleration detection (non-production directories, test files).
+func isAccelerationExcluded(path string) bool {
+	// Skip test files
+	if strings.HasSuffix(path, "_test.go") {
+		return true
+	}
+	// Skip generated files
+	if strings.Contains(path, "/generated/") {
+		return true
+	}
+	// Check if any directory component is in the skip set
+	dir := filepath.Dir(path)
+	for dir != "." && dir != "/" {
+		if skipAccelerationDirs[filepath.Base(dir)] {
+			return true
+		}
+		dir = filepath.Dir(dir)
+	}
+	// Also check if the first path component is a skipped dir (handles "experiments/...")
+	if idx := strings.IndexByte(path, '/'); idx > 0 {
+		if skipAccelerationDirs[path[:idx]] {
+			return true
+		}
+	}
+	return false
+}
+
 // defaultHotspotAccelerationSource uses git log --numstat to detect fast-growing files.
 type defaultHotspotAccelerationSource struct{}
 
@@ -340,6 +388,10 @@ func (s *defaultHotspotAccelerationSource) ListFastGrowingFiles(threshold int) (
 			continue
 		}
 		if !strings.HasSuffix(path, ".go") {
+			continue
+		}
+		// Skip non-production paths (experiments/, .orch/, test files, etc.)
+		if isAccelerationExcluded(path) {
 			continue
 		}
 		// Skip files born within the window — birth churn, not accretion

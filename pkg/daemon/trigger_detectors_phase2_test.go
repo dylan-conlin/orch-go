@@ -427,3 +427,43 @@ func TestHotspotAccelerationDetector_BirthChurnFiltered(t *testing.T) {
 		t.Errorf("Key = %q, want pkg/daemon/ooda.go", suggestions[0].Key)
 	}
 }
+
+func TestIsAccelerationExcluded(t *testing.T) {
+	tests := []struct {
+		path     string
+		excluded bool
+	}{
+		// Production code — NOT excluded
+		{"pkg/daemon/ooda.go", false},
+		{"cmd/orch/main.go", false},
+		{"pkg/spawn/gates/hotspot.go", false},
+
+		// Test files — excluded
+		{"pkg/daemon/ooda_test.go", true},
+		{"pkg/thread/thread_test.go", true},
+
+		// experiments/ — excluded
+		{"experiments/coordination-demo/display_test.go", true},
+		{"experiments/foo/bar.go", true},
+
+		// Non-production directories — excluded
+		{".orch/workspace/foo.go", true},
+		{".beads/hooks/foo.go", true},
+		{".claude/worktrees/foo.go", true},
+		{"vendor/github.com/foo/bar.go", true},
+		{"node_modules/foo/bar.go", true},
+		{"web/.svelte-kit/output/foo.go", true},
+
+		// Generated files — excluded
+		{"pkg/generated/types.go", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			got := isAccelerationExcluded(tt.path)
+			if got != tt.excluded {
+				t.Errorf("isAccelerationExcluded(%q) = %v, want %v", tt.path, got, tt.excluded)
+			}
+		})
+	}
+}
