@@ -1,9 +1,9 @@
 ---
 title: "Throughput completions vs comprehension completions"
-status: open
+status: resolved
 created: 2026-03-05
-updated: 2026-03-05
-resolved_to: ""
+updated: 2026-03-17
+resolved_to: "Contrastive scenarios make comprehension visible through keyword proxies (rho=0.637). Stance is measurably functional (0%→17%→83% on scenario 09 at N=6). The knowledge/behavioral/stance taxonomy applies to all skills — the 82% reduction playbook (strip behavioral weight to hooks, keep knowledge and stance) generalizes beyond the orchestrator skill."
 ---
 
 # Throughput completions vs comprehension completions
@@ -25,3 +25,19 @@ Scoped a 4-phase research program to measure comprehension vs throughput. Core i
 Ran 54 trials. Breakthrough: scenario 09v2 (implicit contradiction — incompatible assumptions, not opposite conclusions) is the first scenario to discriminate stance from knowledge. bare 0/3, without-stance 0/3, with-stance 2/3. Stance items don't teach agents what contradictions look like — they orient agents to look for meaning. This confirms the three-type taxonomy (knowledge/behavioral/stance) and proves stance is measurably functional, not just identity. Explicit signals (data tables, opposite findings) still hit ceiling on Sonnet — discriminating scenarios require implicit signals that demand modeling relationships. Design principle validated: make the latent variable visible through situations where throughput and comprehension say different things.
 
 Higher-N confirmed decisively: scenario 09 at N=6 shows bare 0/6, without-stance 1/6, with-stance 5/6 (0%→17%→83%). Stance is measurably functional, not decorative. Key new insight: the knowledge/behavioral/stance taxonomy isn't orchestrator-specific — it describes how Claude processes ALL skill content. Every worker skill (investigation, systematic-debugging, architect, etc.) has the same three content types interleaved, and the same transfer properties apply: knowledge transfers, stance orients, behavioral constraints dilute at 5+. This means the 82% reduction that worked for the orchestrator skill (strip behavioral weight to hooks, keep knowledge and stance) is the playbook for all skills. The measurement methodology (contrastive scenarios testing orientation shift) ports directly — investigation stance ('test before concluding') and debugging stance ('understand before fixing') are testable in single-turn scenarios the same way orchestrator stance was.
+
+## 2026-03-17 — Resolution
+
+Thread resolved. The question "can we distinguish throughput from comprehension completions?" was answered empirically through a 4-phase measurement program (plan: `.kb/plans/2026-03-05-comprehension-measurement-program.md`).
+
+**What was answered:**
+- Contrastive scenarios make comprehension visible through keyword proxies (overall rho=0.637 with human ratings, Phase 2)
+- Stance content is measurably functional: scenario 09 at N=6 shows 0%→17%→83% detection across bare/without-stance/with-stance
+- The knowledge/behavioral/stance taxonomy generalizes beyond the orchestrator skill to all worker skills
+
+**What remains open (but doesn't block resolution):**
+- S11 indicator vocabulary needs redesign (rho=0.141 — broken for absence-detection scenarios)
+- Multi-turn comprehension decay untested (Phase 4 was conditional, all issues closed)
+- Scorer extensions (Phase 3) re-scoped to indicator vocabulary rather than grammar changes
+
+**Outcome:** The distinguishing signal exists and is measurable. The original proposal (a "comprehension flag" on completions) was superseded by the deeper finding: stance content is what creates comprehension, and contrastive scenarios can verify it's working.
