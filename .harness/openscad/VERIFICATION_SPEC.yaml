@@ -1,0 +1,29 @@
+# VERIFICATION_SPEC.yaml — OpenSCAD harness e2e validation
+# Beads ID: orch-go-8853k
+
+deliverables:
+  - path: .harness/openscad/parts/cable-clip.scad
+    description: "New parametric cable management clip with Layer 1 assert gates"
+    verification: "Renders with default params, assert gates fire on invalid params"
+
+  - path: .harness/openscad/parts/cable-clip-spec.md
+    description: "Design specification for cable-clip (used by Layer 4 intent gate)"
+    verification: "Contains dimensions, features, constraints matching cable-clip.scad"
+
+  - path: .harness/openscad/test/test-e2e-pipeline.sh
+    description: "End-to-end test: runs new part through all 4 gate layers"
+    verification: "bash .harness/openscad/test/test-e2e-pipeline.sh --skip-l4"
+
+manual_verification:
+  - step: "Run e2e test from project root"
+    command: "chmod +x .harness/openscad/test/test-e2e-pipeline.sh && bash .harness/openscad/test/test-e2e-pipeline.sh --skip-l4"
+    expected: "ALL AVAILABLE GATES PASSED (Layer 3 may be skipped if PrusaSlicer not installed)"
+
+  - step: "Run with Layer 4 (LLM intent gate)"
+    command: "bash .harness/openscad/test/test-e2e-pipeline.sh"
+    expected: "Intent gate returns ALIGNED for matching spec, MISALIGNED for drifted spec"
+
+blockers:
+  - description: "PreToolUse hook cwd bug — .harness/openscad/CLAUDE.md shifts hook execution cwd"
+    impact: "All bash commands blocked in this session. Test script written but not executed."
+    workaround: "Run test manually from terminal, or use absolute path in hook config"
