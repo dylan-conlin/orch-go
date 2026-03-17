@@ -117,3 +117,45 @@ func TestReviewTierFromWorkspace(t *testing.T) {
 		t.Errorf("ReadReviewTierFromWorkspace for nonexistent path = %q, want %q", tier, spawn.ReviewReview)
 	}
 }
+
+func TestScanTierExemptsArtifactGate(t *testing.T) {
+	// Scan-tier and auto-tier skills should be exempt from the COMPLETION.yaml artifact gate.
+	// Review-tier and deep-tier skills should NOT be exempt.
+	tests := []struct {
+		reviewTier    string
+		shouldExempt  bool
+	}{
+		{spawn.ReviewAuto, true},
+		{spawn.ReviewScan, true},
+		{spawn.ReviewReview, false},
+		{spawn.ReviewDeep, false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		isScanTierForArtifact := tt.reviewTier == spawn.ReviewScan || tt.reviewTier == spawn.ReviewAuto
+		if isScanTierForArtifact != tt.shouldExempt {
+			t.Errorf("reviewTier %q: artifact exempt = %v, want %v", tt.reviewTier, isScanTierForArtifact, tt.shouldExempt)
+		}
+	}
+}
+
+func TestScanTierSkillsMapToScanReviewTier(t *testing.T) {
+	// Verify that the skills mentioned in the bug report map to scan review tier
+	scanSkills := []string{"investigation", "probe", "research", "codebase-audit"}
+	for _, skill := range scanSkills {
+		tier := spawn.DefaultReviewTier(skill, "")
+		if tier != spawn.ReviewScan {
+			t.Errorf("skill %q: DefaultReviewTier = %q, want %q (scan)", skill, tier, spawn.ReviewScan)
+		}
+	}
+
+	// Verify review/deep tier skills are NOT exempt
+	nonScanSkills := []string{"feature-impl", "systematic-debugging", "architect"}
+	for _, skill := range nonScanSkills {
+		tier := spawn.DefaultReviewTier(skill, "")
+		if tier == spawn.ReviewScan || tier == spawn.ReviewAuto {
+			t.Errorf("skill %q: DefaultReviewTier = %q, should NOT be scan/auto (must require artifact gate)", skill, tier)
+		}
+	}
+}

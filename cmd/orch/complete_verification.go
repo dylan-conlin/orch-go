@@ -160,7 +160,11 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 			}
 
 			// Artifact gate: validate COMPLETION.yaml per work type (V1+)
+			// Scan-tier skills (investigation, probe, research, audit) are exempt —
+			// they produce knowledge artifacts, not COMPLETION.yaml.
+			isScanTierForArtifact := target.ReviewTier == spawn.ReviewScan || target.ReviewTier == spawn.ReviewAuto
 			if target.WorkspacePath != "" && target.Issue != nil &&
+				!isScanTierForArtifact &&
 				verify.ShouldRunGate(result.VerifyLevel, verify.GateArtifact) &&
 				!skipConfig.ShouldSkipGate(verify.GateArtifact) {
 				result.GatesRun = append(result.GatesRun, verify.GateArtifact)
