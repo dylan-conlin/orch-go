@@ -1,0 +1,18 @@
+verification:
+  type: investigation
+  outcome: false_positive
+
+  commands_run:
+    - command: "git log --format='%h %ad %s' --date=short --follow -- pkg/kbgate/model_test.go"
+      expected: "Single commit showing file creation"
+      actual: "1 commit: 35c8d548 2026-03-14 (birth)"
+    - command: "git diff 35c8d5485~1..35c8d5485 --numstat -- pkg/kbgate/model_test.go"
+      expected: "All lines added in birth commit"
+      actual: "386 added, 0 removed"
+    - command: "git log --format='%h %ad %s' --date=short -- pkg/kbgate/"
+      expected: "No post-birth modifications to model_test.go"
+      actual: "7 commits in kbgate/, only 1 touches model_test.go"
+
+  conclusion: "100% birth churn false positive. File created Mar 14, zero modifications since. 386/386 lines are from initial creation."
+
+  manual_steps: []
