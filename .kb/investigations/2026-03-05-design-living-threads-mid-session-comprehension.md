@@ -17,10 +17,11 @@
 **Question:** How should the orchestrator capture comprehension as it crystallizes mid-session, rather than reconstructing it at session close?
 
 **Started:** 2026-03-05
-**Updated:** 2026-03-05
+**Updated:** 2026-03-17
 **Owner:** architect (orch-go-kgxtt)
 **Phase:** Complete
 **Status:** Complete
+**Disposition:** Implemented — all 5 phases delivered. `pkg/thread/`, `cmd/orch/thread_cmd.go`, `.kb/threads/` (27 threads in active use as of 2026-03-17).
 
 **Extends:** `.kb/plans/2026-03-05-synthesis-as-comprehension.md` (Phases 1-3 teach comprehension at session boundaries; this addresses mid-session capture)
 
