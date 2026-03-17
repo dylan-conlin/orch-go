@@ -1,9 +1,9 @@
 ---
 title: "Stance as attention priming — what agents don't see"
-status: open
+status: resolved
 created: 2026-03-05
-updated: 2026-03-06
-resolved_to: ""
+updated: 2026-03-17
+resolved_to: "Core insight validated and deployed — stances live in worker skills (architect, feature-impl, experiment) as attention primers. Investigation stance gap documented in skill-content-transfer probe. Successor work on evidence quality continues in 2026-03-15 thread."
 ---
 
 # Stance as attention priming — what agents don't see
@@ -25,3 +25,17 @@ Testable: each attention type maps to a contrastive scenario. Same infrastructur
 Generalization confirmed: stance is cross-source reasoning primer, not generic amplifier. Lifts S12 (+5 relationship tracing) and S13 (+4 information freshness) but not S11 (-2 single-source absence). Detection-to-action gap discovered: agents see problems but still approve completion — stance improves input processing, behavioral constraints needed for output decisions. 72 total trials across 5 scenarios now.
 
 Investigation stance experiment (54 trials): 'test before concluding' produces ZERO lift. The distinction is attention primer vs action directive. Attention primers change perception and transfer in --print mode (+4-7 on orchestrator). Action directives tell agents what to do and have no leverage without tool execution. Each worker skill stance must be classified: systematic-debugging and architect stances look like attention primers ('understand before fixing', 'decide what should exist'). Investigation needs reframing from action to attention.
+
+## 2026-03-17 — Resolution
+
+Thread resolved. Core insight absorbed into production:
+
+**Deployed stances (attention primers, not behavioral constraints):**
+- `architect`: "Decide what should exist — not what's asked for, not what's easy. Validate the premise before designing the solution."
+- `feature-impl`: "Every change has consumers you haven't met. Your code will be called by agents, scripts, and UI paths you didn't design for."
+- `experiment`: "This is science, not exploration. You have a hypothesis to test."
+
+**Open edges (tracked elsewhere):**
+- Investigation stance reframing: documented in `skill-content-transfer` probe (2026-03-06), not yet rewritten
+- Detection-to-action gap (stance improves perception but not output decisions): active in evidence-quality thread (2026-03-15)
+- Systematic-debugging stance classification: not yet validated experimentally
