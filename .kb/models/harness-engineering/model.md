@@ -1,7 +1,7 @@
 # Model: Harness Engineering
 
 **Domain:** Multi-Agent Code Quality Practices
-**Last Updated:** 2026-03-15
+**Last Updated:** 2026-03-17
 **Validation Status:** WORKING HYPOTHESIS — practices are grounded in one system (orch-go, 3 months). Independent external review (Codex, Mar 10) identified the framework as "software architecture + CI/policy enforcement + tech debt management with agent vocabulary" — strongest as internal operating model, weakest when claiming to be a new discipline. The practices (hard/soft distinction, gate layering, attractor + gate pattern) work in this system. The generalizations are untested. See `.kb/threads/2026-03-10-closed-loop-risk-ai-agents.md`.
 **Synthesized From:**
 - `.kb/investigations/2026-03-07-inv-analyze-accretion-pattern-orch-go.md` — Accretion structural analysis (daemon.go +892 lines, 6 cross-cutting concerns)
@@ -44,17 +44,17 @@ Every harness component is either hard or soft:
 
 **Existing hard harness (orch-go, verified):**
 
-| Mechanism | What It Prevents | Source | Status |
-|-----------|-----------------|--------|--------|
-| Pre-commit growth gate | Accretion past 800/600 line thresholds | `pkg/verify/accretion_precommit.go`, `scripts/pre-commit-exec-start-cleanup.sh` | **Shipped** — hard block >1500, warning-only >800 (+30 net) / >600 (+50 net). Wired via `orch precommit accretion` (orch-go-t7te8) |
-| Spawn hotspot gate | Feature-impl/debugging on CRITICAL (>1500 line) files | `pkg/spawn/gates/hotspot.go` | Shipped, blocking — **currently dormant** (0/201 fires in 30d, no CRITICAL files exist, ~300ms cost per eval). See Mar 13 probe. |
-| Build gate (`go build`) | Broken compilation reaching completion | `pkg/verify/check.go` — unfakeable gate (Go-specific; TypeScript has no equivalent — see cross-language probe) | Shipped |
-| Completion accretion gate | Agent-caused growth past thresholds | `pkg/verify/accretion.go` (800/1500 thresholds, ±50 delta) | Shipped, **exempts pre-existing bloat** — files already over 1500 get warning, not block (Mar 8 probe) |
-| Architecture lint tests | Forbidden lifecycle state packages/imports | `cmd/orch/architecture_lint_test.go` (4 tests) | Shipped, not in CI |
-| Spawn rate limiter | Velocity exceeding verification bandwidth | `pkg/spawn/gates/ratelimit.go` | Shipped |
-| Spawn concurrency gate | Too many parallel agents | `pkg/spawn/gates/concurrency.go` | Shipped |
-| Duplication detector | Cross-file function similarity at completion | `pkg/dupdetect/`, `pkg/verify/duplication.go` | **Shipped** — AST fingerprinting, completion advisory, pre-commit check. O(n²)→O(M×N) after measurement revealed 111s cost |
-| Claude Code deny hooks | Forbidden tool usage at spawn time | `~/.orch/hooks/*.py` (12 scripts, 5 denials) | Shipped, mutable |
+| Mechanism                 | What It Prevents                                      | Source                                                                                                         | Status                                                                                                                             |
+|---------------------------|-------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| Pre-commit growth gate    | Accretion past 800/600 line thresholds                | `pkg/verify/accretion_precommit.go`, `scripts/pre-commit-exec-start-cleanup.sh`                                | **Shipped** — hard block >1500, warning-only >800 (+30 net) / >600 (+50 net). Wired via `orch precommit accretion` (orch-go-t7te8) |
+| Spawn hotspot gate        | Feature-impl/debugging on CRITICAL (>1500 line) files | `pkg/spawn/gates/hotspot.go`                                                                                   | Shipped, blocking                                                                                                                  |
+| Build gate (`go build`)   | Broken compilation reaching completion                | `pkg/verify/check.go` — unfakeable gate (Go-specific; TypeScript has no equivalent — see cross-language probe) | Shipped                                                                                                                            |
+| Completion accretion gate | Agent-caused growth past thresholds                   | `pkg/verify/accretion.go` (800/1500 thresholds, ±50 delta)                                                     | Shipped, **exempts pre-existing bloat** — files already over 1500 get warning, not block (Mar 8 probe)                             |
+| Architecture lint tests   | Forbidden lifecycle state packages/imports            | `cmd/orch/architecture_lint_test.go` (4 tests)                                                                 | Shipped, not in CI                                                                                                                 |
+| Spawn rate limiter        | Velocity exceeding verification bandwidth             | `pkg/spawn/gates/ratelimit.go`                                                                                 | Shipped                                                                                                                            |
+| Spawn concurrency gate    | Too many parallel agents                              | `pkg/spawn/gates/concurrency.go`                                                                               | Shipped                                                                                                                            |
+| Duplication detector      | Cross-file function similarity at completion          | `pkg/dupdetect/`, `pkg/verify/duplication.go`                                                                  | **Shipped** — AST fingerprinting, completion advisory, pre-commit check. O(n²)→O(M×N) after measurement revealed 111s cost         |
+| Claude Code deny hooks    | Forbidden tool usage at spawn time                    | `~/.orch/hooks/*.py` (12 scripts, 5 denials)                                                                   | Shipped, mutable                                                                                                                   |
 
 **Existing soft harness (orch-go):**
 
@@ -75,7 +75,7 @@ Files grow when multiple agents add code without shared awareness of prior addit
 **Primary evidence:**
 - `daemon.go` grew +892 lines (667→1559) in 60 days from 30 individually-correct commits. Each added a locally-reasonable capability (stuck detection, health checks, auto-complete, agreement checks, phase timeouts, orphan recovery).
 - Extraction is temporary: Jan 2026 extraction reduced main.go by -1058 lines, clean_cmd.go by -670 lines. But daemon.go regrew past its pre-extraction baseline within 2 months.
-- Counter-evidence (partially): `spawn_cmd.go` *shrank* -1,755 lines (2,432→677) after `pkg/spawn/backends/` was created (Feb 13) — proving attractors work for initial extraction. However, spawn_cmd.go regrew to 1,160 lines by Mar 8 (+483 in 3 weeks, ~160 lines/week), demonstrating that attractors break the accretion cycle temporarily but re-accretion follows without blocking gates. (Mar 8 probe corrected from -840 claim)
+- Counter-evidence (partially): `spawn_cmd.go` *shrank* -1,755 lines (2,432→677) after `pkg/spawn/backends/` was created (Feb 13) — proving attractors work for initial extraction. However, spawn_cmd.go regrew to 1,160 lines by Mar 8 (+483 in 3 weeks, ~160 lines/week), demonstrating that attractors break the accretion cycle temporarily but re-accretion follows without blocking gates. (Mar 8 probe corrected from -840 claim). **Update (Mar 17 probe):** After pre-commit gate wired + daemon extraction triggers, spawn_cmd.go back down to 542 lines — suggesting attractors WITH gates CAN hold. 1-week data, re-accretion monitoring continues.
 - **Extraction is net-positive on lines** (Mar 10 probe): 5 of 6 recent extraction commits ADDED net lines (+12 to +65 each) through file headers, package declarations, and import duplication. Only the daemon extraction was net-negative (-214) because it also removed dead code. Extraction distributes entropy but doesn't reduce it without concurrent dead code removal.
 - **New bloated files emerge as fast as old ones are extracted** (Mar 10 probe): In 2 weeks, 3 files crossed 800 lines (userconfig.go 611→975, +page.svelte 778→1,201, hotspot.go 858→1,050) while 3 were extracted below threshold. Net bloated count barely changed.
 - 6 cross-cutting concerns independently reimplemented across 4-9 files (~2,100 lines of duplicated infrastructure): workspace scanning, beads querying, output formatting, project resolution, filtering, ID extraction.
@@ -152,9 +152,9 @@ OpenAI's Codex team (~1M lines, 1,500 PRs, 3-7 engineers, 5 months, zero manual 
 
 | Enforcement Layer | Measurement Gap Found | Consequence |
 |---|---|---|
-| Duplication detector (hard, deterministic) | No timing telemetry; no precision measurement | 111s per completion — invisible until manually profiled. O(n²) cost was architectural, not a bug. Precision retrospective (Mar 13): 64.6% (164 TP / 90 FP across 259 occurrences). 35% FP rate from structural coincidence (40%), different semantics (47%), self-match bug (7%), opposite operations (7%). |
+| Duplication detector (hard, deterministic) | No timing telemetry | 111s per completion — invisible until manually profiled. O(n²) cost was architectural, not a bug. |
 | Completion pipeline (hard+soft, 15 gates) | 52% of agent.completed events lacked skill/outcome fields | Cannot calculate gate accuracy — no denominator data. Measured survivors, not decisions. |
-| Spawn gates (hard, blocking) | 0 gate_decision events emitted (fixed Mar 11); hotspot gate 0/201 fires in 30d (Mar 13 probe) | Knew gates existed but not how often they fired, what they blocked, or whether blocks were correct. After instrumentation: hotspot gate confirmed dormant — evaluates every spawn (~300ms) but has never blocked because no CRITICAL files exist in codebase. |
+| Spawn gates (hard, blocking) | 0 gate_decision events emitted | Knew gates existed but not how often they fired, what they blocked, or whether blocks were correct |
 | Accretion delta (hard, per-completion) | 4.7% coverage (path filter bug) | 95% of completions silently skipped — gate appeared active but was nearly blind |
 | Health score gate (soft masquerading as hard) | Score formula calibrated to pass existing state | 89% of 37→73 improvement was recalibration, not structural. Gate that never fires = false assurance |
 
@@ -169,7 +169,7 @@ OpenAI's Codex team (~1M lines, 1,500 PRs, 3-7 engineers, 5 months, zero manual 
 | Soft (stance) | Attention priming | **Reach** (multi-scenario contrastive tests, bare 0% → stance 83% on cross-source) |
 | Soft (behavioral) | MUST/NEVER prohibitions | **Compliance rate** (87 constraints → bare parity at 5/7 scenarios — confirming dilution) |
 
-**The previous claim "hard harness doesn't need measurement" was wrong.** Hard harness outcome is binary (pass/fail), but its operational properties are not: cost (111s dupdetect), coverage (4.7% accretion.delta), precision (false positive rate — now measured: 0% for signal gates; self_review removed after 79% FP confirmed), and volume (30 gate_decision events since Mar 11 instrumentation). A gate that passes/fails deterministically but costs 111s per run, covers 4.7% of cases, and logs nothing about its decisions is not well-understood — it's merely deterministic.
+**The previous claim "hard harness doesn't need measurement" was wrong.** Hard harness outcome is binary (pass/fail), but its operational properties are not: cost (111s dupdetect), coverage (4.7% accretion.delta), precision (false positive rate — now measured: 0% for signal gates, 79% for self_review), and volume (30 gate_decision events since Mar 11 instrumentation). A gate that passes/fails deterministically but costs 111s per run, covers 4.7% of cases, and logs nothing about its decisions is not well-understood — it's merely deterministic.
 
 **Retrospective accuracy audit (Mar 11, Phase 3):** Sampled 173 gate blocks/failures across 8 signal gates. Signal gate aggregate false positive rate: **0%** (0/173). Gates split into two categories: *correctness gates* (build, vet, phase_complete, synthesis, accretion_precommit — 11 events, 0% FP, catch real defects) and *discipline gates* (explain_back, verified, triage — 162 events, 0% FP, measure human process compliance). Discipline gates cannot be "wrong" in the traditional sense — they measure whether a human did something, not whether code is correct. Confidence intervals are wide for low-volume gates (build/vet: [0%, 63%] at 95% CI, n=3) but narrow for high-volume ones (explain_back: [0%, 7%], n=52). The noise-classified self_review gate has 79% FP rate (15/19 failures are intentional CLI output, console.error, or pre-existing code). See `.kb/investigations/2026-03-11-inv-gate-retrospective-accuracy-audit.md`.
 
@@ -178,7 +178,7 @@ OpenAI's Codex team (~1M lines, 1,500 PRs, 3-7 engineers, 5 months, zero manual 
 | Gate Type | Count | Harness Category | Provenance | Measured FP Rate |
 |-----------|-------|-------------------|------------|------------------|
 | Execution-based (Build, Vet, Staticcheck) | 3 | **Hard** | Deterministic — cannot be faked | 0% (n=6, wide CI) |
-| Evidence-based (Phase, Synthesis, Test Evidence, etc.) | 9 | **Structured soft** | Pattern matching — detects theater, not correctness | 0% for phase_complete/synthesis (n=4); self_review removed (79% FP, 0 TP — see decision 2026-03-13) |
+| Evidence-based (Phase, Synthesis, Test Evidence, etc.) | 10 | **Structured soft** | Pattern matching — detects theater, not correctness | 0% for phase_complete/synthesis (n=4); 79% for self_review (n=19) |
 | Judgment-based (Explain-back, Behavioral) | 2 | **Human soft** | Human comprehension — valid because human takes responsibility | 0% (n=109, narrow CI) — discipline gates, not correctness gates |
 
 As of Mar 2026, 3 of 15 completion gates run code (up from 1). Vet and staticcheck were added as independent hard gates. Further expansion (actually running tests) would continue increasing hard harness surface.
@@ -197,7 +197,7 @@ Phase 4 (correlation — "do gates improve quality?") blocked on 2-4 weeks of da
 
 | Criterion | Measurement | Threshold | Status |
 |-----------|-------------|-----------|--------|
-| Gates are ceremony | Accretion velocity pre/post gate | Post-gate velocity <50% of pre-gate for 2+ weeks | Insufficient data (checkpoint Mar 24) |
+| Gates are ceremony | Accretion velocity pre/post gate | Post-gate velocity <50% of pre-gate for 2+ weeks | **Inconclusive at 1 week:** raw velocity -25% (6,131→4,597/wk), but per-commit velocity only -5.6% (confounded by lower activity). Structural improvement dramatic: hotspot count 12→3 (75% reduction). Gate blocks rare (3.6%) and all bypassed. Velocity metric may be wrong — structural health (hotspot count) better captures gate effect. Checkpoint Mar 24 still needed with commit-normalized data. |
 | Gates are irrelevant | Gate fire rate (evaluations / spawns) | Fire rate <5% = irrelevant | Falsified: 69.5% fire rate from legacy events |
 | Soft harness is inert | Controlled A/B removal test | Removal causes no outcome difference | Not measurable (no experiments yet) |
 | Framework is anecdotal | Second system deployment | No benefit in second system | Not measurable (single system) |
@@ -220,11 +220,11 @@ Each layer builds on the previous. Lower layers are more immediately actionable.
 | **3** | Periodic entropy agent | Not started | Growth trend tracking (orch stats) | **Partial** |
 | **4** | Gates that generate gates | Aspirational | Gate accuracy correlation (Phase 4) | Blocked on data |
 
-**Layer 0 status (Mar 11):** Enforcement fully shipped. Measurement now paired: accretion.delta coverage fixed from 4.7% → ~100% (git baseline bug), pipeline timing instrumented. The pre-commit hook calls `orch precommit accretion` which runs `CheckStagedAccretion`. Hard block at >1500 lines. Warning-only at >800 lines (+30 net delta) and >600 lines (+50 net delta). Override: `FORCE_ACCRETION=1 git commit ...`. **Pre-commit gate wired Mar 10, measurement surface added Mar 11 — checkpoint Mar 24 will be the first data-backed evaluation of whether this layer works.** Weekly cmd/orch/ growth was accelerating prior to wiring: 370 → 1,473 → 6,264 → 6,131 lines/week (Feb 10–Mar 10).
+**Layer 0 status (Mar 17, 1-week data):** Enforcement fully shipped. Measurement now paired: accretion.delta coverage fixed from 4.7% → ~100% (git baseline bug), pipeline timing instrumented. The pre-commit hook calls `orch precommit accretion` which runs `CheckStagedAccretion`. Hard block at >1500 lines. Warning-only at >800 lines (+30 net delta) and >600 lines (+50 net delta). Override: `FORCE_ACCRETION=1 git commit ...`. **Pre-commit gate wired Mar 10.** First-week data (Mar 17 probe): 55 gate decisions — 51 allow, 2 block, 2 bypass. Both blocks were immediately force-bypassed (100% bypass rate). Direct blocking negligible. Indirect effect substantial: combined with daemon extraction triggers and hotspot enforcement, 11 of 12 previously-bloated files shrank below 800 lines (12→3 hotspot count, 75% reduction). daemon.go went from 1,559→197 lines. Gate's primary mechanism is extraction pressure, not blocking. Raw velocity -25% but confounded by -19% commit activity; per-commit reduction only 5.6%. **Checkpoint Mar 24 remains: need commit-normalized data across 2+ weeks.**
 
 **Layer 1 needs extension.** Current structural tests enforce only the no-lifecycle-state constraint (from two-lane architecture decision). Missing: function size limits for cmd/orch/, package boundary enforcement, cross-cutting duplication detection. These 4 tests also aren't in CI — they require manual `go test` execution.
 
-**Layer 2 status (Mar 13):** Enforcement shipped (AST fingerprinting, completion advisory, pre-commit check). Measurement partially shipped: duplication.detected events log file pairs and similarity scores, but **precision is unmeasured in production**. Retrospective audit (Mar 13 probe) classified all 259 match occurrences across 67 events: **64.6% precision** (164 TP, 90 FP). FP root causes: structural coincidence (40% — e.g., `Logger.Log ↔ WriteCheckpoint`, same JSONL pattern different domains), different semantics (47% — similar AST shape but different logic), self-match bug (7% — same function in both modified/corpus partitions), opposite operations (7% — close/get sharing boilerplate). The `.dupdetectignore` allowlist covers only `(Logger).Log*` patterns but the largest FP source (`Logger.Log ↔ WriteCheckpoint`, 23 occurrences) is NOT suppressed because the non-Logger side doesn't match. Original O(n²) implementation cost 111s per completion — invisible until measurement surface (pipeline timing) was added. Fixed to O(M×N) scoped comparison (43x speedup).
+**Layer 2 status (Mar 11):** Enforcement shipped (AST fingerprinting, completion advisory, pre-commit check). Measurement shipped (duplication.detected events with file pairs and similarity scores). Original O(n²) implementation cost 111s per completion — invisible until measurement surface (pipeline timing) was added. Fixed to O(M×N) scoped comparison (43x speedup). This is the canonical example of why enforcement needs measurement: a deterministic gate that silently costs 2 minutes per agent completion is worse than no gate.
 
 **Layer 3 is OpenAI's "garbage collection" pattern.** A periodic agent reviewing duplication detector output, growth trends, and structural test results. Produces recommendations: "pkg/workspace/ needed," "daemon.go periodic tasks should extract."
 
@@ -294,7 +294,7 @@ A useful way to think about agent failures, though in practice most failures are
 
 6. **Mutable hard harness is soft harness with extra steps.** All current defenses (spawn gates, verify gates, hooks, architecture lint) are source code agents can modify. This is the entropy spiral's core vulnerability. True immutability requires infrastructure that's architecturally unreachable by agents.
 
-7. **Enforcement without measurement is theological; enforcement with measurement is empirical.** A gate you can't measure is an assertion you can't test. The dupdetect gate (111s invisible cost, 4.7% accretion coverage) demonstrates that even hard, deterministic enforcement can be operationally broken without a measurement surface. Every harness layer must be a pair: enforcement surface + measurement surface. One without the other is incomplete. (Evidence: Mar 11 instrumentation audit — 52% field gaps, 0 gate_decision events, survivorship bias architecture. Mar 13 precision probe: dupdetect assumed 0% FP but retrospective classification of 259 match occurrences across 54 unique pairs found 64.6% precision — 35% of detections are false positives.)
+7. **Enforcement without measurement is theological; enforcement with measurement is empirical.** A gate you can't measure is an assertion you can't test. The dupdetect gate (111s invisible cost, 4.7% accretion coverage) demonstrates that even hard, deterministic enforcement can be operationally broken without a measurement surface. Every harness layer must be a pair: enforcement surface + measurement surface. One without the other is incomplete. (Evidence: Mar 11 instrumentation audit — 52% field gaps, 0 gate_decision events, survivorship bias architecture.)
 
 8. **Stronger models may need more coordination gates, not fewer.** Hypothesis: compliance gates simplify with model capability, but coordination gates grow in importance as agents get faster. Observed in one system (faster agents produced more code per session). Not experimentally controlled — this is a plausible claim, not a validated one.
 
@@ -350,39 +350,19 @@ A useful way to think about agent failures, though in practice most failures are
 
 **Evidence (Mar 8 probe):** daemon.go at 1,559 lines. The completion accretion gate (`pkg/verify/accretion.go` lines 128-136) downgrades from ERROR to WARNING when `preChangeLines > AccretionCriticalThreshold`. Every future agent adding 50+ lines to daemon.go gets a non-blocking warning. The gate structurally cannot enforce on the files that need enforcement most.
 
-**The broader pattern:** 12 files in cmd/orch/ exceed 800 lines (total: ~14,000 lines). 6 exceed 1,000. The exemption means the completion gate is primarily useful for files approaching the threshold, not files that have already passed it. This is the wrong coverage profile — the already-bloated files are where accretion pressure is strongest (feature gravity).
+**The broader pattern (Mar 8):** 12 files in cmd/orch/ exceeded 800 lines (total: ~14,000 lines). 6 exceeded 1,000. The exemption means the completion gate is primarily useful for files approaching the threshold, not files that have already passed it. **Update (Mar 17 probe):** Hotspot count dropped 12→3 (75% reduction). 11 of 12 previously-bloated files shrank below 800 via extraction. daemon.go: 1,559→197 (-87%). The exemption issue is partially resolved by extraction removing the pre-existing bloat rather than enforcing against it. However, new extraction targets are emerging (stats_aggregation.go at 959 lines).
 
 ### 7. Enforcement Without Measurement (Invisible Cost)
 
 **What happens:** Hard harness is shipped and assumed to work because its outcome is deterministic. But cost, coverage, and precision go unmeasured, creating invisible operational burdens.
 
 **Evidence:**
-- Duplication detector: deterministic (finds duplicates or doesn't), but cost 111s per completion. O(n²) function comparison across entire project. No timing telemetry existed to surface this — discovered only by manual profiling after agents started timing out. After timing was fixed, precision remained unmeasured — assumed 0% FP but retrospective classification (Mar 13, 259 occurrences) found **35% FP rate**. The detector generates noise at nearly 1:1 ratio with signal.
+- Duplication detector: deterministic (finds duplicates or doesn't), but cost 111s per completion. O(n²) function comparison across entire project. No timing telemetry existed to surface this — discovered only by manual profiling after agents started timing out.
 - Accretion delta: deterministic (computes line changes), but path filter bug restricted it to workspace dir. 95.3% of completions silently skipped. The gate appeared active in code but was nearly blind operationally.
 - Spawn gates: deterministic (block or allow), but 0 events logged about decisions. Could not answer "how many spawns did the hotspot gate block this week?" — the denominator for gate accuracy was unrecorded.
 - Agent.completed: 52% of events lacked skill/outcome fields. Survivorship bias: measured completions but not the decisions that led to them.
 
 **Fix:** Pair every enforcement layer with measurement from day one. The measurement plan (Mar 11) shipped instrumentation across all 4 gaps: pipeline timing, gate_decision events, accretion coverage fix, field enrichment.
-
-### 7b. Gate Dormancy (Enforcement Cost Without Value)
-
-**What happens:** A gate evaluates correctly — its logic is sound, it has tests, it's wired into the pipeline — but its triggering condition doesn't exist in the current environment. The gate imposes cost (evaluation time, code complexity, cognitive overhead) while providing zero enforcement value.
-
-**Evidence (Mar 13 probe):** The spawn hotspot gate:
-- **Cost:** 233ms mean per invocation (319ms median, 358ms P95). 33.6s total across 144 completions.
-- **Precision:** 0 blocks out of 201 evaluations = 0.0% fire rate.
-- **Root cause:** No files in the codebase currently exceed 1500 lines (largest non-test Go file: 1040 lines). Successful extraction efforts eliminated all CRITICAL files.
-- **Secondary precision gap:** 56% of feature-impl/debugging task descriptions lack file paths. The gate's `extractPathsFromTask` regex can only match explicit file path patterns, so even with CRITICAL files, the gate would miss the majority of targeting tasks.
-- **All three layers dormant:** Layer 1 (spawn gate): 0/201 blocks. Layer 2 (daemon escalation): 0/30 escalations. Layer 3 (context advisory): 0 firings.
-
-**Three causes of dormancy:**
-1. **Threshold exceeded by prior success** — CRITICAL files were extracted below the 1500-line threshold. The gate was needed, it motivated extraction, and now its job is done. This is the best case for dormancy.
-2. **Input format mismatch** — The gate matches file paths in task text, but 56% of tasks describe work semantically ("fix daemon polling"), not by path. Even an active gate would have a structural blind spot.
-3. **Coverage gap** — Only 49.5% of spawns are evaluated by the hotspot gate (rest are daemon-driven or lack checker injection).
-
-**Why dormancy is distinct from other failure modes:** It's not a false positive (gate fires incorrectly) or false negative (gate fails to fire when it should). It's an environmental condition where the gate evaluates correctly but the world has changed such that it can't fire. Without measurement, dormancy is invisible — the gate appears to be providing protection when it's actually providing only cost.
-
-**The lifecycle pattern:** A gate can transition: **needed → shipped → active → dormant → needed again**. The hotspot gate is currently in the "dormant" phase (successful extraction eliminated triggers). If a file grows past 1500 lines again, the gate will reactivate. This is healthy — dormancy isn't permanent failure. But the cost is permanent: ~300ms per spawn regardless of dormancy state.
 
 ### 8. Measurement Artifacts in Soft Harness
 
@@ -483,9 +463,9 @@ A useful way to think about agent failures, though in practice most failures are
 
 **2026-03-11:** Measurement reframed as first-class paired surface. Instrumentation audit (52% field gaps, 0 gate events, 111s invisible dupdetect cost, 4.7% accretion coverage) proved enforcement without measurement is operationally broken. Model updated from "3-layer enforcement stack" to "paired enforcement+measurement surfaces." Invariant #7 added. New failure mode (#7: Enforcement Without Measurement) added. Phase 1-3 of measurement plan shipped: field enrichment, gate_decision events, duplication.detected events, pipeline timing, accretion coverage fix.
 
-**2026-03-13:** Hotspot gate cost+precision probe. Gate evaluated 201 times, blocked 0. All three enforcement layers dormant — no CRITICAL files exist (largest non-test Go file: 1040 lines). ~300ms/eval cost for zero enforcement value. New failure mode: dormancy (gate evaluates correctly but triggering condition doesn't exist). Secondary precision gap: 56% of tasks lack file paths the gate needs to match. Test contamination: 132 fake hotspot_bypassed events in events.jsonl from test leaks.
-
 **2026-03-08 (evening):** Compliance vs coordination failure mode distinction crystallized. daemon.go +892 was coordination failure (30 agents each correct, collectively incoherent), not compliance failure. Stronger models fix compliance but worsen coordination — faster agents accrete more confidently. Harness engineering reframed as permanent discipline (coordination infrastructure) rather than transitional (training wheels). Publication plan created with 4 phases: deepen model → cross-language evidence → publication draft → portable tooling.
+
+**2026-03-17:** First post-gate effectiveness measurement (1 week since Mar 10 wiring). Raw velocity -25% (6,131→4,597/wk), but confounded by lower commit activity (-19%); per-commit velocity only -5.6%. Gate's direct blocking negligible (2 blocks, both bypassed). Indirect effect dramatic: hotspot count 12→3, daemon.go 1,559→197. Gate works as coordination mechanism (extraction pressure) not compliance mechanism (blocking). Falsification criterion #1 inconclusive — velocity metric may be wrong measure; structural health (hotspot count, file size Gini) better captures gate effect. Checkpoint Mar 24 needs commit-normalized data.
 
 ---
 
@@ -513,13 +493,21 @@ A useful way to think about agent failures, though in practice most failures are
 - `.kb/decisions/2026-02-26-three-layer-hotspot-enforcement.md`
 - `.kb/decisions/2026-02-25-no-code-review-gate-expand-execution-verification.md`
 
+**Probes:**
+- 2026-03-17: Pre-commit accretion gate 1-week effectiveness — raw velocity -25% but per-commit only -5.6% (activity confound). Hotspot count 12→3 (75% reduction). Gate works via extraction pressure, not blocking. Falsification criterion #1 inconclusive.
+- 2026-03-13: Duplication detector precision — AST fingerprinting precision measurement
+- 2026-03-13: Hotspot gate cost/precision — gate cost and false positive measurement
+- 2026-03-11: Measurement surface design falsification — paired enforcement+measurement validation
+- 2026-03-08: 30-day accretion trajectory — baseline established, pre-commit gate dead code identified
+- 2026-03-10: Health score calibration — 89% improvement from recalibration, gate removed
+- 2026-03-08: Publication draft — model synthesis for blog post
+- 2026-03-08: Cross-language harness portability — TypeScript fork validation
+- 2026-03-10: Blog post uncontaminated claim review — external review preparation
+
 **External:**
 - OpenAI: https://openai.com/index/harness-engineering/
 - Fowler/Bockeler: https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html
 - Anthropic: https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents — Single-agent, multi-session. "Harness" = orchestration framework for context continuity. Does NOT address multi-agent coordination.
-
-**Merged Probes:**
-- `.kb/models/harness-engineering/probes/2026-03-13-probe-hotspot-gate-cost-precision-measurement.md` — Hotspot gate dormancy: 0/201 blocks, ~300ms/eval, 56% task text path-matching gap. New failure mode #7b (dormancy). Test contamination: 132 fake events in events.jsonl. (CONFIRMS invariant #7, EXTENDS with dormancy failure mode)
 - Cemri et al., "Why Do Multi-Agent LLM Systems Fail?" arXiv:2503.13657 — MAST taxonomy: 1,600+ traces, 14 failure modes, 3 categories. FC2 (inter-agent misalignment) = ~32% of failures. Frames solution as "deeper social reasoning" (model improvement), not architecture. Their FC1/FC2/FC3 maps to our compliance/coordination/verification but they don't recognize opposite model-improvement trajectories.
 
 **Primary Evidence (Verify These):**
@@ -540,5 +528,4 @@ A useful way to think about agent failures, though in practice most failures are
 - 2026-03-10: Health score calibration vs structural improvement — **89% of score improvement (37→73) is calibration artifact, not structural.** Threshold scaling (accretion 20→92.8, hotspot 15→46.4) and bloat% formula change account for +32.2 of +36 points. Baseline values under new formula would score 69.2 — already above the 65 gate. Accretion velocity increasing (370→6,131 lines/week). New bloated files emerging as fast as old ones extracted. Extraction is net-positive on lines (5/6 commits added lines). Pre-commit gate wired today, zero post-gate data. Extends model with score-calibration-as-soft-harness failure mode.
 - 2026-03-10: Blog post uncontaminated claim review — **Both published posts ("Soft Harness Doesn't Work," "Building Blind") have mild-to-moderate overclaiming, primarily implicit novelty.** 6 overclaimed, 3 unsupported, 5 fine, 2 fine-but-citable instances across both posts. Main issue: well-established concepts (affordances/Norman, PDCA/Deming, falsificationism/Popper, Conway's Law, nudge theory) described without citation, creating impression of original discovery. Threshold claims (5+ constraints, 10+ inert) stated as general findings from N=7 skills — insufficient for precise inflection points. Recommended: inline acknowledgments ("essentially Conway's Law for LLM agents"), soften thresholds to "in my system," add methodology footnote for 265-trial claim. Posts stay in first-person experiential framing which mitigates risk. Self-critical honesty ("I was wrong") is a strength. The specific context (AI agent orchestration) is genuinely novel even when the conceptual frameworks are not.
 - 2026-03-11: Measurement surface design for falsification — **Infrastructure is 80% ready; 3 targeted additions close the gaps.** Audited 40+ event types, 1400 lines of stats code, 4,831 events. Stats already compute gate_decision aggregation (GateDecisionStats) and gate effectiveness correlation (GateEffectivenessStats), but both show zeros because gate_decision events only just shipped (3 events in 7 days). Legacy bypass events show 69.5% fire rate (141/203 spawns) — gates fire on majority of spawns, falsifying "gates are irrelevant." Missing: (1) "allow" gate events for true fire rate, (2) accretion snapshots for velocity trending, (3) harness API endpoint for dashboard. Soft harness compliance NOT measurable from events — requires controlled A/B experiments. Designed 5 implementation components: gate allow events, accretion snapshots, harness API, CLI report, dashboard visualization. Confirms invariant #7 (enforcement without measurement is theological). Extends model with 4 falsification criteria and measurable thresholds.
-- 2026-03-11: Retrospective accuracy audit (Phase 3) — **Signal gates have 0% false positive rate across 173 samples.** Audited all blocks/failures for 8 signal gates (build, vet, phase_complete, synthesis, explain_back, verified, triage, accretion_precommit). Zero false positives found. Gates split into correctness gates (11 events, catch real defects) and discipline gates (162 events, measure human process compliance). Discipline gates (explain_back, verified, triage) have 100% eventual-completion rate — they enforce process without blocking correct work. Low-volume gates (build/vet n=3) have wide confidence intervals; Phase 4 prospective tracking needed. self_review (NOISE) confirmed at 79% FP rate (15/19 failures are intentional CLI output or pre-existing code) — subsequently removed (Mar 13, orch-go-ntkcz). Extends model with gate accuracy data and correctness/discipline gate taxonomy.
-- 2026-03-15: Daemon closure rate measurement — **84% of daemon-spawned agents correctly close the loop** (verification passed or KB artifact produced). 307 daemon spawns analyzed: 258 verified/KB (84%), 28 completed without verification (9.1%, mostly cross-project), 21 never completed (6.8%, dead spawns). KB artifact rate: 28.7% overall — investigation skill 63%, architect 47%, feature-impl 25%, systematic-debugging 28%. Dead spawn rate (6.8%) is the most actionable inefficiency signal. Extends model with daemon-level closure measurement baseline.
+- 2026-03-11: Retrospective accuracy audit (Phase 3) — **Signal gates have 0% false positive rate across 173 samples.** Audited all blocks/failures for 8 signal gates (build, vet, phase_complete, synthesis, explain_back, verified, triage, accretion_precommit). Zero false positives found. Gates split into correctness gates (11 events, catch real defects) and discipline gates (162 events, measure human process compliance). Discipline gates (explain_back, verified, triage) have 100% eventual-completion rate — they enforce process without blocking correct work. Low-volume gates (build/vet n=3) have wide confidence intervals; Phase 4 prospective tracking needed. self_review (NOISE) confirmed at 79% FP rate (15/19 failures are intentional CLI output or pre-existing code). Extends model with gate accuracy data and correctness/discipline gate taxonomy.
