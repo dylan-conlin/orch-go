@@ -45,5 +45,10 @@ opencode.json
 # Playwright CLI runtime artifacts
 .playwright-cli/
 
+# Harness subdirectory .claude dirs (harness init creates these but they
+# cause Claude Code to treat subdirectories as project roots, breaking
+# hook cwd resolution)
+.harness/**/.claude/
+
 # Literal tilde directory (safety — Go tools don't expand ~, creating ./~/*)
 ~
