@@ -359,38 +359,45 @@ func TestPreview_TriageApprovedIsSpawnable(t *testing.T) {
 	}
 }
 
-func TestPreview_EpicWithTriageApprovedShowsHelpfulMessage(t *testing.T) {
-	d := &Daemon{
-		Config: Config{Label: "triage:ready"},
-		Issues: &mockIssueQuerier{
-			ListReadyIssuesFunc: func() ([]Issue, error) {
-				return []Issue{
-					{ID: "proj-epic", Title: "Epic", IssueType: "epic", Status: "open", Labels: []string{"triage:approved"}},
-				}, nil
-			},
-			ListEpicChildrenFunc: func(epicID string) ([]Issue, error) {
-				return []Issue{}, nil
-			},
-		},
-	}
+func TestPreview_EpicShowsHelpfulMessage(t *testing.T) {
+	for _, label := range []string{"triage:approved", "triage:ready"} {
+		t.Run(label, func(t *testing.T) {
+			d := &Daemon{
+				Config: Config{Label: "triage:ready"},
+				Issues: &mockIssueQuerier{
+					ListReadyIssuesFunc: func() ([]Issue, error) {
+						return []Issue{
+							{ID: "proj-epic", Title: "Epic", IssueType: "epic", Status: "open", Labels: []string{label}},
+						}, nil
+					},
+					ListEpicChildrenFunc: func(epicID string) ([]Issue, error) {
+						return []Issue{}, nil
+					},
+				},
+			}
 
-	result, err := d.Preview()
-	if err != nil {
-		t.Fatalf("Preview() unexpected error: %v", err)
-	}
+			result, err := d.Preview()
+			if err != nil {
+				t.Fatalf("Preview() unexpected error: %v", err)
+			}
 
-	if result.Issue != nil {
-		t.Errorf("Preview() expected nil issue (epic not spawnable), got %v", result.Issue)
-	}
+			if result.Issue != nil {
+				t.Errorf("Preview() expected nil issue (epic not spawnable), got %v", result.Issue)
+			}
 
-	if len(result.RejectedIssues) != 1 {
-		t.Fatalf("Preview() rejected count = %d, want 1", len(result.RejectedIssues))
-	}
-	if !strings.Contains(result.RejectedIssues[0].Reason, "children will be processed") {
-		t.Errorf("Preview() rejection reason = %q, want 'children will be processed'", result.RejectedIssues[0].Reason)
+			if len(result.RejectedIssues) != 1 {
+				t.Fatalf("Preview() rejected count = %d, want 1", len(result.RejectedIssues))
+			}
+			rejected := result.RejectedIssues[0]
+			if rejected.Issue.ID != "proj-epic" {
+				t.Errorf("Preview() rejected issue ID = %q, want 'proj-epic'", rejected.Issue.ID)
+			}
+			if !strings.Contains(rejected.Reason, "children will be processed") {
+				t.Errorf("Preview() rejection reason = %q, want to contain 'children will be processed'", rejected.Reason)
+			}
+		})
 	}
 }
-
 
 // Regression test for orch-go-175vz: Preview must reject issues with completion
 // labels, matching the poll loop's CheckIssueCompliance behavior.
@@ -465,44 +472,5 @@ func TestPreview_RejectsRecentlySpawnedIssues(t *testing.T) {
 	}
 	if result.Issue.ID != "proj-2" {
 		t.Errorf("Preview() issue ID = %q, want 'proj-2'", result.Issue.ID)
-	}
-}
-func TestPreview_EpicWithTriageReadyShowsHelpfulMessage(t *testing.T) {
-	d := &Daemon{
-		Config: Config{Label: "triage:ready"},
-		Issues: &mockIssueQuerier{
-			ListReadyIssuesFunc: func() ([]Issue, error) {
-				return []Issue{
-					{ID: "proj-epic", Title: "Epic", IssueType: "epic", Status: "open", Labels: []string{"triage:ready"}},
-				}, nil
-			},
-			// Mock to return no children, isolating the test from real data
-			ListEpicChildrenFunc: func(epicID string) ([]Issue, error) {
-				return []Issue{}, nil
-			},
-		},
-	}
-
-	result, err := d.Preview()
-	if err != nil {
-		t.Fatalf("Preview() unexpected error: %v", err)
-	}
-
-	// No spawnable issue since only an epic in queue
-	if result.Issue != nil {
-		t.Errorf("Preview() expected nil issue (epic not spawnable), got %v", result.Issue)
-	}
-
-	// Should have the epic in rejected list with helpful message
-	if len(result.RejectedIssues) != 1 {
-		t.Fatalf("Preview() rejected count = %d, want 1", len(result.RejectedIssues))
-	}
-
-	rejected := result.RejectedIssues[0]
-	if rejected.Issue.ID != "proj-epic" {
-		t.Errorf("Preview() rejected issue ID = %q, want 'proj-epic'", rejected.Issue.ID)
-	}
-	if !strings.Contains(rejected.Reason, "children will be processed") {
-		t.Errorf("Preview() rejection reason = %q, want to contain 'children will be processed'", rejected.Reason)
 	}
 }
