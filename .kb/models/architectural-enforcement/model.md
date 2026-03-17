@@ -1,7 +1,7 @@
 # Model: Architectural Enforcement
 
 **Domain:** Quality gates / Accretion prevention / Architect routing
-**Last Updated:** 2026-03-06
+**Last Updated:** 2026-03-17
 **Synthesized From:**
 - `.kb/investigations/2026-02-14-inv-architect-design-accretion-gravity-enforcement.md` — Four-layer enforcement design
 - `.kb/investigations/2026-02-14-inv-soften-strategic-first-hotspot-gate.md` — Gate severity calibration
@@ -14,6 +14,8 @@
 ## Summary (30 seconds)
 
 The system enforces architectural quality through **multi-layer gate mechanisms** that operate at four enforcement points: spawn-time (prevent bad work from starting), completion-time (reject violations after the fact), real-time coaching (correct agents mid-session), and declarative boundaries (make rules explicit in loaded context). The fundamental tension is **gate strength vs. false positive rate** — gates that are too strict create bypass culture (`--force-hotspot` used reflexively), while gates that are too lenient get ignored (warnings without teeth). The system has converged on a **tiered enforcement model**: warnings at moderate thresholds (800 lines), hard gates at critical thresholds (1,500 lines), with skill-based exemptions for knowledge-producing work (architect, investigation) and net-negative-delta escape for extraction work. The investigation-to-architect-to-implementation sequence is enforced through infrastructure (spawn gates, daemon routing), not instructions (prompts, skill guidance).
+
+**Critical reframing (Mar 17 gate effectiveness data):** Gates do not improve individual agent quality. Enforced vs bypassed cohorts show no measurable difference (81.1% vs 74.2% completion, both 100% verification, N=258). Gates work as **signaling infrastructure** — they create pressure that triggers extraction cascades, not barriers that block bad work. The pre-commit gate blocked 2 commits in its first week; both were immediately bypassed. But the gate's existence, combined with daemon extraction triggers and hotspot visibility, drove 11 of 12 bloated files below threshold (75% hotspot reduction). The mechanism is: gate signals → daemon detects hotspot → spawns extraction architect → file count grows but individual file sizes shrink. Signaling > blocking.
 
 ---
 
@@ -101,6 +103,8 @@ Not all skills accrete. Knowledge-producing skills need to READ hotspot files to
 6. **Constraint type determines enforcement mechanism.** Behavioral constraints in prompt dilute at 5+ co-resident items and become inert at 10+. Mapping by type: hard behavioral (31 items) → infrastructure deny hooks; soft behavioral (~28 items) → infrastructure coaching hooks; judgment behavioral (~28 items) → prompt-budgeted ≤4 per section, or reformulated as knowledge; knowledge (~64 items) → prompt (survives dilution at 10+). The orchestrator skill had 87 behavioral constraints in prompt — ~83 were non-functional. (Source: probe `2026-03-02-probe-layered-constraint-enforcement-design.md`; evidence: `.kb/investigations/2026-03-01-inv-test-constraint-dilution-threshold.md`)
 
 7. **Hotspot severity requires multi-dimensional assessment.** Line count alone underestimates hotspot risk. Files with high bloat + high fix-density + high coupling ("triple hotspots") require highest-priority architect intervention. Coupling clusters (files that always change together) amplify accretion effects — a fix in one cascades to coupled files. Trajectory matters: burst-driven fix-density that's declining shouldn't receive the same priority as steady/rising churn. (Source: probe `2026-03-11-probe-fix-density-hotspot-trajectory-overlap.md`)
+
+8. **Gates are signaling infrastructure, not quality gates.** Enforced vs bypassed cohorts show no measurable quality difference (81.1% vs 74.2% completion, 100% vs 100% verification, N=258). Gates work by making structural problems visible and creating pressure for extraction, not by filtering out bad agents. The pre-commit gate's value is in triggering extraction cascades (75% hotspot reduction), not in its 2 blocks (both immediately bypassed). (Source: Mar 17 gate effectiveness cohort data, 529 spawns)
 
 ---
 
@@ -220,6 +224,8 @@ Not all skills accrete. Knowledge-producing skills need to READ hotspot files to
 
 **Feb 26, 2026:** Model created synthesizing all investigations into coherent architectural enforcement understanding.
 
+**Mar 17, 2026:** Gate effectiveness cohort data (529 spawns, 258 with gates) showed no measurable quality difference between enforced and bypassed agents. Core thesis updated from "gates block bad work" to "gates create pressure that drives structural improvement." Pre-commit gate: 2 blocks, both bypassed, but 75% hotspot reduction through extraction cascades. New invariant added (Invariant 8).
+
 **Mar 2026 (probe merges):** Three probes incorporated.
 - `2026-02-27-probe-config-dir-drift-scope.md` — Identified config drift as an enforcement gap: personal sessions (`cc personal`) were silently running without global CLAUDE.md, skills, and hooks. Parallel config directories are duplicated state with no enforcement mechanism. Structural elimination (symlinks) applied. New invariant added (Invariant 5).
 - `2026-03-02-probe-layered-constraint-enforcement-design.md` — Audited all 151 orchestrator skill constraints (87 behavioral, 64 knowledge). Existing hooks cover ~7 of 31 hard-enforceable behavioral constraints; 24 need new hooks. Hook API is sufficient (no new mechanism types needed). ~28 judgment constraints cannot move to infrastructure. ~20 behavioral constraints can be reformulated as knowledge. New invariant added (Invariant 6), new failure mode §5 added.
@@ -259,3 +265,4 @@ Not all skills accrete. Knowledge-producing skills need to READ hotspot files to
 | `probes/2026-02-27-probe-config-dir-drift-scope.md` | 2026-02-27 | Extends | Config drift between parallel Claude config dirs is the same enforcement gap as silent toolchain failures. Personal sessions ran without hooks/skills/CLAUDE.md. Symlinks structurally eliminated it. New invariant: shared config must have a single source of truth. |
 | `probes/2026-03-02-probe-layered-constraint-enforcement-design.md` | 2026-03-02 | Confirms + Extends | 87 behavioral constraints in orchestrator skill prompt; dilution evidence shows ~83 are non-functional. Hook API is sufficient for all enforcement types. Constraint taxonomy: hard behavioral → deny hooks; soft → coaching hooks; judgment → prompt-budgeted ≤4; knowledge → prompt (resilient). Behavioral → knowledge reformulation technique identified. |
 | `probes/2026-03-11-probe-fix-density-hotspot-trajectory-overlap.md` | 2026-03-11 | Confirms + Extends | 800-line threshold empirically validated: files above it (context.go 981, daemon.go 921) have disproportionate fix density AND coupling. Post-extraction fix-density declines confirm extraction as effective intervention. New dimension: coupling clusters compound bloat + fix-density into "triple hotspots." Burst vs steady fix patterns affect intervention priority — 28-day windows can overstate post-burst hotspots. |
+| `../harness-engineering/probes/2026-03-17-probe-pre-commit-accretion-gate-2-week-effectiveness.md` | 2026-03-17 | Extends | Gate effectiveness cohort (529 spawns, 258 with gates): enforced 81.1% vs bypassed 74.2% completion (noise), both 100% verification. Gates don't improve individual agent quality — they create systemic pressure via extraction cascades. Hotspot count 12→3 (75% reduction). New invariant: gates are signaling infrastructure, not quality gates. |

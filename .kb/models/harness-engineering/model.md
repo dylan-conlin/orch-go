@@ -198,6 +198,7 @@ Phase 4 (correlation — "do gates improve quality?") blocked on 2-4 weeks of da
 | Criterion | Measurement | Threshold | Status |
 |-----------|-------------|-----------|--------|
 | Gates are ceremony | Accretion velocity pre/post gate | Post-gate velocity <50% of pre-gate for 2+ weeks | **Inconclusive at 1 week:** raw velocity -25% (6,131→4,597/wk), but per-commit velocity only -5.6% (confounded by lower activity). Structural improvement dramatic: hotspot count 12→3 (75% reduction). Gate blocks rare (3.6%) and all bypassed. Velocity metric may be wrong — structural health (hotspot count) better captures gate effect. Checkpoint Mar 24 still needed with commit-normalized data. |
+| Gates improve agent quality | Enforced vs bypassed cohort comparison | Measurable quality difference between enforced and bypassed cohorts | **No measurable difference (Mar 17).** 529 spawns, 258 with gates. Enforced: 81.1% completion, 100% verification. Bypassed: 74.2% completion, 100% verification. Delta within noise. Gates don't filter for individual agent quality — they create systemic pressure (extraction cascades, hotspot reduction). This is the "signaling infrastructure" finding: gates work by making structural problems visible, not by blocking bad agents. |
 | Gates are irrelevant | Gate fire rate (evaluations / spawns) | Fire rate <5% = irrelevant | Falsified: 69.5% fire rate from legacy events |
 | Soft harness is inert | Controlled A/B removal test | Removal causes no outcome difference | Not measurable (no experiments yet) |
 | Framework is anecdotal | Second system deployment | No benefit in second system | Not measurable (single system) |
@@ -270,7 +271,7 @@ A useful way to think about agent failures, though in practice most failures are
 
 | Gate | Type | Trajectory |
 |------|------|-----------|
-| Pre-commit growth gate | Compliance | Simplifies — smarter agents self-limit |
+| Pre-commit growth gate | **Signaling** (reclassified Mar 17) | Neither compliance nor coordination — creates visibility that triggers extraction. 100% bypass rate on blocks, but 75% hotspot reduction through indirect pressure. |
 | Build gate (`go build`) | Compliance | Permanent — compiler is always needed |
 | Spawn hotspot gate | Coordination | Permanent — prevents uncoordinated work on degraded areas |
 | Architecture lint | Coordination | Grows — more structural invariants as system matures |
@@ -494,7 +495,7 @@ A useful way to think about agent failures, though in practice most failures are
 - `.kb/decisions/2026-02-25-no-code-review-gate-expand-execution-verification.md`
 
 **Probes:**
-- 2026-03-17: Pre-commit accretion gate 1-week effectiveness — raw velocity -25% but per-commit only -5.6% (activity confound). Hotspot count 12→3 (75% reduction). Gate works via extraction pressure, not blocking. Falsification criterion #1 inconclusive.
+- 2026-03-17: Pre-commit accretion gate 1-week effectiveness — raw velocity -25% but per-commit only -5.6% (activity confound). Hotspot count 12→3 (75% reduction). Gate works via extraction pressure, not blocking. Falsification criterion #1 inconclusive. Gate effectiveness cohort (529 spawns): enforced 81.1% vs bypassed 74.2% completion (noise), both 100% verification. Gates are signaling infrastructure, not quality gates.
 - 2026-03-13: Duplication detector precision — AST fingerprinting precision measurement
 - 2026-03-13: Hotspot gate cost/precision — gate cost and false positive measurement
 - 2026-03-11: Measurement surface design falsification — paired enforcement+measurement validation

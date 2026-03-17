@@ -1,7 +1,7 @@
 # Model: Daemon Autonomous Operation
 
 **Domain:** Daemon / Autonomous Spawning / Batch Processing
-**Last Updated:** 2026-03-12
+**Last Updated:** 2026-03-17
 **Synthesized From:** 39+ investigations + daemon.md guide (verified Mar 1, 2026) + 36 probes (Feb 9 – Mar 12, 2026) on poll loops, skill inference, capacity management, completion tracking, cross-project operation, dedup pipeline, verification threshold, orphan detection
 
 ---
@@ -187,6 +187,8 @@ When the daemon picks up an issue targeting a CRITICAL hotspot file (>1500 lines
 3. Daemon spawns the extraction issue instead; parent waits for extraction to close before next poll
 
 **Extraction recursion guard:** Issues whose titles start with `"Extract "` are skipped by `CheckExtractionNeeded()`. Without this guard, extraction issues containing the critical filename in their title triggered recursive extraction chains (titles concatenated 4x, e.g., `xy7n`). Fixed Feb 16.
+
+**Extraction cascade pattern (observed Mar 10-17):** The extraction gate participates in a larger feedback loop: pre-commit gate signals → daemon detects hotspot → spawns extraction architect → extraction creates new smaller files → file count grows but hotspot count drops. In the first week post-gate-wiring (Mar 10-17), this cascade reduced files >800 lines from 12 to 3 (75% reduction). daemon.go went from 1,559 to 197 lines. Growth was redistributed from few large files to many small files (125→172 files, but 75% fewer hotspots). The gate's direct blocking effect is negligible (2 blocks, both bypassed), but its signaling role in triggering this cascade is the primary mechanism of structural improvement.
 
 **Extraction convergence gap:** If a file remains >1500 lines after an extraction closes, the parent issue becomes unblocked and triggers a new extraction. No convergence check exists to detect "extraction was already attempted but file didn't shrink." The content-aware dedup (L3/L4) catches same-title extraction issues, but not extraction issues with slightly different titles.
 
@@ -522,3 +524,4 @@ All 34 probes merged as of 2026-03-06. Listed chronologically with 1-line summar
 | `2026-03-01-probe-cross-repo-queue-poisoning-circuit-breaker` | Mar 1 | Extends | Queue poisoning (persistently-failing issues retrying every poll cycle) is distinct from capacity starvation; fixed with per-issue circuit breaker in `SpawnFailureTracker` |
 | `2026-03-11-probe-completion-spawn-loop-label-asymmetry` | Mar 11 | Extends | Completion and spawn loops had asymmetric label awareness: completion loop filtered `daemon:ready-review` but spawn loop didn't, causing completed issues to re-enter spawn queue. Fixed with 3 layers: spawn queue label filter, triage label cleanup on completion, in-memory CompletionDedupTracker |
 | `2026-03-12-probe-cross-project-orchestration-friction-audit` | Mar 12 | Contradicts + Extends | "Cannot COMPLETE cross-project" claim is stale — listCompletedAgentsMultiProject() implemented. Project group model (pkg/group/) fully implemented but groups.yaml doesn't exist — all group features fall back to hardcode. Creating config file is highest-leverage zero-code change. |
+| `../harness-engineering/probes/2026-03-17-probe-pre-commit-accretion-gate-2-week-effectiveness.md` | Mar 17 | Extends | Extraction cascade pattern documented: gate signals → daemon detects hotspot → spawns extraction → hotspot count 12→3 (75% reduction). Gate's direct blocking negligible (2 blocks, both bypassed); value is in triggering extraction cascades via daemon. |
