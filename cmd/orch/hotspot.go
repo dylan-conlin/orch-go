@@ -50,6 +50,7 @@ var skipBloatDirs = map[string]bool{
 	".opencode": true,
 	".orch":     true,
 	".beads":    true,
+	".claude":   true,
 }
 
 // additionalSkipPrefixes are multi-segment path prefixes that can't be expressed

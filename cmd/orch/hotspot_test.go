@@ -868,6 +868,8 @@ func TestContainsSkippedDir(t *testing.T) {
 		{".opencode/plugin/coaching.ts", true},
 		{".orch/workspace/file.go", true},
 		{".beads/issues.jsonl", true},
+		{".claude/worktrees/agent-a0e4d807/pkg/daemon/daemon.go", true},
+		{".claude/settings.json", true},
 
 		// Nested build output (the key fix)
 		{"web/.svelte-kit/output/server/chunks/index4.js", true},

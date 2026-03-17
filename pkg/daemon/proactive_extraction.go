@@ -164,7 +164,7 @@ func (s *defaultProactiveExtractionService) ScanFilesAboveThreshold(threshold in
 			// Skip non-source directories (same set as hotspot.go skipBloatDirs)
 			switch name {
 			case ".git", "node_modules", "vendor", ".svelte-kit", "dist", "build",
-				"__pycache__", ".next", ".nuxt", ".output", ".opencode", ".orch", ".beads":
+				"__pycache__", ".next", ".nuxt", ".output", ".opencode", ".orch", ".beads", ".claude":
 				return filepath.SkipDir
 			}
 			return nil
