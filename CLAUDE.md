@@ -87,6 +87,9 @@ pkg/
 ├── control/             # Control plane locking
 ├── checkpoint/          # Session checkpointing
 ├── activity/            # Activity tracking
+├── action/              # Action outcome logging and pattern detection
+├── advisor/             # Model recommendation via live API data
+├── group/               # Project group resolution (groups.yaml)
 ├── graph/               # Dependency graph utilities
 └── display/             # Terminal display helpers
 ```
@@ -545,38 +548,61 @@ Agent lifecycle events are logged to `~/.orch/events.jsonl` for stats aggregatio
 | Event | Source | Purpose |
 | --- | --- | --- |
 | `session.spawned` | `orch spawn` | Agent created |
+| `session.started` | `orch session start` | Orchestrator session started |
+| `session.ended` | `orch session end` | Orchestrator session ended |
 | `session.completed` | completion pipeline | Session finished |
 | `session.auto_completed` | daemon | Daemon auto-completed session |
 | `session.error` | error handler | Session error |
 | `session.status` | status poller | Status change (busy/idle) |
+| `session.labeled` | `orch session label` | Session labeled |
+| `session.send` | `orch send` | Message sent to existing session |
 | `agent.completed` | `orch complete` or `bd close` hook | Agent finished work |
 | `agent.abandoned` | `orch abandon` | Agent abandoned |
 | `agent.abandoned.telemetry` | `orch abandon` | Enriched abandonment data (skill, tokens, duration) |
 | `agent.reworked` | `orch rework` | Rework spawned |
 | `agent.resumed` | `orch resume` | Agent resumed |
+| `agent.recovered` | daemon recovery | Stuck agent recovered |
 | `agent.crashed_with_artifacts` | GC | Orphaned agent with committed work |
 | `agent.force_completed` | GC | GC-initiated completion |
 | `agent.force_abandoned` | GC | GC-initiated abandonment |
+| `agent.wait.complete` | `orch wait` | Wait completed (phase reached) |
+| `agent.wait.timeout` | `orch wait` | Wait timed out |
 | `verification.failed` | verify pipeline | Verification gate failed |
 | `verification.bypassed` | `--skip-*` flags | Verification gate bypassed |
 | `verification.auto_skipped` | skill exemption | Verification auto-skipped |
 | `spawn.gate_decision` | spawn gates | Gate evaluation result |
 | `spawn.hotspot_bypassed` | `--force-hotspot` | Hotspot gate bypassed |
+| `spawn.triage_bypassed` | `--bypass-triage` | Triage gate bypassed |
+| `spawn.infrastructure_detected` | spawn pipeline | Infrastructure work detected |
 | `spawn.skill_inferred` | `orch work` | Skill inferred for issue |
 | `daemon.spawn` | daemon | Daemon spawn decision |
+| `daemon.once` | `daemon once` | Single OODA cycle executed |
+| `daemon.complete` | daemon | Daemon auto-completion |
+| `daemon.completion_error` | daemon | Daemon completion error |
 | `daemon.architect_escalation` | daemon | Hotspot routing to architect |
 | `decision.made` | daemon | Decision with classification tier |
 | `accretion.delta` | completion | File growth/shrinkage during session |
 | `accretion.snapshot` | periodic | Directory-level line counts |
 | `duplication.detected` | dupdetect | Similar function pairs found |
+| `duplication.suppressed` | dupdetect | Allowlist-suppressed pairs (precision tracking) |
+| `service.started` | service monitor | Service first started |
 | `service.crashed` | service monitor | Service PID changed |
 | `service.restarted` | service monitor | Service auto-restarted |
 | `exploration.decomposed` | exploration | Question decomposed into subproblems |
 | `exploration.judged` | exploration | Judge verdicts on findings |
 | `exploration.synthesized` | exploration | Final synthesis produced |
+| `exploration.iterated` | exploration | Judge-triggered re-exploration round |
+| `focus.set` | `orch focus` | North star goal set |
+| `focus.cleared` | `orch focus clear` | North star goal cleared |
+| `handoff.created` | `orch handoff` | Session handoff created |
+| `debrief.quality` | `orch debrief` | Debrief quality measurement |
 | `swarm.start` | `orch swarm` | Swarm session started |
 | `swarm.spawn` | `orch swarm` | Swarm agent spawned |
+| `swarm.agent.complete` | `orch swarm` | Individual swarm agent completed |
 | `swarm.complete` | `orch swarm` | Swarm session completed |
+| `swarm.detach` | `orch swarm` | Swarm agent detached |
+| `agents.cleaned` | `orch clean` | Completed agents cleaned from registry |
+| `account.auto_switched` | spawn pipeline | Account auto-switched on rate limit |
 | `review_tier.escalated` | review | Review tier auto-escalated |
 
 ### Beads Close Hook
