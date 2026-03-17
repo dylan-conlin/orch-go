@@ -1,9 +1,9 @@
 ---
 title: "Closed loop risk — AI agents reinforce coherent framing, internal consistency is not external validation"
-status: open
+status: resolved
 created: 2026-03-10
-updated: 2026-03-10
-resolved_to: ""
+updated: 2026-03-17
+resolved_to: "Problem named, five instances documented, post-mortem complete. Uncontaminated Codex gate adopted (.kb/decisions/2026-03-10-adopt-uncontaminated-codex-gate-design-claim-ledg.md). Meta-lesson: independent assessment requires withholding the diagnosis, not just using a different model. Ongoing vigilance continues in evidence-quality thread (2026-03-15-evidence-quality-adversarial-grounding-against.md)."
 ---
 
 # Closed loop risk — AI agents reinforce coherent framing, internal consistency is not external validation
@@ -21,3 +21,7 @@ Fourth and fifth instances: ran knowledge-accretion and harness-engineering mode
 Post-mortem complete. Two Codex passes run: contaminated (given our diagnosis) produced over-engineered four-gate design that exhibited the same vocabulary inflation it was preventing. Uncontaminated (given only the blog post) independently found problems we missed — unfalsifiable 'agent failure is harness failure', genre-mixing, false compliance/coordination dichotomy, non-decision-grade measurements — and prescribed simpler fix: claim ledger + red-team memo + claim-label pass. Decision: adopt the uncontaminated design. Harness engineering post set to draft, pending push. The closed loop is now named, the gate is designed, and the meta-lesson is captured: independent assessment requires withholding the diagnosis, not just using a different model.
 
 Publication abandoned. The adversarial gates (publish gate, claim-upgrade scanner) work mechanically but don't solve the deeper problem: the system that builds the theory also builds the critics. Dylan's trust break came from outside the system (Codex review), not from inside it. Mechanical self-skepticism is not a substitute for independent validation.
+
+## 2026-03-17 — Resolution
+
+Resolving this thread. The closed-loop risk is now a well-understood failure mode with five documented instances, a complete post-mortem, and an adopted countermeasure (uncontaminated Codex gate design per .kb/decisions/2026-03-10-adopt-uncontaminated-codex-gate-design-claim-ledg.md). The sibling "validation gap" thread resolved to the same gate. The deeper ongoing concern — whether the system can confront disconfirming evidence about itself — continues in the evidence-quality thread (2026-03-15-evidence-quality-adversarial-grounding-against.md), which has active entries through Mar 16 including a real incident where self-measurement triggered destructive feedback. That thread is the right venue for ongoing vigilance; this thread's core contribution (naming the closed-loop pattern and establishing external review as the break) is complete.
