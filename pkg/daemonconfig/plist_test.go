@@ -7,8 +7,10 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 )
 
-func TestGeneratePlistXML(t *testing.T) {
-	data := &PlistData{
+// testPlistData returns a default PlistData for testing.
+// Tests override only the fields they care about.
+func testPlistData() *PlistData {
+	return &PlistData{
 		Label:            "com.orch.daemon",
 		OrchPath:         "/Users/test/bin/orch",
 		PollInterval:     15,
@@ -22,6 +24,10 @@ func TestGeneratePlistXML(t *testing.T) {
 		PATH:             "/Users/test/bin:/usr/local/bin:/usr/bin:/bin",
 		Home:             "/Users/test",
 	}
+}
+
+func TestGeneratePlistXML(t *testing.T) {
+	data := testPlistData()
 
 	result, err := GeneratePlistXML(data)
 	if err != nil {
@@ -35,80 +41,43 @@ func TestGeneratePlistXML(t *testing.T) {
 		t.Error("Expected XML header")
 	}
 
-	// Verify label
-	if !strings.Contains(content, "<string>com.orch.daemon</string>") {
-		t.Error("Expected label in plist")
-	}
-
-	// Verify orch path
-	if !strings.Contains(content, "<string>/Users/test/bin/orch</string>") {
-		t.Error("Expected orch path in plist")
-	}
-
-	// Verify poll interval
-	if !strings.Contains(content, "<string>15</string>") {
-		t.Error("Expected poll interval in plist")
-	}
-
-	// Verify max agents
-	if !strings.Contains(content, "<string>3</string>") {
-		t.Error("Expected max agents in plist")
-	}
-
-	// Verify issue label
-	if !strings.Contains(content, "<string>triage:ready</string>") {
-		t.Error("Expected issue label in plist")
+	// Verify expected strings are present
+	for _, want := range []struct {
+		substr string
+		desc   string
+	}{
+		{"<string>com.orch.daemon</string>", "label"},
+		{"<string>/Users/test/bin/orch</string>", "orch path"},
+		{"<string>15</string>", "poll interval"},
+		{"<string>3</string>", "max agents"},
+		{"<string>triage:ready</string>", "issue label"},
+		{"<string>--reflect-issues=true</string>", "reflect-issues flag"},
+		{"<string>--reflect-open=true</string>", "reflect-open flag"},
+		{"<string>/Users/test/.orch/daemon.log</string>", "log path"},
+		{"<string>/Users/test/Documents/personal/orch-go</string>", "working directory"},
+		{"<string>/Users/test/bin:/usr/local/bin:/usr/bin:/bin</string>", "PATH env var"},
+		{"<key>BEADS_NO_DAEMON</key>", "BEADS_NO_DAEMON env var"},
+	} {
+		if !strings.Contains(content, want.substr) {
+			t.Errorf("Expected %s: %s", want.desc, want.substr)
+		}
 	}
 
 	// Verify verbose is NOT present when false
 	if strings.Contains(content, "<string>--verbose</string>") {
 		t.Error("Expected no --verbose flag when Verbose is false")
 	}
-
-	// Verify reflect flags
-	if !strings.Contains(content, "<string>--reflect-issues=true</string>") {
-		t.Error("Expected --reflect-issues=true")
-	}
-	if !strings.Contains(content, "<string>--reflect-open=true</string>") {
-		t.Error("Expected --reflect-open=true")
-	}
-
-	// Verify log path
-	if !strings.Contains(content, "<string>/Users/test/.orch/daemon.log</string>") {
-		t.Error("Expected log path in plist")
-	}
-
-	// Verify working directory
-	if !strings.Contains(content, "<string>/Users/test/Documents/personal/orch-go</string>") {
-		t.Error("Expected working directory in plist")
-	}
-
-	// Verify PATH env var
-	if !strings.Contains(content, "<string>/Users/test/bin:/usr/local/bin:/usr/bin:/bin</string>") {
-		t.Error("Expected PATH in plist")
-	}
-
-	// Verify BEADS_NO_DAEMON
-	if !strings.Contains(content, "<key>BEADS_NO_DAEMON</key>") {
-		t.Error("Expected BEADS_NO_DAEMON env var")
-	}
 }
 
 func TestGeneratePlistXMLWithVerbose(t *testing.T) {
-	data := &PlistData{
-		Label:            "com.orch.daemon",
-		OrchPath:         "/Users/test/bin/orch",
-		PollInterval:     60,
-		MaxAgents:        5,
-		IssueLabel:       "triage:ready",
-		Verbose:          true,
-		ReflectIssues:    false,
-		ReflectOpen:      false,
-		LogPath:          "/Users/test/.orch/daemon.log",
-		WorkingDirectory: "/Users/test/project",
-		PATH:             "/usr/bin:/bin",
-		Home:             "/Users/test",
-	}
+	data := testPlistData()
+	data.PollInterval = 60
+	data.MaxAgents = 5
+	data.Verbose = true
+	data.ReflectIssues = false
+	data.ReflectOpen = false
+	data.WorkingDirectory = "/Users/test/project"
+	data.PATH = "/usr/bin:/bin"
 
 	result, err := GeneratePlistXML(data)
 	if err != nil {
@@ -327,20 +296,7 @@ func TestGeneratePlist(t *testing.T) {
 }
 
 func TestGeneratePlistXMLHasThrottleInterval(t *testing.T) {
-	data := &PlistData{
-		Label:            "com.orch.daemon",
-		OrchPath:         "/Users/test/bin/orch",
-		PollInterval:     15,
-		MaxAgents:        3,
-		IssueLabel:       "triage:ready",
-		Verbose:          false,
-		ReflectIssues:    true,
-		ReflectOpen:      true,
-		LogPath:          "/Users/test/.orch/daemon.log",
-		WorkingDirectory: "/Users/test/Documents/personal/orch-go",
-		PATH:             "/Users/test/bin:/usr/bin:/bin",
-		Home:             "/Users/test",
-	}
+	data := testPlistData()
 
 	result, err := GeneratePlistXML(data)
 	if err != nil {
@@ -359,20 +315,7 @@ func TestGeneratePlistXMLHasThrottleInterval(t *testing.T) {
 }
 
 func TestGeneratePlistXMLHasHomeEnvVar(t *testing.T) {
-	data := &PlistData{
-		Label:            "com.orch.daemon",
-		OrchPath:         "/Users/test/bin/orch",
-		PollInterval:     15,
-		MaxAgents:        3,
-		IssueLabel:       "triage:ready",
-		Verbose:          false,
-		ReflectIssues:    true,
-		ReflectOpen:      true,
-		LogPath:          "/Users/test/.orch/daemon.log",
-		WorkingDirectory: "/Users/test/Documents/personal/orch-go",
-		PATH:             "/Users/test/bin:/usr/bin:/bin",
-		Home:             "/Users/test",
-	}
+	data := testPlistData()
 
 	result, err := GeneratePlistXML(data)
 	if err != nil {
