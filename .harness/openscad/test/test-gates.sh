@@ -236,6 +236,138 @@ else
 fi
 
 echo ""
+echo "=== Enclosure Part Tests ==="
+echo ""
+
+# --- Test 15: Valid enclosure renders ---
+echo "Test 15: Valid enclosure renders successfully"
+if run_scad "$PARTS_DIR/enclosure.scad"; then
+    pass "valid enclosure renders"
+else
+    fail "valid enclosure should render (exit $?)"
+    cat "$TMPDIR/stderr.txt"
+fi
+
+# --- Test 16: Enclosure negative width fails ---
+echo "Test 16: Enclosure negative width triggers assert"
+if run_scad "$PARTS_DIR/enclosure.scad" -D 'width=-10'; then
+    fail "negative width should fail"
+else
+    if grep -q "GATE FAIL:" "$TMPDIR/stderr.txt"; then
+        pass "enclosure negative width caught"
+    else
+        fail "enclosure negative width failed but no GATE FAIL"
+        cat "$TMPDIR/stderr.txt"
+    fi
+fi
+
+# --- Test 17: Enclosure lip too deep fails ---
+echo "Test 17: Enclosure lip > wall-0.5 triggers assert"
+if run_scad "$PARTS_DIR/enclosure.scad" -D 'lip_depth=5' -D 'wall_thickness=2'; then
+    fail "lip > wall should fail"
+else
+    if grep -q "GATE FAIL:" "$TMPDIR/stderr.txt"; then
+        pass "enclosure lip depth caught"
+    else
+        fail "enclosure lip depth failed but no GATE FAIL"
+        cat "$TMPDIR/stderr.txt"
+    fi
+fi
+
+# --- Test 18: Enclosure thin wall fails ---
+echo "Test 18: Enclosure thin wall triggers assert"
+if run_scad "$PARTS_DIR/enclosure.scad" -D 'wall_thickness=0.3'; then
+    fail "thin wall should fail"
+else
+    if grep -q "GATE FAIL:" "$TMPDIR/stderr.txt"; then
+        pass "enclosure thin wall caught"
+    else
+        fail "enclosure thin wall failed but no GATE FAIL"
+        cat "$TMPDIR/stderr.txt"
+    fi
+fi
+
+# --- Test 19: Enclosure passes Layer 2 ---
+echo "Test 19: Valid enclosure passes Layer 2 geometry check"
+if bash "$GATE_SCRIPT" "$PARTS_DIR/enclosure.scad" "$TMPDIR/summary.json" "$TMPDIR/output.stl" > "$TMPDIR/gate-stdout.txt" 2>&1; then
+    if grep -q "Layer 2 PASS" "$TMPDIR/gate-stdout.txt"; then
+        pass "enclosure passes geometry check"
+    else
+        fail "gate exited 0 but no PASS message"
+        cat "$TMPDIR/gate-stdout.txt"
+    fi
+else
+    fail "valid enclosure should pass geometry check"
+    cat "$TMPDIR/gate-stdout.txt"
+fi
+
+echo ""
+echo "=== Gear Part Tests ==="
+echo ""
+
+# --- Test 20: Valid gear renders ---
+echo "Test 20: Valid gear renders successfully"
+if run_scad "$PARTS_DIR/gear.scad"; then
+    pass "valid gear renders"
+else
+    fail "valid gear should render (exit $?)"
+    cat "$TMPDIR/stderr.txt"
+fi
+
+# --- Test 21: Gear too few teeth fails ---
+echo "Test 21: Gear with <6 teeth triggers assert"
+if run_scad "$PARTS_DIR/gear.scad" -D 'teeth=3'; then
+    fail "too few teeth should fail"
+else
+    if grep -q "GATE FAIL:" "$TMPDIR/stderr.txt"; then
+        pass "gear too few teeth caught"
+    else
+        fail "gear too few teeth failed but no GATE FAIL"
+        cat "$TMPDIR/stderr.txt"
+    fi
+fi
+
+# --- Test 22: Gear bore > hub fails ---
+echo "Test 22: Gear bore >= hub triggers assert"
+if run_scad "$PARTS_DIR/gear.scad" -D 'bore_diameter=20' -D 'hub_diameter=15'; then
+    fail "bore >= hub should fail"
+else
+    if grep -q "GATE FAIL:" "$TMPDIR/stderr.txt"; then
+        pass "gear bore > hub caught"
+    else
+        fail "gear bore > hub failed but no GATE FAIL"
+        cat "$TMPDIR/stderr.txt"
+    fi
+fi
+
+# --- Test 23: Gear invalid pressure angle fails ---
+echo "Test 23: Gear pressure angle out of range triggers assert"
+if run_scad "$PARTS_DIR/gear.scad" -D 'pressure_angle=30'; then
+    fail "pressure angle 30 should fail"
+else
+    if grep -q "GATE FAIL:" "$TMPDIR/stderr.txt"; then
+        pass "gear pressure angle caught"
+    else
+        fail "gear pressure angle failed but no GATE FAIL"
+        cat "$TMPDIR/stderr.txt"
+    fi
+fi
+
+# --- Test 24: Gear passes Layer 2 ---
+echo "Test 24: Valid gear passes Layer 2 geometry check"
+if bash "$GATE_SCRIPT" "$PARTS_DIR/gear.scad" "$TMPDIR/summary.json" "$TMPDIR/output.stl" > "$TMPDIR/gate-stdout.txt" 2>&1; then
+    if grep -q "Layer 2 PASS" "$TMPDIR/gate-stdout.txt"; then
+        pass "gear passes geometry check"
+    else
+        fail "gate exited 0 but no PASS message"
+        cat "$TMPDIR/gate-stdout.txt"
+    fi
+else
+    fail "valid gear should pass geometry check"
+    cat "$TMPDIR/gate-stdout.txt"
+fi
+
+echo ""
 echo "=== Results ==="
 echo "Passed: $PASSED / $TOTAL"
 echo "Failed: $FAILED / $TOTAL"
