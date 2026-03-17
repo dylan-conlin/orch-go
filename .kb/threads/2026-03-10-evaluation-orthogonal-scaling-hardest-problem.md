@@ -1,9 +1,9 @@
 ---
 title: "Independent disconfirmation under asymmetric output growth — agentic systems fail because they mass-produce answer-shaped confidence faster than trustworthy rejection"
-status: open
+status: resolved
 created: 2026-03-10
-updated: 2026-03-10
-resolved_to: ""
+updated: 2026-03-17
+resolved_to: "Core thesis confirmed and sharpened: the bottleneck is preserving independent disconfirmation as output volume rises, not 'evaluation' broadly. Codex reframe adopted — 'answer-shaped confidence faster than trustworthy rejection.' Dylan's strategic boundary (only outputs crossing publication/policy boundaries need external certification) absorbed into closed-loop-risk thread (resolved 2026-03-17) and evidence-quality thread (active, 2026-03-15). The operational implication — build for independence, not just review — is now embodied in the uncontaminated Codex gate (.kb/decisions/2026-03-10-adopt-uncontaminated-codex-gate-design-claim-ledg.md) and ongoing evidence-quality work."
 ---
 
 # Evaluation is orthogonal to scaling — the hardest problem in agentic engineering isn't coordination, it's knowing whether output is correct when the system evaluates itself
@@ -68,3 +68,15 @@ If you want the blunt one-liner:
 **Agentic systems do not mainly fail because they cannot generate answers. They fail because they can mass-produce answer-shaped confidence faster than they can produce trustworthy rejection.**
 
 Dylan's sharpening (responding to Codex): Internal evaluation is not useless — it solves consistency checking, structural correctness, hygiene, throughput control. The mistake is treating it as if it can also certify epistemic independence. It can't. Three reveals: (1) The internal stack is optimized for consistency checking, not frame-breaking — narrower than 'evaluation.' (2) The scarce resource is independent attention, not verification logic — much current infrastructure is local optimization around a non-binding constraint. (3) Strategic boundary: some judgments cannot be safely endogenous — novelty, importance, external relevance, 'would a skeptical outsider care?' are a different class than 'did the artifact satisfy the rubric?' The leverage point is not 'review more things externally' but being selective about what is allowed to ask for external certification: only observation→theory upgrades, only novelty/generality/causal claims, only outputs crossing publication or policy boundaries. The few places where the system tries to convert coherence into authority.
+
+## 2026-03-17 — Resolution
+
+Resolving this thread. Its core thesis — that agentic scaling amplifies whatever evaluation quality you have, and that the bottleneck is independent disconfirmation, not evaluation broadly — has been confirmed through multiple subsequent experiences and sharpened into operational practice:
+
+1. **Codex reframe adopted:** The thread's own external review (Codex response above) provided the sharpest formulation: "agentic systems mass-produce answer-shaped confidence faster than trustworthy rejection." This became the operating mental model.
+
+2. **Absorbed into closed-loop-risk thread** (resolved 2026-03-17): Five concrete instances of closed-loop failure were documented there, producing a complete post-mortem and the uncontaminated Codex gate design (.kb/decisions/2026-03-10-adopt-uncontaminated-codex-gate-design-claim-ledg.md).
+
+3. **Ongoing work in evidence-quality thread** (2026-03-15, active): The deeper question — can the system confront disconfirming evidence about itself? — continues there, including a real incident (Mar 16) where self-measurement triggered destructive feedback, demonstrating the thread's thesis in practice.
+
+4. **Dylan's strategic boundary** (what needs external certification vs. what internal review handles) remains the operational filter. Internal evaluation handles consistency/structure/hygiene; external review is reserved for coherence→authority conversions (publication, policy, theory claims).
