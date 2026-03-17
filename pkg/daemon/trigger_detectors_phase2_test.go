@@ -357,3 +357,73 @@ func TestParseGitNumstat(t *testing.T) {
 		t.Error("binary files should be skipped")
 	}
 }
+
+// --- parseGitBornFiles Tests ---
+
+func TestParseGitBornFiles(t *testing.T) {
+	// Simulates output of: git log --diff-filter=A --since="30 days ago" --name-only --pretty=format:
+	input := "pkg/thread/thread_test.go\n\npkg/daemonconfig/plist_test.go\ncmd/orch/control_cmd.go\n\n"
+	result := parseGitBornFiles(input)
+
+	if !result["pkg/thread/thread_test.go"] {
+		t.Error("should include thread_test.go (new file)")
+	}
+	if !result["pkg/daemonconfig/plist_test.go"] {
+		t.Error("should include plist_test.go (new file)")
+	}
+	if !result["cmd/orch/control_cmd.go"] {
+		t.Error("should include control_cmd.go (recreated file)")
+	}
+	if result["pkg/daemon/ooda.go"] {
+		t.Error("should not include files not in output")
+	}
+}
+
+func TestParseGitBornFiles_Empty(t *testing.T) {
+	result := parseGitBornFiles("")
+	if len(result) != 0 {
+		t.Errorf("got %d entries, want 0", len(result))
+	}
+}
+
+func TestParseGitBornFiles_WhitespaceHandling(t *testing.T) {
+	input := "  pkg/foo.go  \n\n\n  pkg/bar.go\n"
+	result := parseGitBornFiles(input)
+	if !result["pkg/foo.go"] {
+		t.Error("should trim whitespace from pkg/foo.go")
+	}
+	if !result["pkg/bar.go"] {
+		t.Error("should trim whitespace from pkg/bar.go")
+	}
+}
+
+// --- Birth Churn Filtering Integration Test ---
+
+func TestHotspotAccelerationDetector_BirthChurnFiltered(t *testing.T) {
+	// Scenario: thread_test.go was born in the window (+570 lines) — should NOT trigger.
+	// ooda.go existed before the window and grew (+350 lines) — should trigger.
+	// This test verifies the detector-level contract: sources that properly filter
+	// birth churn produce no false positives.
+	d := &HotspotAccelerationDetector{
+		Source: &mockHotspotAccelerationSource{
+			listFunc: func(threshold int) ([]FastGrowingFile, error) {
+				// Source already filters out birth files (thread_test.go, plist_test.go)
+				// Only returns files that existed before the window and grew
+				return []FastGrowingFile{
+					{Path: "pkg/daemon/ooda.go", LinesAdded: 350, CurrentSize: 800},
+				}, nil
+			},
+		},
+	}
+
+	suggestions, err := d.Detect()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(suggestions) != 1 {
+		t.Fatalf("got %d suggestions, want 1 (birth churn should be filtered by source)", len(suggestions))
+	}
+	if suggestions[0].Key != "pkg/daemon/ooda.go" {
+		t.Errorf("Key = %q, want pkg/daemon/ooda.go", suggestions[0].Key)
+	}
+}

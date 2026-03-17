@@ -324,12 +324,26 @@ func (s *defaultHotspotAccelerationSource) ListFastGrowingFiles(threshold int) (
 
 	additions := parseGitNumstat(output)
 
+	// Get files born (Added) within the 30-day window.
+	// These files' entire size registers as "growth" in numstat but they aren't
+	// actually accelerating — they were created, not growing. This also catches
+	// delete/recreate churn where a file is removed and re-added within the window.
+	bornOutput, err := runGitBornFiles(projectDir)
+	if err != nil {
+		return nil, err
+	}
+	bornFiles := parseGitBornFiles(bornOutput)
+
 	var result []FastGrowingFile
 	for path, added := range additions {
 		if added < threshold {
 			continue
 		}
 		if !strings.HasSuffix(path, ".go") {
+			continue
+		}
+		// Skip files born within the window — birth churn, not accretion
+		if bornFiles[path] {
 			continue
 		}
 		fullPath := filepath.Join(projectDir, path)
@@ -355,6 +369,33 @@ func runGitNumstat(dir string) (string, error) {
 		return "", fmt.Errorf("git log --numstat failed: %w", err)
 	}
 	return string(out), nil
+}
+
+// runGitBornFiles runs git log --diff-filter=A for the last 30 days and returns raw output.
+// This identifies files that were created (Added) within the window.
+func runGitBornFiles(dir string) (string, error) {
+	cmd := exec.Command("git", "log", "--diff-filter=A", "--since=30 days ago", "--name-only", "--pretty=format:")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git log --diff-filter=A failed: %w", err)
+	}
+	return string(out), nil
+}
+
+// parseGitBornFiles parses git log --diff-filter=A --name-only output into a set of file paths.
+// Files in this set were created within the 30-day window — their entire size registers as
+// "growth" in numstat but they aren't actually accelerating (they were born, not growing).
+func parseGitBornFiles(output string) map[string]bool {
+	born := make(map[string]bool)
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			born[line] = true
+		}
+	}
+	return born
 }
 
 // parseGitNumstat parses git log --numstat output into per-file line additions.
