@@ -168,6 +168,14 @@ func RouteCompletion(agent CompletedAgent) CompletionRoute {
 		return route
 	}
 
+	// Scan-tier routing: review-tier=scan → auto-complete
+	// Scan-tier work (investigations, probes, research, audits) produces
+	// knowledge artifacts, not code changes. Low risk of breaking production.
+	if reviewTier == "scan" {
+		route.Action = "auto-complete"
+		return route
+	}
+
 	// Default: label for orchestrator review
 	route.Action = "label-ready-review"
 	return route
@@ -214,7 +222,8 @@ func (d *Daemon) ExecuteCompletionRoute(
 			result.Processed = true
 			result.AutoCompleted = true
 			result.CloseReason = completionSummary
-			d.recordAutoCompletion(agent.BeadsID, config)
+			// Auto-completed agents don't count toward verification ceiling —
+			// they're already closed by the daemon and don't need human review.
 			return result
 		}
 		// Fall through to label if no auto-completer
@@ -229,7 +238,8 @@ func (d *Daemon) ExecuteCompletionRoute(
 			result.Processed = true
 			result.AutoCompleted = true
 			result.CloseReason = completionSummary
-			d.recordAutoCompletion(agent.BeadsID, config)
+			// Auto-completed agents don't count toward verification ceiling —
+			// they're already closed by the daemon and don't need human review.
 			return result
 		}
 		// Fall through to label if no auto-completer
@@ -255,7 +265,7 @@ func (d *Daemon) labelReadyReview(agent CompletedAgent, completionSummary, effec
 		// Remove triage:ready to prevent re-spawn
 		verify.RemoveTriageLabels(agent.BeadsID, effectiveProjectDir)
 
-		d.recordAutoCompletion(agent.BeadsID, config)
+		d.recordUnverifiedCompletion(agent.BeadsID, config)
 	}
 
 	result.Processed = true
@@ -263,8 +273,11 @@ func (d *Daemon) labelReadyReview(agent CompletedAgent, completionSummary, effec
 	return result
 }
 
-// recordAutoCompletion records an auto-completion for verification tracking.
-func (d *Daemon) recordAutoCompletion(beadsID string, config CompletionConfig) {
+// recordUnverifiedCompletion records a completion that needs human verification.
+// Only called for label-ready-review completions, NOT for auto-completed agents.
+// Auto-completed agents are already closed by the daemon and don't need human review,
+// so they should not count toward the verification pause threshold.
+func (d *Daemon) recordUnverifiedCompletion(beadsID string, config CompletionConfig) {
 	if d.VerificationTracker != nil {
 		shouldPause := d.VerificationTracker.RecordCompletion(beadsID)
 		if shouldPause && config.Verbose {

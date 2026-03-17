@@ -132,6 +132,27 @@ func TestReviewTierDefaultsForAutoTier(t *testing.T) {
 	}
 }
 
+func TestReviewTierDefaultsForScanTier(t *testing.T) {
+	// Scan-tier skills should now auto-complete (not require human review).
+	// Verify they're classified as scan tier.
+	scanSkills := []string{"investigation", "probe", "research", "codebase-audit", "design-session", "ux-audit"}
+	for _, skill := range scanSkills {
+		tier := spawn.DefaultReviewTier(skill, "")
+		if tier != spawn.ReviewScan {
+			t.Errorf("DefaultReviewTier(%q) = %q, want %q", skill, tier, spawn.ReviewScan)
+		}
+	}
+
+	// Review-tier skills should NOT be auto-completable
+	reviewSkills := []string{"feature-impl", "systematic-debugging", "architect"}
+	for _, skill := range reviewSkills {
+		tier := spawn.DefaultReviewTier(skill, "")
+		if tier != spawn.ReviewReview {
+			t.Errorf("DefaultReviewTier(%q) = %q, want %q", skill, tier, spawn.ReviewReview)
+		}
+	}
+}
+
 func TestMockAutoCompleter_DefaultReturnsNil(t *testing.T) {
 	m := &mockAutoCompleter{}
 	if err := m.Complete("test", "/dir"); err != nil {
