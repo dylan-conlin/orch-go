@@ -397,6 +397,8 @@ func TestIsSpawnableType(t *testing.T) {
 		{"feature", true},
 		{"task", true},
 		{"investigation", true},
+		{"experiment", true},
+		{"question", true},
 		{"epic", false},
 		{"chore", false},
 		{"unknown", false},

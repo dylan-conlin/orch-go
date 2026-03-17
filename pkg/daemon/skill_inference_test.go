@@ -281,6 +281,8 @@ func TestInferSkill(t *testing.T) {
 		{"feature", "feature-impl", false},
 		{"task", "feature-impl", false},
 		{"investigation", "investigation", false},
+		{"experiment", "investigation", false},
+		{"question", "architect", false},
 		{"epic", "", true},
 		{"unknown", "", true},
 	}
@@ -551,6 +553,34 @@ func TestInferSkillFromIssue_TitleKeywordDetection(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestQuestionTypeRoutesToArchitect verifies the fix for orch-go-t2kdl.
+// Issues typed as 'question' should route to architect skill since they're
+// design decisions with tradeoffs.
+func TestQuestionTypeRoutesToArchitect(t *testing.T) {
+	issue := &Issue{
+		ID:          "orch-go-o44x4",
+		Title:       "Should daemon support question-type issues?",
+		Description: "Questions are design decisions with tradeoffs that need architect review",
+		IssueType:   "question",
+		Labels:      []string{"triage:ready"},
+	}
+
+	got, err := InferSkillFromIssue(issue)
+	if err != nil {
+		t.Fatalf("InferSkillFromIssue() unexpected error: %v", err)
+	}
+
+	if got != "architect" {
+		t.Errorf("InferSkillFromIssue() = %q, want %q (question type should route to architect)", got, "architect")
+	}
+
+	// Architect skill should get opus model
+	model := InferModelFromSkill(got)
+	if model != "opus" {
+		t.Errorf("InferModelFromSkill(%q) = %q, want %q", got, model, "opus")
 	}
 }
 

@@ -104,7 +104,7 @@ func (d *Daemon) CheckIssueCompliance(issue Issue, skip map[string]bool, epicChi
 		if issue.IssueType == "epic" && d.issueMatchesLabel(issue) {
 			return IssueFilterResult{Passed: false, Reason: "type 'epic' not spawnable (children will be processed instead)"}
 		}
-		return IssueFilterResult{Passed: false, Reason: fmt.Sprintf("type '%s' not spawnable (must be bug/feature/task/investigation)", issue.IssueType)}
+		return IssueFilterResult{Passed: false, Reason: fmt.Sprintf("type '%s' not spawnable (must be bug/feature/task/investigation/question)", issue.IssueType)}
 	}
 
 	// Skip blocked issues
