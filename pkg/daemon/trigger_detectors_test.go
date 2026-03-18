@@ -396,7 +396,7 @@ func TestDaemon_RunPeriodicTriggerScan_WithRealDetectors(t *testing.T) {
 		Scheduler: NewSchedulerFromConfig(cfg),
 		TriggerScan: &mockTriggerScanService{
 			CountOpenFunc: func() (int, error) { return 0, nil },
-			HasOpenFunc:   func(_, _ string) (bool, error) { return false, nil },
+			HasIssueFunc:   func(_, _ string) (bool, error) { return false, nil },
 			CreateIssueFunc: func(s TriggerSuggestion) (string, error) {
 				createCount++
 				return fmt.Sprintf("orch-go-t%d", createCount), nil
@@ -450,8 +450,8 @@ func TestDaemon_RunPeriodicTriggerScan_WithRealDetectors(t *testing.T) {
 
 func TestDefaultTriggerDetectors_ReturnsAllDetectors(t *testing.T) {
 	detectors := DefaultTriggerDetectors()
-	if len(detectors) != 7 {
-		t.Fatalf("DefaultTriggerDetectors() returned %d detectors, want 7", len(detectors))
+	if len(detectors) != 6 {
+		t.Fatalf("DefaultTriggerDetectors() returned %d detectors, want 6", len(detectors))
 	}
 
 	names := make(map[string]bool)
@@ -467,7 +467,7 @@ func TestDefaultTriggerDetectors_ReturnsAllDetectors(t *testing.T) {
 	}
 
 	// Phase 2 detectors
-	for _, want := range []string{"model_contradictions", "hotspot_acceleration", "knowledge_decay", "skill_performance_drift"} {
+	for _, want := range []string{"model_contradictions", "knowledge_decay", "skill_performance_drift"} {
 		if !names[want] {
 			t.Errorf("missing Phase 2 detector %q", want)
 		}

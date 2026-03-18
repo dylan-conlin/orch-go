@@ -31,7 +31,7 @@ func DefaultTriggerDetectors() []PatternDetector {
 		&InvestigationOrphansDetector{Source: &defaultInvestigationOrphansSource{}},
 		&ThreadStalenessDetector{Source: &defaultThreadStalenessSource{}},
 		&ModelContradictionsDetector{Source: &defaultModelContradictionsSource{}},
-		&HotspotAccelerationDetector{Source: &defaultHotspotAccelerationSource{}},
+		// HotspotAccelerationDetector disabled — detector removed from rotation
 		&KnowledgeDecayDetector{Source: &defaultKnowledgeDecaySource{}},
 		&SkillPerformanceDriftDetector{Source: &defaultSkillPerformanceDriftSource{}},
 	}
