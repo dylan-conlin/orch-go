@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/group"
 	"github.com/dylan-conlin/orch-go/pkg/identity"
 )
 
@@ -233,6 +234,9 @@ type RegistryRefreshResult struct {
 }
 
 // RunPeriodicRegistryRefresh rebuilds the project registry if due.
+// Also refreshes GroupConfig and KBProjects so new group members get correct
+// account routing, and reapplies the --group filter so new members are discovered
+// without requiring daemon restart.
 // Returns non-nil result if refresh was run (even if no changes found).
 func (d *Daemon) RunPeriodicRegistryRefresh() *RegistryRefreshResult {
 	if !d.Scheduler.IsDue(TaskRegistryRefresh) {
@@ -248,6 +252,31 @@ func (d *Daemon) RunPeriodicRegistryRefresh() *RegistryRefreshResult {
 				Error:   err,
 				Message: fmt.Sprintf("Registry refresh failed: %v", err),
 			}
+		}
+	}
+
+	// Reload groups.yaml and rebuild KBProjects from the new registry.
+	// This ensures new group members get correct account routing and
+	// the group filter can resolve newly added projects.
+	if groupCfg, err := group.Load(); err == nil {
+		d.GroupConfig = groupCfg
+		d.KBProjects = BuildKBProjectsMap(newRegistry)
+	}
+
+	// Reapply --group filter if the daemon was started with one.
+	// Without this, the daemon loses its group scope after the first refresh
+	// (unfiltered registry replaces the filtered startup registry), and new
+	// group members aren't correctly scoped.
+	if d.GroupFilter != "" && d.GroupConfig != nil && d.KBProjects != nil {
+		members := d.GroupConfig.ResolveGroupMembers(d.GroupFilter, d.KBProjects)
+		if len(members) > 0 {
+			allowedDirs := make(map[string]bool, len(members))
+			for _, name := range members {
+				if path, ok := d.KBProjects[name]; ok {
+					allowedDirs[path] = true
+				}
+			}
+			newRegistry = newRegistry.FilterByDirs(allowedDirs)
 		}
 	}
 

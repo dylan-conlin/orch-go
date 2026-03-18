@@ -186,10 +186,16 @@ type Daemon struct {
 	// GroupConfig holds groups.yaml for account routing per project group.
 	// When set, the daemon resolves the account to use before spawning
 	// based on which group the target project belongs to.
+	// Refreshed during periodic registry refresh to pick up new group members.
 	GroupConfig *group.Config
 	// KBProjects maps project name -> absolute path for group membership resolution.
-	// Built from ProjectRegistry at daemon startup, used by GroupConfig.AccountForProjectDir.
+	// Built from ProjectRegistry, used by GroupConfig.AccountForProjectDir.
+	// Refreshed during periodic registry refresh to include newly discovered projects.
 	KBProjects map[string]string
+	// GroupFilter is the --group flag value from daemon startup.
+	// When set, periodic registry refresh reapplies the group filter after rebuilding
+	// so new group members are discovered without requiring daemon restart.
+	GroupFilter string
 
 	// Learning holds aggregated per-skill metrics from events.jsonl.
 	// When set, PrioritizeIssues uses skill-aware scoring instead of pure priority sort.

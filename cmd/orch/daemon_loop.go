@@ -104,6 +104,7 @@ func daemonSetup() (*daemonLoopState, error) {
 		if groupCfg, err := group.Load(); err == nil {
 			d.GroupConfig = groupCfg
 			d.KBProjects = daemon.BuildKBProjectsMap(registry)
+			d.GroupFilter = daemonGroup // Persisted for periodic refresh reapplication
 
 			// Filter registry to only projects in the specified group
 			if daemonGroup != "" {
