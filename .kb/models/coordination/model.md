@@ -1,7 +1,7 @@
 # Model: Coordination
 
 **Created:** 2026-03-09
-**Updated:** 2026-03-10
+**Updated:** 2026-03-18
 **Status:** Active
 **Source:** Synthesized from 4 investigation(s) + 1 controlled experiment (80 trials)
 
@@ -51,9 +51,9 @@ Both simple tasks (FormatBytes + FormatRate, ~40s each) and complex tasks (Visua
 
 ## Implications
 
-1. **Multi-agent frameworks that rely on messaging for coordination are fundamentally flawed.** CrewAI, AutoGen, LangGraph, and similar systems that assume agents can coordinate through communication will produce merge conflicts when agents modify the same files. The communication doesn't fail — the agents communicate perfectly. The coordination still fails.
+1. **Multi-agent frameworks that rely on messaging for coordination are fundamentally flawed.** CrewAI, LangGraph, Claude Agent SDK, OpenAI Agents SDK, and similar systems that assume agents can coordinate through communication will produce merge conflicts when agents modify the same files. The communication doesn't fail — the agents communicate perfectly. The coordination still fails. (Note: AutoGen, originally cited here, entered maintenance mode by Mar 2026, succeeded by Microsoft Agent Framework. The claim applies equally to its successor.)
 
-2. **Effective multi-agent coordination requires structural constraints.** The harness (orchestrator) must assign non-overlapping work regions. This is a scheduling/allocation problem, not a communication problem.
+2. **Effective multi-agent coordination requires structural constraints.** The harness (orchestrator) must assign non-overlapping work regions. This is a scheduling/allocation problem, not a communication problem. **Production validation (2026-03-18):** orch-go's daemon, swarm, and exploration mode all implement structural separation — routing agents to different issues/files rather than coordinating within shared files. The production architecture validates this claim by design.
 
 3. **The compliance/coordination distinction is real.** Agents comply perfectly with individual task requirements (6/6 in all trials). They even comply with coordination instructions ("avoid conflicts"). But compliance is not coordination — understanding the goal doesn't produce the behavior.
 
@@ -86,6 +86,7 @@ Both simple tasks (FormatBytes + FormatRate, ~40s each) and complex tasks (Visua
 | 2026-03-09 | N=10 FormatBytes | 100% conflict rate at N=10, Fisher's exact p=1.0 |
 | 2026-03-09 | Complex task (N=1) | 4-file conflicts including add/add type, semantic conflicts from design divergence |
 | 2026-03-10 | 4-condition experiment (N=80) | Placement 20/20 success, all other conditions 60/60 conflict, 160/160 individual 6/6 |
+| 2026-03-18 | Decay verification probe | All 4 claims confirmed current. Experiment data intact. Framework references updated (AutoGen → deprecated). Production architecture validates structural approach. |
 
 ---
 
