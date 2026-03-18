@@ -70,7 +70,9 @@ pkg/
 ├── config/              # Project config (.orch/config.yaml)
 ├── agent/               # Agent lifecycle state machine
 ├── completion/          # Completion pipeline logic
+├── certs/               # TLS certificates for local HTTPS
 ├── coaching/            # Agent coaching plugins (loop/thrash detection)
+├── digest/              # KB artifact change digest (threads, models, investigations)
 ├── entropy/             # Codebase entropy measurement
 ├── findingdedup/        # Finding deduplication for KB
 ├── health/              # Health check infrastructure
@@ -273,6 +275,13 @@ orch-dashboard logs     # View service logs (overmind echo)
 - Learning Store for per-skill metrics from events.jsonl
 - Phase 2 trigger detectors: model contradictions, hotspot acceleration, knowledge decay, skill performance drift
 - Per-detector outcome tracking (completed/abandoned rates from beads data)
+
+### pkg/digest/ (KB Artifact Digest)
+
+- Produces consumable thinking products from KB artifact changes
+- Scans `.kb/threads/`, `.kb/models/`, `.kb/investigations/` for changes
+- Packages notable changes as digest files in `~/.orch/digest/`
+- Gate logic for filtering low-signal changes
 
 ### pkg/dupdetect/ (Duplicate Detection)
 
