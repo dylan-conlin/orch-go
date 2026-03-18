@@ -1,0 +1,31 @@
+verification:
+  type: knowledge-decay-probe
+  issue: orch-go-p7cxf
+  date: 2026-03-18
+
+claims_tested:
+  - claim: "Three-function framework (structural/mechanistic/taxonomic)"
+    verdict: confirmed
+    evidence: "decidability-graph model.md uses 'structural' on lines 98, 101, 404, 590; drift-taxonomy serves dual structural+taxonomic function"
+
+  - claim: "Model inventory (7 models)"
+    verdict: stale
+    evidence: "ls .kb/models/ shows 30+ models; table listed only 7"
+
+  - claim: "Dependency pattern (structural → mechanistic → taxonomic)"
+    verdict: confirmed-with-caveats
+    evidence: "Pattern holds for core models but many newer models are independent; pattern is descriptive not prescriptive"
+
+  - claim: "Multi-function models have outsized loss impact"
+    verdict: confirmed
+    evidence: "No model losses since decidability-graph recovery; pattern holds by design"
+
+  - claim: "Recovery prioritization order"
+    verdict: not-tested
+    evidence: "No recent model loss events to validate against"
+
+model_updates:
+  - "Updated inventory from static 7-model table to representative sample with note about 30+ total"
+  - "Added newer model examples (coaching-plugin, defect-class-taxonomy, knowledge-accretion)"
+  - "Noted low adoption of framework vocabulary"
+  - "Added probe reference to Evolution section"

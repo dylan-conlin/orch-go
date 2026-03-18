@@ -1,7 +1,7 @@
 # Model: Model Relationships
 
 **Domain:** Knowledge Management / Meta-Modeling
-**Last Updated:** 2026-03-01
+**Last Updated:** 2026-03-18
 **Synthesized From:** Decidability-graph recovery probe (2026-03-01), observation that losing the decidability graph made session-lifecycle claims feel arbitrary, discussion of what "foundational" means
 
 ---
@@ -132,7 +132,9 @@ Probes test specific claims within a model. The function tells you what kind of 
 
 ---
 
-## Current Model Inventory (by function)
+## Representative Model Inventory (by function)
+
+The project has 30+ models (run `ls .kb/models/` for current list). Representative examples by function:
 
 | Model | Functions | Dependencies |
 |-------|-----------|--------------|
@@ -141,14 +143,27 @@ Probes test specific claims within a model. The function tells you what kind of 
 | `agent-lifecycle-state-model` | Mechanistic + Taxonomic | Independent (4-layer state derivation is self-contained) |
 | `drift-taxonomy` | Structural + Taxonomic | Foundational — grounds reliability reasoning |
 | `spawn-architecture` | Mechanistic | Depends on decidability-graph for authority routing |
-| `kb-reflect-cluster-hygiene` | Mechanistic | Independent |
-| `beads-database-corruption` | Mechanistic | Independent (stale — 25d without update) |
+| `defect-class-taxonomy` | Taxonomic | Independent — classifies defect types |
+| `coaching-plugin` | Mechanistic | Independent — describes pain-injection mechanism |
+| `knowledge-accretion` | Structural + Mechanistic | Foundational — explains why knowledge compounds |
+
+**Note:** Not all models have been classified. The three-function framework is a useful lens but has not been universally adopted as shared vocabulary across all models.
 
 ---
 
 ## Evolution
 
 **2026-03-01:** Initial model created. Emerged from the decidability-graph recovery probe, which revealed that losing a multi-function model had outsized impact. The question "what does 'foundational' mean?" led to identifying three model functions and their dependency patterns.
+
+**2026-03-18:** Knowledge decay probe. Core framework confirmed (structural/mechanistic/taxonomic distinctions hold). Inventory updated from 7 to representative sample of 30+ models. Noted low adoption of framework vocabulary across KB — valid lens but not widely applied. Added newer model examples (coaching-plugin, defect-class-taxonomy, knowledge-accretion).
+
+---
+
+## Probes
+
+| Probe | Date | Verdict |
+|-------|------|---------|
+| `probes/2026-03-18-probe-knowledge-decay-verification.md` | 2026-03-18 | Core framework confirmed; inventory severely stale (7→30+ models); low adoption of framework vocabulary |
 
 ---
 
