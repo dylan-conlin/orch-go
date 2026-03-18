@@ -32,7 +32,7 @@ type DivergenceInput struct {
 
 // DivergenceAlert represents a detected divergence between activity and impact metrics.
 type DivergenceAlert struct {
-	Type    string  `json:"type"`    // "merge_gap", "rework_gap", "orphan_rate", "stale_decisions"
+	Type    string  `json:"type"`    // "rework_gap", "orphan_rate", "stale_decisions"
 	Message string  `json:"message"` // human-readable description
 	Gap     float64 `json:"gap"`     // magnitude of divergence (0.0-1.0)
 	Level   string  `json:"level"`   // "warning" or "critical"

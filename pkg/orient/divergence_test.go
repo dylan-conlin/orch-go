@@ -4,38 +4,10 @@ import (
 	"testing"
 )
 
-func TestComputeDivergence_MergeGap(t *testing.T) {
-	// 92% completion rate but only 71% merge rate → 21% gap → alert
-	input := DivergenceInput{
-		CompletionRate: 0.92,
-		MergeRate:      0.71,
-		OrphanRate:     10.0, // normal
-		StaleDecisions: 2,
-		TotalDecisions: 40,
-		Days:           7,
-	}
-
-	alerts := ComputeDivergence(input)
-
-	found := false
-	for _, a := range alerts {
-		if a.Type == "merge_gap" {
-			found = true
-			if a.Gap < 0.20 {
-				t.Errorf("expected gap >= 0.20, got %.2f", a.Gap)
-			}
-		}
-	}
-	if !found {
-		t.Errorf("expected merge_gap alert, got %v", alerts)
-	}
-}
-
 func TestComputeDivergence_NoAlert_SmallGap(t *testing.T) {
 	// 85% completion, 80% merge → 5% gap → no alert
 	input := DivergenceInput{
 		CompletionRate: 0.85,
-		MergeRate:      0.80,
 		OrphanRate:     10.0,
 		StaleDecisions: 1,
 		TotalDecisions: 40,
@@ -55,7 +27,6 @@ func TestComputeDivergence_HighOrphanRate(t *testing.T) {
 	// High completion rate but high orphan rate → producing work that doesn't connect
 	input := DivergenceInput{
 		CompletionRate: 0.90,
-		MergeRate:      0.85,
 		OrphanRate:     45.0, // 45% orphan rate
 		StaleDecisions: 1,
 		TotalDecisions: 40,
@@ -79,7 +50,6 @@ func TestComputeDivergence_StaleDecisions(t *testing.T) {
 	// High completion but many stale decisions → busy but not acting on decisions
 	input := DivergenceInput{
 		CompletionRate: 0.90,
-		MergeRate:      0.85,
 		OrphanRate:     10.0,
 		StaleDecisions: 8,
 		TotalDecisions: 20,
@@ -103,7 +73,6 @@ func TestComputeDivergence_ReworkGap(t *testing.T) {
 	// High self-reported success but high rework rate → declaring success on work that gets redone
 	input := DivergenceInput{
 		CompletionRate:    0.90,
-		MergeRate:         0.85,
 		SelfReportedSuccess: 0.95,
 		ReworkRate:        0.30,
 		OrphanRate:        10.0,
@@ -144,7 +113,6 @@ func TestComputeDivergence_ZeroCompletions(t *testing.T) {
 	// No completions → skip rate-based alerts
 	input := DivergenceInput{
 		CompletionRate: 0,
-		MergeRate:      0,
 		OrphanRate:     50.0, // high but no completions, still alert
 		StaleDecisions: 5,
 		TotalDecisions: 10,
@@ -156,7 +124,7 @@ func TestComputeDivergence_ZeroCompletions(t *testing.T) {
 	// Should still alert on orphan rate and stale decisions (impact metrics)
 	// but not on merge_gap or rework_gap (need completions for rate comparison)
 	for _, a := range alerts {
-		if a.Type == "merge_gap" || a.Type == "rework_gap" {
+		if a.Type == "rework_gap" {
 			t.Errorf("expected no rate-based alert with zero completions, got %v", a)
 		}
 	}
@@ -164,12 +132,6 @@ func TestComputeDivergence_ZeroCompletions(t *testing.T) {
 
 func TestFormatDivergenceAlerts(t *testing.T) {
 	alerts := []DivergenceAlert{
-		{
-			Type:    "merge_gap",
-			Message: "92% completion rate but 71% merge rate (21% gap)",
-			Gap:     0.21,
-			Level:   "warning",
-		},
 		{
 			Type:    "orphan_rate",
 			Message: "45% investigation orphan rate — work not connecting to knowledge base",
@@ -186,8 +148,8 @@ func TestFormatDivergenceAlerts(t *testing.T) {
 	if !contains(output, "Metric divergence") {
 		t.Errorf("expected header, got %q", output)
 	}
-	if !contains(output, "merge_gap") || !contains(output, "orphan_rate") {
-		t.Errorf("expected both alert types in output, got %q", output)
+	if !contains(output, "orphan_rate") {
+		t.Errorf("expected orphan_rate alert type in output, got %q", output)
 	}
 }
 

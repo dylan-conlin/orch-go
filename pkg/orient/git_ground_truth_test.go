@@ -75,49 +75,6 @@ mno7890 refactor: cleanup (orch-go-mno78)
 	}
 }
 
-func TestComputeMergeRate(t *testing.T) {
-	tests := []struct {
-		name              string
-		mergedBeadsIDs    int
-		completionsInWindow int
-		expectedRate      float64
-	}{
-		{
-			name:              "all merged",
-			mergedBeadsIDs:    10,
-			completionsInWindow: 10,
-			expectedRate:      1.0,
-		},
-		{
-			name:              "half merged",
-			mergedBeadsIDs:    5,
-			completionsInWindow: 10,
-			expectedRate:      0.5,
-		},
-		{
-			name:              "no completions",
-			mergedBeadsIDs:    0,
-			completionsInWindow: 0,
-			expectedRate:      0.0,
-		},
-		{
-			name:              "more merges than completions (agents from prior window)",
-			mergedBeadsIDs:    15,
-			completionsInWindow: 10,
-			expectedRate:      1.0, // cap at 1.0
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			rate := computeMergeRateValue(tc.mergedBeadsIDs, tc.completionsInWindow)
-			if rate != tc.expectedRate {
-				t.Errorf("expected rate %.2f, got %.2f", tc.expectedRate, rate)
-			}
-		})
-	}
-}
-
 func TestParseGitNumstat(t *testing.T) {
 	numstat := `15	3	pkg/orient/orient.go
 8	2	cmd/orch/orient_cmd.go
@@ -158,8 +115,6 @@ func TestFormatThroughputWithGroundTruth(t *testing.T) {
 			Abandonments:   4,
 			InProgress:     3,
 			AvgDurationMin: 25,
-			MergedCount:    38,
-			MergeRate:      0.9047,
 			NetLinesAdded:  1892,
 			NetLinesRemoved: 645,
 		},
@@ -167,16 +122,13 @@ func TestFormatThroughputWithGroundTruth(t *testing.T) {
 
 	output := FormatOrientation(data)
 
-	// Should show merged count and rate
-	if !strings.Contains(output, "Merged: 38") {
-		t.Errorf("missing merged count, got:\n%s", output)
-	}
-	if !strings.Contains(output, "90%") {
-		t.Errorf("missing merge rate percentage, got:\n%s", output)
-	}
 	// Should show net lines
-	if !strings.Contains(output, "+1247") || !strings.Contains(output, "net lines") {
+	if !strings.Contains(output, "+1247") || !strings.Contains(output, "Net lines") {
 		t.Errorf("missing net lines impact, got:\n%s", output)
+	}
+	// Should NOT show merged
+	if strings.Contains(output, "Merged") {
+		t.Errorf("should not show Merged (removed), got:\n%s", output)
 	}
 }
 
@@ -190,11 +142,8 @@ func TestFormatThroughputWithoutGroundTruth(t *testing.T) {
 
 	output := FormatOrientation(data)
 
-	// Should NOT show merged or net lines when zero
-	if strings.Contains(output, "Merged") {
-		t.Errorf("should not show merged when zero, got:\n%s", output)
-	}
-	if strings.Contains(output, "net lines") {
+	// Should NOT show net lines when zero
+	if strings.Contains(output, "Net lines") {
 		t.Errorf("should not show net lines when zero, got:\n%s", output)
 	}
 }
@@ -203,8 +152,6 @@ func TestThroughputGroundTruthJSON(t *testing.T) {
 	tp := Throughput{
 		Days:            7,
 		Completions:     42,
-		MergedCount:     38,
-		MergeRate:       0.9,
 		NetLinesAdded:   1892,
 		NetLinesRemoved: 645,
 	}
@@ -216,12 +163,6 @@ func TestThroughputGroundTruthJSON(t *testing.T) {
 	}
 	jsonStr := string(b)
 
-	if !strings.Contains(jsonStr, `"merged_count":38`) {
-		t.Errorf("JSON missing merged_count, got: %s", jsonStr)
-	}
-	if !strings.Contains(jsonStr, `"merge_rate":0.9`) {
-		t.Errorf("JSON missing merge_rate, got: %s", jsonStr)
-	}
 	if !strings.Contains(jsonStr, `"net_lines_added":1892`) {
 		t.Errorf("JSON missing net_lines_added, got: %s", jsonStr)
 	}
