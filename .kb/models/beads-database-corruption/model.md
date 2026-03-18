@@ -1,8 +1,11 @@
 # Model: Beads SQLite Database Corruption
 
 **Domain:** Beads / SQLite / Data Integrity
-**Last Updated:** 2026-02-05
+**Last Updated:** 2026-03-18
 **Synthesized From:** 3 investigations (Jan 21-22), 3+ corruption incidents (Jan 21-22), daemon logs showing 57+ restart cycles, Feb 2026 architecture review
+
+**Probes:**
+- 2026-03-18: Knowledge decay verification — all 6 fix claims confirmed against current beads codebase, model accurate and current
 
 ---
 
