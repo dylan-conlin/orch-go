@@ -17,6 +17,8 @@ var (
 
 	kbAuditDecisionsJSON    bool
 	kbAuditDecisionsVerbose bool
+
+	kbAuditModelsJSON bool
 )
 
 var kbAuditCmd = &cobra.Command{
@@ -144,13 +146,54 @@ func runKBAuditDecisions() error {
 	return nil
 }
 
+var kbAuditModelsCmd = &cobra.Command{
+	Use:   "models",
+	Short: "Flag oversized models (>30KB) that need synthesis or pruning",
+	Long: `Scan .kb/models/ and .kb/global/models/ for model.md files exceeding 30KB.
+
+Models over 30KB that haven't had a consolidation pass (Last Updated) in 2+ weeks
+are flagged for architect review. The gate triggers review, not automated pruning.
+
+Examples:
+  orch kb audit models          # Human-readable report
+  orch kb audit models --json   # Machine-readable output`,
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runKBAuditModels()
+	},
+}
+
+func runKBAuditModels() error {
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	kbDir := filepath.Join(projectDir, ".kb")
+	reports, err := kbmetrics.AuditModelSize(kbDir, 30*1024, 14)
+	if err != nil {
+		return fmt.Errorf("audit models: %w", err)
+	}
+
+	if kbAuditModelsJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(reports)
+	}
+
+	fmt.Print(kbmetrics.FormatModelSizeText(reports))
+	return nil
+}
+
 func init() {
 	kbAuditProvenanceCmd.Flags().BoolVar(&kbAuditProvenanceJSON, "json", false, "Output as JSON")
 	kbAuditProvenanceCmd.Flags().BoolVar(&kbAuditProvenanceVerbose, "verbose", false, "Show individual unannotated claims")
 	kbAuditProvenanceCmd.Flags().StringVar(&kbAuditProvenanceModel, "model", "", "Audit a specific model by name")
 	kbAuditDecisionsCmd.Flags().BoolVar(&kbAuditDecisionsJSON, "json", false, "Output as JSON")
 	kbAuditDecisionsCmd.Flags().BoolVar(&kbAuditDecisionsVerbose, "verbose", false, "Show all file references including existing ones")
+	kbAuditModelsCmd.Flags().BoolVar(&kbAuditModelsJSON, "json", false, "Output as JSON")
 	kbAuditCmd.AddCommand(kbAuditProvenanceCmd)
 	kbAuditCmd.AddCommand(kbAuditDecisionsCmd)
+	kbAuditCmd.AddCommand(kbAuditModelsCmd)
 	kbCmd.AddCommand(kbAuditCmd)
 }
