@@ -407,6 +407,100 @@ func TestDaemon_RunPeriodicTriggerScan_UpdatesScheduler(t *testing.T) {
 	}
 }
 
+func TestDaemon_RunPeriodicTriggerScan_OutcomeBudgetAdjustment(t *testing.T) {
+	// A detector with very low resolution rate (<10%) should be disabled.
+	// A detector with low resolution rate (<30%) should have budget halved.
+	// A detector with good resolution rate should keep full budget.
+	createCount := 0
+	cfg := Config{
+		TriggerScanEnabled:  true,
+		TriggerScanInterval: time.Hour,
+		TriggerBudgetMax:    10,
+	}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+		TriggerScan: &mockTriggerScanService{
+			CountOpenFunc: func() (int, error) { return 0, nil },
+			HasOpenFunc:   func(_, _ string) (bool, error) { return false, nil },
+			CreateIssueFunc: func(s TriggerSuggestion) (string, error) {
+				createCount++
+				return fmt.Sprintf("orch-go-trig%d", createCount), nil
+			},
+		},
+		// Provide outcome data: bad_detector has 5% resolution rate (disabled),
+		// weak_detector has 20% (halved), good_detector has 80% (full budget).
+		DetectorOutcomes: &mockDetectorOutcomeService{
+			issues: []DetectorIssue{
+				// bad_detector: 1 completed, 19 abandoned → 5% resolution rate
+				{ID: "o-01", Detector: "bad_detector", Status: "closed", Outcome: "completed"},
+				{ID: "o-02", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-03", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-04", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-05", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-06", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-07", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-08", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-09", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-10", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-11", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-12", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-13", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-14", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-15", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-16", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-17", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-18", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-19", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-20", Detector: "bad_detector", Status: "closed", Outcome: "abandoned"},
+				// good_detector: 8 completed, 2 abandoned → 80% resolution rate
+				{ID: "o-21", Detector: "good_detector", Status: "closed", Outcome: "completed"},
+				{ID: "o-22", Detector: "good_detector", Status: "closed", Outcome: "completed"},
+				{ID: "o-23", Detector: "good_detector", Status: "closed", Outcome: "completed"},
+				{ID: "o-24", Detector: "good_detector", Status: "closed", Outcome: "completed"},
+				{ID: "o-25", Detector: "good_detector", Status: "closed", Outcome: "completed"},
+				{ID: "o-26", Detector: "good_detector", Status: "closed", Outcome: "completed"},
+				{ID: "o-27", Detector: "good_detector", Status: "closed", Outcome: "completed"},
+				{ID: "o-28", Detector: "good_detector", Status: "closed", Outcome: "completed"},
+				{ID: "o-29", Detector: "good_detector", Status: "closed", Outcome: "abandoned"},
+				{ID: "o-30", Detector: "good_detector", Status: "closed", Outcome: "abandoned"},
+			},
+		},
+	}
+
+	detectors := []PatternDetector{
+		&mockPatternDetector{
+			name: "bad_detector",
+			detectFunc: func() ([]TriggerSuggestion, error) {
+				return []TriggerSuggestion{
+					{Detector: "bad_detector", Key: "b1", Title: "Bad issue", IssueType: "task", Priority: 3},
+				}, nil
+			},
+		},
+		&mockPatternDetector{
+			name: "good_detector",
+			detectFunc: func() ([]TriggerSuggestion, error) {
+				return []TriggerSuggestion{
+					{Detector: "good_detector", Key: "g1", Title: "Good issue", IssueType: "task", Priority: 3},
+				}, nil
+			},
+		},
+	}
+
+	result := d.RunPeriodicTriggerScan(detectors)
+	if result == nil {
+		t.Fatal("expected result")
+	}
+	// bad_detector (5% resolution) → disabled (budget=0), skipped
+	// good_detector (80% resolution) → full budget, created
+	if result.Created != 1 {
+		t.Errorf("Created = %d, want 1 (bad detector disabled)", result.Created)
+	}
+	if result.SkippedBudget != 1 {
+		t.Errorf("SkippedBudget = %d, want 1 (bad detector budget=0)", result.SkippedBudget)
+	}
+}
+
 func TestTriggerBudget_CanCreate(t *testing.T) {
 	tests := []struct {
 		max         int

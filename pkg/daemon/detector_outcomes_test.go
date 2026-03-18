@@ -43,9 +43,9 @@ func TestComputeDetectorOutcomes_SingleDetector(t *testing.T) {
 	if o.Abandoned != 1 {
 		t.Errorf("Abandoned = %d, want 1", o.Abandoned)
 	}
-	// UsefulRate = completed / (completed + abandoned) = 2/3 ≈ 0.667
-	if o.UsefulRate < 0.66 || o.UsefulRate > 0.68 {
-		t.Errorf("UsefulRate = %f, want ~0.667", o.UsefulRate)
+	// ResolutionRate = completed / (completed + abandoned) = 2/3 ≈ 0.667
+	if o.ResolutionRate < 0.66 || o.ResolutionRate > 0.68 {
+		t.Errorf("ResolutionRate = %f, want ~0.667", o.ResolutionRate)
 	}
 }
 
@@ -64,19 +64,19 @@ func TestComputeDetectorOutcomes_MultipleDetectors(t *testing.T) {
 	}
 
 	hotspot := outcomes["hotspot_acceleration"]
-	if hotspot.UsefulRate != 0 {
-		t.Errorf("hotspot UsefulRate = %f, want 0 (all abandoned)", hotspot.UsefulRate)
+	if hotspot.ResolutionRate != 0 {
+		t.Errorf("hotspot ResolutionRate = %f, want 0 (all abandoned)", hotspot.ResolutionRate)
 	}
 
 	decay := outcomes["knowledge_decay"]
-	if decay.UsefulRate != 1.0 {
-		t.Errorf("decay UsefulRate = %f, want 1.0 (all completed)", decay.UsefulRate)
+	if decay.ResolutionRate != 1.0 {
+		t.Errorf("decay ResolutionRate = %f, want 1.0 (all completed)", decay.ResolutionRate)
 	}
 }
 
 func TestDetectorBudgetAdjustment_HighPerformance(t *testing.T) {
 	outcomes := map[string]*DetectorOutcome{
-		"knowledge_decay": {Detector: "knowledge_decay", UsefulRate: 0.8, IssuesCreated: 10, Completed: 8, Abandoned: 2},
+		"knowledge_decay": {Detector: "knowledge_decay", ResolutionRate: 0.8, IssuesCreated: 10, Completed: 8, Abandoned: 2},
 	}
 
 	adjusted := AdjustedBudget(10, "knowledge_decay", outcomes)
@@ -88,11 +88,11 @@ func TestDetectorBudgetAdjustment_HighPerformance(t *testing.T) {
 
 func TestDetectorBudgetAdjustment_LowPerformance(t *testing.T) {
 	outcomes := map[string]*DetectorOutcome{
-		"hotspot_acceleration": {Detector: "hotspot_acceleration", UsefulRate: 0.2, IssuesCreated: 20, Completed: 4, Abandoned: 16},
+		"hotspot_acceleration": {Detector: "hotspot_acceleration", ResolutionRate: 0.2, IssuesCreated: 20, Completed: 4, Abandoned: 16},
 	}
 
 	adjusted := AdjustedBudget(10, "hotspot_acceleration", outcomes)
-	// UsefulRate < 0.3 → budget halved
+	// ResolutionRate < 0.3 → budget halved
 	if adjusted != 5 {
 		t.Errorf("budget = %d, want 5 (low performance → halved)", adjusted)
 	}
@@ -100,11 +100,11 @@ func TestDetectorBudgetAdjustment_LowPerformance(t *testing.T) {
 
 func TestDetectorBudgetAdjustment_VeryLowPerformance(t *testing.T) {
 	outcomes := map[string]*DetectorOutcome{
-		"hotspot_acceleration": {Detector: "hotspot_acceleration", UsefulRate: 0.05, IssuesCreated: 40, Completed: 2, Abandoned: 38},
+		"hotspot_acceleration": {Detector: "hotspot_acceleration", ResolutionRate: 0.05, IssuesCreated: 40, Completed: 2, Abandoned: 38},
 	}
 
 	adjusted := AdjustedBudget(10, "hotspot_acceleration", outcomes)
-	// UsefulRate < 0.1 → disabled (budget = 0)
+	// ResolutionRate < 0.1 → disabled (budget = 0)
 	if adjusted != 0 {
 		t.Errorf("budget = %d, want 0 (very low performance → disabled)", adjusted)
 	}
@@ -122,7 +122,7 @@ func TestDetectorBudgetAdjustment_UnknownDetector(t *testing.T) {
 
 func TestDetectorBudgetAdjustment_InsufficientSamples(t *testing.T) {
 	outcomes := map[string]*DetectorOutcome{
-		"hotspot_acceleration": {Detector: "hotspot_acceleration", UsefulRate: 0.0, IssuesCreated: 2, Completed: 0, Abandoned: 2},
+		"hotspot_acceleration": {Detector: "hotspot_acceleration", ResolutionRate: 0.0, IssuesCreated: 2, Completed: 0, Abandoned: 2},
 	}
 
 	adjusted := AdjustedBudget(10, "hotspot_acceleration", outcomes)

@@ -150,6 +150,10 @@ type Daemon struct {
 	// for recurring bugs, orphaned investigations, stale threads, etc.
 	TriggerScan TriggerScanService
 
+	// DetectorOutcomes provides I/O for computing per-detector resolution rates.
+	// When set, RunPeriodicTriggerScan adjusts budgets based on detector performance.
+	DetectorOutcomes DetectorOutcomeService
+
 	// TriggerDetectors holds the registered pattern detectors for the trigger scan system.
 	// Constructed at daemon startup, used by RunPeriodicTriggerScan.
 	TriggerDetectors []PatternDetector

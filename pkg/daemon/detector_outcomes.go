@@ -9,11 +9,11 @@ const (
 	// issues before a detector can be penalized. Prevents overreacting to small samples.
 	MinResolvedForPenalty = 5
 
-	// LowUsefulRateThreshold triggers budget halving.
-	LowUsefulRateThreshold = 0.3
+	// LowResolutionRateThreshold triggers budget halving.
+	LowResolutionRateThreshold = 0.3
 
-	// VeryLowUsefulRateThreshold triggers budget disabling.
-	VeryLowUsefulRateThreshold = 0.1
+	// VeryLowResolutionRateThreshold triggers budget disabling.
+	VeryLowResolutionRateThreshold = 0.1
 )
 
 // DetectorIssue represents a beads issue created by a pattern detector.
@@ -30,7 +30,7 @@ type DetectorOutcome struct {
 	IssuesCreated int     `json:"issues_created"`
 	Completed     int     `json:"completed"`
 	Abandoned     int     `json:"abandoned"`
-	UsefulRate    float64 `json:"useful_rate"`
+	ResolutionRate float64 `json:"resolution_rate"`
 }
 
 // DetectorOutcomeService provides I/O for querying detector issue outcomes.
@@ -65,11 +65,11 @@ func ComputeDetectorOutcomes(svc DetectorOutcomeService) map[string]*DetectorOut
 		}
 	}
 
-	// Compute useful rates
+	// Compute resolution rates
 	for _, o := range outcomes {
 		resolved := o.Completed + o.Abandoned
 		if resolved > 0 {
-			o.UsefulRate = float64(o.Completed) / float64(resolved)
+			o.ResolutionRate = float64(o.Completed) / float64(resolved)
 		}
 	}
 
@@ -77,7 +77,7 @@ func ComputeDetectorOutcomes(svc DetectorOutcomeService) map[string]*DetectorOut
 }
 
 // AdjustedBudget returns the budget for a detector after outcome-based adjustment.
-// Detectors with UsefulRate < 0.3 get halved; < 0.1 get disabled.
+// Detectors with ResolutionRate < 0.3 get halved; < 0.1 get disabled.
 // Detectors with insufficient samples or unknown detectors keep full budget.
 func AdjustedBudget(baseBudget int, detectorName string, outcomes map[string]*DetectorOutcome) int {
 	o, ok := outcomes[detectorName]
@@ -90,10 +90,10 @@ func AdjustedBudget(baseBudget int, detectorName string, outcomes map[string]*De
 		return baseBudget // insufficient samples → no penalty
 	}
 
-	if o.UsefulRate < VeryLowUsefulRateThreshold {
+	if o.ResolutionRate < VeryLowResolutionRateThreshold {
 		return 0 // disabled
 	}
-	if o.UsefulRate < LowUsefulRateThreshold {
+	if o.ResolutionRate < LowResolutionRateThreshold {
 		return baseBudget / 2 // halved
 	}
 

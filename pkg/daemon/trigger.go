@@ -121,7 +121,12 @@ func (d *Daemon) RunPeriodicTriggerScan(detectors []PatternDetector) *TriggerSca
 		}
 	}
 
-	budget := TriggerBudget{MaxOpen: d.Config.TriggerBudgetMax}
+	// Compute per-detector outcome rates for budget adjustment.
+	// Detectors with <30% resolution rate get halved; <10% get disabled.
+	var outcomes map[string]*DetectorOutcome
+	if d.DetectorOutcomes != nil {
+		outcomes = ComputeDetectorOutcomes(d.DetectorOutcomes)
+	}
 
 	// Get current open count for budget enforcement
 	currentOpen, err := svc.CountOpenTriggerIssues()
@@ -150,8 +155,9 @@ func (d *Daemon) RunPeriodicTriggerScan(detectors []PatternDetector) *TriggerSca
 
 	// Process each suggestion through budget + dedup gates
 	for _, s := range allSuggestions {
-		// Gate 1: Budget check
-		if !budget.CanCreate(currentOpen) {
+		// Gate 1: Budget check (adjusted per-detector by resolution rate)
+		adjBudget := AdjustedBudget(d.Config.TriggerBudgetMax, s.Detector, outcomes)
+		if currentOpen >= adjBudget {
 			result.Skipped++
 			result.SkippedBudget++
 			continue
