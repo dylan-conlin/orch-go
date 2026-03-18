@@ -56,10 +56,10 @@ func TestScoreIssue_SkillSuccessRateBoost(t *testing.T) {
 		t.Errorf("feature-impl (90%% success) score (%f) should be > systematic-debugging (30%% success) score (%f)",
 			featureScore.Score, bugScore.Score)
 	}
-	// With 0% rework rate, ground-truth adjustment boosts rate:
-	// adjusted = 0.7*0.9 + 0.3*(1-0) = 0.93
-	if featureScore.SkillSuccessRate < 0.92 || featureScore.SkillSuccessRate > 0.94 {
-		t.Errorf("SkillSuccessRate = %f, want ~0.93 (ground-truth-adjusted)", featureScore.SkillSuccessRate)
+	// With ReworkCount=0, no ground-truth adjustment — use self-reported rate.
+	// At 10 samples (full weight), blended rate = 0.9.
+	if featureScore.SkillSuccessRate < 0.89 || featureScore.SkillSuccessRate > 0.91 {
+		t.Errorf("SkillSuccessRate = %f, want ~0.9 (self-reported, no rework data)", featureScore.SkillSuccessRate)
 	}
 }
 
@@ -171,10 +171,10 @@ func TestScoreIssue_SkillLabelOverridesTypeInference(t *testing.T) {
 	if score.InferredSkill != "architect" {
 		t.Errorf("InferredSkill = %q, want %q (from label)", score.InferredSkill, "architect")
 	}
-	// With 0% rework rate, ground-truth adjustment boosts rate:
-	// adjusted = 0.7*0.8 + 0.3*(1-0) = 0.86
-	if score.SkillSuccessRate < 0.85 || score.SkillSuccessRate > 0.87 {
-		t.Errorf("SkillSuccessRate = %f, want ~0.86 (ground-truth-adjusted)", score.SkillSuccessRate)
+	// With ReworkCount=0, no ground-truth adjustment — use self-reported rate.
+	// At 10 samples (full weight), blended rate = 0.8.
+	if score.SkillSuccessRate < 0.79 || score.SkillSuccessRate > 0.81 {
+		t.Errorf("SkillSuccessRate = %f, want ~0.8 (self-reported, no rework data)", score.SkillSuccessRate)
 	}
 }
 
@@ -291,7 +291,7 @@ func TestScoreIssue_GroundTruthAdjustedRate(t *testing.T) {
 				SuccessCount:     19,
 				SuccessRate:      0.95,    // Self-reported: 95%
 				ReworkCount:      0,
-				ReworkRate:        0.0,     // 0% rework → ground truth = 100%
+				ReworkRate:        0.0,     // No rework data — channel unused
 			},
 		},
 	}
@@ -309,10 +309,9 @@ func TestScoreIssue_GroundTruthAdjustedRate(t *testing.T) {
 	investigation := Issue{ID: "a-2", Priority: 2, IssueType: "task", Labels: []string{"skill:investigation"}}
 	invScore := ScoreIssue(investigation, learning)
 
-	// Investigation with 0% rework: adjusted = 0.7 * 0.95 + 0.3 * 1.0 = 0.665 + 0.3 = 0.965
-	// Should be close to or slightly above self-reported (ground truth confirms quality)
-	if invScore.SkillSuccessRate < 0.9 {
-		t.Errorf("SkillSuccessRate = %f, should be >= 0.9 with 0%% rework rate", invScore.SkillSuccessRate)
+	// Investigation with ReworkCount=0: no ground truth adjustment, stays at self-reported 0.95
+	if invScore.SkillSuccessRate < 0.94 || invScore.SkillSuccessRate > 0.96 {
+		t.Errorf("SkillSuccessRate = %f, want ~0.95 (self-reported, no rework data)", invScore.SkillSuccessRate)
 	}
 }
 
@@ -339,6 +338,43 @@ func TestGroundTruthAdjustedRate(t *testing.T) {
 					tt.selfReported, tt.reworkRate, tt.hasReworkData, got, tt.wantMin, tt.wantMax)
 			}
 		})
+	}
+}
+
+func TestLookupSuccessRate_ZeroReworkNotTreatedAsGroundTruth(t *testing.T) {
+	// Bug: when TotalCompletions >= MinSamplesForFullWeight but ReworkCount == 0,
+	// the old logic treated this as "rework data exists" and blended in
+	// groundTruth = 1.0 - 0.0 = 1.0, inflating the rate by ~7.3pp.
+	// Fix: hasReworkData should require ReworkCount > 0.
+	learning := &events.LearningStore{
+		Skills: map[string]*events.SkillLearning{
+			"feature-impl": {
+				SpawnCount:       15,
+				TotalCompletions: 15,
+				SuccessCount:     12,
+				AbandonedCount:   0,
+				SuccessRate:      0.8,
+				ReworkCount:      0, // No rework data — channel unused
+				ReworkRate:       0.0,
+			},
+		},
+	}
+
+	issue := Issue{ID: "a-1", Priority: 2, IssueType: "feature"}
+	score := ScoreIssue(issue, learning)
+
+	// With no rework data (ReworkCount=0), ground truth should NOT be applied.
+	// Self-reported rate = 0.8, fully weighted at 15 samples.
+	// Blended = 0.8 (since 15 >= MinSamplesForFullWeight).
+	//
+	// BUG behavior: hasReworkData=true → adjusted = 0.7*0.8 + 0.3*1.0 = 0.86
+	// CORRECT behavior: hasReworkData=false → adjusted = 0.8 (self-reported only)
+	if score.SkillSuccessRate > 0.81 {
+		t.Errorf("SkillSuccessRate = %f, want ~0.8 (self-reported only, no rework data); "+
+			"got inflated rate suggesting ground truth was incorrectly applied", score.SkillSuccessRate)
+	}
+	if score.SkillSuccessRate < 0.79 {
+		t.Errorf("SkillSuccessRate = %f, want ~0.8", score.SkillSuccessRate)
 	}
 }
 

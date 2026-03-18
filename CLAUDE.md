@@ -28,8 +28,9 @@ cmd/orch/
 ├── serve*.go            # HTTP API server and handlers (agents, beads, system)
 ├── harness_*.go         # Harness governance (audit, report, init)
 ├── plan_cmd.go          # Coordination plan management
-├── complete_*.go        # Completion pipeline, duplication detection
-├── kb*.go               # Knowledge base commands (audit, init, extract, ask, gate, challenge)
+├── complete_*.go        # Completion pipeline, duplication detection, post-lifecycle
+├── kb*.go               # Knowledge base commands (audit, init, extract, ask, gate, challenge, autolink)
+├── stats_*.go           # Stats aggregation (spawn/completion rates, gate effectiveness, skill metrics)
 ├── session*.go          # Session management (start, end, status, history)
 ├── learn.go             # Learning system (suggestions, patterns, effects)
 ├── servers.go           # Multi-project server management
@@ -44,7 +45,7 @@ pkg/
 ├── spawn/               # Spawn context generation + gates
 ├── skills/              # Skill discovery and loading
 ├── verify/              # Completion verification
-├── events/              # Event logging (events.jsonl)
+├── events/              # Event logging (events.jsonl) + skill-level learning metrics
 ├── notify/              # Desktop notifications
 ├── daemon/              # Autonomous processing types
 ├── daemonconfig/        # Daemon configuration (ComplianceConfig, allocation)
@@ -59,7 +60,7 @@ pkg/
 ├── discovery/           # Agent discovery
 ├── hook/                # Claude Code hook management
 ├── identity/            # Agent identity resolution
-├── kbmetrics/           # Knowledge base metrics
+├── kbmetrics/           # Knowledge base metrics (autolink, decision audit, model size, orphan classify)
 ├── kbgate/              # KB gate enforcement
 ├── tree/                # File tree generation
 ├── debrief/             # Session debrief generation
@@ -230,7 +231,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 
 - Uses Cobra framework for CLI structure
 - Global `--server` flag for OpenCode URL
-- Subcommand groups: `account`, `daemon`, `harness`, `plan`, `control`, `hook`, `thread`, `audit`, `backlog`, `settings`, `kb`, `port`, `review`, `patterns`, `session`, `session-history`, `servers`, `learn`, `config`, `docs`, `precommit`, `model`, `logs`, `transcript`, `serve`
+- Subcommand groups: `account`, `daemon`, `harness`, `plan`, `control`, `hook`, `thread`, `audit`, `backlog`, `settings`, `kb`, `port`, `review`, `patterns`, `session`, `session-history`, `servers`, `learn`, `config`, `docs`, `precommit`, `model`, `logs`, `transcript`, `serve`, `stats`
 
 ### pkg/opencode/ (OpenCode Client)
 
@@ -270,6 +271,8 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `ComplianceConfig` for per-spawn resolution
 - Allocation profiles for skill-aware slot scoring
 - Learning Store for per-skill metrics from events.jsonl
+- Phase 2 trigger detectors: model contradictions, hotspot acceleration, knowledge decay, skill performance drift
+- Per-detector outcome tracking (completed/abandoned rates from beads data)
 
 ### pkg/dupdetect/ (Duplicate Detection)
 
@@ -280,6 +283,8 @@ orch-dashboard logs     # View service logs (overmind echo)
 
 - Measurement feedback loop
 - Work graph for daemon prioritization
+- Git-based ground-truth metrics (merge rate, net code impact)
+- Model trust scores with decay tracking
 
 ### pkg/orch/ (Spawn Pipeline & Completion)
 
@@ -338,7 +343,9 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `retries` - Show issues with retry patterns (failed attempts)
 - `patterns` - Surface behavioral patterns for orchestrator awareness
 - `patterns suppress <index>` - Suppress a specific pattern
-- `stats` - Show aggregate statistics
+- `stats` - Show aggregate statistics (spawn/completion rates, gate effectiveness, skill metrics)
+- `stats --days N` - Stats over N days (default 7)
+- `stats --snapshot` - Record gate accuracy baseline
 - `health` - Health check infrastructure status
 - `logs server/daemon` - View server or daemon logs
 - `transcript format <input-file>` - Format agent transcript
@@ -370,9 +377,14 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `kb ask [question]` - Query knowledge base
 - `kb claims` - List claims in knowledge base
 - `kb orphans` - Find orphaned knowledge artifacts
+- `kb orphans --stratified` - Break orphans into categories (empty, negative-result, superseded, positive-unlinked)
 - `kb findings` - List findings
 - `kb create model <name>` - Create a new KB model
 - `kb audit provenance` - Scan evidence quality annotations
+- `kb audit decisions` - Check accepted decisions for implementation evidence/divergence
+- `kb audit models` - Flag oversized models (>30KB) needing synthesis/pruning
+- `kb autolink` - Auto-link orphaned investigations to models/threads/decisions
+- `kb autolink --apply` - Apply auto-links (dry-run by default)
 - `kb gate publish/model/scan-claims` - KB publication and model gates
 - `kb challenge create/validate/packet` - KB challenge protocol
 
@@ -622,6 +634,9 @@ Agent lifecycle events are logged to `~/.orch/events.jsonl` for stats aggregatio
 | `agents.cleaned` | `orch clean` | Completed agents cleaned from registry |
 | `account.auto_switched` | spawn pipeline | Account auto-switched on rate limit |
 | `review_tier.escalated` | review | Review tier auto-escalated |
+| `trigger.outcome` | daemon | Per-detector false positive tracking (issue closed without action) |
+
+**Enrichment fields:** `verification.failed`, `agent.completed`, `verification.bypassed`, and `verification.auto_skipped` events include a `verification_level` field (V0-V3) tracking what "verified" means at completion.
 
 ### Beads Close Hook
 

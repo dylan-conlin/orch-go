@@ -133,8 +133,11 @@ func lookupSuccessRate(skill string, learning *events.LearningStore) float64 {
 
 	sampleSize := sl.TotalCompletions + sl.AbandonedCount
 
-	// Start with self-reported rate, blend with ground truth if available
-	hasReworkData := sl.ReworkCount > 0 || sl.TotalCompletions >= MinSamplesForFullWeight
+	// Start with self-reported rate, blend with ground truth if available.
+	// Require actual rework events — TotalCompletions alone doesn't mean the
+	// rework channel was exercised. Without reworks, reworkRate=0 would be
+	// misinterpreted as "everything correct" rather than "no data".
+	hasReworkData := sl.ReworkCount > 0
 	adjustedRate := GroundTruthAdjustedRate(sl.SuccessRate, sl.ReworkRate, hasReworkData)
 
 	return BlendedSuccessRate(adjustedRate, sampleSize)
