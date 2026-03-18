@@ -129,8 +129,9 @@ type OrientationData struct {
 	FocusGoal       string           `json:"focus_goal,omitempty"`
 	ReflectSummary  *ReflectSummary  `json:"reflect_summary,omitempty"`
 	UsageWarning    *UsageWarning    `json:"usage_warning,omitempty"`
-	ConfigDrift     []ConfigDriftItem `json:"config_drift,omitempty"`
-	SessionResume   *SessionResume   `json:"session_resume,omitempty"`
+	ConfigDrift        []ConfigDriftItem  `json:"config_drift,omitempty"`
+	SessionResume      *SessionResume     `json:"session_resume,omitempty"`
+	DivergenceAlerts   []DivergenceAlert  `json:"divergence_alerts,omitempty"`
 }
 
 // ComputeThroughput aggregates events within the given day window.
@@ -195,6 +196,9 @@ func FormatOrientation(data *OrientationData) string {
 
 	// Throughput section
 	formatThroughput(&b, &data.Throughput)
+
+	// Divergence alerts (activity vs impact gap)
+	b.WriteString(FormatDivergenceAlerts(data.DivergenceAlerts))
 
 	// Last session insight — prominent comprehension thread from prior session
 	b.WriteString(FormatLastSessionInsight(data.PreviousSession))

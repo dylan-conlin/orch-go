@@ -14,6 +14,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/health"
 	"github.com/dylan-conlin/orch-go/pkg/orient"
@@ -128,6 +129,9 @@ func runOrient() error {
 
 	// 11. Reflect suggestions
 	data.ReflectSummary = collectReflectSuggestions()
+
+	// Divergence detection (activity vs impact metrics)
+	data.DivergenceAlerts = computeDivergenceAlerts(data)
 
 	// 12. Config drift check
 	data.ConfigDrift = collectConfigDrift()
@@ -749,6 +753,82 @@ func parseInProgressCount(output string) int {
 			continue
 		}
 		if strings.Contains(line, " in_progress ") {
+			count++
+		}
+	}
+	return count
+}
+
+// computeDivergenceAlerts compares activity metrics against impact metrics
+// and returns alerts for sustained gaps. Uses data already collected by orient:
+// throughput (completion rate, merge rate) and reflect summary (orphan rate, stale decisions).
+func computeDivergenceAlerts(data *orient.OrientationData) []orient.DivergenceAlert {
+	tp := data.Throughput
+
+	input := orient.DivergenceInput{
+		Days: tp.Days,
+	}
+
+	// Completion rate from throughput
+	if tp.Spawns > 0 {
+		input.CompletionRate = float64(tp.Completions) / float64(tp.Spawns)
+	}
+
+	// Merge rate from git ground truth (Phase 1)
+	input.MergeRate = tp.MergeRate
+
+	// Orphan rate and stale decisions from reflect summary
+	if data.ReflectSummary != nil {
+		input.OrphanRate = data.ReflectSummary.OrphanRate
+		input.StaleDecisions = data.ReflectSummary.Stale
+		// Total decisions = stale + non-stale; approximate from reflect data
+		// Stale count comes from reflect; total is not directly available,
+		// so we use a heuristic: if stale > 0, estimate total from the ratio
+		// For now, query decision count from filesystem
+		input.TotalDecisions = countDecisions()
+	}
+
+	// Per-skill rework rate from learning store (Phase 2)
+	// Aggregate across all skills for the overall rework signal
+	home, _ := os.UserHomeDir()
+	eventsPath := filepath.Join(home, ".orch", "events.jsonl")
+	if store, err := events.ComputeLearning(eventsPath); err == nil {
+		var totalCompletions, totalRework int
+		var totalSuccessRate float64
+		var skillCount int
+		for _, sl := range store.Skills {
+			totalCompletions += sl.TotalCompletions
+			totalRework += sl.ReworkCount
+			if sl.TotalCompletions > 0 {
+				totalSuccessRate += sl.SuccessRate
+				skillCount++
+			}
+		}
+		if totalCompletions > 0 {
+			input.ReworkRate = float64(totalRework) / float64(totalCompletions)
+		}
+		if skillCount > 0 {
+			input.SelfReportedSuccess = totalSuccessRate / float64(skillCount)
+		}
+	}
+
+	return orient.ComputeDivergence(input)
+}
+
+// countDecisions counts .md files in .kb/decisions/ for stale rate computation.
+func countDecisions() int {
+	dir, err := os.Getwd()
+	if err != nil {
+		return 0
+	}
+	decisionsDir := filepath.Join(dir, ".kb", "decisions")
+	entries, err := os.ReadDir(decisionsDir)
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, e := range entries {
+		if !e.IsDir() && filepath.Ext(e.Name()) == ".md" {
 			count++
 		}
 	}
