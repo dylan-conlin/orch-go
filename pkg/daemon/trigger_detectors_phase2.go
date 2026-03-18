@@ -555,33 +555,85 @@ func (s *defaultKnowledgeDecaySource) ListDecayedModels(maxAge time.Duration) ([
 }
 
 // defaultSkillPerformanceDriftSource uses events.ComputeLearning for skill metrics.
-type defaultSkillPerformanceDriftSource struct{}
+// Compares a recent time window against a previous window to detect real drift.
+type defaultSkillPerformanceDriftSource struct {
+	// RecentWindow is the duration of the "recent" window (default 30 days).
+	RecentWindow time.Duration
+	// Now allows injecting time for testing (defaults to time.Now).
+	Now func() time.Time
+	// EventsPath overrides the default events.jsonl path (for testing).
+	EventsPath string
+}
 
-func (s *defaultSkillPerformanceDriftSource) ListDriftedSkills(currentThreshold, _ float64) ([]DriftedSkill, error) {
-	eventsPath, err := defaultEventsPath()
+const (
+	defaultRecentWindow  = 30 * 24 * time.Hour
+	minOutcomesPerWindow = 5
+)
+
+func (s *defaultSkillPerformanceDriftSource) ListDriftedSkills(currentThreshold, previousMin float64) ([]DriftedSkill, error) {
+	eventsPath := s.EventsPath
+	if eventsPath == "" {
+		var err error
+		eventsPath, err = defaultEventsPath()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	now := time.Now()
+	if s.Now != nil {
+		now = s.Now()
+	}
+
+	recentWindow := s.RecentWindow
+	if recentWindow <= 0 {
+		recentWindow = defaultRecentWindow
+	}
+
+	recentStart := now.Add(-recentWindow)
+	previousEnd := recentStart
+
+	// Compute recent window (last 30 days)
+	recentStore, err := events.ComputeLearningInWindow(eventsPath, recentStart, time.Time{})
 	if err != nil {
 		return nil, err
 	}
 
-	store, err := events.ComputeLearning(eventsPath)
+	// Compute previous window (everything before the recent window)
+	previousStore, err := events.ComputeLearningInWindow(eventsPath, time.Time{}, previousEnd)
 	if err != nil {
 		return nil, err
 	}
 
 	var result []DriftedSkill
-	for name, skill := range store.Skills {
-		totalOutcomes := skill.TotalCompletions + skill.AbandonedCount
-		if totalOutcomes < 5 {
+	for name, recent := range recentStore.Skills {
+		recentOutcomes := recent.TotalCompletions + recent.AbandonedCount
+		if recentOutcomes < minOutcomesPerWindow {
 			continue
 		}
-		if skill.SuccessRate < currentThreshold {
-			result = append(result, DriftedSkill{
-				Name:         name,
-				CurrentRate:  skill.SuccessRate,
-				PreviousRate: 0.7, // Placeholder — true windowed rate needs time-series
-				RecentSpawns: skill.SpawnCount,
-			})
+		if recent.SuccessRate >= currentThreshold {
+			continue
 		}
+
+		// Only report drift if we have a measured previous rate to compare against
+		prev, hasPrevious := previousStore.Skills[name]
+		if !hasPrevious {
+			continue
+		}
+		prevOutcomes := prev.TotalCompletions + prev.AbandonedCount
+		if prevOutcomes < minOutcomesPerWindow {
+			continue
+		}
+		if prev.SuccessRate < previousMin {
+			continue // previous rate was already low — not a drift
+		}
+
+		result = append(result, DriftedSkill{
+			Name:         name,
+			CurrentRate:  recent.SuccessRate,
+			PreviousRate: prev.SuccessRate,
+			RecentSpawns: recent.SpawnCount,
+		})
 	}
 	return result, nil
 }

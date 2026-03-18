@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"sort"
+	"time"
 )
 
 // LearningStore holds aggregated learning data per skill.
@@ -42,6 +43,26 @@ type GateStats struct {
 // Returns an empty store if the file doesn't exist (graceful on first run).
 // Skips corrupt/unparseable lines.
 func ComputeLearning(eventsPath string) (*LearningStore, error) {
+	return computeLearningFiltered(eventsPath, nil)
+}
+
+// ComputeLearningInWindow reads events.jsonl and aggregates per-skill metrics
+// for events within the given time window [after, before).
+// Use zero time for either bound to leave it open-ended.
+func ComputeLearningInWindow(eventsPath string, after, before time.Time) (*LearningStore, error) {
+	return computeLearningFiltered(eventsPath, func(e Event) bool {
+		ts := time.Unix(e.Timestamp, 0)
+		if !after.IsZero() && ts.Before(after) {
+			return false
+		}
+		if !before.IsZero() && !ts.Before(before) {
+			return false
+		}
+		return true
+	})
+}
+
+func computeLearningFiltered(eventsPath string, accept func(Event) bool) (*LearningStore, error) {
 	store := &LearningStore{Skills: make(map[string]*SkillLearning)}
 
 	f, err := os.Open(eventsPath)
@@ -62,6 +83,10 @@ func ComputeLearning(eventsPath string) (*LearningStore, error) {
 		var event Event
 		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
 			continue // skip corrupt lines
+		}
+
+		if accept != nil && !accept(event) {
+			continue
 		}
 
 		skill, _ := event.Data["skill"].(string)

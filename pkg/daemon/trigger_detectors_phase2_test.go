@@ -1,9 +1,14 @@
 package daemon
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/events"
 )
 
 // --- Model Contradictions Detector Tests ---
@@ -267,6 +272,218 @@ func TestSkillPerformanceDriftDetector_Name(t *testing.T) {
 	}
 }
 
+func TestDefaultSkillPerformanceDriftSource_RealWindowedRates(t *testing.T) {
+	dir := t.TempDir()
+	eventsPath := filepath.Join(dir, "events.jsonl")
+
+	now := time.Now()
+	oldTS := now.Add(-45 * 24 * time.Hour) // 45 days ago — in "previous" window
+	newTS := now.Add(-10 * 24 * time.Hour)  // 10 days ago — in "recent" window
+
+	// Previous window: 8 successes out of 10 = 80% success rate
+	var evts []events.Event
+	for i := 0; i < 8; i++ {
+		evts = append(evts, events.Event{
+			Type: events.EventTypeAgentCompleted, Timestamp: oldTS.Unix() + int64(i*100),
+			Data: map[string]interface{}{"skill": "feature-impl", "outcome": "success"},
+		})
+	}
+	for i := 0; i < 2; i++ {
+		evts = append(evts, events.Event{
+			Type: events.EventTypeAgentAbandonedTelemetry, Timestamp: oldTS.Unix() + int64(800+i*100),
+			Data: map[string]interface{}{"skill": "feature-impl"},
+		})
+	}
+
+	// Recent window: 2 successes out of 8 = 25% success rate (drifted)
+	for i := 0; i < 2; i++ {
+		evts = append(evts, events.Event{
+			Type: events.EventTypeAgentCompleted, Timestamp: newTS.Unix() + int64(i*100),
+			Data: map[string]interface{}{"skill": "feature-impl", "outcome": "success"},
+		})
+	}
+	for i := 0; i < 6; i++ {
+		evts = append(evts, events.Event{
+			Type: events.EventTypeAgentAbandonedTelemetry, Timestamp: newTS.Unix() + int64(200+i*100),
+			Data: map[string]interface{}{"skill": "feature-impl"},
+		})
+	}
+
+	writeTestEvents(t, eventsPath, evts)
+
+	src := &defaultSkillPerformanceDriftSource{
+		EventsPath: eventsPath,
+		Now:        func() time.Time { return now },
+	}
+
+	drifted, err := src.ListDriftedSkills(0.5, 0.7)
+	if err != nil {
+		t.Fatalf("ListDriftedSkills() error = %v", err)
+	}
+	if len(drifted) != 1 {
+		t.Fatalf("got %d drifted skills, want 1", len(drifted))
+	}
+
+	d := drifted[0]
+	if d.Name != "feature-impl" {
+		t.Errorf("Name = %q, want feature-impl", d.Name)
+	}
+	// Previous rate should be ~0.8 (8/10), not 0.7 placeholder
+	if d.PreviousRate < 0.79 || d.PreviousRate > 0.81 {
+		t.Errorf("PreviousRate = %f, want ~0.8 (real measured rate)", d.PreviousRate)
+	}
+	// Current rate should be ~0.25 (2/8)
+	if d.CurrentRate < 0.24 || d.CurrentRate > 0.26 {
+		t.Errorf("CurrentRate = %f, want ~0.25", d.CurrentRate)
+	}
+}
+
+func TestDefaultSkillPerformanceDriftSource_NoDriftWhenPreviousTooLow(t *testing.T) {
+	dir := t.TempDir()
+	eventsPath := filepath.Join(dir, "events.jsonl")
+
+	now := time.Now()
+	oldTS := now.Add(-45 * 24 * time.Hour)
+	newTS := now.Add(-10 * 24 * time.Hour)
+
+	// Previous window: 3 successes out of 10 = 30% (below previousMin=0.7)
+	var evts []events.Event
+	for i := 0; i < 3; i++ {
+		evts = append(evts, events.Event{
+			Type: events.EventTypeAgentCompleted, Timestamp: oldTS.Unix() + int64(i*100),
+			Data: map[string]interface{}{"skill": "feature-impl", "outcome": "success"},
+		})
+	}
+	for i := 0; i < 7; i++ {
+		evts = append(evts, events.Event{
+			Type: events.EventTypeAgentAbandonedTelemetry, Timestamp: oldTS.Unix() + int64(300+i*100),
+			Data: map[string]interface{}{"skill": "feature-impl"},
+		})
+	}
+
+	// Recent window: 2 successes out of 8 = 25% — but previous was already low
+	for i := 0; i < 2; i++ {
+		evts = append(evts, events.Event{
+			Type: events.EventTypeAgentCompleted, Timestamp: newTS.Unix() + int64(i*100),
+			Data: map[string]interface{}{"skill": "feature-impl", "outcome": "success"},
+		})
+	}
+	for i := 0; i < 6; i++ {
+		evts = append(evts, events.Event{
+			Type: events.EventTypeAgentAbandonedTelemetry, Timestamp: newTS.Unix() + int64(200+i*100),
+			Data: map[string]interface{}{"skill": "feature-impl"},
+		})
+	}
+
+	writeTestEvents(t, eventsPath, evts)
+
+	src := &defaultSkillPerformanceDriftSource{
+		EventsPath: eventsPath,
+		Now:        func() time.Time { return now },
+	}
+
+	drifted, err := src.ListDriftedSkills(0.5, 0.7)
+	if err != nil {
+		t.Fatalf("ListDriftedSkills() error = %v", err)
+	}
+	if len(drifted) != 0 {
+		t.Errorf("got %d drifted skills, want 0 (previous rate was already low)", len(drifted))
+	}
+}
+
+func TestDefaultSkillPerformanceDriftSource_SkipsInsufficientSamples(t *testing.T) {
+	dir := t.TempDir()
+	eventsPath := filepath.Join(dir, "events.jsonl")
+
+	now := time.Now()
+	oldTS := now.Add(-45 * 24 * time.Hour)
+	newTS := now.Add(-10 * 24 * time.Hour)
+
+	// Previous window: plenty of data (8 events)
+	var evts []events.Event
+	for i := 0; i < 8; i++ {
+		evts = append(evts, events.Event{
+			Type: events.EventTypeAgentCompleted, Timestamp: oldTS.Unix() + int64(i*100),
+			Data: map[string]interface{}{"skill": "feature-impl", "outcome": "success"},
+		})
+	}
+
+	// Recent window: only 3 events — below minOutcomesPerWindow (5)
+	for i := 0; i < 3; i++ {
+		evts = append(evts, events.Event{
+			Type: events.EventTypeAgentAbandonedTelemetry, Timestamp: newTS.Unix() + int64(i*100),
+			Data: map[string]interface{}{"skill": "feature-impl"},
+		})
+	}
+
+	writeTestEvents(t, eventsPath, evts)
+
+	src := &defaultSkillPerformanceDriftSource{
+		EventsPath: eventsPath,
+		Now:        func() time.Time { return now },
+	}
+
+	drifted, err := src.ListDriftedSkills(0.5, 0.7)
+	if err != nil {
+		t.Fatalf("ListDriftedSkills() error = %v", err)
+	}
+	if len(drifted) != 0 {
+		t.Errorf("got %d drifted skills, want 0 (insufficient recent samples)", len(drifted))
+	}
+}
+
+func TestDefaultSkillPerformanceDriftSource_NoPreviousData(t *testing.T) {
+	dir := t.TempDir()
+	eventsPath := filepath.Join(dir, "events.jsonl")
+
+	now := time.Now()
+	newTS := now.Add(-10 * 24 * time.Hour)
+
+	// Only recent data, no previous window data
+	var evts []events.Event
+	for i := 0; i < 2; i++ {
+		evts = append(evts, events.Event{
+			Type: events.EventTypeAgentCompleted, Timestamp: newTS.Unix() + int64(i*100),
+			Data: map[string]interface{}{"skill": "feature-impl", "outcome": "success"},
+		})
+	}
+	for i := 0; i < 6; i++ {
+		evts = append(evts, events.Event{
+			Type: events.EventTypeAgentAbandonedTelemetry, Timestamp: newTS.Unix() + int64(200+i*100),
+			Data: map[string]interface{}{"skill": "feature-impl"},
+		})
+	}
+
+	writeTestEvents(t, eventsPath, evts)
+
+	src := &defaultSkillPerformanceDriftSource{
+		EventsPath: eventsPath,
+		Now:        func() time.Time { return now },
+	}
+
+	drifted, err := src.ListDriftedSkills(0.5, 0.7)
+	if err != nil {
+		t.Fatalf("ListDriftedSkills() error = %v", err)
+	}
+	if len(drifted) != 0 {
+		t.Errorf("got %d drifted skills, want 0 (no previous data to compare against)", len(drifted))
+	}
+}
+
+// writeTestEvents writes events to a JSONL file for testing.
+func writeTestEvents(t *testing.T, path string, evts []events.Event) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	for _, e := range evts {
+		data, _ := json.Marshal(e)
+		f.Write(append(data, '\n'))
+	}
+}
+
 // --- Integration: All Phase 2 Detectors ---
 
 func TestDaemon_RunPeriodicTriggerScan_AllPhase2Detectors(t *testing.T) {
@@ -281,7 +498,7 @@ func TestDaemon_RunPeriodicTriggerScan_AllPhase2Detectors(t *testing.T) {
 		Scheduler: NewSchedulerFromConfig(cfg),
 		TriggerScan: &mockTriggerScanService{
 			CountOpenFunc: func() (int, error) { return 0, nil },
-			HasOpenFunc:   func(_, _ string) (bool, error) { return false, nil },
+			HasIssueFunc:   func(_, _ string) (bool, error) { return false, nil },
 			CreateIssueFunc: func(s TriggerSuggestion) (string, error) {
 				createCount++
 				return fmt.Sprintf("orch-go-t%d", createCount), nil

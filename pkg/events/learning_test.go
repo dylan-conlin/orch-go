@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func writeEvents(t *testing.T, dir string, events []Event) string {
@@ -305,5 +306,96 @@ func TestComputeLearning_CorruptLine(t *testing.T) {
 	skill := store.Skills["feature-impl"]
 	if skill.SuccessCount != 2 {
 		t.Errorf("SuccessCount = %d, want 2 (should skip corrupt line)", skill.SuccessCount)
+	}
+}
+
+func TestComputeLearningInWindow_FiltersByTimestamp(t *testing.T) {
+	dir := t.TempDir()
+
+	now := time.Now()
+	oldTS := now.Add(-60 * 24 * time.Hour).Unix()  // 60 days ago
+	newTS := now.Add(-10 * 24 * time.Hour).Unix()   // 10 days ago
+
+	evts := []Event{
+		// Old event — success
+		{Type: EventTypeAgentCompleted, Timestamp: oldTS, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "success",
+		}},
+		// Old event — success
+		{Type: EventTypeAgentCompleted, Timestamp: oldTS + 100, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "success",
+		}},
+		// Recent event — abandoned
+		{Type: EventTypeAgentAbandonedTelemetry, Timestamp: newTS, Data: map[string]interface{}{
+			"skill": "feature-impl",
+		}},
+		// Recent event — success
+		{Type: EventTypeAgentCompleted, Timestamp: newTS + 100, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "success",
+		}},
+	}
+
+	path := writeEvents(t, dir, evts)
+	boundary := now.Add(-30 * 24 * time.Hour)
+
+	// Previous window: everything before 30 days ago
+	prevStore, err := ComputeLearningInWindow(path, time.Time{}, boundary)
+	if err != nil {
+		t.Fatalf("ComputeLearningInWindow() error = %v", err)
+	}
+	prevSkill := prevStore.Skills["feature-impl"]
+	if prevSkill == nil {
+		t.Fatal("expected feature-impl in previous window")
+	}
+	if prevSkill.SuccessCount != 2 {
+		t.Errorf("previous SuccessCount = %d, want 2", prevSkill.SuccessCount)
+	}
+	if prevSkill.AbandonedCount != 0 {
+		t.Errorf("previous AbandonedCount = %d, want 0", prevSkill.AbandonedCount)
+	}
+
+	// Recent window: everything after 30 days ago
+	recentStore, err := ComputeLearningInWindow(path, boundary, time.Time{})
+	if err != nil {
+		t.Fatalf("ComputeLearningInWindow() error = %v", err)
+	}
+	recentSkill := recentStore.Skills["feature-impl"]
+	if recentSkill == nil {
+		t.Fatal("expected feature-impl in recent window")
+	}
+	if recentSkill.SuccessCount != 1 {
+		t.Errorf("recent SuccessCount = %d, want 1", recentSkill.SuccessCount)
+	}
+	if recentSkill.AbandonedCount != 1 {
+		t.Errorf("recent AbandonedCount = %d, want 1", recentSkill.AbandonedCount)
+	}
+	// Recent success rate: 1 / (1 + 1) = 0.5
+	if recentSkill.SuccessRate < 0.49 || recentSkill.SuccessRate > 0.51 {
+		t.Errorf("recent SuccessRate = %f, want ~0.5", recentSkill.SuccessRate)
+	}
+}
+
+func TestComputeLearningInWindow_EmptyWindow(t *testing.T) {
+	dir := t.TempDir()
+
+	now := time.Now()
+	oldTS := now.Add(-60 * 24 * time.Hour).Unix()
+
+	evts := []Event{
+		{Type: EventTypeAgentCompleted, Timestamp: oldTS, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "success",
+		}},
+	}
+
+	path := writeEvents(t, dir, evts)
+
+	// Query a window that contains no events
+	after := now.Add(-10 * 24 * time.Hour)
+	store, err := ComputeLearningInWindow(path, after, time.Time{})
+	if err != nil {
+		t.Fatalf("ComputeLearningInWindow() error = %v", err)
+	}
+	if len(store.Skills) != 0 {
+		t.Errorf("expected 0 skills in empty window, got %d", len(store.Skills))
 	}
 }
