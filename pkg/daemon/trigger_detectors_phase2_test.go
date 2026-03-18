@@ -113,7 +113,7 @@ func TestHotspotAccelerationDetector_FindsFastGrowing(t *testing.T) {
 		Source: &mockHotspotAccelerationSource{
 			listFunc: func(threshold int) ([]FastGrowingFile, error) {
 				return []FastGrowingFile{
-					{Path: "pkg/daemon/ooda.go", LinesAdded: 350, CurrentSize: 800},
+					{Path: "pkg/daemon/ooda.go", NetGrowth: 350, CurrentSize: 800, HistoricalSize: 450},
 				}, nil
 			},
 		},
@@ -304,7 +304,7 @@ func TestDaemon_RunPeriodicTriggerScan_AllPhase2Detectors(t *testing.T) {
 			Source: &mockHotspotAccelerationSource{
 				listFunc: func(threshold int) ([]FastGrowingFile, error) {
 					return []FastGrowingFile{
-						{Path: "pkg/daemon/big.go", LinesAdded: 300, CurrentSize: 1000},
+						{Path: "pkg/daemon/big.go", NetGrowth: 300, CurrentSize: 1000, HistoricalSize: 700},
 					}, nil
 				},
 			},
@@ -341,76 +341,85 @@ func TestDaemon_RunPeriodicTriggerScan_AllPhase2Detectors(t *testing.T) {
 	}
 }
 
-// --- parseGitNumstat Tests ---
+// --- parseGitDiffNumstat Tests ---
 
-func TestParseGitNumstat(t *testing.T) {
-	input := "10\t5\tpkg/daemon/trigger.go\n20\t3\tpkg/daemon/ooda.go\n\n15\t2\tpkg/daemon/trigger.go\n-\t-\tbinary.png\n"
-	result := parseGitNumstat(input)
+func TestParseGitDiffNumstat(t *testing.T) {
+	// git diff --numstat gives: <added>\t<deleted>\t<path>
+	input := "100\t20\tpkg/daemon/trigger.go\n50\t10\tpkg/daemon/ooda.go\n-\t-\tbinary.png\n"
+	result := parseGitDiffNumstat(input)
 
-	if result["pkg/daemon/trigger.go"] != 25 {
-		t.Errorf("trigger.go additions = %d, want 25 (10+15)", result["pkg/daemon/trigger.go"])
+	if result["pkg/daemon/trigger.go"] != 80 {
+		t.Errorf("trigger.go net = %d, want 80 (100-20)", result["pkg/daemon/trigger.go"])
 	}
-	if result["pkg/daemon/ooda.go"] != 20 {
-		t.Errorf("ooda.go additions = %d, want 20", result["pkg/daemon/ooda.go"])
+	if result["pkg/daemon/ooda.go"] != 40 {
+		t.Errorf("ooda.go net = %d, want 40 (50-10)", result["pkg/daemon/ooda.go"])
 	}
 	if _, exists := result["binary.png"]; exists {
 		t.Error("binary files should be skipped")
 	}
 }
 
-// --- parseGitBornFiles Tests ---
+func TestParseGitDiffNumstat_ChurnProducesLowNetGrowth(t *testing.T) {
+	// Simulates extraction churn: file had 800 lines added but 750 deleted
+	// (rewrites during extraction). Net growth is only 50 — below threshold.
+	input := "800\t750\tcmd/orch/stats_cmd.go\n"
+	result := parseGitDiffNumstat(input)
 
-func TestParseGitBornFiles(t *testing.T) {
-	// Simulates output of: git log --diff-filter=A --since="30 days ago" --name-only --pretty=format:
-	input := "pkg/thread/thread_test.go\n\npkg/daemonconfig/plist_test.go\ncmd/orch/control_cmd.go\n\n"
-	result := parseGitBornFiles(input)
-
-	if !result["pkg/thread/thread_test.go"] {
-		t.Error("should include thread_test.go (new file)")
-	}
-	if !result["pkg/daemonconfig/plist_test.go"] {
-		t.Error("should include plist_test.go (new file)")
-	}
-	if !result["cmd/orch/control_cmd.go"] {
-		t.Error("should include control_cmd.go (recreated file)")
-	}
-	if result["pkg/daemon/ooda.go"] {
-		t.Error("should not include files not in output")
+	if result["cmd/orch/stats_cmd.go"] != 50 {
+		t.Errorf("stats_cmd.go net = %d, want 50 (800-750)", result["cmd/orch/stats_cmd.go"])
 	}
 }
 
-func TestParseGitBornFiles_Empty(t *testing.T) {
-	result := parseGitBornFiles("")
+func TestParseGitDiffNumstat_NegativeNetGrowth(t *testing.T) {
+	// File shrank (more deleted than added) — net growth is negative
+	input := "100\t400\tcmd/orch/plan_cmd.go\n"
+	result := parseGitDiffNumstat(input)
+
+	if result["cmd/orch/plan_cmd.go"] != -300 {
+		t.Errorf("plan_cmd.go net = %d, want -300 (100-400)", result["cmd/orch/plan_cmd.go"])
+	}
+}
+
+func TestParseGitDiffNumstat_Empty(t *testing.T) {
+	result := parseGitDiffNumstat("")
 	if len(result) != 0 {
 		t.Errorf("got %d entries, want 0", len(result))
 	}
 }
 
-func TestParseGitBornFiles_WhitespaceHandling(t *testing.T) {
-	input := "  pkg/foo.go  \n\n\n  pkg/bar.go\n"
-	result := parseGitBornFiles(input)
-	if !result["pkg/foo.go"] {
-		t.Error("should trim whitespace from pkg/foo.go")
-	}
-	if !result["pkg/bar.go"] {
-		t.Error("should trim whitespace from pkg/bar.go")
-	}
-}
+// --- Churn False Positive Elimination Test ---
 
-// --- Birth Churn Filtering Integration Test ---
-
-func TestHotspotAccelerationDetector_BirthChurnFiltered(t *testing.T) {
-	// Scenario: thread_test.go was born in the window (+570 lines) — should NOT trigger.
-	// ooda.go existed before the window and grew (+350 lines) — should trigger.
-	// This test verifies the detector-level contract: sources that properly filter
-	// birth churn produce no false positives.
+func TestHotspotAccelerationDetector_ChurnNotFlaggedAsGrowth(t *testing.T) {
+	// Reproduction case from orch-go-9aicv:
+	// stats_cmd.go had +806 additions but is only 302 lines (was extracted/split).
+	// With net growth calculation, the source returns no files because
+	// net growth (current - historical) is small or negative.
 	d := &HotspotAccelerationDetector{
 		Source: &mockHotspotAccelerationSource{
 			listFunc: func(threshold int) ([]FastGrowingFile, error) {
-				// Source already filters out birth files (thread_test.go, plist_test.go)
-				// Only returns files that existed before the window and grew
+				// Net growth approach: stats_cmd.go went from 900 to 302 lines
+				// Net growth = -598 — well below threshold, not returned by source
+				return nil, nil
+			},
+		},
+	}
+
+	suggestions, err := d.Detect()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(suggestions) != 0 {
+		t.Errorf("got %d suggestions, want 0 (churn should not trigger)", len(suggestions))
+	}
+}
+
+func TestHotspotAccelerationDetector_GenuineGrowthStillDetected(t *testing.T) {
+	// A file genuinely growing from 500 to 800 lines (net +300) should be detected.
+	d := &HotspotAccelerationDetector{
+		Source: &mockHotspotAccelerationSource{
+			listFunc: func(threshold int) ([]FastGrowingFile, error) {
 				return []FastGrowingFile{
-					{Path: "pkg/daemon/ooda.go", LinesAdded: 350, CurrentSize: 800},
+					{Path: "pkg/daemon/ooda.go", NetGrowth: 300, CurrentSize: 800, HistoricalSize: 500},
 				}, nil
 			},
 		},
@@ -421,7 +430,7 @@ func TestHotspotAccelerationDetector_BirthChurnFiltered(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(suggestions) != 1 {
-		t.Fatalf("got %d suggestions, want 1 (birth churn should be filtered by source)", len(suggestions))
+		t.Fatalf("got %d suggestions, want 1", len(suggestions))
 	}
 	if suggestions[0].Key != "pkg/daemon/ooda.go" {
 		t.Errorf("Key = %q, want pkg/daemon/ooda.go", suggestions[0].Key)

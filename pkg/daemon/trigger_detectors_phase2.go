@@ -78,9 +78,10 @@ type HotspotAccelerationSource interface {
 
 // FastGrowingFile is a file that's growing rapidly.
 type FastGrowingFile struct {
-	Path        string
-	LinesAdded  int
-	CurrentSize int
+	Path           string
+	NetGrowth      int
+	CurrentSize    int
+	HistoricalSize int
 }
 
 // HotspotAccelerationDetector detects files growing >200 lines/30 days.
@@ -111,8 +112,8 @@ func (d *HotspotAccelerationDetector) Detect() ([]TriggerSuggestion, error) {
 		suggestions = append(suggestions, TriggerSuggestion{
 			Detector:    "hotspot_acceleration",
 			Key:         f.Path,
-			Title:       fmt.Sprintf("Hotspot acceleration: %s (+%d lines/30d, now %d lines)", f.Path, f.LinesAdded, f.CurrentSize),
-			Description: fmt.Sprintf("File %s has grown by %d lines in the last 30 days (current size: %d lines). Consider extraction before it becomes a critical hotspot.", f.Path, f.LinesAdded, f.CurrentSize),
+			Title:       fmt.Sprintf("Hotspot acceleration: %s (net +%d lines/30d, now %d lines)", f.Path, f.NetGrowth, f.CurrentSize),
+			Description: fmt.Sprintf("File %s has grown by %d net lines in the last 30 days (%d → %d lines). Consider extraction before it becomes a critical hotspot.", f.Path, f.NetGrowth, f.HistoricalSize, f.CurrentSize),
 			IssueType:   "investigation",
 			Priority:    3,
 			Labels:      []string{"skill:architect"},
@@ -356,7 +357,14 @@ func isAccelerationExcluded(path string) bool {
 	return false
 }
 
-// defaultHotspotAccelerationSource uses git log --numstat to detect fast-growing files.
+// minAccelerationSize is the minimum current file size (in lines) for a file to be
+// flagged by the hotspot acceleration detector. Files smaller than this have enough
+// headroom before hitting the 1500-line extraction threshold.
+const minAccelerationSize = 500
+
+// defaultHotspotAccelerationSource uses git diff --numstat to detect fast-growing files.
+// Compares HEAD against a baseline commit ~30 days ago to measure net growth,
+// eliminating false positives from churn (add+delete cycles in extractions/rewrites).
 type defaultHotspotAccelerationSource struct{}
 
 func (s *defaultHotspotAccelerationSource) ListFastGrowingFiles(threshold int) ([]FastGrowingFile, error) {
@@ -365,94 +373,83 @@ func (s *defaultHotspotAccelerationSource) ListFastGrowingFiles(threshold int) (
 		return nil, fmt.Errorf("failed to get working directory: %w", err)
 	}
 
-	output, err := runGitNumstat(projectDir)
+	// Get the commit hash from ~30 days ago as our baseline
+	baseCommit, err := runGitBaseCommit(projectDir)
 	if err != nil {
 		return nil, err
 	}
+	if baseCommit == "" {
+		return nil, nil // repo younger than 30 days
+	}
 
-	additions := parseGitNumstat(output)
-
-	// Get files born (Added) within the 30-day window.
-	// These files' entire size registers as "growth" in numstat but they aren't
-	// actually accelerating — they were created, not growing. This also catches
-	// delete/recreate churn where a file is removed and re-added within the window.
-	bornOutput, err := runGitBornFiles(projectDir)
+	// git diff --numstat gives net changes (added - deleted) per file between
+	// two points in time, unlike git log --numstat which sums additions across
+	// individual commits and counts churn as growth.
+	output, err := runGitDiffNumstat(projectDir, baseCommit)
 	if err != nil {
 		return nil, err
 	}
-	bornFiles := parseGitBornFiles(bornOutput)
+	netChanges := parseGitDiffNumstat(output)
 
 	var result []FastGrowingFile
-	for path, added := range additions {
-		if added < threshold {
+	for path, netGrowth := range netChanges {
+		if netGrowth < threshold {
 			continue
 		}
 		if !strings.HasSuffix(path, ".go") {
 			continue
 		}
-		// Skip non-production paths (experiments/, .orch/, test files, etc.)
 		if isAccelerationExcluded(path) {
-			continue
-		}
-		// Skip files born within the window — birth churn, not accretion
-		if bornFiles[path] {
 			continue
 		}
 		fullPath := filepath.Join(projectDir, path)
 		currentSize, err := countFileLines(fullPath)
-		if err != nil || currentSize <= 0 {
+		if err != nil || currentSize < minAccelerationSize {
 			continue
 		}
+		historicalSize := currentSize - netGrowth
+		if historicalSize < 0 {
+			historicalSize = 0
+		}
 		result = append(result, FastGrowingFile{
-			Path:        path,
-			LinesAdded:  added,
-			CurrentSize: currentSize,
+			Path:           path,
+			NetGrowth:      netGrowth,
+			CurrentSize:    currentSize,
+			HistoricalSize: historicalSize,
 		})
 	}
 	return result, nil
 }
 
-// runGitNumstat runs git log --numstat for the last 30 days and returns raw output.
-func runGitNumstat(dir string) (string, error) {
-	cmd := exec.Command("git", "log", "--since=30 days ago", "--numstat", "--pretty=format:")
+// runGitBaseCommit returns the commit hash from approximately 30 days ago.
+func runGitBaseCommit(dir string) (string, error) {
+	cmd := exec.Command("git", "rev-list", "-1", "--before=30 days ago", "HEAD")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("git log --numstat failed: %w", err)
+		return "", fmt.Errorf("git rev-list failed: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// runGitDiffNumstat runs git diff --numstat between a base commit and HEAD.
+// Unlike git log --numstat (which sums per-commit additions), this gives
+// the true net change per file between two points in time.
+func runGitDiffNumstat(dir, baseCommit string) (string, error) {
+	cmd := exec.Command("git", "diff", "--numstat", "--no-renames", baseCommit, "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git diff --numstat failed: %w", err)
 	}
 	return string(out), nil
 }
 
-// runGitBornFiles runs git log --diff-filter=A for the last 30 days and returns raw output.
-// This identifies files that were created (Added) within the window.
-func runGitBornFiles(dir string) (string, error) {
-	cmd := exec.Command("git", "log", "--diff-filter=A", "--since=30 days ago", "--name-only", "--pretty=format:")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("git log --diff-filter=A failed: %w", err)
-	}
-	return string(out), nil
-}
-
-// parseGitBornFiles parses git log --diff-filter=A --name-only output into a set of file paths.
-// Files in this set were created within the 30-day window — their entire size registers as
-// "growth" in numstat but they aren't actually accelerating (they were born, not growing).
-func parseGitBornFiles(output string) map[string]bool {
-	born := make(map[string]bool)
-	scanner := bufio.NewScanner(strings.NewReader(output))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" {
-			born[line] = true
-		}
-	}
-	return born
-}
-
-// parseGitNumstat parses git log --numstat output into per-file line additions.
-func parseGitNumstat(output string) map[string]int {
-	additions := make(map[string]int)
+// parseGitDiffNumstat parses git diff --numstat output into per-file net line changes.
+// Each line is: <added>\t<deleted>\t<path>
+// Net change = added - deleted.
+func parseGitDiffNumstat(output string) map[string]int {
+	netChanges := make(map[string]int)
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -471,10 +468,14 @@ func parseGitNumstat(output string) map[string]int {
 		if err != nil {
 			continue
 		}
+		deleted, err := strconv.Atoi(parts[1])
+		if err != nil {
+			continue
+		}
 		path := parts[2]
-		additions[path] += added
+		netChanges[path] = added - deleted
 	}
-	return additions
+	return netChanges
 }
 
 // defaultKnowledgeDecaySource scans .kb/models/ for models without recent probes.
