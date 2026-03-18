@@ -56,8 +56,10 @@ func TestScoreIssue_SkillSuccessRateBoost(t *testing.T) {
 		t.Errorf("feature-impl (90%% success) score (%f) should be > systematic-debugging (30%% success) score (%f)",
 			featureScore.Score, bugScore.Score)
 	}
-	if featureScore.SkillSuccessRate != 0.9 {
-		t.Errorf("SkillSuccessRate = %f, want 0.9", featureScore.SkillSuccessRate)
+	// With 0% rework rate, ground-truth adjustment boosts rate:
+	// adjusted = 0.7*0.9 + 0.3*(1-0) = 0.93
+	if featureScore.SkillSuccessRate < 0.92 || featureScore.SkillSuccessRate > 0.94 {
+		t.Errorf("SkillSuccessRate = %f, want ~0.93 (ground-truth-adjusted)", featureScore.SkillSuccessRate)
 	}
 }
 
@@ -169,8 +171,10 @@ func TestScoreIssue_SkillLabelOverridesTypeInference(t *testing.T) {
 	if score.InferredSkill != "architect" {
 		t.Errorf("InferredSkill = %q, want %q (from label)", score.InferredSkill, "architect")
 	}
-	if score.SkillSuccessRate != 0.8 {
-		t.Errorf("SkillSuccessRate = %f, want 0.8 (architect data)", score.SkillSuccessRate)
+	// With 0% rework rate, ground-truth adjustment boosts rate:
+	// adjusted = 0.7*0.8 + 0.3*(1-0) = 0.86
+	if score.SkillSuccessRate < 0.85 || score.SkillSuccessRate > 0.87 {
+		t.Errorf("SkillSuccessRate = %f, want ~0.86 (ground-truth-adjusted)", score.SkillSuccessRate)
 	}
 }
 
@@ -265,6 +269,76 @@ func TestScoreIssue_HighPriorityStillWinsWithModerateSuccessGap(t *testing.T) {
 	if s0.Score <= s3.Score {
 		t.Errorf("P0 bug score (%f) should beat P3 feature score (%f) — priority dominates moderate success gap",
 			s0.Score, s3.Score)
+	}
+}
+
+func TestScoreIssue_GroundTruthAdjustedRate(t *testing.T) {
+	// When rework data is available, the allocation score should use
+	// ground-truth-adjusted rate: 0.7 * selfReported + 0.3 * (1 - reworkRate)
+	learning := &events.LearningStore{
+		Skills: map[string]*events.SkillLearning{
+			"feature-impl": {
+				SpawnCount:       20,
+				TotalCompletions: 20,
+				SuccessCount:     18,
+				SuccessRate:      0.9,     // Self-reported: 90%
+				ReworkCount:      6,
+				ReworkRate:        0.3,     // 30% rework → ground truth = 70%
+			},
+			"investigation": {
+				SpawnCount:       20,
+				TotalCompletions: 20,
+				SuccessCount:     19,
+				SuccessRate:      0.95,    // Self-reported: 95%
+				ReworkCount:      0,
+				ReworkRate:        0.0,     // 0% rework → ground truth = 100%
+			},
+		},
+	}
+
+	feature := Issue{ID: "a-1", Priority: 2, IssueType: "feature"}
+	featureScore := ScoreIssue(feature, learning)
+
+	// Expected adjusted rate: 0.7 * 0.9 + 0.3 * (1 - 0.3) = 0.63 + 0.21 = 0.84
+	// (after blending with sample size, which at 20 samples is nearly full weight)
+	// The adjusted rate should be lower than pure self-reported (0.9)
+	if featureScore.SkillSuccessRate >= 0.9 {
+		t.Errorf("SkillSuccessRate = %f, should be below 0.9 with 30%% rework rate", featureScore.SkillSuccessRate)
+	}
+
+	investigation := Issue{ID: "a-2", Priority: 2, IssueType: "task", Labels: []string{"skill:investigation"}}
+	invScore := ScoreIssue(investigation, learning)
+
+	// Investigation with 0% rework: adjusted = 0.7 * 0.95 + 0.3 * 1.0 = 0.665 + 0.3 = 0.965
+	// Should be close to or slightly above self-reported (ground truth confirms quality)
+	if invScore.SkillSuccessRate < 0.9 {
+		t.Errorf("SkillSuccessRate = %f, should be >= 0.9 with 0%% rework rate", invScore.SkillSuccessRate)
+	}
+}
+
+func TestGroundTruthAdjustedRate(t *testing.T) {
+	tests := []struct {
+		name           string
+		selfReported   float64
+		reworkRate     float64
+		hasReworkData  bool
+		wantMin        float64
+		wantMax        float64
+	}{
+		{"no rework data uses self-reported only", 0.9, 0.0, false, 0.89, 0.91},
+		{"zero rework boosts rate", 0.8, 0.0, true, 0.85, 0.87},
+		{"high rework penalizes rate", 0.9, 0.5, true, 0.77, 0.79},
+		{"perfect self-report with 100% rework", 1.0, 1.0, true, 0.69, 0.71},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := GroundTruthAdjustedRate(tt.selfReported, tt.reworkRate, tt.hasReworkData)
+			if got < tt.wantMin || got > tt.wantMax {
+				t.Errorf("GroundTruthAdjustedRate(%f, %f, %v) = %f, want in [%f, %f]",
+					tt.selfReported, tt.reworkRate, tt.hasReworkData, got, tt.wantMin, tt.wantMax)
+			}
+		})
 	}
 }
 

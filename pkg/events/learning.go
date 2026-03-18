@@ -25,6 +25,8 @@ type SkillLearning struct {
 	SuccessRate           float64                `json:"success_rate"`
 	AvgDurationSeconds    int                    `json:"avg_duration_seconds"`
 	MedianDurationSeconds int                    `json:"median_duration_seconds"`
+	ReworkCount           int                    `json:"rework_count"`
+	ReworkRate            float64                `json:"rework_rate"`
 	VerificationFailures  int                    `json:"verification_failures"`
 	VerificationBypasses  int                    `json:"verification_bypasses"`
 	GateHitRates          map[string]*GateStats  `json:"gate_hit_rates"`
@@ -147,6 +149,13 @@ func computeLearningFiltered(eventsPath string, accept func(Event) bool) (*Learn
 				gate.AllowCount++
 			}
 
+		case EventTypeAgentReworked:
+			if skill == "" {
+				continue
+			}
+			sl := store.ensureSkill(skill)
+			sl.ReworkCount++
+
 		case EventTypeVerificationFailed:
 			if skill == "" {
 				continue
@@ -168,6 +177,10 @@ func computeLearningFiltered(eventsPath string, accept func(Event) bool) (*Learn
 		total := sl.TotalCompletions + sl.AbandonedCount
 		if total > 0 {
 			sl.SuccessRate = float64(sl.SuccessCount) / float64(total)
+		}
+
+		if sl.TotalCompletions > 0 {
+			sl.ReworkRate = float64(sl.ReworkCount) / float64(sl.TotalCompletions)
 		}
 
 		if durs := durations[name]; len(durs) > 0 {

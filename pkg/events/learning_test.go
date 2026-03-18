@@ -399,3 +399,86 @@ func TestComputeLearningInWindow_EmptyWindow(t *testing.T) {
 		t.Errorf("expected 0 skills in empty window, got %d", len(store.Skills))
 	}
 }
+
+func TestComputeLearning_ReworkTracking(t *testing.T) {
+	dir := t.TempDir()
+
+	evts := []Event{
+		// 3 completions for feature-impl
+		{Type: EventTypeAgentCompleted, Timestamp: 1000, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "success",
+		}},
+		{Type: EventTypeAgentCompleted, Timestamp: 2000, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "success",
+		}},
+		{Type: EventTypeAgentCompleted, Timestamp: 3000, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "success",
+		}},
+		// 1 rework for feature-impl
+		{Type: EventTypeAgentReworked, Timestamp: 4000, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "orch-go-abc12",
+		}},
+		// 2 completions for investigation, 1 rework
+		{Type: EventTypeAgentCompleted, Timestamp: 5000, Data: map[string]interface{}{
+			"skill": "investigation", "outcome": "success",
+		}},
+		{Type: EventTypeAgentCompleted, Timestamp: 6000, Data: map[string]interface{}{
+			"skill": "investigation", "outcome": "success",
+		}},
+		{Type: EventTypeAgentReworked, Timestamp: 7000, Data: map[string]interface{}{
+			"skill": "investigation", "beads_id": "orch-go-def34",
+		}},
+	}
+
+	path := writeEvents(t, dir, evts)
+	store, err := ComputeLearning(path)
+	if err != nil {
+		t.Fatalf("ComputeLearning() error = %v", err)
+	}
+
+	// feature-impl: 1 rework / 3 completions = 0.333
+	fi := store.Skills["feature-impl"]
+	if fi.ReworkCount != 1 {
+		t.Errorf("feature-impl ReworkCount = %d, want 1", fi.ReworkCount)
+	}
+	expectedRate := 1.0 / 3.0
+	if fi.ReworkRate < expectedRate-0.01 || fi.ReworkRate > expectedRate+0.01 {
+		t.Errorf("feature-impl ReworkRate = %f, want ~%f", fi.ReworkRate, expectedRate)
+	}
+
+	// investigation: 1 rework / 2 completions = 0.5
+	inv := store.Skills["investigation"]
+	if inv.ReworkCount != 1 {
+		t.Errorf("investigation ReworkCount = %d, want 1", inv.ReworkCount)
+	}
+	expectedRate = 0.5
+	if inv.ReworkRate < expectedRate-0.01 || inv.ReworkRate > expectedRate+0.01 {
+		t.Errorf("investigation ReworkRate = %f, want ~%f", inv.ReworkRate, expectedRate)
+	}
+}
+
+func TestComputeLearning_ReworkWithZeroCompletions(t *testing.T) {
+	dir := t.TempDir()
+
+	evts := []Event{
+		// Rework without any completions (edge case)
+		{Type: EventTypeAgentReworked, Timestamp: 1000, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "orch-go-abc12",
+		}},
+	}
+
+	path := writeEvents(t, dir, evts)
+	store, err := ComputeLearning(path)
+	if err != nil {
+		t.Fatalf("ComputeLearning() error = %v", err)
+	}
+
+	fi := store.Skills["feature-impl"]
+	if fi.ReworkCount != 1 {
+		t.Errorf("ReworkCount = %d, want 1", fi.ReworkCount)
+	}
+	// With 0 completions, rework rate should be 0 (avoid division by zero)
+	if fi.ReworkRate != 0 {
+		t.Errorf("ReworkRate = %f, want 0 (zero completions)", fi.ReworkRate)
+	}
+}
