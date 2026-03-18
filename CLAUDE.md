@@ -90,6 +90,7 @@ pkg/
 ├── action/              # Action outcome logging and pattern detection
 ├── advisor/             # Model recommendation via live API data
 ├── group/               # Project group resolution (groups.yaml)
+├── orch/                # Spawn pipeline, completion, governance, backend routing
 ├── graph/               # Dependency graph utilities
 └── display/             # Terminal display helpers
 ```
@@ -156,12 +157,11 @@ orch spawn --bypass-triage --model gpt-5 feature-impl "task" --issue ID
 
 **Rule:** Files >1,500 lines require extraction before feature additions. Run `orch hotspot` to check current bloated files. If modifying large files, see `.kb/guides/code-extraction-patterns.md` for extraction workflow.
 
-**Enforcement (three-layer):**
-- **Layer 1 — Spawn gates (blocking):** `feature-impl` and `systematic-debugging` skills are blocked from spawning when targeting CRITICAL files (>1,500 lines). Exempt skills: `architect`, `investigation`, `capture-knowledge`, `codebase-audit`. Override: `--force-hotspot --architect-ref <closed-architect-issue>`. Auto-bypass when prior architect review exists.
-- **Layer 2 — Daemon escalation:** Daemon routes feature-impl/systematic-debugging to architect when issue targets hotspot files.
-- **Layer 3 — Spawn context advisory:** Hotspot info injected into SPAWN_CONTEXT.md for agent awareness.
+**Enforcement (advisory):**
+- **Spawn context advisory:** Hotspot info injected into SPAWN_CONTEXT.md for agent awareness.
+- **Daemon escalation:** Daemon routes feature-impl/systematic-debugging to architect when issue targets hotspot files.
 - **Completion gates (warning):** Warn on additions >50 lines to files >800 lines.
-- Decision: `.kb/decisions/2026-02-26-three-layer-hotspot-enforcement.md`
+- Decision: `.kb/decisions/2026-03-17-accretion-gates-advisory-not-blocking.md` (converted from blocking to advisory after 100% bypass rate over 2-week measurement)
 
 ## Architectural Constraints
 
@@ -230,7 +230,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 
 - Uses Cobra framework for CLI structure
 - Global `--server` flag for OpenCode URL
-- Subcommand groups: `account`, `daemon`, `harness`, `plan`, `control`, `hook`, `thread`, `audit`, `backlog`, `settings`, `kb`, `port`, `review`, `patterns`, `session`, `session-history`, `servers`, `learn`, `config`, `docs`, `precommit`, `model`, `logs`, `transcript`
+- Subcommand groups: `account`, `daemon`, `harness`, `plan`, `control`, `hook`, `thread`, `audit`, `backlog`, `settings`, `kb`, `port`, `review`, `patterns`, `session`, `session-history`, `servers`, `learn`, `config`, `docs`, `precommit`, `model`, `logs`, `transcript`, `serve`
 
 ### pkg/opencode/ (OpenCode Client)
 
@@ -281,6 +281,14 @@ orch-dashboard logs     # View service logs (overmind echo)
 - Measurement feedback loop
 - Work graph for daemon prioritization
 
+### pkg/orch/ (Spawn Pipeline & Completion)
+
+- Spawn pipeline orchestration: preflight checks, backend routing, mode selection
+- Completion pipeline logic (extracted from cmd/orch)
+- Governance checks and spawn gate integration
+- Backend abstraction: Claude CLI (tmux) vs OpenCode (headless)
+- Spawn type definitions, inference, and beads integration
+
 ### pkg/plan/ (Coordination Plans)
 
 - Plan types for multi-phase coordination
@@ -290,13 +298,15 @@ orch-dashboard logs     # View service logs (overmind echo)
 
 1. `orch spawn SKILL "task"` invokes spawn command
 2. Resolves model alias via `pkg/model.Resolve()`
-3. Runs spawn gates (`pkg/spawn/gates/`) — hotspot enforcement, duplication checks
-4. Creates workspace: `.orch/workspace/{name}/`
-5. Generates `SPAWN_CONTEXT.md` via `pkg/spawn`
-6. **Default (Claude CLI):** Spawns in tmux window via Claude CLI
-7. **Non-Anthropic models:** Creates headless session via OpenCode HTTP API
-8. **With --inline:** Runs in current terminal (blocking)
-9. Returns immediately (unless --inline)
+3. Runs spawn gates (`pkg/spawn/gates/`) — duplication checks, advisory hotspot warnings
+4. **With --dry-run:** Shows spawn plan and exits without executing
+5. Creates workspace: `.orch/workspace/{name}/`
+6. Generates `SPAWN_CONTEXT.md` via `pkg/spawn`
+7. **Default (Claude CLI):** Spawns in tmux window via Claude CLI
+8. **Non-Anthropic models:** Creates headless session via OpenCode HTTP API
+9. **With --inline:** Runs in current terminal (blocking)
+10. **With --explore:** Decomposes into parallel subproblems via exploration orchestrator (investigation/architect only)
+11. Returns immediately (unless --inline)
 
 ## Commands
 
@@ -383,6 +393,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `work <issue-id>` - Spawn from beads issue with skill inference
 - `daemon run` - Run autonomous processing (OODA cycle) in foreground
 - `daemon run --replace` - Stop existing daemon first, then start (graceful takeover)
+- `daemon run --group <name>` - Scope daemon to projects in a group (from groups.yaml)
 - `daemon status` - Show daemon status
 - `daemon stop` - Stop running daemon
 - `daemon restart` - Restart daemon
@@ -408,6 +419,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `harness init/check/lock/unlock/status/verify/snapshot` - Control plane immutability
 - `harness audit` - Audit gate invocations, fire rates, costs
 - `harness report` - Measurement report with falsification verdicts
+- `harness gate-effectiveness` - Analyze whether gate enforcement improves agent quality
 - `control lock/unlock/status/deny` - Lock control plane files (macOS chflags)
 - `audit select/list/install/uninstall` - Randomized completion audit
 - `precommit accretion` - Pre-commit accretion check
@@ -523,6 +535,12 @@ orch spawn --tmux investigation "explore X"
 # Run inline with TUI (blocking)
 orch spawn --inline investigation "explore X"
 
+# Dry run — show spawn plan without executing
+orch spawn --dry-run feature-impl "implement X" --issue proj-123
+
+# Exploration mode — parallel decomposition with judge feedback
+orch spawn --explore investigation "how does X work?"
+
 # Switch accounts when rate-limited
 orch account switch work
 
@@ -571,7 +589,7 @@ Agent lifecycle events are logged to `~/.orch/events.jsonl` for stats aggregatio
 | `verification.bypassed` | `--skip-*` flags | Verification gate bypassed |
 | `verification.auto_skipped` | skill exemption | Verification auto-skipped |
 | `spawn.gate_decision` | spawn gates | Gate evaluation result |
-| `spawn.hotspot_bypassed` | `--force-hotspot` | Hotspot gate bypassed |
+| `spawn.hotspot_bypassed` | spawn pipeline | Hotspot gate bypassed (legacy, gates now advisory) |
 | `spawn.triage_bypassed` | `--bypass-triage` | Triage gate bypassed |
 | `spawn.infrastructure_detected` | spawn pipeline | Infrastructure work detected |
 | `spawn.skill_inferred` | `orch work` | Skill inferred for issue |
