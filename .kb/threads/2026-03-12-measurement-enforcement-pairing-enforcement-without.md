@@ -1,9 +1,9 @@
 ---
 title: "Measurement-enforcement pairing — enforcement without measurement is theological, applicable beyond agent systems"
-status: open
+status: resolved
 created: 2026-03-12
-updated: 2026-03-12
-resolved_to: ""
+updated: 2026-03-17
+resolved_to: ".kb/guides/resilient-infrastructure-patterns.md"
 ---
 
 # Measurement-enforcement pairing — enforcement without measurement is theological, applicable beyond agent systems
@@ -15,3 +15,7 @@ Enforcement without measurement is theological — you believe the gate works bu
 SELF-AUDIT (2026-03-12): Applied the four-property diagnostic to orch-go's own enforcement infrastructure. See conversation for full analysis.
 
 REFRAME (2026-03-12): Accretion management as infrastructure. CI automated correctness checks — nobody runs compilation or tests manually anymore. Structural health (file growth, gate effectiveness, enforcement coverage, duplication) is still manual/ad-hoc/absent. The harness binary is automating structural health the way CI automated correctness. harness check = file size health. harness report = churn health. harness audit = gate health. Together: is the codebase structurally healthy, not just correct? The gap in CI today: build green, tests pass, linter clean — and the codebase is silently degrading because cross-cutting concerns got reimplemented 4 times. CI checks correctness at commit level. Nothing checks structural health at system level. That's what harness is becoming: CI for structural health.
+
+## 2026-03-17
+
+RESOLUTION (2026-03-17): Core claims validated empirically. Self-measurement report (orch-go-golo7) found 5/8 gates dormant, 65% dupdetect precision, 40%+ orphan rate — the system confronted its own enforcement gaps. Layer 4 intent gate measured at 77% precision on 100-pair OpenSCAD dataset, confirming the gate taxonomy transfers cross-domain. The insight graduated from observation to implemented infrastructure: harness audit (gate health), harness report (churn health), duplication.suppressed events (precision measurement), accretion.delta events (coverage measurement). Cross-domain portability thread further validated H1-H3. Resolving: no longer speculative — this is an architectural principle with measurement evidence across two domains.

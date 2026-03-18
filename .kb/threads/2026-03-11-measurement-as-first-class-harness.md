@@ -1,9 +1,9 @@
 ---
 title: "Measurement as first-class harness layer — enforcement without measurement is theological, enforcement with measurement is empirical"
-status: open
+status: resolved
 created: 2026-03-11
-updated: 2026-03-11
-resolved_to: ""
+updated: 2026-03-17
+resolved_to: ".kb/threads/2026-03-12-measurement-enforcement-pairing-enforcement-without.md"
 ---
 
 # Measurement as first-class harness layer — enforcement without measurement is theological, enforcement with measurement is empirical
