@@ -1,0 +1,48 @@
+verification:
+  type: dead-code-removal
+  issue: orch-go-hpdi0
+
+  preconditions:
+    - description: "GroundTruthAdjustedRate() exists in allocation.go"
+      verified: true
+    - description: "hasReworkData is always false (0 reworks across 817 completions)"
+      verified: true
+      evidence: "trust audit orch-go-nlvs7"
+
+  changes:
+    - file: pkg/daemon/allocation.go
+      action: removed
+      items:
+        - "GroundTruthWeight constant (0.3)"
+        - "GroundTruthAdjustedRate() function"
+        - "ground truth blending in lookupSuccessRate()"
+      simplified:
+        - "lookupSuccessRate() now calls BlendedSuccessRate(sl.SuccessRate, sampleSize) directly"
+
+    - file: pkg/daemon/allocation_test.go
+      action: removed
+      items:
+        - "TestScoreIssue_GroundTruthAdjustedRate"
+        - "TestGroundTruthAdjustedRate"
+        - "TestLookupSuccessRate_ZeroReworkNotTreatedAsGroundTruth"
+
+  verification_commands:
+    - command: "go test ./pkg/daemon/ -count=1"
+      expected: "PASS"
+      actual: "ok  github.com/dylan-conlin/orch-go/pkg/daemon  26.223s"
+
+    - command: "go build ./pkg/daemon/"
+      expected: "success (no output)"
+      actual: "success"
+
+    - command: "grep -r 'GroundTruthAdjustedRate\\|GroundTruthWeight' pkg/"
+      expected: "no matches"
+      actual: "no matches"
+
+  reproduction_verified: true
+  reproduction_notes: |
+    The "bug" is dead code presence. After removal:
+    - GroundTruthAdjustedRate() no longer exists
+    - GroundTruthWeight constant no longer exists
+    - lookupSuccessRate() uses BlendedSuccessRate() directly
+    - All remaining tests pass with identical behavior (since removed code was never exercised)
