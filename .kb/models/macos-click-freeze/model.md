@@ -1,7 +1,7 @@
 # Model: macOS Click Freeze
 
 **Domain:** macOS input subsystem — trackpad click events stop registering while cursor movement continues
-**Last Updated:** 2026-03-06
+**Last Updated:** 2026-03-18
 **Synthesized From:** Session 11 (systematic elimination), Session 14 (recurrence + 3 research probes + OpenCode fork resource audit), Session 15 (nuclear elimination — Karabiner uninstalled, 23+ services disabled), Session 16 (freeze recurrence — service state probe), Session 17 (stability observation + reactive capture tooling)
 
 ---
@@ -144,7 +144,7 @@ Not a single culprit but the combination of services creating enough IOKit/Windo
 5. **Phase 1 services** — mysql, redis, disk-cleanup, disk-threshold, tmuxinator
 6. **Karabiner** (15.9.0) — running, but already eliminated as sole cause
 
-**Next approach:** Reactive capture (`scripts/click-freeze-capture.sh`) to collect system snapshots during actual freeze occurrences for correlation analysis. Will bind to Karabiner hotkey after manual validation. Binary search (stop yabai → colima → Phase 1) remains fallback if correlation data is inconclusive.
+**Next approach (SUPERSEDED 2026-03-18):** ~~Reactive capture and binary search plans~~ — never executed. macOS upgraded to 26.3.1 (Tahoe), changing the investigation landscape. **Current recommendation:** Observe for freeze recurrence on macOS 26 before resuming any elimination testing. If no recurrence after 30+ days on macOS 26, consider archiving this model.
 
 ### Hypothesis 7: skhd CGEventTap pipeline corruption — ACTIVE (architectural analysis, not reproduction)
 
@@ -257,13 +257,22 @@ Move events (`kCGEventMouseMoved`) are high-frequency and processed on a fast pa
 
 ## Environment
 
-- **macOS:** 15.7.4 (Sequoia) — updated from 15.6.1 between Session 16 and 17
+- **macOS:** 26.3.1 (Tahoe, build 25D2128) — major upgrade from 15.7.4 Sequoia (between Session 17 and 2026-03-18 probe)
 - **Hardware:** Mac15,7 (M3 Pro)
-- **Karabiner:** 15.9.0 (reinstalled, upgraded from 14.13.0 — running, no freeze)
-- **yabai:** /opt/homebrew/bin/yabai (ENABLED, running — PID 1055)
-- **skhd:** /opt/homebrew/bin/skhd (DISABLED, not running)
+- **Karabiner:** Running, DriverKit active (ioreg confirmed PID 793)
+- **yabai:** /opt/homebrew/bin/yabai (ENABLED, running)
+- **skhd:** /opt/homebrew/bin/skhd (DISABLED, not running, service not loaded)
+- **sketchybar:** Running (re-enabled since Session 17)
+- **borders:** Running (re-enabled — was "disabled in batch, not individually tested")
+- **colima/Docker:** Not running (was manually started during Session 16 freeze period)
 - **NI HardwareAgent:** FULLY UNINSTALLED (was com.native-instruments.NativeAccess.Helper2)
 - **Ollama:** FULLY UNINSTALLED (was /Applications/Ollama.app)
+
+### macOS 26 Impact Note (2026-03-18)
+
+The upgrade from macOS 15 (Sequoia) to macOS 26 (Tahoe) is a major version jump that may change the entire WindowServer and input event pipeline. All hypotheses (H3, H6, H7) and architectural reasoning about CGEventTap behavior, IOKit HID, and WindowServer internals are **unverified on macOS 26**. The freeze status since the OS upgrade is unknown — it may be resolved by OS changes. Apple bug FB12113281 (CGEvent tap event loss, macOS 13.4+) status on macOS 26 is unknown.
+
+**Recommended:** Observe whether freeze recurs on macOS 26 before resuming investigation. If no recurrence in 30+ days, consider archiving this model.
 
 ---
 
@@ -290,6 +299,8 @@ Services disabled in Session 15:
 
 **2026-02-14 (Session 17):** **Stability observation.** Same suspect set from Feb 13 freeze (yabai, colima/Docker, emacs, Phase 1 services) ran stable for 5+ hours without a freeze — *plus* sketchybar (newly re-enabled). macOS updated to 15.7.4 (from 15.6.1). This weakens deterministic H6 — if aggregate contention were sufficient, the same stack should freeze reliably. Freeze frequency has decreased from every ~15 min (Sessions 11-14) to rare/intermittent. **Strategy shift:** built reactive capture script (`scripts/click-freeze-capture.sh`) to snapshot full system state during actual freeze occurrences for correlation analysis. Captures 10 sections: processes, launchctl state, memory, IOKit HID, WindowServer, Accessibility API, Docker/colima, uptime. Will bind to Karabiner hotkey after manual validation. This allows continued app usage while collecting diagnostic data.
 
+**2026-03-18 (Knowledge decay probe):** **33-day verification.** Major finding: macOS upgraded from 15.7.4 (Sequoia) to 26.3.1 (Tahoe) — entire OS generation changed. Service states mostly match model (yabai running, skhd disabled, Karabiner active, NI/Ollama gone). borders re-enabled (was "disabled in batch"). colima/Docker not running. **Reactive capture script was never used** — zero captures collected, Karabiner hotkey binding never configured. Binary search plan from Session 16 was never executed. All hypotheses and architectural analysis are unverified on macOS 26. **Freeze recurrence status unknown** — requires user input. Investigation is effectively paused pending macOS 26 observation.
+
 ---
 
 ## References
@@ -297,6 +308,9 @@ Services disabled in Session 15:
 **Investigations:**
 - Session 11 handoff in `.orch/HANDOFF.md` — detailed elimination record
 - `~/Documents/personal/opencode/.kb/investigations/2026-02-11-inv-opencode-fork-resource-audit-investigate.md` — OpenCode fork resource audit (eliminated H4, found optimization opportunities)
+
+**Probes:**
+- `.kb/models/macos-click-freeze/probes/2026-03-18-probe-knowledge-decay-33d-verification.md` — UPDATES: macOS 15.7.4→26.3.1 (major OS change); borders re-enabled; capture script never used; all hypotheses unverified on macOS 26; investigation effectively paused
 
 **Probes (merged 2026-03-06):**
 - `.kb/models/macos-click-freeze/probes/2026-02-13-service-state-freeze-recurrence.md` — CONTRADICTS: corrected Phase 2 service states (skhd/yabai inverted); WEAKENS H5 (NI uninstalled, freeze recurred); ELIMINATES H4 (78% memory free, zero swap during freeze); STRENGTHENS H6 (aggregate theory)
@@ -306,7 +320,7 @@ Services disabled in Session 15:
 - `.kb/models/macos-click-freeze/probes/2026-02-11-yabai-github-issues-search.md` — CONFIRMS: no click freeze reports in yabai repo; EXTENDS with WindowServer crash via scripting additions + Sidecar (#2573) and window drag freeze (#2715) as distinct related symptoms
 
 **Tooling:**
-- `scripts/click-freeze-capture.sh` — Reactive capture script (run during freeze, before HUP). Outputs to `~/.orch/click-freeze-captures/capture-YYYYMMDD-HHMMSS.log`. Next: bind to Karabiner hotkey in dotfiles.
+- `scripts/click-freeze-capture.sh` — Reactive capture script (run during freeze, before HUP). Outputs to `~/.orch/click-freeze-captures/capture-YYYYMMDD-HHMMSS.log`. **Never used** — zero captures collected, Karabiner hotkey binding never configured (as of 2026-03-18).
 
 **Issues:**
 - `orch-go-uvtgi` [P2] — Click freeze tracking issue
