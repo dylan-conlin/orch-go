@@ -14,7 +14,7 @@ The system for providing agents (Orchestrators and Workers) with the necessary m
 
 ## How This Works
 
-The system uses a **Hybrid Injection Model** with two primary paths:
+The system uses a **Hybrid Injection Model** with multiple paths, all using **global retrieval** (query-based search or role-based filtering). The system currently lacks **scoped auto-surfacing** — the ability to tie knowledge to specific resources (files, packages, skills) and auto-inject it when those resources are accessed.
 
 ### 1. SessionStart Hooks (Interactive Sessions)
 
@@ -105,16 +105,39 @@ These were active failure modes when the model was created (Jan 2026). All have 
 
 ---
 
+## Retrieval Primitives
+
+The model currently implements two retrieval primitives:
+
+| Primitive | Mechanism | Precision | Best For |
+|-----------|-----------|-----------|----------|
+| **Global search** | `kb context` query → keyword match → inject into SPAWN_CONTEXT.md | Medium (false positives from generic terms) | Cross-cutting knowledge (decisions, constraints, principles) |
+| **Role filtering** | `CLAUDE_CONTEXT` env var → hook skip/include | High (exact role match) | Skill/guidance injection per agent type |
+
+A third primitive exists in other systems (e.g., Context Hub) but is **not implemented** in orch-go:
+
+| Primitive | Mechanism | Precision | Best For |
+|-----------|-----------|-----------|----------|
+| **Scoped auto-surfacing** | Annotation tied to resource ID → auto-injected at read time | High (exact scope match) | Point-specific learnings about files, packages, skills |
+
+**Gap analysis:** orch-go's gap detection system (`pkg/spawn/gap.go`) identifies missing context and the learning system (`pkg/spawn/learning.go`) tracks recurring gaps, but resolutions flow into the global `kb quick` pool rather than being scoped to the resource where the gap occurred. This creates accumulation pressure (50+ entries needing triage) and precision loss (keyword matching for surfacing).
+
+**See probe:** [Scoped Annotation Loop Pattern](probes/2026-03-18-probe-scoped-annotation-loop-pattern.md) for detailed comparison with Context Hub's approach.
+
+---
+
 ## Open Questions
 
 1. **Context Budget:** What is the total token cost of SPAWN_CONTEXT.md per spawn? Should there be a budget ceiling?
 2. **Hook Consolidation:** Should the two SessionStart hooks be merged into a single `orch session-start --hook` command?
+3. **Scoped Annotations:** Would a lightweight scoped annotation system (per-file, per-package, per-skill) complement the existing global kb context injection? The infrastructure exists (SPAWN_CONTEXT.md generation, completion pipeline), but the scoping mechanism does not.
 
 ---
 
 ## Probes
 
 - 2026-03-18: [Context Injection Architecture — 2-Month Drift Audit](probes/2026-03-18-probe-context-injection-architecture-audit.md) — Core principles (CLAUDE_CONTEXT filtering, SPAWN_CONTEXT authority) confirmed; implementation details (hook files, OpenCode plugins, failure modes) all stale and updated.
+- 2026-03-18: [Scoped Annotation Loop Pattern — Context Hub vs kb quick](probes/2026-03-18-probe-scoped-annotation-loop-pattern.md) — Identified missing retrieval primitive: scoped auto-surfacing. All current injection paths use global retrieval. Context Hub demonstrates scoped annotations tied to resource IDs with zero-effort surfacing at read time. Extends model with "Retrieval Primitives" taxonomy.
 
 ---
 
@@ -129,3 +152,9 @@ These were active failure modes when the model was created (Jan 2026). All have 
 - `pkg/spawn/worker_template.go` — SPAWN_CONTEXT.md template structure
 - `pkg/spawn/kbcontext.go` — KB context injection into spawn context
 - `pkg/spawn/skill_processing.go` — Skill content embedding
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-23-inv-implement-context-injection-gathering-orch.md
+- .kb/investigations/archived/2026-01-17-inv-design-agent-self-health-context.md
+- .kb/investigations/archived/2026-01-04-design-meta-orchestrator-architecture-spawnable-orchestrator.md
