@@ -2,12 +2,12 @@
 
 **Status:** Active
 **Created:** 2026-03-17
-**Last Updated:** 2026-03-17
+**Last Updated:** 2026-03-18
 **Evidence Base:** 34 investigations (all 2026-03-17), covering cmd/orch/, pkg/daemon/, pkg/spawn/, pkg/kbgate/, pkg/kbmetrics/, pkg/account/, pkg/verify/, pkg/dupdetect/, pkg/thread/, pkg/daemonconfig/, experiments/
 
 ## Core Claim
 
-The hotspot acceleration detector produces a high false-positive rate (~91%, 31/34 investigations) because it measures **gross line additions within a 30-day window** without distinguishing three fundamentally different growth patterns: file birth, extraction artifacts, and genuine accretion.
+The hotspot acceleration detector historically produced a ~91% false-positive rate (31/34 investigations, 2026-03-17) when it measured gross line additions. **Three of four identified deficiencies have since been fixed:** the detector now uses net counting (`git diff --numstat`), path exclusions (`isAccelerationExcluded()`), and a minimum file size threshold (`minAccelerationSize = 500`). The remaining gap is extraction-source detection. The false positive taxonomy below documents the original investigation; current false positive rates are expected to be significantly lower.
 
 ## False Positive Taxonomy
 
@@ -71,54 +71,64 @@ Across 34 investigated files, false positives fall into four distinct categories
 
 ## Genuine Hotspots Found
 
-Of 34 investigations, only **2 identified actionable findings**:
+Of 34 investigations, **3 identified actionable findings** (2 now completed):
 
-### 1. `pkg/daemon/digest.go` — Preventive Extraction Warranted (P3)
+### 1. `pkg/daemon/digest.go` — Preventive Extraction Warranted (P3) — OPEN
 
-- 775 lines, burst-created, but contains 4 separable responsibilities
+- 775 lines (confirmed 2026-03-18), burst-created, but contains 4 separable responsibilities
 - Combined with `digest_gate.go` (262 lines), daemon holds 2,024 lines of digest code
 - `serve_digest.go` imports `daemon` for pure data-layer operations (conceptual coupling)
 - **Recommendation:** Extract to `pkg/digest/` package (~655 lines move out, ~120 lines stay)
+- **Status:** `pkg/digest/` does not exist. Recommendation not yet acted on.
 
-### 2. `pkg/account/account_test.go` — Test File Split Executed
+### 2. `pkg/account/account_test.go` — Test File Split — COMPLETED
 
-- 1,452 lines approaching 1,500-line critical threshold
-- ~816 lines of capacity/auto-switch tests belonged with `capacity.go`
-- **Action taken:** Extracted to `capacity_test.go`, reducing to ~636 lines
+- Was 1,452 lines approaching 1,500-line critical threshold
+- **Action taken:** Extracted capacity tests to `capacity_test.go` (832 lines), reducing `account_test.go` to 634 lines
+- **Verified 2026-03-18:** Both files exist at expected sizes
 
-### 3. `pkg/daemon/extraction_test.go` — Test File Split Executed
+### 3. `pkg/daemon/extraction_test.go` — Test File Split — COMPLETED
 
-- 739 lines with clear seam between unit tests and integration tests
+- Was 739 lines with clear seam between unit tests and integration tests
 - Duplicate mock eliminated
 - **Action taken:** Split to `extraction_integration_test.go` (237 lines), reduced to 500 lines
+- **Verified 2026-03-18:** Both files exist at expected sizes
 
 ## Detector Deficiencies
 
-### Deficiency 1: No Birth Churn Filtering
+The `HotspotAccelerationDetector` is at `pkg/daemon/trigger_detectors_phase2.go:166-201`, with supporting functions at lines 391-499.
 
-The `HotspotAccelerationDetector` in `pkg/daemon/trigger_detectors_phase2.go:314-347` counts all line additions within the 30-day window. Files created within the window have their entire initial content counted as "growth."
+### Deficiency 1: No Birth Churn Filtering — PARTIALLY RESOLVED
 
-**Proposed fix:** When a file was created within the measurement window, subtract the initial commit's insertions from the churn calculation. This would eliminate 65% of false positives.
+~~The detector counts all line additions within the 30-day window.~~
 
-### Deficiency 2: No Path Exclusions
+**Current state (2026-03-18):** Two mitigations now reduce birth-churn false positives:
+1. **Net counting** (`git diff --numstat`): Birth of a file still shows full size as growth, but extraction artifacts with corresponding source deletions show reduced net impact.
+2. **Minimum size threshold** (`minAccelerationSize = 500`, line 440): Files under 500 lines are excluded entirely. This alone would have eliminated 20 of the 22 original birth-churn false positives.
 
-The detector filters only by `.go` suffix. It does not use `shouldCountFile()`, `skipBloatDirs`, or `containsSkippedDir()` from the CLI hotspot tool (`cmd/orch/hotspot_analysis.go`).
+**Remaining gap:** Files born at >500 lines within the window still register their full size as growth (e.g., a new 600-line file shows net +600). Explicit birth-date detection would eliminate this edge case.
 
-**Impact:** `experiments/` alone generates 79 false positives (116,931 lines of static experiment artifacts). Other unfiltered paths: `.orch/`, `.beads/`, `.claude/`, `node_modules`.
+### Deficiency 2: No Path Exclusions — RESOLVED
 
-**Proposed fix:** Reuse or replicate the exclusion patterns from `cmd/orch/hotspot_analysis.go:120-161` in the daemon detector.
+~~The detector filters only by `.go` suffix.~~
 
-### Deficiency 3: Gross vs Net Counting
+**Fixed (2026-03-17):** `isAccelerationExcluded()` (lines 411-435) now implements comprehensive exclusions via `skipAccelerationDirs` (lines 391-407): `.git`, `node_modules`, `vendor`, `.svelte-kit`, `dist`, `build`, `__pycache__`, `.next`, `.nuxt`, `.output`, `.opencode`, `.orch`, `.beads`, `.claude`, `experiments`. Also excludes `_test.go` files and `/generated/` paths.
 
-The metric sums raw additions across commits, ignoring deletions. Files that undergo churn (add then remove) show inflated metrics.
+Note: Uses its own parallel implementation rather than reusing `shouldCountFile()` from `cmd/orch/hotspot_analysis.go`, but the functional coverage is equivalent.
 
-**Proposed fix:** Use net growth (additions minus deletions) instead of gross additions. This would eliminate the design-churn category and reduce noise from extraction artifacts.
+### Deficiency 3: Gross vs Net Counting — RESOLVED
 
-### Deficiency 4: No Extraction-Source Detection
+~~The metric sums raw additions across commits, ignoring deletions.~~
+
+**Fixed (2026-03-17):** Now uses `git diff --numstat` between HEAD and a 30-day-old baseline commit (lines 462-469). Computes `added - deleted` per file. The `FastGrowingFile.NetGrowth` field reflects true net growth. Design-churn and extraction-artifact categories are largely eliminated by this change.
+
+### Deficiency 4: No Extraction-Source Detection — STILL OPEN
 
 When a file is born from extraction, the source file typically shows a corresponding large deletion in the same commit. The detector does not cross-reference addition/deletion pairs.
 
 **Proposed fix:** If a file was created in a commit that also deleted lines from another file in the same package, flag as "extraction artifact" rather than "growth."
+
+**Practical impact reduced:** With net counting, extraction artifacts where the source file shrank correspondingly now show lower net growth in both files, reducing (but not eliminating) false positives from this category.
 
 ## Decision Framework
 
@@ -160,10 +170,14 @@ Files that are healthy now but could become hotspots:
 | File | Current Lines | Growth Vector | Threshold Trigger |
 |---|---|---|---|
 | `cmd/orch/daemon_loop.go` | 771 | `daemonSetup()` grows with each new subsystem | Extract `daemon_wiring.go` if `daemonSetup()` exceeds 250 lines |
-| `cmd/orch/stats_aggregation.go` | 959 | Each new event type adds ~15-30 lines | Extract event processors if file exceeds 1200 lines |
+| `cmd/orch/stats_aggregation.go` | 964 | Each new event type adds ~15-30 lines | Extract event processors if file exceeds 1200 lines |
 | `pkg/daemon/digest.go` | 775 | Near 800-line advisory threshold | Extract to `pkg/digest/` (architect review recommended) |
 
 ## Evidence
+
+### Probes
+
+- 2026-03-18: Knowledge Decay Verification — 3 of 4 deficiencies resolved in code. Model updated to reflect current detector capabilities. Watchlist sizes confirmed current. Actionable findings 2 and 3 completed; finding 1 (digest.go extraction) still open.
 
 ### Investigations (2026-03-17)
 
