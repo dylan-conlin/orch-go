@@ -1,0 +1,22 @@
+verification:
+  type: investigation
+  outcome: false_positive
+
+  question: "Is pkg/daemon/pidlock.go a genuine accretion hotspot requiring extraction?"
+  answer: "No — false positive. File born within 30-day window, entire existence counted as growth."
+
+  evidence:
+    - command: "git log --format='%h %as' --diff-filter=A -- pkg/daemon/pidlock.go"
+      expected: "File created 2026-02-24 (within 30-day measurement window)"
+      actual: "a46656c8f 2026-02-24"
+    - command: "wc -l pkg/daemon/pidlock.go"
+      expected: "Under 800 lines (advisory threshold)"
+      actual: "183 lines"
+    - command: "git log --numstat -- pkg/daemon/pidlock.go"
+      expected: "Raw additions sum to ~231 (matching hotspot metric)"
+      actual: "126+6+78+21=231 insertions, 48 deletions, net 183"
+
+  manual_verification: none
+
+  decision: no_action_required
+  rationale: "183-line single-responsibility module, well below thresholds, clean API used by 7 consumers"
