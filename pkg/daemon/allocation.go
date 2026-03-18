@@ -26,10 +26,6 @@ const (
 	// relative to the neutral default (0.5). Priority still dominates.
 	SuccessRateWeight = 0.4
 
-	// GroundTruthWeight controls how much ground-truth (rework rate) influences the
-	// adjusted success rate. At 0.3, the adjusted rate is 70% self-reported + 30% ground truth.
-	// The lower weight reflects that rework data is sparser than completion data.
-	GroundTruthWeight = 0.3
 )
 
 // IssueScore holds the computed allocation score for a candidate issue.
@@ -106,22 +102,8 @@ func BlendedSuccessRate(observed float64, sampleSize int) float64 {
 	return w*observed + (1-w)*DefaultSuccessRate
 }
 
-// GroundTruthAdjustedRate blends self-reported success rate with ground-truth signal
-// (1 - reworkRate) at 70/30 weighting. When no rework data exists (hasReworkData=false),
-// returns the self-reported rate unchanged.
-//
-// Formula: adjustedRate = (1 - GroundTruthWeight) * selfReported + GroundTruthWeight * (1 - reworkRate)
-func GroundTruthAdjustedRate(selfReported, reworkRate float64, hasReworkData bool) float64 {
-	if !hasReworkData {
-		return selfReported
-	}
-	groundTruthRate := 1.0 - reworkRate
-	return (1-GroundTruthWeight)*selfReported + GroundTruthWeight*groundTruthRate
-}
-
-// lookupSuccessRate returns the ground-truth-adjusted success rate for a skill.
-// Blends self-reported success rate with rework-based ground truth at 70/30,
-// then blends with the default rate based on sample size.
+// lookupSuccessRate returns the blended success rate for a skill.
+// Blends observed success rate with the default rate based on sample size.
 func lookupSuccessRate(skill string, learning *events.LearningStore) float64 {
 	if learning == nil {
 		return DefaultSuccessRate
@@ -133,15 +115,7 @@ func lookupSuccessRate(skill string, learning *events.LearningStore) float64 {
 	}
 
 	sampleSize := sl.TotalCompletions + sl.AbandonedCount
-
-	// Start with self-reported rate, blend with ground truth if available.
-	// Require actual rework events — TotalCompletions alone doesn't mean the
-	// rework channel was exercised. Without reworks, reworkRate=0 would be
-	// misinterpreted as "everything correct" rather than "no data".
-	hasReworkData := sl.ReworkCount > 0
-	adjustedRate := GroundTruthAdjustedRate(sl.SuccessRate, sl.ReworkRate, hasReworkData)
-
-	return BlendedSuccessRate(adjustedRate, sampleSize)
+	return BlendedSuccessRate(sl.SuccessRate, sampleSize)
 }
 
 // MinCompletionsForChannelHealthCheck is the minimum number of completions

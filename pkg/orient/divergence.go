@@ -22,8 +22,7 @@ type DivergenceInput struct {
 	SelfReportedSuccess float64 // success rate from events.jsonl (0.0-1.0)
 
 	// Ground-truth metrics (external)
-	MergeRate      float64 // merged commits / completions (0.0-1.0)
-	ReworkRate     float64 // rework count / completions (0.0-1.0)
+	ReworkRate float64 // rework count / completions (0.0-1.0)
 	OrphanRate     float64 // investigation orphan percentage (0-100)
 	StaleDecisions int     // count of stale decisions from reflect
 	TotalDecisions int     // total decisions for stale rate computation
@@ -44,20 +43,6 @@ type DivergenceAlert struct {
 // Fails open: missing data (zero values) produces no alerts, not false positives.
 func ComputeDivergence(input DivergenceInput) []DivergenceAlert {
 	var alerts []DivergenceAlert
-
-	// Merge gap: completion rate vs merge rate
-	// Only meaningful when there are completions (both rates > 0)
-	if input.CompletionRate > 0 && input.MergeRate > 0 {
-		gap := input.CompletionRate - input.MergeRate
-		if gap >= DivergenceThreshold {
-			alerts = append(alerts, DivergenceAlert{
-				Type:    "merge_gap",
-				Message: fmt.Sprintf("%d%% completion rate but %d%% merge rate (%d%% gap)", pct(input.CompletionRate), pct(input.MergeRate), pct(gap)),
-				Gap:     gap,
-				Level:   alertLevel(gap),
-			})
-		}
-	}
 
 	// Rework gap: self-reported success vs (1 - rework rate)
 	// Only meaningful when both signals are present

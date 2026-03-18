@@ -15,9 +15,6 @@ var (
 	kbAuditProvenanceVerbose bool
 	kbAuditProvenanceModel   string
 
-	kbAuditDecisionsJSON    bool
-	kbAuditDecisionsVerbose bool
-
 	kbAuditModelsJSON bool
 )
 
@@ -105,47 +102,6 @@ func runKBAuditProvenance() error {
 	return nil
 }
 
-var kbAuditDecisionsCmd = &cobra.Command{
-	Use:   "decisions",
-	Short: "Check accepted decisions for implementation evidence",
-	Long: `Audit decision files for implementation divergence.
-
-For each Accepted/Active decision in .kb/decisions/ and .kb/global/decisions/:
-  1. Extracts file references (code, guides, investigations)
-  2. Checks whether referenced files still exist
-  3. Flags decisions where implementation has drifted
-
-Examples:
-  orch kb audit decisions                # Summary of divergences
-  orch kb audit decisions --verbose      # Show all references (existing + missing)
-  orch kb audit decisions --json         # Machine-readable output`,
-	SilenceUsage: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return runKBAuditDecisions()
-	},
-}
-
-func runKBAuditDecisions() error {
-	projectDir, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
-	report, err := kbmetrics.AuditDecisions(projectDir)
-	if err != nil {
-		return fmt.Errorf("audit decisions: %w", err)
-	}
-
-	if kbAuditDecisionsJSON {
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(report)
-	}
-
-	fmt.Print(kbmetrics.FormatDecisionAuditText(report, kbAuditDecisionsVerbose))
-	return nil
-}
-
 var kbAuditModelsCmd = &cobra.Command{
 	Use:   "models",
 	Short: "Flag oversized models (>30KB) that need synthesis or pruning",
@@ -189,11 +145,8 @@ func init() {
 	kbAuditProvenanceCmd.Flags().BoolVar(&kbAuditProvenanceJSON, "json", false, "Output as JSON")
 	kbAuditProvenanceCmd.Flags().BoolVar(&kbAuditProvenanceVerbose, "verbose", false, "Show individual unannotated claims")
 	kbAuditProvenanceCmd.Flags().StringVar(&kbAuditProvenanceModel, "model", "", "Audit a specific model by name")
-	kbAuditDecisionsCmd.Flags().BoolVar(&kbAuditDecisionsJSON, "json", false, "Output as JSON")
-	kbAuditDecisionsCmd.Flags().BoolVar(&kbAuditDecisionsVerbose, "verbose", false, "Show all file references including existing ones")
 	kbAuditModelsCmd.Flags().BoolVar(&kbAuditModelsJSON, "json", false, "Output as JSON")
 	kbAuditCmd.AddCommand(kbAuditProvenanceCmd)
-	kbAuditCmd.AddCommand(kbAuditDecisionsCmd)
 	kbAuditCmd.AddCommand(kbAuditModelsCmd)
 	kbCmd.AddCommand(kbAuditCmd)
 }

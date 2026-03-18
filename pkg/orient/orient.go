@@ -22,9 +22,7 @@ type Throughput struct {
 	InProgress     int `json:"in_progress"`
 	AvgDurationMin int `json:"avg_duration_min"`
 
-	// Ground-truth metrics from git (Phase 1)
-	MergedCount     int     `json:"merged_count,omitempty"`
-	MergeRate       float64 `json:"merge_rate,omitempty"`
+	// Ground-truth metrics from git
 	NetLinesAdded   int     `json:"net_lines_added,omitempty"`
 	NetLinesRemoved int     `json:"net_lines_removed,omitempty"`
 }
@@ -249,15 +247,11 @@ func formatThroughput(b *strings.Builder, tp *Throughput) {
 	} else {
 		b.WriteString(fmt.Sprintf("Last %dd:\n", tp.Days))
 	}
-	// Ground-truth metrics first — these reflect actual value delivered
-	if tp.MergedCount > 0 {
-		b.WriteString(fmt.Sprintf("   Merged: %d (%d%%) | net lines: %+d\n",
-			tp.MergedCount,
-			int(tp.MergeRate*100),
-			tp.NetLinesAdded-tp.NetLinesRemoved))
-	}
 	b.WriteString(fmt.Sprintf("   Completions: %d | Abandonments: %d | In-progress: %d\n",
 		tp.Completions, tp.Abandonments, tp.InProgress))
+	if tp.NetLinesAdded > 0 || tp.NetLinesRemoved > 0 {
+		b.WriteString(fmt.Sprintf("   Net lines: %+d\n", tp.NetLinesAdded-tp.NetLinesRemoved))
+	}
 	if tp.AvgDurationMin > 0 {
 		b.WriteString(fmt.Sprintf("   Avg duration: %d min\n", tp.AvgDurationMin))
 	}

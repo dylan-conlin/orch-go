@@ -381,7 +381,6 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `kb findings` - List findings
 - `kb create model <name>` - Create a new KB model
 - `kb audit provenance` - Scan evidence quality annotations
-- `kb audit decisions` - Check accepted decisions for implementation evidence/divergence
 - `kb audit models` - Flag oversized models (>30KB) needing synthesis/pruning
 - `kb autolink` - Auto-link orphaned investigations to models/threads/decisions
 - `kb autolink --apply` - Apply auto-links (dry-run by default)

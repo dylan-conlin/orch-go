@@ -695,35 +695,11 @@ func queryPlanBeadsStatuses(plans []orient.PlanSummary) map[string]string {
 	return statusMap
 }
 
-// enrichThroughputWithGitGroundTruth populates merge rate and net code impact
-// by querying git log for commits with beads IDs in the throughput window.
+// enrichThroughputWithGitGroundTruth populates net code impact
+// by querying git numstat for all commits in the throughput window.
 func enrichThroughputWithGitGroundTruth(tp *orient.Throughput) {
 	sinceArg := fmt.Sprintf("--since=%dd", tp.Days)
-	projectPrefix := detectProjectPrefix()
-	if projectPrefix == "" {
-		return
-	}
 
-	// Get commit subjects to extract beads IDs
-	logCmd := exec.Command("git", "log", "--format=%h %s", sinceArg, "--no-merges")
-	logOutput, err := logCmd.Output()
-	if err != nil {
-		return
-	}
-
-	commits := orient.ParseGitLogForGroundTruth(string(logOutput), projectPrefix)
-	uniqueIDs := orient.UniqueBeadsIDs(commits)
-
-	tp.MergedCount = len(uniqueIDs)
-	if tp.Completions > 0 {
-		rate := float64(tp.MergedCount) / float64(tp.Completions)
-		if rate > 1.0 {
-			rate = 1.0
-		}
-		tp.MergeRate = rate
-	}
-
-	// Get numstat for net code impact (all commits in window)
 	numstatCmd := exec.Command("git", "log", "--format=", "--numstat", sinceArg, "--no-merges")
 	numstatOutput, err := numstatCmd.Output()
 	if err != nil {
@@ -731,16 +707,6 @@ func enrichThroughputWithGitGroundTruth(tp *orient.Throughput) {
 	}
 
 	tp.NetLinesAdded, tp.NetLinesRemoved = orient.ParseGitNumstat(string(numstatOutput))
-}
-
-// detectProjectPrefix returns the beads project prefix (e.g., "orch-go")
-// by looking at the directory name of the current project.
-func detectProjectPrefix() string {
-	dir, err := os.Getwd()
-	if err != nil {
-		return ""
-	}
-	return filepath.Base(dir)
 }
 
 // parseInProgressCount counts issue lines from `bd list --status=in_progress` output.
@@ -773,9 +739,6 @@ func computeDivergenceAlerts(data *orient.OrientationData) []orient.DivergenceAl
 	if tp.Spawns > 0 {
 		input.CompletionRate = float64(tp.Completions) / float64(tp.Spawns)
 	}
-
-	// Merge rate from git ground truth (Phase 1)
-	input.MergeRate = tp.MergeRate
 
 	// Orphan rate and stale decisions from reflect summary
 	if data.ReflectSummary != nil {

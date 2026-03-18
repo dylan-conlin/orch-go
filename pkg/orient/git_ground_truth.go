@@ -67,18 +67,6 @@ func UniqueBeadsIDs(commits []GitCommitInfo) []string {
 	return unique
 }
 
-// computeMergeRateValue computes merge rate, capped at 1.0.
-func computeMergeRateValue(mergedBeadsIDs, completionsInWindow int) float64 {
-	if completionsInWindow == 0 {
-		return 0.0
-	}
-	rate := float64(mergedBeadsIDs) / float64(completionsInWindow)
-	if rate > 1.0 {
-		return 1.0
-	}
-	return rate
-}
-
 // ParseGitNumstat parses `git log --numstat` output and returns total lines added and deleted.
 // Each line is: <added>\t<deleted>\t<file>
 // Binary files show as "-\t-\t<file>" and are skipped.
