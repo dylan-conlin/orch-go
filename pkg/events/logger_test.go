@@ -842,6 +842,117 @@ func TestLogAgentCompleted_NoPipelineTiming(t *testing.T) {
 	}
 }
 
+// Test LogAgentCompleted includes verification_level when set
+func TestLogAgentCompleted_VerificationLevel(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogAgentCompleted(AgentCompletedData{
+		BeadsID:           "orch-go-test-vlevel",
+		Workspace:         "og-feat-test",
+		Reason:            "Completed",
+		Outcome:           "success",
+		Skill:             "feature-impl",
+		VerificationLevel: "V2",
+	})
+	if err != nil {
+		t.Fatalf("LogAgentCompleted() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	raw := string(data)
+	if !strings.Contains(raw, `"verification_level":"V2"`) {
+		t.Errorf("Expected verification_level:V2 in event data, got: %s", raw)
+	}
+}
+
+// Test LogAgentCompleted omits verification_level when empty
+func TestLogAgentCompleted_NoVerificationLevel(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogAgentCompleted(AgentCompletedData{
+		BeadsID: "orch-go-test-no-vlevel",
+		Reason:  "Completed",
+		Outcome: "success",
+	})
+	if err != nil {
+		t.Fatalf("LogAgentCompleted() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	raw := string(data)
+	if strings.Contains(raw, "verification_level") {
+		t.Error("Expected verification_level to be omitted when empty")
+	}
+}
+
+// Test LogVerificationFailed includes verification_level
+func TestLogVerificationFailed_VerificationLevel(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogVerificationFailed(VerificationFailedData{
+		BeadsID:           "orch-go-vfail",
+		GatesFailed:       []string{"test_evidence"},
+		Errors:            []string{"no test evidence"},
+		Skill:             "feature-impl",
+		VerificationLevel: "V2",
+	})
+	if err != nil {
+		t.Fatalf("LogVerificationFailed() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	raw := string(data)
+	if !strings.Contains(raw, `"verification_level":"V2"`) {
+		t.Errorf("Expected verification_level:V2 in event data, got: %s", raw)
+	}
+}
+
+// Test LogVerificationBypassed includes verification_level
+func TestLogVerificationBypassed_VerificationLevel(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogVerificationBypassed(VerificationBypassedData{
+		BeadsID:           "orch-go-vbypass",
+		Gate:              "test_evidence",
+		Reason:            "no tests needed",
+		Skill:             "investigation",
+		VerificationLevel: "V1",
+	})
+	if err != nil {
+		t.Fatalf("LogVerificationBypassed() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	raw := string(data)
+	if !strings.Contains(raw, `"verification_level":"V1"`) {
+		t.Errorf("Expected verification_level:V1 in event data, got: %s", raw)
+	}
+}
+
 func TestLogArchitectEscalation_Escalated(t *testing.T) {
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "events.jsonl")

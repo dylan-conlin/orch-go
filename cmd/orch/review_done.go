@@ -303,11 +303,14 @@ func runReviewDone(project string) error {
 			VerificationPassed: true,
 			Skill:              skill,
 		}
-		// Compute duration from workspace manifest
+		// Compute duration and verification level from workspace manifest
 		if c.WorkspacePath != "" {
 			manifest := spawn.ReadAgentManifestWithFallback(c.WorkspacePath)
 			if spawnTime := manifest.ParseSpawnTime(); !spawnTime.IsZero() {
 				completedData.DurationSeconds = int(time.Since(spawnTime).Seconds())
+			}
+			if manifest.VerifyLevel != "" {
+				completedData.VerificationLevel = manifest.VerifyLevel
 			}
 		}
 		if err := logger.LogAgentCompleted(completedData); err != nil {
@@ -347,11 +350,14 @@ func runReviewDone(project string) error {
 			VerificationPassed: true,
 			Skill:              archiveSkill,
 		}
-		// Compute duration from workspace manifest
+		// Compute duration and verification level from workspace manifest
 		if c.WorkspacePath != "" {
 			manifest := spawn.ReadAgentManifestWithFallback(c.WorkspacePath)
 			if spawnTime := manifest.ParseSpawnTime(); !spawnTime.IsZero() {
 				completedData.DurationSeconds = int(time.Since(spawnTime).Seconds())
+			}
+			if manifest.VerifyLevel != "" {
+				completedData.VerificationLevel = manifest.VerifyLevel
 			}
 		}
 		if err := logger.LogAgentCompleted(completedData); err != nil {

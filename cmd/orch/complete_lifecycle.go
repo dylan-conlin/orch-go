@@ -296,6 +296,7 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 		Orchestrator:       target.IsOrchestratorSession,
 		VerificationPassed: outcome.Passed,
 		Skill:              outcome.SkillName,
+		VerificationLevel:  outcome.Result.VerifyLevel,
 		DurationSeconds:    durationSecs,
 		TokensInput:        tokensIn,
 		TokensOutput:       tokensOut,

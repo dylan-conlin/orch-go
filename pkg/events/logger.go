@@ -209,11 +209,12 @@ func (l *Logger) LogAutoCompletedWithEscalation(beadsID, closeReason, escalation
 
 // VerificationFailedData contains the data for a verification.failed event.
 type VerificationFailedData struct {
-	BeadsID     string   `json:"beads_id,omitempty"`
-	Workspace   string   `json:"workspace,omitempty"`
-	GatesFailed []string `json:"gates_failed"` // Which gates failed (e.g., "test_evidence", "git_diff")
-	Errors      []string `json:"errors"`       // Human-readable error messages
-	Skill       string   `json:"skill,omitempty"`
+	BeadsID           string   `json:"beads_id,omitempty"`
+	Workspace         string   `json:"workspace,omitempty"`
+	GatesFailed       []string `json:"gates_failed"` // Which gates failed (e.g., "test_evidence", "git_diff")
+	Errors            []string `json:"errors"`       // Human-readable error messages
+	Skill             string   `json:"skill,omitempty"`
+	VerificationLevel string   `json:"verification_level,omitempty"` // V0-V3 level that determined which gates fired
 }
 
 // LogVerificationFailed logs a verification failure event.
@@ -231,6 +232,9 @@ func (l *Logger) LogVerificationFailed(data VerificationFailedData) error {
 	}
 	if data.Skill != "" {
 		eventData["skill"] = data.Skill
+	}
+	if data.VerificationLevel != "" {
+		eventData["verification_level"] = data.VerificationLevel
 	}
 
 	return l.Log(Event{
@@ -261,12 +265,13 @@ type AgentCompletedData struct {
 	VerificationPassed bool                 `json:"verification_passed"`      // Did verification pass on first try?
 	GatesBypassed      []string             `json:"gates_bypassed,omitempty"` // Which gates were skipped (if forced)
 	Skill              string               `json:"skill,omitempty"`
-	DurationSeconds    int                  `json:"duration_seconds,omitempty"` // Spawn to completion duration
-	TokensInput        int                  `json:"tokens_input,omitempty"`     // Total input tokens
-	TokensOutput       int                  `json:"tokens_output,omitempty"`    // Total output tokens
-	Outcome            string               `json:"outcome,omitempty"`          // success|forced|failed
-	PipelineTiming     []PipelineStepTiming `json:"pipeline_timing,omitempty"`  // Per-step timing for completion pipeline
-	PipelineTotalMs    int                  `json:"pipeline_total_ms,omitempty"` // Total advisory pipeline wall-clock ms
+	VerificationLevel  string               `json:"verification_level,omitempty"` // V0-V3 level used at completion (measures what "verified" means)
+	DurationSeconds    int                  `json:"duration_seconds,omitempty"`   // Spawn to completion duration
+	TokensInput        int                  `json:"tokens_input,omitempty"`       // Total input tokens
+	TokensOutput       int                  `json:"tokens_output,omitempty"`      // Total output tokens
+	Outcome            string               `json:"outcome,omitempty"`            // success|forced|failed
+	PipelineTiming     []PipelineStepTiming `json:"pipeline_timing,omitempty"`    // Per-step timing for completion pipeline
+	PipelineTotalMs    int                  `json:"pipeline_total_ms,omitempty"`  // Total advisory pipeline wall-clock ms
 }
 
 // LogAgentCompleted logs an agent completion event with verification metadata.
@@ -292,6 +297,9 @@ func (l *Logger) LogAgentCompleted(data AgentCompletedData) error {
 	}
 	if data.Skill != "" {
 		eventData["skill"] = data.Skill
+	}
+	if data.VerificationLevel != "" {
+		eventData["verification_level"] = data.VerificationLevel
 	}
 	if data.DurationSeconds > 0 {
 		eventData["duration_seconds"] = data.DurationSeconds
@@ -483,11 +491,12 @@ func (l *Logger) LogServiceStarted(data ServiceEventData) error {
 
 // VerificationBypassedData contains the data for a verification.bypassed event.
 type VerificationBypassedData struct {
-	BeadsID   string `json:"beads_id,omitempty"`
-	Workspace string `json:"workspace,omitempty"`
-	Gate      string `json:"gate"`   // Which gate was bypassed (e.g., "test_evidence", "git_diff")
-	Reason    string `json:"reason"` // User-provided reason for bypass
-	Skill     string `json:"skill,omitempty"`
+	BeadsID           string `json:"beads_id,omitempty"`
+	Workspace         string `json:"workspace,omitempty"`
+	Gate              string `json:"gate"`   // Which gate was bypassed (e.g., "test_evidence", "git_diff")
+	Reason            string `json:"reason"` // User-provided reason for bypass
+	Skill             string `json:"skill,omitempty"`
+	VerificationLevel string `json:"verification_level,omitempty"` // V0-V3 level context for the bypass
 }
 
 // LogVerificationBypassed logs a verification gate bypass event.
@@ -505,6 +514,9 @@ func (l *Logger) LogVerificationBypassed(data VerificationBypassedData) error {
 	}
 	if data.Skill != "" {
 		eventData["skill"] = data.Skill
+	}
+	if data.VerificationLevel != "" {
+		eventData["verification_level"] = data.VerificationLevel
 	}
 
 	return l.Log(Event{
@@ -530,6 +542,9 @@ func (l *Logger) LogVerificationAutoSkipped(data VerificationBypassedData) error
 	}
 	if data.Skill != "" {
 		eventData["skill"] = data.Skill
+	}
+	if data.VerificationLevel != "" {
+		eventData["verification_level"] = data.VerificationLevel
 	}
 
 	return l.Log(Event{

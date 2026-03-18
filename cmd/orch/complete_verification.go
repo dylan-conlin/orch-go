@@ -103,10 +103,11 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 
 				logger := events.NewLogger(events.DefaultLogPath())
 				if err := logger.LogVerificationFailed(events.VerificationFailedData{
-					Workspace:   target.AgentName,
-					GatesFailed: result.GatesFailed,
-					Errors:      result.Errors,
-					Skill:       outcome.SkillName,
+					Workspace:         target.AgentName,
+					GatesFailed:       result.GatesFailed,
+					Errors:            result.Errors,
+					Skill:             outcome.SkillName,
+					VerificationLevel: result.VerifyLevel,
 				}); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to log verification failure event: %v\n", err)
 				}
@@ -189,11 +190,12 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 
 				logger := events.NewLogger(events.DefaultLogPath())
 				if err := logger.LogVerificationFailed(events.VerificationFailedData{
-					BeadsID:     target.BeadsID,
-					Workspace:   target.AgentName,
-					GatesFailed: result.GatesFailed,
-					Errors:      result.Errors,
-					Skill:       outcome.SkillName,
+					BeadsID:           target.BeadsID,
+					Workspace:         target.AgentName,
+					GatesFailed:       result.GatesFailed,
+					Errors:            result.Errors,
+					Skill:             outcome.SkillName,
+					VerificationLevel: result.VerifyLevel,
 				}); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to log verification failure event: %v\n", err)
 				}
@@ -343,7 +345,7 @@ func applySkipFilters(result *verify.VerificationResult, skipConfig verify.SkipC
 
 	// Log bypass events for skipped gates
 	if len(skippedGatesFound) > 0 {
-		logSkipEvents(skipConfig, beadsID, agentName, skillName)
+		logSkipEvents(skipConfig, beadsID, agentName, skillName, result.VerifyLevel)
 	}
 
 	// Update result with filtered data

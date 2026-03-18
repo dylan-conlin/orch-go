@@ -211,15 +211,16 @@ func getSkipConfig() verify.SkipConfig {
 }
 
 // logSkipEvents logs verification.bypassed events for all skipped gates.
-func logSkipEvents(skipConfig verify.SkipConfig, beadsID, workspace, skill string) {
+func logSkipEvents(skipConfig verify.SkipConfig, beadsID, workspace, skill, verificationLevel string) {
 	logger := events.NewLogger(events.DefaultLogPath())
 	for _, gate := range skipConfig.SkippedGates() {
 		if err := logger.LogVerificationBypassed(events.VerificationBypassedData{
-			BeadsID:   beadsID,
-			Workspace: workspace,
-			Gate:      gate,
-			Reason:    skipConfig.Reason,
-			Skill:     skill,
+			BeadsID:           beadsID,
+			Workspace:         workspace,
+			Gate:              gate,
+			Reason:            skipConfig.Reason,
+			Skill:             skill,
+			VerificationLevel: verificationLevel,
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to log bypass event for %s: %v\n", gate, err)
 		}

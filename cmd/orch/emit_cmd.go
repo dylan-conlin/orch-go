@@ -117,6 +117,9 @@ func emitAgentCompleted(logger *events.Logger, beadsID, reason string, additiona
 		if completedData.Skill == "" && manifest.Skill != "" {
 			completedData.Skill = manifest.Skill
 		}
+		if manifest.VerifyLevel != "" {
+			completedData.VerificationLevel = manifest.VerifyLevel
+		}
 		if spawnTime := manifest.ParseSpawnTime(); !spawnTime.IsZero() {
 			completedData.DurationSeconds = int(time.Since(spawnTime).Seconds())
 		}
