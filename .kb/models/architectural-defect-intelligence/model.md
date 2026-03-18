@@ -1,7 +1,7 @@
 # Model: Architectural Defect Intelligence
 
 **Domain:** Predictive codebase health measurement in orch-go
-**Last Updated:** 2026-03-03
+**Last Updated:** 2026-03-18
 **Synthesized From:** Defect class taxonomy (7 classes, 459 fix commits), coupling hotspot analysis (2,733 commits), three-layer hotspot enforcement decision, defect class pipeline activation design, 280+ investigations
 
 ---
@@ -82,7 +82,7 @@ Coupling clusters quantify why certain areas breed certain classes. daemon (coup
 
 **Source:** Intersection of spatial, typological, and causal layers
 
-This layer doesn't exist as tooling yet. It's the model's core claim about what becomes possible.
+Partial tooling exists: `DefectClassesForHotspots()` in `cmd/orch/hotspot_spawn.go` computes spatial x typological intersection at spawn time using keyword-based file-to-class mapping. This is a heuristic approximation, not evidence-driven prediction. The model's core claim about what becomes possible with evidence-based intersection remains valid but the gap is smaller than originally stated.
 
 **The intersection logic:**
 
@@ -114,22 +114,23 @@ For a given code change targeting file F in area A:
 
 | Mechanism | Layer Used | Action | Where |
 |---|---|---|---|
-| Spawn gate (hotspot) | Spatial (bloat) | Block spawn to files >1500 lines unless architect-reviewed | Layer 1 of three-layer enforcement |
+| Spawn gate (hotspot) | Spatial (bloat) | Advisory warning + event emission for files >1500 lines (was blocking, converted to advisory 2026-03-17 after 100% bypass rate) | Layer 1 of three-layer enforcement |
 | Daemon escalation | Spatial (bloat) | Route feature-impl -> architect for hotspot files | Layer 2 of three-layer enforcement |
 | Spawn context injection | Spatial (all types) | Hotspot info in SPAWN_CONTEXT.md | Layer 3 of three-layer enforcement |
 | Architect skill context | Typological | Defect class names available during review | Vocabulary injection |
+| `orch doctor --defect-scan` | Typological | Detects Class 2 (multi-backend blindness) and Class 5 (contradictory authority) anti-patterns | `cmd/orch/doctor_defect_scan.go` |
+| Defect class injection at spawn | Spatial + typological | `DefectClassesForHotspots()` maps hotspot files to likely defect classes in spawn warnings | `cmd/orch/hotspot_spawn.go:269` |
 
 ### Designed but Not Implemented
 
 | Mechanism | Layers Used | Action | Source |
 |---|---|---|---|
-| `orch doctor --defect-scan` | Typological | Check for known anti-patterns per class | Investigation recommendation |
 | Defect class pipeline | Typological + spatial | Auto-create architect issues when 3+ investigations share a class | Pipeline activation design |
-| Predictive spawn warning | All 4 layers | "This area breeds Class X bugs because Y" at spawn time | This model (new) |
+| Full predictive spawn warning | All 4 layers | Evidence-driven (not keyword-based) prediction: "This area breeds Class X bugs because Y" | This model |
 
 ### The Gap
 
-Current enforcement uses spatial signals only (hotspot detection). Typological signals (defect class names) are available for human review but not automated. The predictive intersection exists only as this model — no tooling computes spatial x typological automatically.
+Current enforcement uses spatial signals plus partial typological automation. `DefectClassesForHotspots()` computes spatial x typological intersection at spawn time, but uses keyword matching (file path → defect class), not evidence-driven correlation from actual bug history. The defect scan detects 2 of 7 classes. The remaining gap is: (1) evidence-based class-to-area mapping instead of keyword heuristics, (2) causal layer validation through intervention experiments, (3) coverage of all 7 classes in automated detection.
 
 ---
 
@@ -198,7 +199,10 @@ Dropping any layer loses a dimension of actionability.
 - Can the predictive intersection be automated in `orch spawn` warnings, or is it only useful as human-consumed context in architect reviews?
 - Are these four layers sufficient, or is there a fifth (e.g., temporal — when in the development cycle do certain classes spike)?
 
-**Probes directory:** `probes/` — future probes will test specific claims: causal direction validation, coupling score calibration, prediction accuracy.
+**Probes:**
+- 2026-03-18: Decay verification — 3 stale claims corrected: spawn gates now advisory (not blocking), defect-scan implemented, partial predictive tooling exists via keyword-based class injection
+
+**Probes directory:** `probes/` — future probes should test: causal direction validation, coupling score calibration, keyword-vs-evidence prediction accuracy.
 
 ---
 
@@ -217,3 +221,4 @@ Dropping any layer loses a dimension of actionability.
 **Decisions (enforcement architecture):**
 - `.kb/decisions/2026-02-26-three-layer-hotspot-enforcement.md` — How spatial signals gate spawns
 - `.kb/decisions/2026-02-18-two-lane-agent-discovery.md` — Domain boundaries that expose Class 4
+- `.kb/decisions/2026-03-17-accretion-gates-advisory-not-blocking.md` — Gates converted from blocking to advisory after 100% bypass rate
