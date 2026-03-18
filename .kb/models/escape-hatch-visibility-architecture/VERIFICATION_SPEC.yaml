@@ -1,0 +1,40 @@
+task: "Knowledge decay verification for escape-hatch-visibility-architecture model"
+beads_id: orch-go-p2jdu
+date: 2026-03-18
+
+verification:
+  type: knowledge-decay-probe
+  model: escape-hatch-visibility-architecture
+
+claims_verified:
+  - claim: "--backend claude provides independence from OpenCode server"
+    verdict: confirmed
+    evidence: "pkg/orch/spawn_backend.go DetermineSpawnBackend() routes to claude; pkg/orch/spawn_modes.go runSpawnClaude() uses spawn.SpawnClaude()"
+    note: "Framing stale — claude is now default, not opt-in escape hatch"
+
+  - claim: "--tmux flag creates visible tmux windows"
+    verdict: partially_stale
+    evidence: "Claude backend always creates tmux windows via runSpawnClaude(); --tmux flag only relevant for opencode backend"
+
+  - claim: "Dual-window Ghostty setup required for visibility"
+    verdict: confirmed
+    evidence: "~/.tmux.conf.local:62 hook exists; ~/.local/bin/sync-workers-session.sh exists"
+
+  - claim: "Headless spawning is the primary path"
+    verdict: stale
+    evidence: ".orch/config.yaml has spawn_mode: claude; Claude CLI is primary since Feb 2026 OAuth ban"
+
+  - claim: "Referenced files at stated paths"
+    verdict: partially_stale
+    evidence: "pkg/spawn/backend.go→pkg/orch/spawn_backend.go; pkg/spawn/spawn.go→pkg/orch/spawn_modes.go; cmd/orch/spawn.go→spawn_cmd.go; orchestration-window-setup.md missing"
+
+model_updates:
+  - "Renamed model title from 'Escape Hatch Visibility Architecture' to 'Backend Independence & Visibility Architecture'"
+  - "Reframed from opt-in escape hatch to default backend"
+  - "Fixed 5 stale file references"
+  - "Removed dead orch-knowledge doc link"
+  - "Updated decision trees for current reality"
+  - "Added historical context table"
+  - "Added Phase 3 evolution section"
+
+overall_verdict: "Model significantly stale — core principle valid but framing inverted. Updated."
