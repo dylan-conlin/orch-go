@@ -22,7 +22,8 @@ var (
 	kbExtractUpdateSource bool   // Add extracted-to reference in original
 
 	// kb orphans flags
-	kbOrphansJSON bool
+	kbOrphansJSON       bool
+	kbOrphansStratified bool
 
 	// kb claims flags
 	kbClaimsJSON    bool
@@ -187,6 +188,11 @@ func runKBOrphans() error {
 	}
 
 	kbDir := filepath.Join(projectDir, ".kb")
+
+	if kbOrphansStratified {
+		return runKBOrphansStratified(kbDir)
+	}
+
 	report, err := kbmetrics.ComputeOrphanRate(kbDir)
 	if err != nil {
 		return fmt.Errorf("compute orphan rate: %w", err)
@@ -210,6 +216,27 @@ func runKBOrphans() error {
 	fmt.Printf("Orphaned:              %d\n", report.Orphaned)
 	fmt.Printf("Orphan rate:           %.1f%%\n", report.OrphanRate)
 
+	return nil
+}
+
+func runKBOrphansStratified(kbDir string) error {
+	report, err := kbmetrics.ComputeStratifiedOrphanRate(kbDir)
+	if err != nil {
+		return fmt.Errorf("compute stratified orphan rate: %w", err)
+	}
+
+	if kbOrphansJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(report)
+	}
+
+	if report.Total == 0 {
+		fmt.Println("No investigations found in .kb/investigations/")
+		return nil
+	}
+
+	fmt.Print(report.StratifiedSummary())
 	return nil
 }
 
@@ -267,6 +294,7 @@ func init() {
 	kbClaimsCmd.Flags().BoolVar(&kbClaimsVerbose, "verbose", false, "Show individual claims")
 
 	kbOrphansCmd.Flags().BoolVar(&kbOrphansJSON, "json", false, "Output as JSON")
+	kbOrphansCmd.Flags().BoolVar(&kbOrphansStratified, "stratified", false, "Break orphans into categories: empty, negative-result, superseded, positive-unlinked")
 
 	kbCreateCmd.AddCommand(kbCreateModelCmd)
 

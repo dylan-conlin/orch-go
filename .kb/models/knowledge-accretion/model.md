@@ -61,7 +61,7 @@ Accretion is entropy: individually correct contributions compose into structural
 | Model era (Feb - Mar 2026) | 94 | 196 | **52.0%** |
 | **All investigations** | **145** | **1,166** | **87.6%** |
 
-**Orphan taxonomy (from 35-file sample):**
+**Orphan taxonomy (from 35-file sample, Mar 9):**
 
 | Category | Rate | Natural? |
 |----------|------|----------|
@@ -72,7 +72,18 @@ Accretion is entropy: individually correct contributions compose into structural
 | Negative results | 5-7% | Yes — valuable to record |
 | Superseded | 3-5% | Yes — natural lifecycle |
 
-**Natural baseline: 40-50% orphan rate is healthy.** The actionable signal is the "genuinely lost" rate (~10% of total investigations), not the raw orphan rate.
+**Automated stratified analysis (Mar 17, N=1170 orphans via `orch kb orphans --stratified`):**
+
+| Category | Count | % of Orphans | Natural? |
+|----------|-------|--------------|----------|
+| empty | 0 | 0.0% | Yes — template-only files |
+| negative-result | 145 | 12.4% | Yes — already-fixed, not-a-bug, works-as-expected |
+| superseded | 25 | 2.1% | Yes — replaced/merged into later work |
+| positive-unlinked | 1000 | 85.5% | **No — genuine findings without model connection** |
+
+**Key finding:** The original sample-based estimate (~20% genuinely lost) was too conservative. Automated content analysis shows 85.5% of orphans have positive findings that aren't connected to any model, decision, or guide. The negative-result rate (12.4%) is higher than the sample estimated (5-7%), confirming that automated detection catches more signals than filename-based sampling.
+
+**Natural baseline: 40-50% orphan rate is healthy.** The actionable signal is the positive-unlinked rate (78.4% of total investigations), not the raw orphan rate. However, most positive-unlinked orphans are pre-model era implementation work that was structurally impossible to connect at creation time.
 
 **Knowledge accretion signatures:**
 - **Orphan investigations** — work product with no structural connection to synthesized understanding (models). 87.6% overall, but 52.0% in the model era. Pre-model era (83% of corpus) inflates the aggregate.
