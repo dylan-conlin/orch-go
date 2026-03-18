@@ -616,11 +616,20 @@ func handleTriggerExpiryResult(r *daemon.TriggerExpiryResult, timestamp string, 
 	} else if r.Expired > 0 {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)
 		logDaemonEvent(logger, "daemon.trigger_expiry", map[string]interface{}{
-			"expired":        r.Expired,
-			"errors":         r.Errors,
-			"expired_issues": r.ExpiredIssues,
-			"message":        r.Message,
+			"expired":          r.Expired,
+			"errors":           r.Errors,
+			"expired_issues":   r.ExpiredIssues,
+			"detector_outcomes": r.DetectorOutcomes,
+			"message":          r.Message,
 		})
+		// Emit per-detector false positive events for outcome tracking
+		for detector, count := range r.DetectorOutcomes {
+			logDaemonEvent(logger, events.EventTypeTriggerOutcome, map[string]interface{}{
+				"detector": detector,
+				"outcome":  "false_positive",
+				"count":    count,
+			})
+		}
 	} else if verbose {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)
 	}

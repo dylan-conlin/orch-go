@@ -237,6 +237,104 @@ func TestDaemon_RunPeriodicTriggerExpiry_UpdatesScheduler(t *testing.T) {
 	}
 }
 
+func TestExpiredTriggerIssue_DetectorName(t *testing.T) {
+	tests := []struct {
+		name   string
+		labels []string
+		want   string
+	}{
+		{"extracts detector from labels", []string{"daemon:trigger", "daemon:trigger:hotspot_acceleration", "triage:ready"}, "hotspot_acceleration"},
+		{"returns unknown when no detector label", []string{"daemon:trigger", "triage:ready"}, "unknown"},
+		{"returns unknown when labels empty", nil, "unknown"},
+		{"ignores base trigger label", []string{"daemon:trigger"}, "unknown"},
+		{"picks first detector label", []string{"daemon:trigger:model_contradictions", "daemon:trigger:knowledge_decay"}, "model_contradictions"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issue := ExpiredTriggerIssue{Labels: tt.labels}
+			got := issue.DetectorName()
+			if got != tt.want {
+				t.Errorf("DetectorName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDaemon_RunPeriodicTriggerExpiry_TracksDetectorOutcomes(t *testing.T) {
+	cfg := Config{
+		TriggerExpiryEnabled:  true,
+		TriggerExpiryInterval: 24 * time.Hour,
+		TriggerExpiryMaxAge:   14 * 24 * time.Hour,
+	}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+		TriggerExpiry: &mockTriggerExpiryService{
+			ListExpiredFunc: func(maxAge time.Duration) ([]ExpiredTriggerIssue, error) {
+				return []ExpiredTriggerIssue{
+					{ID: "orch-go-001", Title: "Hotspot: file.go", Age: 15 * 24 * time.Hour, Labels: []string{"daemon:trigger", "daemon:trigger:hotspot_acceleration"}},
+					{ID: "orch-go-002", Title: "Hotspot: other.go", Age: 16 * 24 * time.Hour, Labels: []string{"daemon:trigger", "daemon:trigger:hotspot_acceleration"}},
+					{ID: "orch-go-003", Title: "Decay: some-model", Age: 20 * 24 * time.Hour, Labels: []string{"daemon:trigger", "daemon:trigger:knowledge_decay"}},
+				}, nil
+			},
+			ExpireIssueFunc: func(id, reason string) error { return nil },
+		},
+	}
+
+	result := d.RunPeriodicTriggerExpiry()
+	if result == nil {
+		t.Fatal("expected result")
+	}
+	if result.Expired != 3 {
+		t.Errorf("Expired = %d, want 3", result.Expired)
+	}
+	if result.DetectorOutcomes == nil {
+		t.Fatal("DetectorOutcomes is nil")
+	}
+	if got := result.DetectorOutcomes["hotspot_acceleration"]; got != 2 {
+		t.Errorf("DetectorOutcomes[hotspot_acceleration] = %d, want 2", got)
+	}
+	if got := result.DetectorOutcomes["knowledge_decay"]; got != 1 {
+		t.Errorf("DetectorOutcomes[knowledge_decay] = %d, want 1", got)
+	}
+}
+
+func TestDaemon_RunPeriodicTriggerExpiry_DetectorOutcomesExcludeErrors(t *testing.T) {
+	cfg := Config{
+		TriggerExpiryEnabled:  true,
+		TriggerExpiryInterval: 24 * time.Hour,
+		TriggerExpiryMaxAge:   14 * 24 * time.Hour,
+	}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+		TriggerExpiry: &mockTriggerExpiryService{
+			ListExpiredFunc: func(maxAge time.Duration) ([]ExpiredTriggerIssue, error) {
+				return []ExpiredTriggerIssue{
+					{ID: "orch-go-001", Title: "Fails", Age: 15 * 24 * time.Hour, Labels: []string{"daemon:trigger", "daemon:trigger:hotspot_acceleration"}},
+					{ID: "orch-go-002", Title: "Succeeds", Age: 16 * 24 * time.Hour, Labels: []string{"daemon:trigger", "daemon:trigger:hotspot_acceleration"}},
+				}, nil
+			},
+			ExpireIssueFunc: func(id, reason string) error {
+				if id == "orch-go-001" {
+					return fmt.Errorf("failed")
+				}
+				return nil
+			},
+		},
+	}
+
+	result := d.RunPeriodicTriggerExpiry()
+	if result == nil {
+		t.Fatal("expected result")
+	}
+	// Only the successfully expired issue should be tracked
+	if got := result.DetectorOutcomes["hotspot_acceleration"]; got != 1 {
+		t.Errorf("DetectorOutcomes[hotspot_acceleration] = %d, want 1 (failed expiry excluded)", got)
+	}
+}
+
 func TestDefaultConfig_IncludesTriggerExpiry(t *testing.T) {
 	config := DefaultConfig()
 

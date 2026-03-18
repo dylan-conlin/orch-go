@@ -33,9 +33,10 @@ func (s *defaultTriggerExpiryService) ListExpiredTriggerIssues(maxAge time.Durat
 		age := now.Sub(createdAt)
 		if age > maxAge {
 			expired = append(expired, ExpiredTriggerIssue{
-				ID:    issue.ID,
-				Title: issue.Title,
-				Age:   age,
+				ID:     issue.ID,
+				Title:  issue.Title,
+				Age:    age,
+				Labels: issue.Labels,
 			})
 		}
 	}

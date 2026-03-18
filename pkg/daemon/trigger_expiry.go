@@ -7,14 +7,31 @@ package daemon
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
 // ExpiredTriggerIssue represents a daemon:trigger issue that has exceeded its max age.
 type ExpiredTriggerIssue struct {
-	ID    string
-	Title string
-	Age   time.Duration
+	ID     string
+	Title  string
+	Age    time.Duration
+	Labels []string
+}
+
+// DetectorName extracts the detector name from the issue's labels.
+// Looks for labels matching "daemon:trigger:{name}" and returns the name portion.
+// Returns "unknown" if no detector label is found.
+func (e *ExpiredTriggerIssue) DetectorName() string {
+	for _, label := range e.Labels {
+		if strings.HasPrefix(label, "daemon:trigger:") {
+			name := strings.TrimPrefix(label, "daemon:trigger:")
+			if name != "" {
+				return name
+			}
+		}
+	}
+	return "unknown"
 }
 
 // TriggerExpiryService provides I/O for the trigger expiry mechanism.
@@ -33,6 +50,10 @@ type TriggerExpiryResult struct {
 	Errors int
 	// ExpiredIssues contains the IDs of expired issues.
 	ExpiredIssues []string
+	// DetectorOutcomes maps detector name to count of false positives (expired issues).
+	// This provides per-detector quality tracking — detectors with high false positive
+	// counts relative to their creation counts need tuning or removal.
+	DetectorOutcomes map[string]int
 	// Message is a human-readable summary.
 	Message string
 	// Error is set if a fatal error occurred (e.g., listing failed).
@@ -68,7 +89,9 @@ func (d *Daemon) RunPeriodicTriggerExpiry() *TriggerExpiryResult {
 		}
 	}
 
-	result := &TriggerExpiryResult{}
+	result := &TriggerExpiryResult{
+		DetectorOutcomes: make(map[string]int),
+	}
 
 	if len(expired) == 0 {
 		result.Message = "Trigger expiry: no expired issues found"
@@ -85,6 +108,10 @@ func (d *Daemon) RunPeriodicTriggerExpiry() *TriggerExpiryResult {
 		}
 		result.Expired++
 		result.ExpiredIssues = append(result.ExpiredIssues, issue.ID)
+
+		// Track per-detector false positive
+		detector := issue.DetectorName()
+		result.DetectorOutcomes[detector]++
 	}
 
 	// Build summary
@@ -92,6 +119,14 @@ func (d *Daemon) RunPeriodicTriggerExpiry() *TriggerExpiryResult {
 		result.Message = fmt.Sprintf("Trigger expiry: expired %d issue(s)", result.Expired)
 		if result.Errors > 0 {
 			result.Message += fmt.Sprintf(", %d error(s)", result.Errors)
+		}
+		// Append per-detector breakdown
+		if len(result.DetectorOutcomes) > 0 {
+			var parts []string
+			for detector, count := range result.DetectorOutcomes {
+				parts = append(parts, fmt.Sprintf("%s=%d", detector, count))
+			}
+			result.Message += fmt.Sprintf(" [detectors: %s]", strings.Join(parts, ", "))
 		}
 	} else {
 		result.Message = fmt.Sprintf("Trigger expiry: 0 expired, %d error(s)", result.Errors)

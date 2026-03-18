@@ -1,23 +1,30 @@
-issue: orch-go-cshrz
-title: "Build harness audit command for per-gate metrics and anomaly detection"
+issue: orch-go-of3lp
+title: "Per-detector false positive tracking for daemon trigger system"
 skill: feature-impl
 tier: light
 
 verification:
   automated:
-    - command: "go test ./cmd/orch/ -run 'TestHarnessAudit|TestBuildGateAudit|TestFormatGateAudit' -count=1 -v"
-      expected: "11 tests PASS"
-    - command: "go build ./cmd/orch/"
-      expected: "clean build, no errors"
-    - command: "go run ./cmd/orch/ harness audit --days 7"
-      expected: "per-gate table with invocations, fire rate, coverage, cost, anomalies"
-    - command: "go run ./cmd/orch/ harness audit --json --days 7"
-      expected: "valid JSON with gates array and anomalies array"
+    - command: "go test ./pkg/daemon/ -run 'TestExpiredTriggerIssue_DetectorName' -v"
+      expected: "PASS (5 subtests)"
+    - command: "go test ./pkg/daemon/ -run 'TestDaemon_RunPeriodicTriggerExpiry_TracksDetectorOutcomes' -v"
+      expected: "PASS"
+    - command: "go test ./pkg/daemon/ -run 'TestDaemon_RunPeriodicTriggerExpiry_DetectorOutcomesExcludeErrors' -v"
+      expected: "PASS"
+    - command: "go build ./..."
+      expected: "clean compile"
 
-  manual: []
+  manual:
+    - step: "Run daemon with verbose, let trigger expiry fire, check events.jsonl for trigger.outcome events"
 
 deliverables:
-  - path: cmd/orch/harness_audit_cmd.go
-    description: "harness audit command: reads gate_decision events, produces per-gate table + anomaly detection"
-  - path: cmd/orch/harness_audit_cmd_test.go
-    description: "11 tests covering counts, fire rates, cost from pipeline_timing, all 3 anomaly types, text/JSON output"
+  - path: pkg/daemon/trigger_expiry.go
+    description: "Labels field on ExpiredTriggerIssue, DetectorName() method, DetectorOutcomes map on TriggerExpiryResult"
+  - path: pkg/daemon/trigger_expiry_service.go
+    description: "Pass issue labels through to ExpiredTriggerIssue"
+  - path: pkg/daemon/trigger_expiry_test.go
+    description: "3 new tests for detector name extraction, outcome tracking, error exclusion"
+  - path: pkg/events/logger.go
+    description: "EventTypeTriggerOutcome constant"
+  - path: cmd/orch/daemon_periodic.go
+    description: "Emit per-detector trigger.outcome events during expiry"

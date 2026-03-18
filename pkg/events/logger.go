@@ -72,6 +72,9 @@ const (
 	EventTypeExplorationIterated = "exploration.iterated"
 	// EventTypeDecisionMade logs a daemon decision with its classification tier.
 	EventTypeDecisionMade = "decision.made"
+	// EventTypeTriggerOutcome logs per-detector false positive tracking when
+	// daemon-triggered issues close without action (expired).
+	EventTypeTriggerOutcome = "trigger.outcome"
 )
 
 // Event is a loggable event for events.jsonl.
