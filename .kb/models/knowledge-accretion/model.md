@@ -194,6 +194,8 @@ Code has pre-commit hooks, spawn gates, and completion verification. Knowledge h
 
 7. **Composite health score** — `orch health` implements a 5-dimension 0-100 score: gate coverage, accretion control, fix:feat balance, hotspot control, bloat percentage. First concrete implementation of entropy measurement for code substrate. Current score: 73/100 (C). Key finding: **measurement-improvement bias** — when a broken metric is fixed, the improvement in the metric appears as improvement in the thing being measured. The health score jumped 37→69 in a single snapshot when `total_source_files` tracking was added (a pure measurement fix, not structural change). Systems tracking their own health need to distinguish "we got healthier" from "we got better at measuring." This has a knowledge-accretion analogue: if we track orphan rate but change the counting method, an apparent rate drop could be measurement improvement rather than actual synthesis.
 
+8. **False ground truth** — Ground truth mechanisms that use unused feedback channels produce false positive signal. The `GroundTruthAdjustedRate()` formula blends self-reported success (70%) with rework-based ground truth (30%). But with 0 rework events across 817 completions, `reworkRate=0.0` is treated as "everything is correct" rather than "nobody uses this channel." The formula inflates self-reported success by +7.3 percentage points (75.7%→83.0%). Similarly, the merge rate metric reports 100% because all work commits directly to main with no PR workflow — the metric measures the same thing as completion. Three diagnostic tests for false ground truth: (1) Is the negative signal channel actually populated? (2) Does the metric measure something distinct from what it validates? (3) Would injecting a known-bad input be detected?
+
 ---
 
 ## Substrate Generalization
@@ -343,6 +345,20 @@ Gates and coordination mechanisms can themselves accrete or create new problems:
 
 When a probe contradicts a model claim, the finding is recorded in the probe file but no mechanism forces the model to be updated. Contradicts verdicts historically accumulated (4 at baseline, batch-resolved 2026-03-09) and will recur without hard gates. Over time, models accumulate stale or contradicted claims that new agents receive as authoritative via kb context injection — creating a knowledge equivalent of stale cache invalidation.
 
+### Failure Mode 8: False Ground Truth (Phase 2 Epistemic Failure)
+
+The measurement infrastructure can produce metrics that look like independent validation but are structurally dependent on self-reported signals. Three instances observed (2026-03-18):
+
+1. **Ground truth inflation:** `GroundTruthAdjustedRate()` inflates self-reported success by +7.3pp because rework_rate=0.0 (from 0 rework events across 817 completions) is treated as evidence of quality rather than evidence that the feedback channel is unused. The `hasReworkData` check triggers on completion volume (`TotalCompletions >= 10`), not on rework volume.
+
+2. **Tautological validation:** Merge rate shows 100% because all work commits to main with no PR workflow. The metric measures the same thing as completion — it adds no independent signal.
+
+3. **Self-referential detector outcomes:** Detector "useful rate" counts completed/resolved, but "completed" is self-reported agent success. The feedback loop is: detector creates issue → agent reports "done" → system counts as "useful."
+
+This is a distinct failure mode from measurement-improvement bias (entropy metric #7). Measurement-improvement bias makes the system look better from better measurement. False ground truth makes the system look better from the absence of negative signal — the infrastructure of outcome verification exists but the negative signal channels are structurally unused.
+
+**The phase transition:** Phase 1 failures (mechanical) are visible and self-correcting. Phase 2 failures (epistemic) are invisible to Phase 1 infrastructure because that infrastructure measures existence and syntax, not correctness and impact. The system must evolve its measurement surface from "does it exist/compile/run?" to "did it actually improve anything?"
+
 ---
 
 ## Adoption Sequencing
@@ -403,6 +419,8 @@ The STR community is large and discoverable (probe 2026-03-11). ~100k+ users fit
 
 9. **~~Is the theory falsifiable?~~ ANSWERED (2026-03-10):** Yes. Systematic search across 15+ counterexamples found none that survive rigorous condition checking. The theory makes testable predictions about where accretion concentrates and what interventions reduce it. Refinement: the four conditions were expanded to five with "non-trivial composition" made explicit (preventing over-prediction in additive substrates). The theory is conditionally predictive — a qualitative causal framework, not a quantitative law.
 
+10. **How do you build metrics that detect false coherence when the system itself produces the metrics?** Three approaches identified but not tested: (a) external ground truth injection — metrics the measured system cannot produce (e.g., human quality sampling, PR review); (b) negative channel health monitoring — flag when feedback channels (rework, abandonment) have zero activity alongside high completion volume; (c) metric mutation testing — inject known-bad completions and verify the measurement system detects them. The core constraint: any metric produced by the system being measured is subject to the same circular validation that produced false ground truth.
+
 ---
 
 ## Evolution
@@ -430,6 +448,8 @@ The STR community is large and discoverable (probe 2026-03-11). ~100k+ users fit
 **2026-03-10:** Falsifiability probe (orch-go-dqv2o). Systematic counterexample search across 15+ systems in three domains (natural, engineered, human). No clean counterexamples found. Three key extensions: (1) Added condition 5 — "non-trivial composition" — to prevent over-prediction in additive substrates (logs, sensor data, coral reefs) that meet conditions 1-4 but don't degrade because composition is trivial. (2) Coordination taxonomy: explicit (type systems), substrate-embedded (CRDTs), environmental (stigmergy). Digital substrates lack environmental coordination, explaining why they require engineered gates. (3) Continuous risk formulation: `accretion_risk = f(amnesia × complexity / coordination)` — more precise than binary conditions. Theory verdict: conditionally predictive, publishable with composition refinement.
 
 **2026-03-11:** Distribution channels probe. Extended Adoption Sequencing section with concrete channel data: r/ClaudeCode (96k members, 4.2k weekly contributors), awesome-claude-code lists (21.6k stars), Show HN as top-3 channels for reaching STR users. Active demand confirmed via GitHub Issue #28196 ("Built-in Personal Knowledge Base with Semantic RAG"). Key positioning insight: pain-point framing outperforms feature-list framing by ~100:1 on HN. Claude Code orchestrator space oversaturated (10+ tools, 1-5 HN pts each) but knowledge management methodology is undersaturated. Conversion funnel: ~0.1% top-of-funnel → regular user. Aider case validates persistence over virality (3 HN pts → 41.6k stars over 2 years). Concrete 4-phase launch sequence defined: preparation → community presence → passive distribution → active launch.
+
+**2026-03-18:** Phase transition probe (orch-go-58923). Named the mechanical→epistemic phase transition and identified three instances of false ground truth in the measurement infrastructure. Ground truth adjustment inflates self-reported success by +7.3pp because rework_rate=0.0 (0 reworks / 817 completions) is treated as evidence rather than absent signal. Merge rate is tautological (100% because single-branch, no PR flow). Detector outcome "useful rate" is circular (self-reported completion counted as "useful"). Added Failure Mode 8 (false ground truth), entropy metric #8 (false ground truth detection), and open question #10 (metrics that detect false coherence when the system produces the metrics). Key insight: Phase 1 infrastructure detects broken builds and missing files; Phase 2 failures (false confidence, inflated metrics) are invisible to the same infrastructure.
 
 **2026-03-10:** Blog post uncontaminated claim review (orch-go-2bdvb). Read all three blog drafts (harness engineering, knowledge accretion, coordination demo) as an external reader with no model framing. Found systematic gap between the model's self-assessment (already corrected to "WORKING HYPOTHESIS" / "overclaimed") and the publication language (still claims universality, novelty, and validated theory). 8 validation assumptions, 4 novelty assumptions, 12 overclaimed language instances identified with specific line references and recommended corrections. Key finding: hedging exists but is structurally misplaced (buried at end, not inline with claims). Publication gate assessment: 2 of 3 required artifacts exist (red-team memo + this claim-label pass); claim ledger still needed. Added Publication Readiness section to model.
 
