@@ -1,7 +1,7 @@
 # Model: Defect Class Taxonomy
 
 **Domain:** Structural failure patterns in orch-go
-**Last Updated:** 2026-03-03
+**Last Updated:** 2026-03-18
 **Synthesized From:** 459 fix commits (Dec 2025–Mar 2026), 60+ closed bugs, scope expansion investigation, three-code-paths probe, cross-model blind spots probe
 
 ---
@@ -101,7 +101,9 @@ Code is written and tested against one spawn backend (OpenCode API or Claude CLI
 - Session dedup only checked OpenCode API → Claude CLI agents bypassed dedup, 10 duplicates in 20 min
 - Agent metadata read from OpenCode session → Claude CLI agents use AGENT_MANIFEST.json, wrong source prioritized
 
-**Structural prevention:** Backend-aware query interface: `AgentDiscovery.ListActive()` that dispatches to both backends and merges results. The `DiscoverLiveAgents()` function (formerly `CombinedActiveCount`) is the embryo of this pattern. Test requirement: any new agent query must have test cases for both backends.
+**Structural prevention:** Backend-aware query interface: `DiscoverLiveAgents()` (formerly `CombinedActiveCount`) queries both OpenCode sessions and tmux windows, deduplicates results, and excludes closed issues. This is now a mature production function, widely adopted. `doctor_defect_scan.go` provides automated scanning for Class 2 violations with a 60+ function allowlist. Test requirement: any new agent query must have test cases for both backends.
+
+**Trend (Mar 2026):** Instance rate declining — 2/29 recent fixes (7%) vs 15+ historical. Class stabilizing as codebase matures post-transition.
 
 **Historical context:** Claude CLI became the default backend on Feb 19, 2026 (Anthropic OAuth ban). Before that, most agents were OpenCode-only, so OpenCode-only code was correct. The transition exposed every OpenCode-only code path as a bug. This class is a **migration defect** — it will recur if a third backend is added unless the backend-aware interface is built.
 
@@ -130,7 +132,7 @@ Code assumes single-project context (current working directory, beads database, 
 
 **Sub-patterns:**
 
-**4a: Global State Corruption (beads.DefaultDir)** — The package-level variable controls which project's beads database is targeted. Setting it without defer-restore causes all subsequent beads operations to target the wrong project. 4 instances with identical root cause.
+**4a: Global State Corruption (beads.DefaultDir)** — ~~The package-level variable controls which project's beads database is targeted.~~ **RESOLVED (Mar 2026):** `beads.DefaultDir` global eliminated from codebase. All beads operations now use explicit socket paths via `beads.FindSocketPath(dir)` with projectDir parameters.
 
 **4b: CWD Assumption** — Functions use `os.Getwd()` or process CWD instead of an explicit `projectDir` parameter. Functions like daemon completion comment fetching, kb context query, gap analysis quality scoring.
 
@@ -158,7 +160,9 @@ These signals disagree in real scenarios. The fix history oscillated:
 
 Each fix was correct for its triggering bug but created conditions for the next bug. **The oscillation is the defect class** — not any individual fix.
 
-**Structural prevention:** Single canonical status derivation function used by all consumers (the `ListUnverifiedWork()` function is the embryo). Explicit precedence hierarchy documented and enforced. Status should be computed, not stored — derive from primary signals each time.
+**Structural prevention:** Two canonical status derivation functions: `ListUnverifiedWork()` (verification gate state) and `determineAgentStatus()` (agent completion via 6-level priority cascade). Both are documented as "single source of truth" for their domain. Status is computed, not stored — derived from primary signals each time.
+
+**Status (Mar 2026):** The oscillation pattern documented below is resolved. The `determineAgentStatus()` priority cascade replaced the competing signal precedence. `doctor_defect_scan.go` scans for Class 5 violations (functions reading 3+ authority signals without canonical derivation).
 
 **Cost:** This is the most expensive class per-instance. 41 commits touch status derivation. It's the only class where reactive fixes are actively counterproductive.
 
@@ -250,13 +254,18 @@ Stale artifact accumulation (3) makes scope expansion (0) dangerous. Cross-proje
 
 **2026-03-03:** Initial taxonomy created. Seven classes identified from 459 fix commits spanning Dec 2025–Mar 2026. Scope expansion (Class 0) was the only previously named class. Six new classes named: filter amnesia, multi-backend blindness, stale artifact accumulation, cross-project boundary bleed, contradictory authority signals, duplicate action without idempotency, premature/wrong-target destruction. Dependency graph established.
 
-**Open questions:**
-- What percentage of 459 fix commits fit one of the 7 classes vs. truly one-off? (Quantification would strengthen the model)
-- Will multi-backend blindness stabilize naturally as the codebase matures post-transition, or is it permanent?
-- Are there cross-project defect classes (same class in beads, opencode, orch-go) that this project-scoped analysis missed?
-- Does the fix oscillation in Class 5 correlate with specific agent models (Opus vs Sonnet)?
+**2026-03-18:** First verification probe. 29 fix commits (Mar 3–18) classified: all 29 fit existing classes (no new class needed). Class distribution: Filter Amnesia and Stale Artifacts lead at 21% each, Cross-Project Boundary Bleed rising at 17%. Structural fixes unevenly adopted: Classes 2/4a/5 have mature fixes, Classes 0/6 unimplemented. Class 5 oscillation resolved. `doctor_defect_scan.go` provides automated scanning for Classes 2 and 5.
 
-**Probes directory:** `probes/` — future probes will test whether structural fixes reduce instance rates for specific classes.
+**Open questions:**
+- ~~What percentage of 459 fix commits fit one of the 7 classes vs. truly one-off?~~ Answered: 100% of 29 recent fixes classified. Original 459 commits not reclassified but coverage appears comprehensive.
+- ~~Will multi-backend blindness stabilize naturally as the codebase matures post-transition, or is it permanent?~~ Trending yes: 7% of recent fixes vs 15+ historical instances. Automated scanner in place.
+- Are there cross-project defect classes (same class in beads, opencode, orch-go) that this project-scoped analysis missed?
+- ~~Does the fix oscillation in Class 5 correlate with specific agent models (Opus vs Sonnet)?~~ Moot: oscillation resolved via `determineAgentStatus()` priority cascade.
+- **NEW:** Will Class 4 (cross-project) stabilize as daemon multi-project support matures, similar to Class 2's trajectory?
+- **NEW:** Does the allowlist scanner pattern (Class 0) or idempotency keys (Class 6) need to be built, or have layered tactical fixes been sufficient?
+
+**Probes:**
+- 2026-03-18: Knowledge decay verification — all 7 classes still active, structural fixes unevenly adopted, Class 4 rising
 
 ---
 
@@ -277,6 +286,9 @@ Stale artifact accumulation (3) makes scope expansion (0) dangerous. Cross-proje
 - `.kb/models/completion-verification/model.md` — Verification gates interact with Classes 1, 5, and 7
 - `.kb/models/agent-lifecycle-state-model/model.md` — Agent state transitions are where Classes 3, 5, and 7 manifest
 - `.kb/models/spawn-architecture/model.md` — Spawn is where Classes 2, 4, and 6 concentrate
+
+**Automated scanning:**
+- `cmd/orch/doctor_defect_scan.go` — Scans for Class 2 (backend blindness) and Class 5 (contradictory authority) violations, integrated into `orch doctor`
 
 **Primary evidence:**
 - 459 `fix:` commits from `git log --since="2025-12-01" --grep="fix:"` — raw data
