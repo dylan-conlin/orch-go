@@ -68,6 +68,84 @@ func (d *ModelContradictionsDetector) Detect() ([]TriggerSuggestion, error) {
 	return suggestions, nil
 }
 
+// probeContainsContradictionSignal checks whether probe content contains language
+// indicating it contradicts the parent model. Detects:
+//   - Explicit contradiction keywords ("contradict", "refute", "disproven")
+//   - Negation patterns ("is not true", "no longer valid", "does not hold")
+//   - Incorrectness signals ("incorrect", "inaccurate", "wrong", "false" as adjective)
+func probeContainsContradictionSignal(content string) bool {
+	lower := strings.ToLower(content)
+
+	// 1. Existing behavior: explicit contradiction keywords
+	contradictionKeywords := []string{
+		"contradict",
+		"refute",
+		"disprove",
+		"debunk",
+		"overturn",
+		"invalidate",
+	}
+	for _, kw := range contradictionKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+
+	// 2. Negation patterns: "X is NOT true", "does not hold", etc.
+	negationPatterns := []string{
+		"not true",
+		"not accurate",
+		"not correct",
+		"not valid",
+		"not supported",
+		"no longer true",
+		"no longer valid",
+		"no longer holds",
+		"no longer accurate",
+		"no longer correct",
+		"does not hold",
+		"doesn't hold",
+		"did not hold",
+		"do not hold",
+		"contrary to",
+		"counter to",
+		"opposite of",
+	}
+	for _, pat := range negationPatterns {
+		if strings.Contains(lower, pat) {
+			return true
+		}
+	}
+
+	// 3. Adjective-based incorrectness signals (must appear near model-referencing context)
+	//    These are common in probe findings: "the claim is incorrect", "model is wrong"
+	incorrectnessTerms := []string{
+		"is incorrect",
+		"is inaccurate",
+		"is wrong",
+		"is false",
+		"is mistaken",
+		"was incorrect",
+		"was inaccurate",
+		"was wrong",
+		"was false",
+		"are incorrect",
+		"are inaccurate",
+		"are wrong",
+		"are false",
+		"found to be false",
+		"found to be incorrect",
+		"found to be wrong",
+	}
+	for _, term := range incorrectnessTerms {
+		if strings.Contains(lower, term) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // --- Hotspot Acceleration Detector ---
 
 // HotspotAccelerationSource provides I/O for the hotspot acceleration detector.
@@ -286,8 +364,7 @@ func (s *defaultModelContradictionsSource) ListUnresolvedContradictions() ([]Unr
 				continue
 			}
 
-			contentLower := strings.ToLower(string(content))
-			if !strings.Contains(contentLower, "contradict") {
+			if !probeContainsContradictionSignal(string(content)) {
 				continue
 			}
 

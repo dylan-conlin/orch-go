@@ -92,6 +92,152 @@ func TestModelContradictionsDetector_Name(t *testing.T) {
 	}
 }
 
+// --- probeContainsContradictionSignal Tests ---
+
+func TestProbeContainsContradictionSignal_ExplicitKeywords(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{"contradicts", "This contradicts the model's claim about X.", true},
+		{"contradiction", "Found a contradiction in the model.", true},
+		{"refutes", "Evidence refutes the stated failure mode.", true},
+		{"disproven", "Claim has been disproven by measurement.", true},
+		{"debunked", "The assumption was debunked.", true},
+		{"overturned", "New evidence overturned the previous finding.", true},
+		{"invalidated", "The constraint was invalidated by the refactor.", true},
+		{"no match", "This confirms the model's claim about X.", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := probeContainsContradictionSignal(tt.content); got != tt.want {
+				t.Errorf("probeContainsContradictionSignal() = %v, want %v for %q", got, tt.want, tt.content)
+			}
+		})
+	}
+}
+
+func TestProbeContainsContradictionSignal_NegationPatterns(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{"not true", "The claim that X improves performance is not true.", true},
+		{"NOT true caps", "X is NOT true in the current codebase.", true},
+		{"not accurate", "The stated threshold is not accurate.", true},
+		{"not valid", "This assumption is not valid after the refactor.", true},
+		{"not correct", "The documented behavior is not correct.", true},
+		{"not supported", "The claim is not supported by evidence.", true},
+		{"no longer true", "X is no longer true after the migration.", true},
+		{"no longer valid", "The constraint is no longer valid.", true},
+		{"no longer holds", "The invariant no longer holds.", true},
+		{"does not hold", "The assumption does not hold in practice.", true},
+		{"doesn't hold", "This doesn't hold when tested against real data.", true},
+		{"contrary to", "Contrary to the model's claim, X works fine.", true},
+		{"counter to", "Results are counter to the stated hypothesis.", true},
+		{"opposite of", "We observed the opposite of what the model predicts.", true},
+		{"no negation", "The model's claim is confirmed by this test.", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := probeContainsContradictionSignal(tt.content); got != tt.want {
+				t.Errorf("probeContainsContradictionSignal() = %v, want %v for %q", got, tt.want, tt.content)
+			}
+		})
+	}
+}
+
+func TestProbeContainsContradictionSignal_IncorrectnessTerms(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{"is incorrect", "The model's claim about spawn rates is incorrect.", true},
+		{"is inaccurate", "The documented threshold is inaccurate.", true},
+		{"is wrong", "The stated assumption is wrong.", true},
+		{"is false", "The claim is false based on measurements.", true},
+		{"is mistaken", "The model is mistaken about the default behavior.", true},
+		{"was incorrect", "The previous estimate was incorrect.", true},
+		{"was wrong", "The hypothesis was wrong.", true},
+		{"are false", "Several claims are false.", true},
+		{"found to be false", "The claim was found to be false.", true},
+		{"found to be incorrect", "Two assertions were found to be incorrect.", true},
+		{"found to be wrong", "The thresholds were found to be wrong.", true},
+		{"no incorrectness", "The model is accurate and up to date.", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := probeContainsContradictionSignal(tt.content); got != tt.want {
+				t.Errorf("probeContainsContradictionSignal() = %v, want %v for %q", got, tt.want, tt.content)
+			}
+		})
+	}
+}
+
+func TestProbeContainsContradictionSignal_CaseInsensitive(t *testing.T) {
+	// All matching should be case-insensitive
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{"uppercase NOT TRUE", "Claim is NOT TRUE.", true},
+		{"mixed case Contradicts", "This Contradicts the model.", true},
+		{"all caps REFUTES", "Evidence REFUTES the claim.", true},
+		{"mixed No Longer Valid", "The constraint is No Longer Valid.", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := probeContainsContradictionSignal(tt.content); got != tt.want {
+				t.Errorf("probeContainsContradictionSignal() = %v, want %v for %q", got, tt.want, tt.content)
+			}
+		})
+	}
+}
+
+func TestProbeContainsContradictionSignal_RealisticProbeContent(t *testing.T) {
+	// Test with realistic probe file content that uses negation without "contradict"
+	probeWithNegation := `---
+question: Does the 1500-line threshold still apply?
+---
+
+## What I Tested
+Checked current file sizes against the documented threshold.
+
+## What I Observed
+The 1500-line extraction threshold is no longer valid. After the March refactor,
+the effective limit was raised to 2000 lines but the model still states 1500.
+
+## Model Impact
+The documented threshold is incorrect and should be updated.
+`
+	if !probeContainsContradictionSignal(probeWithNegation) {
+		t.Error("expected contradiction signal in realistic probe with negation language")
+	}
+
+	// Probe that confirms the model — should NOT trigger
+	probeConfirming := `---
+question: Does the spawn rate match predictions?
+---
+
+## What I Tested
+Measured actual spawn rates over 24 hours.
+
+## What I Observed
+Spawn rates match the model's predictions within 5% margin.
+The documented throughput ceiling is accurate.
+
+## Model Impact
+Confirms the model's spawn rate claims. No updates needed.
+`
+	if probeContainsContradictionSignal(probeConfirming) {
+		t.Error("expected no contradiction signal in confirming probe")
+	}
+}
+
 // --- Hotspot Acceleration Detector Tests ---
 
 type mockHotspotAccelerationSource struct {
@@ -498,7 +644,7 @@ func TestDaemon_RunPeriodicTriggerScan_AllPhase2Detectors(t *testing.T) {
 		Scheduler: NewSchedulerFromConfig(cfg),
 		TriggerScan: &mockTriggerScanService{
 			CountOpenFunc: func() (int, error) { return 0, nil },
-			HasIssueFunc:   func(_, _ string) (bool, error) { return false, nil },
+			HasOpenFunc:   func(_, _ string) (bool, error) { return false, nil },
 			CreateIssueFunc: func(s TriggerSuggestion) (string, error) {
 				createCount++
 				return fmt.Sprintf("orch-go-t%d", createCount), nil

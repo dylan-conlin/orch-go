@@ -294,6 +294,60 @@ func TestDefaultModelContradictionsSource_ProbeBeforeModelUpdate(t *testing.T) {
 	}
 }
 
+func TestDefaultModelContradictionsSource_NegationDetection(t *testing.T) {
+	dir := t.TempDir()
+	modelsDir := filepath.Join(dir, ".kb", "models")
+	modelDir := filepath.Join(modelsDir, "test-model")
+	probesDir := filepath.Join(modelDir, "probes")
+	if err := os.MkdirAll(probesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	modelPath := filepath.Join(modelDir, "model.md")
+	if err := os.WriteFile(modelPath, []byte("# Test Model\n\nThe threshold is 1500 lines.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oldTime := time.Now().Add(-30 * 24 * time.Hour)
+	os.Chtimes(modelPath, oldTime, oldTime)
+
+	// Probe that uses negation language WITHOUT the word "contradict"
+	probeContent := `# Probe: Threshold Validation
+
+## What I Observed
+The 1500-line threshold is not true in practice. After the March refactor,
+files up to 2000 lines are routinely accepted without issues.
+
+## Model Impact
+The documented threshold is incorrect and should be updated.
+`
+	if err := os.WriteFile(filepath.Join(probesDir, "2026-03-15-threshold-check.md"), []byte(probeContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Probe that confirms model (should NOT be detected)
+	confirmContent := "# Probe\n\nConfirms the model's claims. Everything checks out.\n"
+	if err := os.WriteFile(filepath.Join(probesDir, "2026-03-16-confirms-model.md"), []byte(confirmContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	chdirTemp(t, dir)
+
+	src := &defaultModelContradictionsSource{}
+	contradictions, err := src.ListUnresolvedContradictions()
+	if err != nil {
+		t.Fatalf("ListUnresolvedContradictions() error = %v", err)
+	}
+
+	if len(contradictions) != 1 {
+		t.Fatalf("got %d contradictions, want 1 (negation probe should be detected)", len(contradictions))
+	}
+
+	c := contradictions[0]
+	if c.ProbeFilename != "2026-03-15-threshold-check.md" {
+		t.Errorf("ProbeFilename = %q, want threshold-check probe", c.ProbeFilename)
+	}
+}
+
 // --- defaultKnowledgeDecaySource ---
 
 func TestDefaultKnowledgeDecaySource_ListDecayedModels(t *testing.T) {
