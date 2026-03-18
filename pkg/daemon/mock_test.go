@@ -5,6 +5,21 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
+// Test helpers
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 // mockIssueQuerier implements IssueQuerier for tests.
 // Each method delegates to a function field if set, otherwise returns zero values.
 type mockIssueQuerier struct {
