@@ -130,9 +130,17 @@ func (d *Daemon) Decide(orient OrientResult, skip map[string]bool) SpawnDecision
 		return decision
 	}
 
-	// Filter each issue through compliance checks, select first passing
+	// Filter each issue through coordination and compliance checks, select first passing
 	var selected *Issue
 	for _, issue := range orient.PrioritizedIssues {
+		// Coordination: defer test issues when implementation siblings are pending
+		if shouldDefer, reason := ShouldDeferTestIssue(issue, orient.PrioritizedIssues); shouldDefer {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Decide: deferring %s (%s)\n", issue.ID, reason)
+			}
+			continue
+		}
+
 		filter := d.CheckIssueCompliance(issue, skip, orient.EpicChildIDs)
 		if !filter.Passed {
 			if d.Config.Verbose {

@@ -143,6 +143,22 @@ The daemon prevents duplicate spawns via 7 sequential layers. Layer 0 is process
 
 **Structural redesign recommended:** See `.kb/investigations/2026-03-01-inv-structural-review-daemon-dedup-after.md`
 
+### Sibling Sequencing (Test Deferral)
+
+When test-writing and implementation issues from the same project are both in the ready queue, the daemon defers test issues until implementation siblings complete. This prevents build breakage from tests referencing types that haven't been implemented yet.
+
+**Mechanism:** `ShouldDeferTestIssue()` runs in the Decide phase (before compliance checks) and examines all issues in the prioritized queue. A test-like issue (detected via title/description heuristics) is deferred when same-project siblings that are NOT test-like have status `open` or `in_progress`.
+
+**Data source:** `ListReadyIssues()` returns both `open` and `in_progress` issues, so in-progress sibling visibility requires no additional queries (respects No Local Agent State constraint).
+
+**Heuristic patterns:** Title/description containing: "write tests", "add tests", "test coverage", "table-driven", "test-driven", "unit test", "integration test", "tests for", "testing".
+
+**Failure mode:** False negatives — test issues without recognizable keywords will not be deferred and may be spawned alongside implementation siblings. This is acceptable: false positives (implementation issues incorrectly deferred) would be worse.
+
+**Origin:** Discovered Mar 18, 2026 on scrape project. Test agent (scrape-9w3) wrote tests for `ghIssue`/`ghPullRequest`/`anthropicRequest` types that hadn't been implemented yet by sibling agents (scrape-52p, scrape-gdh).
+
+**Source:** `pkg/daemon/sibling_sequencing.go`, called from `ooda.go:Decide()`
+
 ### Verification Threshold (VerificationTracker)
 
 Prevents unchecked autonomous operation by pausing the daemon after N unverified completions.
@@ -525,3 +541,4 @@ All 34 probes merged as of 2026-03-06. Listed chronologically with 1-line summar
 | `2026-03-11-probe-completion-spawn-loop-label-asymmetry` | Mar 11 | Extends | Completion and spawn loops had asymmetric label awareness: completion loop filtered `daemon:ready-review` but spawn loop didn't, causing completed issues to re-enter spawn queue. Fixed with 3 layers: spawn queue label filter, triage label cleanup on completion, in-memory CompletionDedupTracker |
 | `2026-03-12-probe-cross-project-orchestration-friction-audit` | Mar 12 | Contradicts + Extends | "Cannot COMPLETE cross-project" claim is stale — listCompletedAgentsMultiProject() implemented. Project group model (pkg/group/) fully implemented but groups.yaml doesn't exist — all group features fall back to hardcode. Creating config file is highest-leverage zero-code change. |
 | `../harness-engineering/probes/2026-03-17-probe-pre-commit-accretion-gate-2-week-effectiveness.md` | Mar 17 | Extends | Extraction cascade pattern documented: gate signals → daemon detects hotspot → spawns extraction → hotspot count 12→3 (75% reduction). Gate's direct blocking negligible (2 blocks, both bypassed); value is in triggering extraction cascades via daemon. |
+| `2026-03-18-probe-sibling-sequencing-test-impl-ordering` | Mar 18 | Extends | Daemon lacked cross-issue coordination for same-project test vs implementation ordering; test agents could write tests for undefined types. Added `ShouldDeferTestIssue()` in Decide phase. |
