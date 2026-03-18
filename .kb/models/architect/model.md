@@ -1,8 +1,8 @@
 # Model: Architect Skill Effectiveness
 
 **Domain:** How the architect skill produces structural decisions that prevent recurring problems
-**Last Updated:** 2026-03-11
-**Synthesized From:** 4 architect investigations (Feb-Mar 2026)
+**Last Updated:** 2026-03-18
+**Synthesized From:** 4 architect investigations (Feb-Mar 2026), 1 accuracy probe (Mar 2026)
 
 ---
 
@@ -24,11 +24,11 @@ The skillc deploy investigation found 4 independent failure modes (exit code, pl
 
 ### Claim 2: Phased implementation plans ordered by value-per-effort produce better adoption than all-at-once designs
 
-The daemon reliability design ordered 3 phases by value: dedup pipeline (~245→60 lines, highest), scheduler extraction (697→~150 lines), operational hardening (0.5 day). The accretion enforcement ordered 4 layers: spawn gates (prevention, highest ROI), completion gates, coaching, CLAUDE.md boundaries.
+The daemon reliability design ordered 3 phases by value: dedup pipeline (highest), scheduler extraction, operational hardening. The accretion enforcement ordered 4 layers: spawn gates (prevention, highest ROI), completion gates, daemon escalation, CLAUDE.md boundaries.
 
 **Test:** Track which phases get implemented. If later phases are frequently abandoned, the ordering was correct (high-value work done first).
 
-**Status:** Supported (accretion layers 0-1 shipped, layers 2-3 not started — correct priority ordering)
+**Status:** Supported (all 4 accretion layers now shipped — but all converted to advisory-only after 100% bypass rate over 2-week measurement per decision 2026-03-17. The phased ordering was correct: high-value layers shipped first and remain live. The dedup pipeline was refactored into composable SpawnPipeline gates rather than collapsed to ~60 lines as originally designed.)
 
 ### Claim 3: The investigation→architect→implementation sequence prevents architectural violations that direct investigation→implementation produces
 
@@ -42,7 +42,7 @@ Architect investigations produce structural constraints (4-layer enforcement, CA
 
 ## Implications
 
-- **Architect is a coordination skill, not a planning skill.** Its value is preventing 30 agents from each solving the same structural problem differently. The daemon's 6-layer dedup gauntlet accumulated because each tactical fix was done without architect review.
+- **Architect is a coordination skill, not a planning skill.** Its value is preventing 30 agents from each solving the same structural problem differently. The daemon's dedup gauntlet accumulated because each tactical fix was done without architect review. (The gauntlet has since been refactored into composable SpawnPipeline gates in `pkg/daemon/spawn_gate.go`.)
 - **Architect output should be implementation issues, not code.** All 4 investigations produced prioritized implementation plans that became beads issues. The architect doesn't implement — it creates the structural attractors that implementation agents follow.
 - **Architect investigations should be gated by complexity, not urgency.** Simple bugs don't need architecture. The spawn gate correctly exempts architect from hotspot blocking — architects need to read bloated files to design their extraction.
 
@@ -70,6 +70,14 @@ Architect investigations produce structural constraints (4-layer enforcement, CA
 | 2026-02-20 | Verification levels | 3 implicit systems unified into V0-V3 levels. "Levels over gates" principle. |
 | 2026-02-25 | skillc deploy failures | 1 symptom = 4 independent failure modes. Decomposition multiplied fix value. |
 | 2026-03-05 | Daemon unified reliability | Internal complexity hides failure modes. Inside-out simplification > adding more layers. |
+| 2026-03-17 | Accretion gates advisory decision | All 4 accretion layers shipped but converted to advisory after 100% bypass rate. Gates signal, don't block. |
+| 2026-03-18 | Accuracy audit probe | Model claims verified: decomposition+phasing principles sound; implementation status was stale; dedup not collapsed to ~60 lines but refactored to composable gates. |
+
+---
+
+## Probes
+
+- 2026-03-18: [Architect Model Accuracy Audit](probes/2026-03-18-probe-architect-model-accuracy-audit.md) — Core principles (decomposition, phasing) confirmed sound; implementation status was stale (all 4 accretion layers shipped, all advisory); dedup refactored to composable gates not ~60 lines; coaching doesn't detect accretion.
 
 ---
 
@@ -84,8 +92,8 @@ Architect investigations produce structural constraints (4-layer enforcement, CA
 
 **Delta:** Accretion has detection (hotspot analysis finds 115 bloated files) but zero prevention/enforcement — violates "Gate Over Remind" principle.
 **Evidence:** spawn_cmd.go (2,332 lines), session.go (2,166 lines), doctor.go (1,912 lines) all CRITICAL hotspots with zero blocking. Hotspot check at spawn is warning-only (line 834-850).
-**Knowledge:** Enforcement requires four layers: spawn-time gates (prevention), completion gates (rejection), coaching plugin (real-time correction), CLAUDE.md boundaries (declaration). Tiered thresholds: warn at 800, error at 1,500. Exempt skills: architect, investigation, capture-knowledge, codebase-audit.
-**Next:** Layers 0-1 shipped. Layers 2-3 (coaching, proactive management) not started.
+**Knowledge:** Enforcement requires four layers: spawn-time gates (prevention), completion gates (rejection), daemon escalation routing, CLAUDE.md boundaries (declaration). Tiered thresholds: warn at 800, error at 1,500. Exempt skills: architect, investigation, capture-knowledge, codebase-audit.
+**Next:** All 4 layers shipped (spawn gates in `pkg/spawn/gates/hotspot.go`, completion in `pkg/verify/accretion.go`, daemon escalation in `pkg/daemon/architect_escalation.go`, CLAUDE.md boundaries documented). All gates converted to advisory-only (decision 2026-03-17) after 100% bypass rate measurement.
 
 ---
 
@@ -111,5 +119,5 @@ Architect investigations produce structural constraints (4-layer enforcement, CA
 
 **Delta:** Daemon's three structural problems (6-layer dedup gauntlet, 625-line loop, operational unreliability) share a common root: internal complexity makes failure modes invisible.
 **Evidence:** spawnIssue() 245 lines with 6 dedup layers; runDaemonLoop 697 lines with 12 inline subsystems; beads lacks native CAS.
-**Knowledge:** Inside-out simplification: (1) collapse dedup to CAS-like gate + advisory checks (~245→60 lines), (2) extract scheduler (~697→150 lines), (3) launchd management. Beads CAS simulated in Go via fresh-check + update behind local mutex.
-**Next:** Phase 1 (dedup pipeline) is highest-value. Implementation issues created.
+**Knowledge:** Inside-out simplification: (1) collapse dedup to composable gate pipeline, (2) extract scheduler, (3) launchd management. Beads CAS simulated in Go via fresh-check + update behind local mutex.
+**Next:** Phase 1 (dedup pipeline) shipped — refactored into SpawnPipeline with 5 composable gates (`pkg/daemon/spawn_gate.go`, 312 lines) + execution layer (`pkg/daemon/spawn_execution.go`, 277 lines). Not collapsed to ~60 lines as originally designed, but architecturally cleaner and testable.
