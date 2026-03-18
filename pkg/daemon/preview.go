@@ -22,11 +22,12 @@ type PreviewResult struct {
 	Message            string
 	RateLimited        bool             // True if rate limit would prevent spawning
 	RateStatus         string           // Rate limit status message (e.g., "5/20 spawns in last hour")
-	HotspotWarnings    []HotspotWarning // Warnings about hotspot areas this issue may touch
-	RejectedIssues     []RejectedIssue  // Issues that were rejected with reasons
-	ArchitectEscalated bool             // True if skill would be escalated from impl to architect
-	FocusBoosted       bool             // True if selected issue was boosted by focus
-	FocusGoal          string           // Current focus goal (if any)
+	HotspotWarnings       []HotspotWarning       // Warnings about hotspot areas this issue may touch
+	ChannelHealthWarnings []ChannelHealthWarning // Skills with rework=0 + high completions (silent channel)
+	RejectedIssues        []RejectedIssue        // Issues that were rejected with reasons
+	ArchitectEscalated    bool                   // True if skill would be escalated from impl to architect
+	FocusBoosted          bool                   // True if selected issue was boosted by focus
+	FocusGoal             string                 // Current focus goal (if any)
 }
 
 // HasHotspotWarnings returns true if there are any hotspot warnings.
@@ -78,6 +79,9 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 	if d.FocusGoal != "" {
 		result.FocusGoal = d.FocusGoal
 	}
+
+	// Check for silent rework channels
+	result.ChannelHealthWarnings = CheckChannelHealth(d.Learning)
 
 	var spawnable *Issue
 	for _, issue := range issues {
@@ -178,6 +182,19 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// FormatChannelHealthWarnings formats channel health warnings for display.
+func FormatChannelHealthWarnings(warnings []ChannelHealthWarning) string {
+	if len(warnings) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\nChannel Health Warnings:\n")
+	for _, w := range warnings {
+		sb.WriteString(fmt.Sprintf("  [!] %s\n", w.Message))
+	}
+	return sb.String()
 }
 
 // FormatRejectedIssues formats rejected issues as a grouped summary by reason.

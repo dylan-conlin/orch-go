@@ -3,6 +3,8 @@ package daemon
 import (
 	"fmt"
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/events"
 )
 
 // =============================================================================
@@ -103,6 +105,38 @@ func TestOrient_PropagatesIssueError(t *testing.T) {
 	result := d.Orient(sense)
 	if result.OrientErr == nil {
 		t.Error("Orient() should propagate issue error from Sense")
+	}
+}
+
+func TestOrient_SurfacesChannelHealthWarnings(t *testing.T) {
+	d := &Daemon{
+		Config: Config{Label: "triage:ready"},
+		Learning: &events.LearningStore{
+			Skills: map[string]*events.SkillLearning{
+				"feature-impl": {
+					TotalCompletions: 20,
+					ReworkCount:      0,
+				},
+			},
+		},
+	}
+
+	sense := SenseResult{
+		GateSignal: SpawnGateSignal{Allowed: true},
+		Issues: []Issue{
+			{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open", Labels: []string{"triage:ready"}},
+		},
+	}
+
+	result := d.Orient(sense)
+	if result.OrientErr != nil {
+		t.Fatalf("Orient() unexpected error: %v", result.OrientErr)
+	}
+	if len(result.ChannelHealthWarnings) != 1 {
+		t.Fatalf("Orient() ChannelHealthWarnings = %d, want 1", len(result.ChannelHealthWarnings))
+	}
+	if result.ChannelHealthWarnings[0].Skill != "feature-impl" {
+		t.Errorf("warning.Skill = %q, want 'feature-impl'", result.ChannelHealthWarnings[0].Skill)
 	}
 }
 

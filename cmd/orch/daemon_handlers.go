@@ -76,6 +76,11 @@ func runDaemonDryRun() error {
 		fmt.Println("No spawnable issues in queue")
 	}
 
+	// Display channel health warnings (rework=0 with high completions)
+	if len(result.ChannelHealthWarnings) > 0 {
+		fmt.Print(daemon.FormatChannelHealthWarnings(result.ChannelHealthWarnings))
+	}
+
 	// Display rejected issues grouped by reason
 	if len(result.RejectedIssues) > 0 {
 		fmt.Print(daemon.FormatRejectedIssues(result.RejectedIssues))
@@ -210,6 +215,11 @@ func runDaemonPreview() error {
 		}
 	} else {
 		fmt.Println(result.Message)
+	}
+
+	// Display channel health warnings (rework=0 with high completions)
+	if len(result.ChannelHealthWarnings) > 0 {
+		fmt.Print(daemon.FormatChannelHealthWarnings(result.ChannelHealthWarnings))
 	}
 
 	// Display rejected issues grouped by reason

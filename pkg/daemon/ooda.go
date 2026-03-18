@@ -53,6 +53,9 @@ type OrientResult struct {
 	PrioritizedIssues []Issue
 	// EpicChildIDs tracks which issues are epic children (for label exemption).
 	EpicChildIDs map[string]bool
+	// ChannelHealthWarnings flags skills where rework=0 alongside high
+	// completion volume — absent negative signal should not be treated as positive.
+	ChannelHealthWarnings []ChannelHealthWarning
 	// OrientErr is non-nil if prioritization failed.
 	OrientErr error
 }
@@ -80,6 +83,9 @@ func (d *Daemon) Orient(sense SenseResult) OrientResult {
 
 	result.PrioritizedIssues = prioritized
 	result.EpicChildIDs = epicChildIDs
+
+	// Check for silent feedback channels (rework=0 with high completions)
+	result.ChannelHealthWarnings = CheckChannelHealth(d.Learning)
 
 	return result
 }
