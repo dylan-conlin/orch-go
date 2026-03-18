@@ -10,15 +10,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/daemon"
+	"github.com/dylan-conlin/orch-go/pkg/digest"
 )
 
 // DigestAPIResponse is the JSON structure returned by GET /api/digest.
 type DigestAPIResponse struct {
-	Products    []daemon.DigestProduct `json:"products"`
-	UnreadCount int                    `json:"unread_count"`
-	Total       int                    `json:"total"`
-	Error       string                 `json:"error,omitempty"`
+	Products    []digest.Product `json:"products"`
+	UnreadCount int              `json:"unread_count"`
+	Total       int              `json:"total"`
+	Error       string           `json:"error,omitempty"`
 }
 
 // DigestUpdateRequest is the JSON body for PATCH /api/digest/:id.
@@ -58,14 +58,14 @@ func handleDigest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	store := daemon.NewDigestStore(dir)
+	store := digest.NewStore(dir)
 
-	opts := daemon.DigestListOpts{}
+	opts := digest.ListOpts{}
 	if s := r.URL.Query().Get("state"); s != "" {
-		opts.State = daemon.DigestProductState(s)
+		opts.State = digest.ProductState(s)
 	}
 	if t := r.URL.Query().Get("type"); t != "" {
-		opts.Type = daemon.DigestProductType(t)
+		opts.Type = digest.ProductType(t)
 	}
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if n, err := strconv.Atoi(l); err == nil && n > 0 {
@@ -81,10 +81,10 @@ func handleDigest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get unread count
-	stats, _ := store.Stats()
+	stats, _ := store.StoreStats()
 
 	if products == nil {
-		products = []daemon.DigestProduct{}
+		products = []digest.Product{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -105,12 +105,12 @@ func handleDigestStats(w http.ResponseWriter, r *http.Request) {
 	dir := digestDir()
 	if dir == "" {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(daemon.DigestStatsResponse{})
+		json.NewEncoder(w).Encode(digest.StatsResponse{})
 		return
 	}
 
-	store := daemon.NewDigestStore(dir)
-	stats, err := store.Stats()
+	store := digest.NewStore(dir)
+	stats, err := store.StoreStats()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -150,9 +150,9 @@ func handleDigestUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate state
-	state := daemon.DigestProductState(req.State)
+	state := digest.ProductState(req.State)
 	switch state {
-	case daemon.DigestStateRead, daemon.DigestStateStarred, daemon.DigestStateArchived:
+	case digest.StateRead, digest.StateStarred, digest.StateArchived:
 		// valid
 	default:
 		http.Error(w, "invalid state: must be read, starred, or archived", http.StatusBadRequest)
@@ -165,7 +165,7 @@ func handleDigestUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	store := daemon.NewDigestStore(dir)
+	store := digest.NewStore(dir)
 	if err := store.UpdateState(id, state); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
@@ -199,7 +199,7 @@ func handleDigestArchiveRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	store := daemon.NewDigestStore(dir)
+	store := digest.NewStore(dir)
 	archived, err := store.ArchiveRead(olderThan)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")

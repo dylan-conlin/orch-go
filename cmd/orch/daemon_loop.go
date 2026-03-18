@@ -11,6 +11,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/control"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
+	"github.com/dylan-conlin/orch-go/pkg/digest"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/group"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
@@ -150,7 +151,7 @@ func daemonSetup() (*daemonLoopState, error) {
 	// Wire digest producer (scans .kb/ artifacts, produces thinking products)
 	{
 		projectDir, _ := os.Getwd()
-		d.Digest = daemon.NewDefaultDigestService(projectDir)
+		d.Digest = digest.NewDefaultService(projectDir)
 		homeDir, _ := os.UserHomeDir()
 		d.DigestDir = filepath.Join(homeDir, ".orch", "digest")
 		d.DigestStatePath = filepath.Join(homeDir, ".orch", "digest-state.json")

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dylan-conlin/orch-go/pkg/daemon"
+	"github.com/dylan-conlin/orch-go/pkg/digest"
 )
 
 func TestHandleDigest_EmptyDir(t *testing.T) {
@@ -127,7 +127,7 @@ func TestHandleDigestStats(t *testing.T) {
 
 	handleDigestStats(w, req)
 
-	var resp daemon.DigestStatsResponse
+	var resp digest.StatsResponse
 	json.NewDecoder(w.Body).Decode(&resp)
 
 	if resp.Unread != 1 {
@@ -163,7 +163,7 @@ func TestHandleDigestUpdate(t *testing.T) {
 	}
 
 	data, _ := os.ReadFile(filepath.Join(digestPath, "update-test.json"))
-	var p daemon.DigestProduct
+	var p digest.Product
 	json.Unmarshal(data, &p)
 
 	if p.State != "read" {

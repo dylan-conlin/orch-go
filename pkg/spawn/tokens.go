@@ -10,15 +10,15 @@ import (
 // Note: CharsPerToken is defined in kbcontext.go (value: 4)
 const (
 	// DefaultTokenWarningThreshold is the default threshold for warning about context size.
-	// Claude's context window is 200k tokens. We warn at 100k to leave room for:
+	// Claude's context window is 1M tokens. We warn at 500k to leave room for:
 	// - Agent's working memory during the session
 	// - Tool results and file contents that get added
 	// - Back-and-forth conversation
-	DefaultTokenWarningThreshold = 100000
+	DefaultTokenWarningThreshold = 500000
 
 	// DefaultTokenErrorThreshold is the default threshold for blocking spawn.
-	// At 150k estimated tokens, the spawn context alone is too large.
-	DefaultTokenErrorThreshold = 150000
+	// At 750k estimated tokens, the spawn context alone is too large.
+	DefaultTokenErrorThreshold = 750000
 )
 
 // TokenEstimate represents an estimate of token usage for spawn context.

@@ -8,11 +8,11 @@ import (
 
 // Context limit thresholds (in tokens)
 const (
-	// ContextWarningThreshold is 75% of typical 200K context limit
-	ContextWarningThreshold = 150000
+	// ContextWarningThreshold is 75% of 1M context limit
+	ContextWarningThreshold = 750000
 
-	// ContextCriticalThreshold is 90% of typical 200K context limit
-	ContextCriticalThreshold = 180000
+	// ContextCriticalThreshold is 90% of 1M context limit
+	ContextCriticalThreshold = 900000
 )
 
 // ContextRiskLevel indicates the severity of context exhaustion risk.
@@ -62,7 +62,7 @@ type ContextExhaustionRisk struct {
 func AssessContextRisk(totalTokens int, projectDir string, isProcessing bool) ContextExhaustionRisk {
 	risk := ContextExhaustionRisk{
 		TokenUsage:   totalTokens,
-		TokenPercent: float64(totalTokens) / 200000 * 100, // Assume 200K context limit
+		TokenPercent: float64(totalTokens) / 1000000 * 100, // Assume 1M context limit
 	}
 
 	// Check for uncommitted work

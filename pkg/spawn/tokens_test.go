@@ -224,11 +224,11 @@ func TestValidateContextSize(t *testing.T) {
 	})
 
 	t.Run("exceeds error threshold", func(t *testing.T) {
-		// Create config that exceeds 150k tokens
-		// Need 600k characters (150k * 4)
+		// Create config that exceeds 750k tokens
+		// Need 3M characters (750k * 4)
 		cfg := &Config{
 			Task:         strings.Repeat("x", 4000),
-			SkillContent: strings.Repeat("x", 600000),
+			SkillContent: strings.Repeat("x", 3000000),
 		}
 		err := ValidateContextSize(cfg)
 		if err == nil {
@@ -249,10 +249,10 @@ func TestValidateContextSize(t *testing.T) {
 func TestContextTooLargeError_Error(t *testing.T) {
 	err := &ContextTooLargeError{
 		Estimate: &TokenEstimate{
-			EstimatedTokens: 160000,
-			ErrorThreshold:  150000,
+			EstimatedTokens: 800000,
+			ErrorThreshold:  750000,
 			Components: map[string]int{
-				"skill": 155000,
+				"skill": 795000,
 				"task":  5000,
 			},
 		},
@@ -260,10 +260,10 @@ func TestContextTooLargeError_Error(t *testing.T) {
 	}
 
 	msg := err.Error()
-	if !strings.Contains(msg, "160k") {
+	if !strings.Contains(msg, "800k") {
 		t.Error("error message should contain estimated tokens")
 	}
-	if !strings.Contains(msg, "150k") {
+	if !strings.Contains(msg, "750k") {
 		t.Error("error message should contain limit")
 	}
 	if !strings.Contains(msg, "skill") {
@@ -287,11 +287,11 @@ func TestShouldWarnAboutSize(t *testing.T) {
 	})
 
 	t.Run("large context with skill - warning", func(t *testing.T) {
-		// Create config that exceeds 100k tokens (warning threshold)
-		// Need 400k characters
+		// Create config that exceeds 500k tokens (warning threshold)
+		// Need 2M characters (500k * 4)
 		cfg := &Config{
 			Task:         strings.Repeat("x", 4000),
-			SkillContent: strings.Repeat("x", 400000),
+			SkillContent: strings.Repeat("x", 2000000),
 		}
 		shouldWarn, msg := ShouldWarnAboutSize(cfg)
 		if !shouldWarn {
@@ -308,7 +308,7 @@ func TestShouldWarnAboutSize(t *testing.T) {
 	t.Run("large context with kb_context - warning", func(t *testing.T) {
 		cfg := &Config{
 			Task:      strings.Repeat("x", 4000),
-			KBContext: strings.Repeat("x", 400000),
+			KBContext: strings.Repeat("x", 2000000),
 		}
 		shouldWarn, msg := ShouldWarnAboutSize(cfg)
 		if !shouldWarn {

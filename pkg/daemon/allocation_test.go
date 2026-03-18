@@ -378,6 +378,94 @@ func TestLookupSuccessRate_ZeroReworkNotTreatedAsGroundTruth(t *testing.T) {
 	}
 }
 
+func TestCheckChannelHealth_NoWarningsWhenReworkExists(t *testing.T) {
+	learning := &events.LearningStore{
+		Skills: map[string]*events.SkillLearning{
+			"feature-impl": {
+				TotalCompletions: 20,
+				ReworkCount:      3,
+				ReworkRate:       0.15,
+			},
+		},
+	}
+
+	warnings := CheckChannelHealth(learning)
+	if len(warnings) != 0 {
+		t.Errorf("CheckChannelHealth() returned %d warnings, want 0 (rework channel active)", len(warnings))
+	}
+}
+
+func TestCheckChannelHealth_WarnsWhenZeroReworkHighCompletions(t *testing.T) {
+	learning := &events.LearningStore{
+		Skills: map[string]*events.SkillLearning{
+			"feature-impl": {
+				TotalCompletions: 15,
+				ReworkCount:      0,
+				ReworkRate:       0.0,
+			},
+		},
+	}
+
+	warnings := CheckChannelHealth(learning)
+	if len(warnings) != 1 {
+		t.Fatalf("CheckChannelHealth() returned %d warnings, want 1", len(warnings))
+	}
+	if warnings[0].Skill != "feature-impl" {
+		t.Errorf("warning.Skill = %q, want 'feature-impl'", warnings[0].Skill)
+	}
+	if warnings[0].Completions != 15 {
+		t.Errorf("warning.Completions = %d, want 15", warnings[0].Completions)
+	}
+}
+
+func TestCheckChannelHealth_NoWarningBelowThreshold(t *testing.T) {
+	learning := &events.LearningStore{
+		Skills: map[string]*events.SkillLearning{
+			"feature-impl": {
+				TotalCompletions: 5,
+				ReworkCount:      0,
+				ReworkRate:       0.0,
+			},
+		},
+	}
+
+	warnings := CheckChannelHealth(learning)
+	if len(warnings) != 0 {
+		t.Errorf("CheckChannelHealth() returned %d warnings, want 0 (below threshold)", len(warnings))
+	}
+}
+
+func TestCheckChannelHealth_MultipleSkillsIndependent(t *testing.T) {
+	learning := &events.LearningStore{
+		Skills: map[string]*events.SkillLearning{
+			"feature-impl": {
+				TotalCompletions: 20,
+				ReworkCount:      0,
+			},
+			"investigation": {
+				TotalCompletions: 20,
+				ReworkCount:      2,
+			},
+			"systematic-debugging": {
+				TotalCompletions: 15,
+				ReworkCount:      0,
+			},
+		},
+	}
+
+	warnings := CheckChannelHealth(learning)
+	if len(warnings) != 2 {
+		t.Fatalf("CheckChannelHealth() returned %d warnings, want 2 (feature-impl and systematic-debugging)", len(warnings))
+	}
+}
+
+func TestCheckChannelHealth_NilLearning(t *testing.T) {
+	warnings := CheckChannelHealth(nil)
+	if len(warnings) != 0 {
+		t.Errorf("CheckChannelHealth(nil) returned %d warnings, want 0", len(warnings))
+	}
+}
+
 func TestBlendedSuccessRate(t *testing.T) {
 	tests := []struct {
 		name        string

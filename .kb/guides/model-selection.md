@@ -15,7 +15,7 @@
 | `opus` | anthropic/claude-opus-4-5-20251101 | Complex work, debugging, architecture (default) |
 | `sonnet` | anthropic/claude-sonnet-4-5-20250929 | Simple edits, typo fixes, known simple scope |
 | `haiku` | anthropic/claude-haiku | Routing, triage, simple classification |
-| `flash` | google/gemini-2.5-flash | Cost-sensitive, large context (>200K tokens) |
+| `flash` | google/gemini-2.5-flash | Cost-sensitive, alternative provider |
 | `flash3` | google/gemini-3-flash-preview | Alternative Gemini 3 flash alias |
 | `pro` | google/gemini-2.0-pro | Gemini with higher reasoning capability |
 
@@ -155,7 +155,6 @@ All three spawn modes correctly pass the `--model` flag:
 | `codebase-audit` | Opus (default) | Comprehensive review requires thoroughness |
 | `feature-impl` (complex) | Opus (default) | Multi-step implementation needs context |
 | `feature-impl` (simple) | Sonnet | Single-file typo fixes, simple edits |
-| Large context (>200K) | Flash | Gemini handles 1M tokens efficiently |
 
 **The test:** Before downgrading to Sonnet, ask: "Would I trust a quick summary or do I need thorough analysis?"
 
@@ -211,10 +210,10 @@ When Claude Max hits rate limits:
 |-------|-------|--------|-------|
 | Opus 4.5 | $5.00/MTok | $25.00/MTok | Highest capability |
 | Sonnet 4.5 | $3.00/MTok | $15.00/MTok | ≤200K tokens |
-| Sonnet 4.5 (>200K) | $6.00/MTok | $22.50/MTok | Context cliff |
+| Sonnet 4.5 (>200K) | $6.00/MTok | $22.50/MTok | Context cliff (API pricing only) |
 | Haiku 4.5 | $1.00/MTok | $5.00/MTok | Triage/routing |
 
-**Key insight:** Sonnet's price doubles at 200K tokens ("context cliff"). Use Gemini for large context work.
+**Key insight:** Sonnet's API price doubles at 200K tokens ("context cliff"). Claude Code now defaults to 1M context windows, so this only affects direct API usage.
 
 ### Claude Max Subscriptions
 
@@ -233,7 +232,7 @@ When Claude Max hits rate limits:
 | Flash 2.0 | ~$0.10-0.30/MTok | Variable |
 | Pro 2.0 | ~$1.25-2.00/MTok | Variable |
 
-**Gemini advantage:** 1M token context window, much cheaper for large context.
+**Gemini advantage:** Much cheaper for large context work.
 
 ---
 

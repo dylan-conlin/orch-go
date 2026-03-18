@@ -5,6 +5,7 @@
 package daemon
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
@@ -141,6 +142,48 @@ func lookupSuccessRate(skill string, learning *events.LearningStore) float64 {
 	adjustedRate := GroundTruthAdjustedRate(sl.SuccessRate, sl.ReworkRate, hasReworkData)
 
 	return BlendedSuccessRate(adjustedRate, sampleSize)
+}
+
+// MinCompletionsForChannelHealthCheck is the minimum number of completions
+// a skill must have before we warn about absent rework signal. Below this
+// threshold, zero reworks is expected (not enough volume to judge).
+const MinCompletionsForChannelHealthCheck = 10
+
+// ChannelHealthWarning indicates that a feedback channel (rework) appears
+// inactive despite sufficient volume to expect signal. Absent signal should
+// not be treated as positive — it may mean the channel is broken.
+type ChannelHealthWarning struct {
+	// Skill is the skill with the absent signal.
+	Skill string
+	// Completions is the number of completions for this skill.
+	Completions int
+	// Message is a human-readable warning.
+	Message string
+}
+
+// CheckChannelHealth examines learning data for skills where rework=0
+// alongside high completion volume. This detects a "silent channel" — the
+// absence of negative signal is not evidence of quality, it may indicate
+// the rework feedback loop is not functioning.
+func CheckChannelHealth(learning *events.LearningStore) []ChannelHealthWarning {
+	if learning == nil {
+		return nil
+	}
+
+	var warnings []ChannelHealthWarning
+	for name, sl := range learning.Skills {
+		if sl.TotalCompletions >= MinCompletionsForChannelHealthCheck && sl.ReworkCount == 0 {
+			warnings = append(warnings, ChannelHealthWarning{
+				Skill:       name,
+				Completions: sl.TotalCompletions,
+				Message: fmt.Sprintf(
+					"skill %q has %d completions but 0 reworks — rework channel may be inactive (absent signal ≠ positive signal)",
+					name, sl.TotalCompletions,
+				),
+			})
+		}
+	}
+	return warnings
 }
 
 // inferSkillForScoring infers the skill for scoring purposes.

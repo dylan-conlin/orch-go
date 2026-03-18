@@ -27,7 +27,7 @@ func TestAssessContextRisk(t *testing.T) {
 		},
 		{
 			name:          "high tokens (warning level), no uncommitted work",
-			totalTokens:   160000,
+			totalTokens:   800000,
 			hasUncommitted: false,
 			isProcessing:  true,
 			expectedLevel: RiskNone, // No risk without uncommitted work at warning level
@@ -35,7 +35,7 @@ func TestAssessContextRisk(t *testing.T) {
 		},
 		{
 			name:           "high tokens (warning level), with uncommitted work",
-			totalTokens:    160000,
+			totalTokens:    800000,
 			hasUncommitted: true,
 			uncommittedCount: 3,
 			isProcessing:   true,
@@ -44,7 +44,7 @@ func TestAssessContextRisk(t *testing.T) {
 		},
 		{
 			name:           "critical tokens, no uncommitted work",
-			totalTokens:    185000,
+			totalTokens:    950000,
 			hasUncommitted: false,
 			isProcessing:   true,
 			expectedLevel:  RiskCritical,
@@ -52,7 +52,7 @@ func TestAssessContextRisk(t *testing.T) {
 		},
 		{
 			name:           "critical tokens, with uncommitted work",
-			totalTokens:    185000,
+			totalTokens:    950000,
 			hasUncommitted: true,
 			uncommittedCount: 5,
 			isProcessing:   true,
