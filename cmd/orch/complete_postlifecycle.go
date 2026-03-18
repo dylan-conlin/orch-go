@@ -17,6 +17,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/kbmetrics"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -649,4 +650,34 @@ func countFileLines(filePath string) (int, error) {
 	}
 
 	return lineCount, nil
+}
+
+// runPostCompleteAutoLink runs auto-linking for orphaned investigations after
+// a successful completion. Best-effort: errors are logged but do not fail completion.
+func runPostCompleteAutoLink(projectDir string) {
+	if projectDir == "" {
+		return
+	}
+	kbDir := filepath.Join(projectDir, ".kb")
+	if _, err := os.Stat(kbDir); os.IsNotExist(err) {
+		return
+	}
+
+	links, err := kbmetrics.FindAutoLinks(kbDir, 4)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "auto-link: scan error: %v\n", err)
+		return
+	}
+	if len(links) == 0 {
+		return
+	}
+
+	applied, err := kbmetrics.ApplyAutoLinks(links)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "auto-link: apply error: %v\n", err)
+		return
+	}
+	if applied > 0 {
+		fmt.Printf("Auto-linked %d orphaned investigations to models/threads/decisions.\n", applied)
+	}
 }

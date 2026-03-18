@@ -25,6 +25,11 @@ var (
 	kbOrphansJSON       bool
 	kbOrphansStratified bool
 
+	// kb autolink flags
+	kbAutolinkApply    bool
+	kbAutolinkJSON     bool
+	kbAutolinkMinScore int
+
 	// kb claims flags
 	kbClaimsJSON    bool
 	kbClaimsVerbose bool
@@ -281,6 +286,93 @@ func runKBClaims() error {
 	return nil
 }
 
+var kbAutolinkCmd = &cobra.Command{
+	Use:   "autolink",
+	Short: "Auto-link orphaned investigations to models/threads/decisions by topic matching",
+	Long: `Scan positive-unlinked orphaned investigations and match their topics against
+existing models, threads, and decisions. Suggests links based on keyword overlap.
+
+By default runs in dry-run mode (shows suggestions). Use --apply to write links.
+
+Examples:
+  orch kb autolink              # Show suggested links (dry-run)
+  orch kb autolink --apply      # Write links to target files
+  orch kb autolink --json       # Machine-readable output
+  orch kb autolink --min-score 3  # Require higher confidence matches`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runKBAutolink()
+	},
+}
+
+func runKBAutolink() error {
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	kbDir := filepath.Join(projectDir, ".kb")
+
+	links, err := kbmetrics.FindAutoLinks(kbDir, kbAutolinkMinScore)
+	if err != nil {
+		return fmt.Errorf("find auto-links: %w", err)
+	}
+
+	if kbAutolinkJSON {
+		report := kbmetrics.AutoLinkReport{
+			Scanned: 0, // filled below
+			Matched: len(links),
+			Links:   links,
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(report)
+	}
+
+	if len(links) == 0 {
+		fmt.Println("No auto-link suggestions found.")
+		fmt.Println("All positive-unlinked orphans either have no matching targets or score below threshold.")
+		return nil
+	}
+
+	fmt.Printf("Auto-Link Suggestions (%d links)\n", len(links))
+	fmt.Printf("=================================\n\n")
+
+	for i, link := range links {
+		fmt.Printf("%d. %s\n", i+1, link.InvestigationPath)
+		fmt.Printf("   → %s (%s, score: %d)\n", link.TargetName, link.TargetType, link.Score)
+		if len(link.MatchedKeywords) > 0 {
+			fmt.Printf("   keywords: %s\n", joinKeywords(link.MatchedKeywords))
+		}
+		fmt.Println()
+	}
+
+	if !kbAutolinkApply {
+		fmt.Printf("Dry run — use --apply to write these links.\n")
+		return nil
+	}
+
+	applied, err := kbmetrics.ApplyAutoLinks(links)
+	if err != nil {
+		return fmt.Errorf("apply links: %w", err)
+	}
+	fmt.Printf("Applied %d auto-links.\n", applied)
+	return nil
+}
+
+func joinKeywords(kws []string) string {
+	if len(kws) > 5 {
+		kws = kws[:5]
+	}
+	result := ""
+	for i, kw := range kws {
+		if i > 0 {
+			result += ", "
+		}
+		result += kw
+	}
+	return result
+}
+
 func init() {
 	kbAskCmd.Flags().BoolVar(&kbAskSave, "save", false, "Save result as investigation artifact")
 	kbAskCmd.Flags().StringVar(&kbAskModel, "model", "", "Model to use (default: sonnet for speed)")
@@ -296,6 +388,10 @@ func init() {
 	kbOrphansCmd.Flags().BoolVar(&kbOrphansJSON, "json", false, "Output as JSON")
 	kbOrphansCmd.Flags().BoolVar(&kbOrphansStratified, "stratified", false, "Break orphans into categories: empty, negative-result, superseded, positive-unlinked")
 
+	kbAutolinkCmd.Flags().BoolVar(&kbAutolinkApply, "apply", false, "Write links (default: dry-run)")
+	kbAutolinkCmd.Flags().BoolVar(&kbAutolinkJSON, "json", false, "Output as JSON")
+	kbAutolinkCmd.Flags().IntVar(&kbAutolinkMinScore, "min-score", 4, "Minimum match score to suggest a link")
+
 	kbCreateCmd.AddCommand(kbCreateModelCmd)
 
 	kbCmd.AddCommand(kbInitCmd)
@@ -303,6 +399,7 @@ func init() {
 	kbCmd.AddCommand(kbExtractCmd)
 	kbCmd.AddCommand(kbClaimsCmd)
 	kbCmd.AddCommand(kbOrphansCmd)
+	kbCmd.AddCommand(kbAutolinkCmd)
 	kbCmd.AddCommand(kbCreateCmd)
 	rootCmd.AddCommand(kbCmd)
 }

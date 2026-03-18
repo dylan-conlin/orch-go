@@ -325,6 +325,9 @@ func runComplete(identifier, workdir string) error {
 		return err
 	}
 
+	// Phase 5: Auto-link orphaned investigations (best-effort, non-blocking)
+	runPostCompleteAutoLink(target.WorkProjectDir)
+
 	// Clean up tmux window only after all gates pass and lifecycle transition succeeds.
 	// Skip if LifecycleManager already handled cleanup (it kills the window as part of Complete()).
 	if !lifecycleCleanedUp {
