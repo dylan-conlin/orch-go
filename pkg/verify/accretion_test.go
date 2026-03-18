@@ -228,20 +228,20 @@ func TestVerifyAccretionForCompletion_BoundaryValues(t *testing.T) {
 			expectErrors: 0,
 		},
 		{
-			name:         "current ~1550 lines (1500+50) = critical (above 1500)",
+			name:         "current ~1550 lines (1500+50) = advisory warning (above 1500)",
 			initialLines: 1500,
 			addLines:     50,
 			removeLines:  0,
-			expectPassed: false,
-			expectErrors: 1,
+			expectPassed: true, // advisory: never blocks
+			expectErrors: 0,
 		},
 		{
-			name:         "current ~1551 lines (1501+50) = critical (well above 1500)",
+			name:         "current ~1551 lines (1501+50) = advisory warning (well above 1500)",
 			initialLines: 1501,
 			addLines:     50,
 			removeLines:  0,
-			expectPassed: false,
-			expectErrors: 1,
+			expectPassed: true, // advisory: never blocks
+			expectErrors: 0,
 		},
 	}
 
@@ -340,7 +340,7 @@ func TestVerifyAccretionForCompletion_ExcludesVendorFiles(t *testing.T) {
 }
 
 func TestVerifyAccretionForCompletion_AgentCausedBloat(t *testing.T) {
-	// When agent's changes PUSH a file over the critical threshold, it should still block
+	// Advisory: agent pushing file over threshold produces warning, not error
 	tmpDir, err := os.MkdirTemp("", "accretion-agent-bloat-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
@@ -363,12 +363,15 @@ func TestVerifyAccretionForCompletion_AgentCausedBloat(t *testing.T) {
 		t.Fatal("expected non-nil result")
 	}
 
-	// Agent-caused bloat should block completion
-	if result.Passed {
-		t.Error("expected Passed=false when agent pushes file over critical threshold")
+	// Advisory gate: always passes, emits warning instead of error
+	if !result.Passed {
+		t.Error("advisory gate should always pass")
 	}
-	if len(result.Errors) != 1 {
-		t.Errorf("expected 1 error, got %d: %v", len(result.Errors), result.Errors)
+	if len(result.Errors) != 0 {
+		t.Errorf("advisory gate should produce 0 errors, got %d: %v", len(result.Errors), result.Errors)
+	}
+	if len(result.Warnings) == 0 {
+		t.Error("expected advisory warning for agent-caused bloat")
 	}
 }
 

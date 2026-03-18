@@ -151,7 +151,7 @@ func runRework(beadsID, feedback string) error {
 
 	agreementsCheckFunc := buildAgreementsChecker()
 	openQuestionCheckFunc := buildOpenQuestionChecker()
-	hotspotResult, _, _, err := orch.RunPreFlightChecks(input, projectDir, reworkBypassTriage, false, "", "", hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc)
+	hotspotResult, _, _, err := orch.RunPreFlightChecks(input, projectDir, reworkBypassTriage, "", hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc)
 	if err != nil {
 		return err
 	}

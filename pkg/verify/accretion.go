@@ -135,15 +135,14 @@ func VerifyAccretionForCompletion(workspacePath, projectDir string) *AccretionRe
 					fmt.Sprintf("Accretion warning (pre-existing bloat): %s was already %d lines before this change (+%d added, %d total). File needs extraction but agent didn't cause the bloat. See `orch hotspot`",
 						change.Path, preChangeLines, change.NetDelta, change.CurrentLines))
 			} else {
-				// Agent's changes PUSHED file over critical threshold → hard gate (error)
+				// Agent's changes PUSHED file over critical threshold — advisory warning.
+				// Gates signal, not block. Daemon extraction cascades handle structural health.
 				change.IsRisk = true
 				change.Severity = "critical"
 				result.RiskFiles = append(result.RiskFiles, change)
-				result.Passed = false
-				result.Errors = append(result.Errors,
-					fmt.Sprintf("CRITICAL accretion: %s is %d lines (+%d added, %d total). Files >%d lines require extraction before additions. See `orch hotspot` and `.kb/guides/code-extraction-patterns.md`",
-						change.Path, preChangeLines, change.NetDelta, change.CurrentLines,
-						AccretionCriticalThreshold))
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("CRITICAL accretion (advisory): %s was %d lines, now %d (+%d added). Consider extraction. See `orch hotspot`",
+						change.Path, preChangeLines, change.CurrentLines, change.NetDelta))
 			}
 		} else if change.CurrentLines > AccretionWarningThreshold {
 			// WARNING: >800 lines + adding >50 lines → soft signal (warning)

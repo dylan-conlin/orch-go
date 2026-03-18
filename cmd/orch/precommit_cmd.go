@@ -19,19 +19,12 @@ var precommitAccretionCmd = &cobra.Command{
 	Short: "Check staged files for accretion violations",
 	Long: `Checks all staged source files against accretion thresholds.
 
-Hard block (exit 1):  >1500 lines (only when agent's changes caused the threshold crossing)
-Warning (non-blocking): >1500 lines (pre-existing bloat — file was already over threshold)
-Warning (non-blocking): >800 lines with ≥30 net lines added
-Warning (non-blocking): >600 lines with ≥50 net lines added
+Advisory only — warns but never blocks. Daemon extraction cascades handle structural health.
 
-Override: FORCE_ACCRETION=1 git commit ...`,
+Warning: >1500 lines (agent-caused or pre-existing)
+Warning: >800 lines with ≥30 net lines added
+Warning: >600 lines with ≥50 net lines added`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if os.Getenv("FORCE_ACCRETION") == "1" {
-			fmt.Println("pre-commit: accretion gate bypassed (FORCE_ACCRETION=1)")
-			logPrecommitGateDecision("accretion_precommit", "bypass", "FORCE_ACCRETION=1", nil)
-			return
-		}
-
 		dir, err := os.Getwd()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "pre-commit: cannot get working directory: %v\n", err)
@@ -43,24 +36,13 @@ Override: FORCE_ACCRETION=1 git commit ...`,
 			return
 		}
 
-		if !result.Passed {
-			// Log gate block with target files
-			var targetFiles []string
-			for _, bf := range result.BlockedFiles {
-				targetFiles = append(targetFiles, bf.Path)
-			}
-			logPrecommitGateDecision("accretion_precommit", "block", "file exceeds accretion threshold", targetFiles)
-			fmt.Fprintln(os.Stderr, verify.FormatStagedAccretionError(result))
-			os.Exit(1)
-		}
-
-		// Print warnings (non-blocking) for 800/600 thresholds
+		// Print warnings (non-blocking) for all thresholds
 		if warnings := verify.FormatStagedAccretionWarnings(result); warnings != "" {
 			fmt.Fprintln(os.Stderr, warnings)
 		}
 
-		logPrecommitGateDecision("accretion_precommit", "allow", "staged files within accretion threshold", nil)
-		fmt.Println("pre-commit: accretion gate passed")
+		logPrecommitGateDecision("accretion_precommit", "allow", "accretion gate is advisory-only", nil)
+		fmt.Println("pre-commit: accretion gate passed (advisory)")
 	},
 }
 

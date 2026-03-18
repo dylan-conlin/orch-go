@@ -30,9 +30,10 @@ type StagedFileInfo struct {
 	Threshold int    // Which threshold was exceeded
 }
 
-// CheckStagedAccretion checks staged files for accretion violations.
-// Any source file staged with >1500 lines (CRITICAL threshold) blocks the commit.
-// This is Layer 0 of the accretion enforcement system — catches bloat at commit time.
+// CheckStagedAccretion checks staged files for accretion.
+// Files over 1500 lines emit advisory warnings and events. Never blocks.
+// This is Layer 0 of the accretion enforcement system — signals bloat at commit time.
+// Daemon extraction cascades (triggered by events) handle structural health.
 //
 // Returns nil if projectDir is empty.
 func CheckStagedAccretion(projectDir string) *StagedAccretionResult {
@@ -87,9 +88,9 @@ func CheckStagedAccretion(projectDir string) *StagedAccretionResult {
 					Threshold: AccretionCriticalThreshold,
 				})
 			} else {
-				// Agent-caused bloat: changes pushed file over threshold — block.
-				result.Passed = false
-				result.BlockedFiles = append(result.BlockedFiles, StagedFileInfo{
+				// Agent-caused bloat: pushed file over threshold — advisory warning.
+				// Gates signal, not block. Daemon extraction cascades handle structural health.
+				result.WarningFiles = append(result.WarningFiles, StagedFileInfo{
 					Path:      file,
 					Lines:     stagedLines,
 					NetDelta:  netDelta,
@@ -124,20 +125,10 @@ func CheckStagedAccretion(projectDir string) *StagedAccretionResult {
 	return result
 }
 
-// FormatStagedAccretionError formats the blocked files into a human-readable error message.
+// FormatStagedAccretionError is kept for backward compatibility but always returns empty.
+// Accretion gates are advisory — they never block.
 func FormatStagedAccretionError(result *StagedAccretionResult) string {
-	if result == nil || result.Passed {
-		return ""
-	}
-
-	var b strings.Builder
-	b.WriteString("BLOCKED: accretion gate — files exceed 1500-line CRITICAL threshold:\n")
-	for _, f := range result.BlockedFiles {
-		fmt.Fprintf(&b, "  %s (%d lines)\n", f.Path, f.Lines)
-	}
-	b.WriteString("\nExtract before adding more code. See: orch hotspot")
-	b.WriteString("\nOverride: FORCE_ACCRETION=1 git commit ...")
-	return b.String()
+	return ""
 }
 
 // FormatStagedAccretionWarnings formats warning files into a human-readable warning message.

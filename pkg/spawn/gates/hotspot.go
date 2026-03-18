@@ -3,7 +3,6 @@ package gates
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
@@ -24,16 +23,6 @@ type HotspotResult struct {
 // Returns nil if no hotspots were detected.
 type HotspotChecker func(projectDir, task string) (*HotspotResult, error)
 
-// ArchitectVerifier validates that an architect issue exists and is closed.
-// Returns nil if the issue is a valid closed architect issue, error otherwise.
-// The caller constructs this from verify.GetIssue to keep the gates package decoupled.
-type ArchitectVerifier func(issueID string) error
-
-// ArchitectFinder searches for a closed architect issue that reviewed the given critical files.
-// Returns the issue ID if a matching prior architect review is found, empty string if none exists.
-// This enables automatic bypass of the hotspot gate when an architect has already reviewed the area.
-type ArchitectFinder func(criticalFiles []string) (string, error)
-
 // blockingSkills are skills that modify code and should be blocked on CRITICAL hotspots.
 // Read-only/strategic skills are exempt because they need to READ hotspot files.
 var blockingSkills = map[string]bool{
@@ -47,14 +36,9 @@ func IsBlockingSkill(skillName string) bool {
 }
 
 // CheckHotspot runs hotspot analysis and displays warnings if the task targets a high-churn area.
-// The checker function performs the actual hotspot analysis (injected from cmd/orch).
-// daemonDriven spawns suppress output (triage already happened).
-// forceHotspot bypasses the blocking gate but requires architectRef with a verified closed
-// architect issue (validated via architectVerifier).
-// architectFinder enables automatic bypass: when no explicit --force-hotspot is provided,
-// the gate searches for a prior closed architect review covering the critical files.
-// Returns error if skill is blocked by CRITICAL hotspot and requirements are not met.
-func CheckHotspot(projectDir, task, skillName string, daemonDriven, forceHotspot bool, architectRef, reason string, checker HotspotChecker, architectVerifier ArchitectVerifier, architectFinder ArchitectFinder) (*HotspotResult, error) {
+// Advisory only — emits warnings and events but never blocks.
+// Daemon extraction cascades (triggered by events) handle structural health.
+func CheckHotspot(projectDir, task, skillName string, daemonDriven bool, checker HotspotChecker) (*HotspotResult, error) {
 	if projectDir == "" || checker == nil {
 		return nil, nil
 	}
@@ -72,88 +56,36 @@ func CheckHotspot(projectDir, task, skillName string, daemonDriven, forceHotspot
 	// Show hotspot warning (includes recommendation to use architect)
 	fmt.Fprint(os.Stderr, result.Warning)
 
-	// Check if this skill should be blocked on CRITICAL hotspots
+	// Emit advisory event for CRITICAL hotspots (daemon responds with extraction cascades)
 	if result.HasCriticalHotspot && IsBlockingSkill(skillName) {
-		if forceHotspot {
-			// --force-hotspot requires --architect-ref to prove architect reviewed the area
-			if architectRef == "" {
-				return result, fmt.Errorf("--force-hotspot requires --architect-ref <issue-id> to prove architect reviewed the area.\nSpawn architect first, then reference its closed issue.")
-			}
-
-			// --force-hotspot requires a reason explaining why bypassing is justified
-			if reason == "" {
-				return result, fmt.Errorf("--force-hotspot requires a reason explaining why bypassing the hotspot gate is justified.\nUse --force-hotspot --architect-ref <id> --reason \"...\"")
-			}
-
-			// Verify the architect issue if verifier is available
-			if architectVerifier != nil {
-				if err := architectVerifier(architectRef); err != nil {
-					return result, err
-				}
-			}
-
-			fmt.Fprintf(os.Stderr, "✓ --force-hotspot: Bypassing CRITICAL hotspot block (architect-ref: %s)\n", architectRef)
-			fmt.Fprintln(os.Stderr, "")
-			LogHotspotBypass(skillName, task, architectRef, reason, result.CriticalFiles)
-			return result, nil
-		}
-
-		// Auto-detect prior architect review before blocking
-		if architectFinder != nil {
-			foundRef, findErr := architectFinder(result.CriticalFiles)
-			if findErr == nil && foundRef != "" {
-				// Verify the auto-detected architect issue
-				if architectVerifier != nil {
-					if verifyErr := architectVerifier(foundRef); verifyErr == nil {
-						fmt.Fprintf(os.Stderr, "✓ Auto-detected prior architect review: %s — bypassing CRITICAL hotspot block\n", foundRef)
-						fmt.Fprintln(os.Stderr, "")
-						return result, nil
-					}
-					// Verification failed — fall through to block
-				} else {
-					// No verifier available — trust the finder result
-					fmt.Fprintf(os.Stderr, "✓ Auto-detected prior architect review: %s — bypassing CRITICAL hotspot block\n", foundRef)
-					fmt.Fprintln(os.Stderr, "")
-					return result, nil
-				}
-			}
-		}
-
-		criticalList := strings.Join(result.CriticalFiles, ", ")
-		return result, fmt.Errorf("CRITICAL hotspot: %s exceeds 1500 lines. Spawn architect to design extraction first, or use --force-hotspot --architect-ref <issue-id> to override.\nBlocked files: %s", criticalList, criticalList)
-	}
-
-	// Add context based on skill choice
-	isExemptSkill := !IsBlockingSkill(skillName)
-	if isExemptSkill {
-		fmt.Fprintln(os.Stderr, "✓ Strategic/read-only skill: exempt from hotspot blocking")
-	} else {
-		fmt.Fprintln(os.Stderr, "⚠️  Proceeding with tactical approach in hotspot area")
+		LogHotspotAdvisory(skillName, task, result.CriticalFiles)
+		fmt.Fprintln(os.Stderr, "⚠️  Advisory: CRITICAL hotspot area — daemon will schedule extraction")
+	} else if !IsBlockingSkill(skillName) {
+		fmt.Fprintln(os.Stderr, "✓ Strategic/read-only skill: hotspot advisory noted")
 	}
 	fmt.Fprintln(os.Stderr, "")
 
 	return result, nil
 }
 
-// LogHotspotBypass logs a spawn.hotspot_bypassed event to events.jsonl.
-// This tracks when CRITICAL hotspot blocking gates are bypassed via --force-hotspot.
-func LogHotspotBypass(skillName, task, architectRef, reason string, criticalFiles []string) {
+// LogHotspotAdvisory logs a spawn.hotspot_advisory event to events.jsonl.
+// This tracks when CRITICAL hotspot areas are targeted — daemon uses these
+// events to trigger extraction cascades.
+func LogHotspotAdvisory(skillName, task string, criticalFiles []string) {
 	logger := events.NewLogger(events.DefaultLogPath())
 	data := map[string]interface{}{
-		"skill":         skillName,
-		"task":          task,
-		"architect_ref": architectRef,
-		"reason":        reason,
+		"skill": skillName,
+		"task":  task,
 	}
 	if len(criticalFiles) > 0 {
 		data["critical_files"] = criticalFiles
 	}
 	event := events.Event{
-		Type:      events.EventTypeHotspotBypassed,
+		Type:      events.EventTypeHotspotBypassed, // keep event type for backward compat
 		Timestamp: time.Now().Unix(),
 		Data:      data,
 	}
 	if err := logger.Log(event); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to log hotspot bypass: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Warning: failed to log hotspot advisory: %v\n", err)
 	}
 }

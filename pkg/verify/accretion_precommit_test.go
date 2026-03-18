@@ -12,11 +12,10 @@ func TestCheckStagedAccretion(t *testing.T) {
 	tmpDir := setupGitRepoForStaged(t)
 
 	tests := []struct {
-		name         string
-		setupFiles   map[string]int // filename -> line count for initial commit
-		stageFiles   map[string]int // filename -> new line count to stage
-		expectPassed bool
-		expectCount  int // number of blocked files
+		name           string
+		setupFiles     map[string]int // filename -> line count for initial commit
+		stageFiles     map[string]int // filename -> new line count to stage
+		expectWarnings int            // number of warning files (advisory gate never blocks)
 	}{
 		{
 			name: "small staged file passes",
@@ -26,8 +25,7 @@ func TestCheckStagedAccretion(t *testing.T) {
 			stageFiles: map[string]int{
 				"small.go": 200,
 			},
-			expectPassed: true,
-			expectCount:  0,
+			expectWarnings: 0,
 		},
 		{
 			name: "staged file at exactly 1500 lines passes",
@@ -37,61 +35,55 @@ func TestCheckStagedAccretion(t *testing.T) {
 			stageFiles: map[string]int{
 				"exact.go": 1500,
 			},
-			expectPassed: true,
-			expectCount:  0,
+			expectWarnings: 0,
 		},
 		{
-			name: "staged file at 1501 lines blocks when agent caused it",
+			name: "staged file at 1501 lines warns when agent caused it",
 			setupFiles: map[string]int{
 				"big.go": 100,
 			},
 			stageFiles: map[string]int{
 				"big.go": 1501,
 			},
-			expectPassed: false,
-			expectCount:  1,
+			expectWarnings: 1,
 		},
 		{
-			name: "staged file at 2000 lines blocks when agent caused it",
+			name: "staged file at 2000 lines warns when agent caused it",
 			setupFiles: map[string]int{
 				"huge.go": 100,
 			},
 			stageFiles: map[string]int{
 				"huge.go": 2000,
 			},
-			expectPassed: false,
-			expectCount:  1,
+			expectWarnings: 1,
 		},
 		{
-			name: "pre-existing bloat file warns instead of blocking",
+			name: "pre-existing bloat file warns",
 			setupFiles: map[string]int{
 				"legacy.go": 1600,
 			},
 			stageFiles: map[string]int{
 				"legacy.go": 1650,
 			},
-			expectPassed: true,
-			expectCount:  0,
+			expectWarnings: 1,
 		},
 		{
-			name: "pre-existing bloat at exactly 1501 warns instead of blocking",
+			name: "pre-existing bloat at exactly 1501 warns",
 			setupFiles: map[string]int{
 				"border.go": 1501,
 			},
 			stageFiles: map[string]int{
 				"border.go": 1560,
 			},
-			expectPassed: true,
-			expectCount:  0,
+			expectWarnings: 1,
 		},
 		{
-			name: "new file over threshold blocks",
+			name: "new file over threshold warns",
 			setupFiles: map[string]int{},
 			stageFiles: map[string]int{
 				"newbig.go": 1600,
 			},
-			expectPassed: false,
-			expectCount:  1,
+			expectWarnings: 1,
 		},
 		{
 			name: "multiple files one over threshold",
@@ -102,8 +94,7 @@ func TestCheckStagedAccretion(t *testing.T) {
 				"ok.go":  500,
 				"big.ts": 1800,
 			},
-			expectPassed: false,
-			expectCount:  1,
+			expectWarnings: 1,
 		},
 		{
 			name: "non-source file over threshold ignored",
@@ -111,8 +102,7 @@ func TestCheckStagedAccretion(t *testing.T) {
 			stageFiles: map[string]int{
 				"README.md": 2000,
 			},
-			expectPassed: true,
-			expectCount:  0,
+			expectWarnings: 0,
 		},
 		{
 			name: "vendor file over threshold ignored",
@@ -120,26 +110,23 @@ func TestCheckStagedAccretion(t *testing.T) {
 			stageFiles: map[string]int{
 				"vendor/lib/big.go": 2000,
 			},
-			expectPassed: true,
-			expectCount:  0,
+			expectWarnings: 0,
 		},
 		{
-			name: "typescript file over threshold blocks",
+			name: "typescript file over threshold warns",
 			setupFiles: map[string]int{},
 			stageFiles: map[string]int{
 				"app.ts": 1600,
 			},
-			expectPassed: false,
-			expectCount:  1,
+			expectWarnings: 1,
 		},
 		{
-			name: "svelte file over threshold blocks",
+			name: "svelte file over threshold warns",
 			setupFiles: map[string]int{},
 			stageFiles: map[string]int{
 				"Component.svelte": 1600,
 			},
-			expectPassed: false,
-			expectCount:  1,
+			expectWarnings: 1,
 		},
 	}
 
@@ -172,12 +159,25 @@ func TestCheckStagedAccretion(t *testing.T) {
 				t.Fatal("expected non-nil result")
 			}
 
-			if result.Passed != tt.expectPassed {
-				t.Errorf("Passed = %v, want %v; blocked: %v", result.Passed, tt.expectPassed, result.BlockedFiles)
+			// Advisory gate: always passes
+			if !result.Passed {
+				t.Errorf("advisory gate should always pass, got Passed=false")
 			}
 
-			if len(result.BlockedFiles) != tt.expectCount {
-				t.Errorf("expected %d blocked files, got %d: %v", tt.expectCount, len(result.BlockedFiles), result.BlockedFiles)
+			// BlockedFiles should always be empty (advisory)
+			if len(result.BlockedFiles) != 0 {
+				t.Errorf("advisory gate should never block, got %d blocked files", len(result.BlockedFiles))
+			}
+
+			// Check warning count
+			warningCount := 0
+			for _, w := range result.WarningFiles {
+				if w.Threshold == AccretionCriticalThreshold {
+					warningCount++
+				}
+			}
+			if warningCount != tt.expectWarnings {
+				t.Errorf("expected %d critical warnings, got %d: %v", tt.expectWarnings, warningCount, result.WarningFiles)
 			}
 		})
 	}
@@ -348,10 +348,10 @@ func TestCheckStagedAccretion_PreExistingBloatWarning(t *testing.T) {
 	}
 }
 
-func TestCheckStagedAccretion_BlockTakesPrecedenceOverWarning(t *testing.T) {
+func TestCheckStagedAccretion_CriticalGoesToWarnings(t *testing.T) {
 	tmpDir := setupGitRepoForStaged(t)
 
-	// File at 1600 lines should be in BlockedFiles, not WarningFiles
+	// File at 1600 lines should be in WarningFiles (advisory, never blocks)
 	createFileWithLines(t, tmpDir, "huge.go", 100)
 	commitFiles(t, tmpDir, "Initial commit")
 
@@ -362,14 +362,14 @@ func TestCheckStagedAccretion_BlockTakesPrecedenceOverWarning(t *testing.T) {
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
-	if result.Passed {
-		t.Error("1600-line file should block")
+	if !result.Passed {
+		t.Error("advisory gate should always pass")
 	}
-	if len(result.BlockedFiles) != 1 {
-		t.Errorf("expected 1 blocked file, got %d", len(result.BlockedFiles))
+	if len(result.BlockedFiles) != 0 {
+		t.Errorf("advisory gate should never block, got %d", len(result.BlockedFiles))
 	}
-	if len(result.WarningFiles) != 0 {
-		t.Errorf("expected 0 warnings (blocked takes precedence), got %d", len(result.WarningFiles))
+	if len(result.WarningFiles) != 1 {
+		t.Errorf("expected 1 warning file, got %d", len(result.WarningFiles))
 	}
 }
 
