@@ -54,6 +54,7 @@ type StatsReport struct {
 	OverrideStats     OverrideStats                    `json:"override_stats,omitempty"`
 	GateDecisionStats      GateDecisionStats               `json:"gate_decision_stats,omitempty"`
 	GateEffectivenessStats GateEffectivenessStats          `json:"gate_effectiveness_stats,omitempty"`
+	SkillInferenceStats    SkillInferenceStats              `json:"skill_inference_stats,omitempty"`
 	CoachingStats          map[string]coaching.MetricSummary `json:"coaching_stats,omitempty"`
 }
 
@@ -278,6 +279,36 @@ type GateSkillEntry struct {
 type escapeHatchSpawn struct {
 	timestamp int64
 	account   string
+}
+
+// SkillInferenceStats tracks accuracy of daemon skill inference.
+// Correlates spawn.skill_inferred events with agent outcomes to measure
+// whether inferred skills lead to successful completions.
+type SkillInferenceStats struct {
+	TotalInferences int                         `json:"total_inferences"`
+	Completed       int                         `json:"completed"`       // Inferred spawns that completed
+	Abandoned       int                         `json:"abandoned"`       // Inferred spawns that were abandoned
+	SuccessRate     float64                     `json:"success_rate"`    // % completed / (completed + abandoned)
+	ByMethod        []InferenceMethodStats      `json:"by_method,omitempty"`
+	BySkill         []InferenceSkillStats       `json:"by_skill,omitempty"`
+}
+
+// InferenceMethodStats tracks outcomes by inference method.
+type InferenceMethodStats struct {
+	Method      string  `json:"method"`       // "label", "title", "description", "type"
+	Inferences  int     `json:"inferences"`
+	Completed   int     `json:"completed"`
+	Abandoned   int     `json:"abandoned"`
+	SuccessRate float64 `json:"success_rate"`
+}
+
+// InferenceSkillStats tracks inference outcomes per inferred skill.
+type InferenceSkillStats struct {
+	Skill       string  `json:"skill"`
+	Inferences  int     `json:"inferences"`
+	Completed   int     `json:"completed"`
+	Abandoned   int     `json:"abandoned"`
+	SuccessRate float64 `json:"success_rate"`
 }
 
 // GateAccuracyBaseline is a point-in-time snapshot of gate accuracy metrics.

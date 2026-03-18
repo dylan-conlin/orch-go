@@ -168,6 +168,8 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 			a.processGateDecision(event)
 		case "daemon.architect_escalation":
 			a.processArchitectEscalation(event)
+		case "spawn.skill_inferred":
+			a.processSkillInferred(event)
 		}
 	}
 
@@ -180,6 +182,7 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 	a.calcRatesAndDuration()
 	a.calcGateDecisionStats()
 	a.calcGateEffectiveness(events)
+	a.calcSkillInferenceStats()
 	a.calcCoachingStats()
 
 	return a.report

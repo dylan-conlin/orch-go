@@ -66,6 +66,9 @@ type statsAggregator struct {
 	blockedBeadsIDs       map[string]bool // beads_id -> true if blocked by a gate
 	architectEscalatedIDs map[string]bool // issue_id -> true if escalated to architect
 
+	// Skill inference tracking
+	skillInferences map[string]*skillInferenceRecord // issue_id -> inference record
+
 	// Event window counter
 	eventsInWindow int
 }
@@ -108,6 +111,8 @@ func newStatsAggregator(days int) *statsAggregator {
 		gatedBeadsIDs:         make(map[string]bool),
 		blockedBeadsIDs:       make(map[string]bool),
 		architectEscalatedIDs: make(map[string]bool),
+
+		skillInferences: make(map[string]*skillInferenceRecord),
 	}
 }
 

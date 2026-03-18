@@ -1889,3 +1889,135 @@ func TestGateAccuracyBaseline(t *testing.T) {
 		t.Error("SnapshotTime should not be empty")
 	}
 }
+
+func TestSkillInferenceStats(t *testing.T) {
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// Skill inferences (daemon inferred skills for issues)
+		{Type: "spawn.skill_inferred", SessionID: "issue-1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"issue_id": "issue-1", "inferred_skill": "feature-impl", "issue_type": "feature",
+			"had_skill_label": false, "had_title_match": false, "used_description_heuristic": false,
+		}},
+		{Type: "spawn.skill_inferred", SessionID: "issue-2", Timestamp: now - 7100, Data: map[string]interface{}{
+			"issue_id": "issue-2", "inferred_skill": "systematic-debugging", "issue_type": "bug",
+			"had_skill_label": false, "had_title_match": true, "used_description_heuristic": false,
+		}},
+		{Type: "spawn.skill_inferred", SessionID: "issue-3", Timestamp: now - 7000, Data: map[string]interface{}{
+			"issue_id": "issue-3", "inferred_skill": "investigation", "issue_type": "task",
+			"had_skill_label": true, "had_title_match": false, "used_description_heuristic": false,
+		}},
+		{Type: "spawn.skill_inferred", SessionID: "issue-4", Timestamp: now - 6900, Data: map[string]interface{}{
+			"issue_id": "issue-4", "inferred_skill": "feature-impl", "issue_type": "task",
+			"had_skill_label": false, "had_title_match": false, "used_description_heuristic": true,
+		}},
+		// Spawns
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7000, Data: map[string]interface{}{"skill": "feature-impl", "beads_id": "issue-1"}},
+		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 6900, Data: map[string]interface{}{"skill": "systematic-debugging", "beads_id": "issue-2"}},
+		{Type: "session.spawned", SessionID: "ses_3", Timestamp: now - 6800, Data: map[string]interface{}{"skill": "investigation", "beads_id": "issue-3"}},
+		{Type: "session.spawned", SessionID: "ses_4", Timestamp: now - 6700, Data: map[string]interface{}{"skill": "feature-impl", "beads_id": "issue-4"}},
+		// Outcomes: issue-1 completed, issue-2 completed, issue-3 abandoned, issue-4 completed
+		{Type: "agent.completed", Timestamp: now - 3600, Data: map[string]interface{}{"beads_id": "issue-1", "skill": "feature-impl"}},
+		{Type: "agent.completed", Timestamp: now - 3500, Data: map[string]interface{}{"beads_id": "issue-2", "skill": "systematic-debugging"}},
+		{Type: "agent.abandoned", Timestamp: now - 3400, Data: map[string]interface{}{"beads_id": "issue-3"}},
+		{Type: "agent.completed", Timestamp: now - 3300, Data: map[string]interface{}{"beads_id": "issue-4", "skill": "feature-impl"}},
+	}
+
+	report := aggregateStats(events, 7)
+	si := report.SkillInferenceStats
+
+	// 4 inferences, 3 completed, 1 abandoned
+	if si.TotalInferences != 4 {
+		t.Errorf("TotalInferences = %d, want 4", si.TotalInferences)
+	}
+	if si.Completed != 3 {
+		t.Errorf("Completed = %d, want 3", si.Completed)
+	}
+	if si.Abandoned != 1 {
+		t.Errorf("Abandoned = %d, want 1", si.Abandoned)
+	}
+	if si.SuccessRate < 74.9 || si.SuccessRate > 75.1 {
+		t.Errorf("SuccessRate = %.1f%%, want 75.0%%", si.SuccessRate)
+	}
+
+	// By method: type=1 completed (issue-1), title=1 completed (issue-2),
+	// label=1 abandoned (issue-3), description=1 completed (issue-4)
+	if len(si.ByMethod) == 0 {
+		t.Fatal("expected ByMethod to be populated")
+	}
+	methodMap := make(map[string]InferenceMethodStats)
+	for _, m := range si.ByMethod {
+		methodMap[m.Method] = m
+	}
+	if ms, ok := methodMap["type"]; !ok {
+		t.Error("expected 'type' method in ByMethod")
+	} else {
+		if ms.Inferences != 1 {
+			t.Errorf("type method: Inferences = %d, want 1", ms.Inferences)
+		}
+		if ms.Completed != 1 {
+			t.Errorf("type method: Completed = %d, want 1", ms.Completed)
+		}
+		if ms.SuccessRate < 99.9 {
+			t.Errorf("type method: SuccessRate = %.1f%%, want 100%%", ms.SuccessRate)
+		}
+	}
+	if ms, ok := methodMap["label"]; !ok {
+		t.Error("expected 'label' method in ByMethod")
+	} else {
+		if ms.Abandoned != 1 {
+			t.Errorf("label method: Abandoned = %d, want 1", ms.Abandoned)
+		}
+		if ms.SuccessRate > 0.1 {
+			t.Errorf("label method: SuccessRate = %.1f%%, want 0%%", ms.SuccessRate)
+		}
+	}
+
+	// By skill: feature-impl=2 completed, systematic-debugging=1 completed, investigation=1 abandoned
+	if len(si.BySkill) == 0 {
+		t.Fatal("expected BySkill to be populated")
+	}
+	skillMap := make(map[string]InferenceSkillStats)
+	for _, s := range si.BySkill {
+		skillMap[s.Skill] = s
+	}
+	if ss, ok := skillMap["feature-impl"]; !ok {
+		t.Error("expected 'feature-impl' in BySkill")
+	} else {
+		if ss.Inferences != 2 {
+			t.Errorf("feature-impl: Inferences = %d, want 2", ss.Inferences)
+		}
+		if ss.Completed != 2 {
+			t.Errorf("feature-impl: Completed = %d, want 2", ss.Completed)
+		}
+		if ss.SuccessRate < 99.9 {
+			t.Errorf("feature-impl: SuccessRate = %.1f%%, want 100%%", ss.SuccessRate)
+		}
+	}
+	if ss, ok := skillMap["investigation"]; !ok {
+		t.Error("expected 'investigation' in BySkill")
+	} else {
+		if ss.Abandoned != 1 {
+			t.Errorf("investigation: Abandoned = %d, want 1", ss.Abandoned)
+		}
+	}
+}
+
+func TestSkillInferenceStatsNoOutcome(t *testing.T) {
+	now := time.Now().Unix()
+
+	// Inference with no completion or abandonment — should not be counted
+	events := []StatsEvent{
+		{Type: "spawn.skill_inferred", SessionID: "issue-1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"issue_id": "issue-1", "inferred_skill": "feature-impl", "issue_type": "feature",
+			"had_skill_label": false, "had_title_match": false, "used_description_heuristic": false,
+		}},
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7000, Data: map[string]interface{}{"skill": "feature-impl", "beads_id": "issue-1"}},
+		// No completion or abandonment
+	}
+
+	report := aggregateStats(events, 7)
+	if report.SkillInferenceStats.TotalInferences != 0 {
+		t.Errorf("TotalInferences = %d, want 0 (no outcomes yet)", report.SkillInferenceStats.TotalInferences)
+	}
+}

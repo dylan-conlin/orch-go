@@ -305,6 +305,8 @@ func outputStatsText(report *StatsReport) error {
 		}
 	}
 
+	outputSkillInference(report)
+
 	// Behavioral health (coaching metrics)
 	if len(report.CoachingStats) > 0 {
 		fmt.Println()
@@ -406,6 +408,40 @@ func outputStatsText(report *StatsReport) error {
 	}
 
 	return nil
+}
+
+func outputSkillInference(report *StatsReport) {
+	if report.SkillInferenceStats.TotalInferences == 0 {
+		return
+	}
+	si := &report.SkillInferenceStats
+	fmt.Println()
+	fmt.Println("🎯 SKILL INFERENCE ACCURACY")
+	fmt.Printf("  Inferences with outcomes: %d\n", si.TotalInferences)
+	fmt.Printf("  Completed:   %d (%.1f%%)\n", si.Completed, si.SuccessRate)
+	fmt.Printf("  Abandoned:   %d\n", si.Abandoned)
+
+	if len(si.ByMethod) > 0 {
+		fmt.Println()
+		fmt.Println("  By Inference Method:")
+		fmt.Printf("  %-15s %8s %8s %8s %10s\n", "Method", "Count", "Complete", "Abandon", "Rate")
+		fmt.Println("  " + strings.Repeat("-", 53))
+		for _, ms := range si.ByMethod {
+			fmt.Printf("  %-15s %8d %8d %8d %9.1f%%\n",
+				ms.Method, ms.Inferences, ms.Completed, ms.Abandoned, ms.SuccessRate)
+		}
+	}
+
+	if len(si.BySkill) > 0 {
+		fmt.Println()
+		fmt.Println("  By Inferred Skill:")
+		fmt.Printf("  %-25s %8s %8s %8s %10s\n", "Skill", "Count", "Complete", "Abandon", "Rate")
+		fmt.Println("  " + strings.Repeat("-", 63))
+		for _, ss := range si.BySkill {
+			fmt.Printf("  %-25s %8d %8d %8d %9.1f%%\n",
+				truncateSkill(ss.Skill, 22), ss.Inferences, ss.Completed, ss.Abandoned, ss.SuccessRate)
+		}
+	}
 }
 
 func outputGateEffectiveness(report *StatsReport) {
