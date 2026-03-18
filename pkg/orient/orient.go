@@ -245,14 +245,15 @@ func formatThroughput(b *strings.Builder, tp *Throughput) {
 	} else {
 		b.WriteString(fmt.Sprintf("Last %dd:\n", tp.Days))
 	}
-	b.WriteString(fmt.Sprintf("   Completions: %d | Abandonments: %d | In-progress: %d\n",
-		tp.Completions, tp.Abandonments, tp.InProgress))
+	// Ground-truth metrics first — these reflect actual value delivered
 	if tp.MergedCount > 0 {
 		b.WriteString(fmt.Sprintf("   Merged: %d (%d%%) | net lines: %+d\n",
 			tp.MergedCount,
 			int(tp.MergeRate*100),
 			tp.NetLinesAdded-tp.NetLinesRemoved))
 	}
+	b.WriteString(fmt.Sprintf("   Completions: %d | Abandonments: %d | In-progress: %d\n",
+		tp.Completions, tp.Abandonments, tp.InProgress))
 	if tp.AvgDurationMin > 0 {
 		b.WriteString(fmt.Sprintf("   Avg duration: %d min\n", tp.AvgDurationMin))
 	}

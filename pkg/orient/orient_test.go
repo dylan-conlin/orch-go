@@ -989,6 +989,58 @@ func TestFormatOrientation_SectionOrder(t *testing.T) {
 	}
 }
 
+func TestFormatThroughput_GroundTruthLeadsDisplay(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{
+			Days:            1,
+			Completions:     5,
+			Abandonments:    1,
+			InProgress:      3,
+			AvgDurationMin:  30,
+			MergedCount:     3,
+			MergeRate:       0.60,
+			NetLinesAdded:   200,
+			NetLinesRemoved: 50,
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	// Ground-truth line (merged/merge rate/net lines) must appear before completions line
+	mergedIdx := strings.Index(output, "Merged:")
+	completionsIdx := strings.Index(output, "Completions:")
+	if mergedIdx == -1 {
+		t.Fatal("missing 'Merged:' line in output")
+	}
+	if completionsIdx == -1 {
+		t.Fatal("missing 'Completions:' line in output")
+	}
+	if mergedIdx > completionsIdx {
+		t.Errorf("ground-truth metrics (Merged) should appear before Completions\nOutput:\n%s", output)
+	}
+}
+
+func TestFormatThroughput_NoMergedDataFallback(t *testing.T) {
+	// When no ground-truth data, completions still show
+	data := &OrientationData{
+		Throughput: Throughput{
+			Days:        1,
+			Completions: 5,
+			InProgress:  2,
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	if !strings.Contains(output, "Completions: 5") {
+		t.Error("missing completions when no merged data")
+	}
+	// Should NOT have a Merged line
+	if strings.Contains(output, "Merged:") {
+		t.Error("should not show Merged line when MergedCount is 0")
+	}
+}
+
 func TestFormatOrientation_DaemonHealthNonGreen(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1},
