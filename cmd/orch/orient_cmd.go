@@ -123,6 +123,9 @@ func runOrient() error {
 	// 8. In-progress count from bd
 	data.Throughput.InProgress = collectInProgressCount()
 
+	// Ground-truth metrics from git (merge rate + net code impact)
+	enrichThroughputWithGitGroundTruth(&data.Throughput)
+
 	// 11. Reflect suggestions
 	data.ReflectSummary = collectReflectSuggestions()
 
@@ -686,6 +689,54 @@ func queryPlanBeadsStatuses(plans []orient.PlanSummary) map[string]string {
 		statusMap[id] = issue.Status
 	}
 	return statusMap
+}
+
+// enrichThroughputWithGitGroundTruth populates merge rate and net code impact
+// by querying git log for commits with beads IDs in the throughput window.
+func enrichThroughputWithGitGroundTruth(tp *orient.Throughput) {
+	sinceArg := fmt.Sprintf("--since=%dd", tp.Days)
+	projectPrefix := detectProjectPrefix()
+	if projectPrefix == "" {
+		return
+	}
+
+	// Get commit subjects to extract beads IDs
+	logCmd := exec.Command("git", "log", "--format=%h %s", sinceArg, "--no-merges")
+	logOutput, err := logCmd.Output()
+	if err != nil {
+		return
+	}
+
+	commits := orient.ParseGitLogForGroundTruth(string(logOutput), projectPrefix)
+	uniqueIDs := orient.UniqueBeadsIDs(commits)
+
+	tp.MergedCount = len(uniqueIDs)
+	if tp.Completions > 0 {
+		rate := float64(tp.MergedCount) / float64(tp.Completions)
+		if rate > 1.0 {
+			rate = 1.0
+		}
+		tp.MergeRate = rate
+	}
+
+	// Get numstat for net code impact (all commits in window)
+	numstatCmd := exec.Command("git", "log", "--format=", "--numstat", sinceArg, "--no-merges")
+	numstatOutput, err := numstatCmd.Output()
+	if err != nil {
+		return
+	}
+
+	tp.NetLinesAdded, tp.NetLinesRemoved = orient.ParseGitNumstat(string(numstatOutput))
+}
+
+// detectProjectPrefix returns the beads project prefix (e.g., "orch-go")
+// by looking at the directory name of the current project.
+func detectProjectPrefix() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(dir)
 }
 
 // parseInProgressCount counts issue lines from `bd list --status=in_progress` output.

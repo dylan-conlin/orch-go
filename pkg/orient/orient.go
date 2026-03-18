@@ -21,6 +21,12 @@ type Throughput struct {
 	Abandonments   int `json:"abandonments"`
 	InProgress     int `json:"in_progress"`
 	AvgDurationMin int `json:"avg_duration_min"`
+
+	// Ground-truth metrics from git (Phase 1)
+	MergedCount     int     `json:"merged_count,omitempty"`
+	MergeRate       float64 `json:"merge_rate,omitempty"`
+	NetLinesAdded   int     `json:"net_lines_added,omitempty"`
+	NetLinesRemoved int     `json:"net_lines_removed,omitempty"`
 }
 
 // ReadyIssue represents a beads issue ready for work.
@@ -241,6 +247,12 @@ func formatThroughput(b *strings.Builder, tp *Throughput) {
 	}
 	b.WriteString(fmt.Sprintf("   Completions: %d | Abandonments: %d | In-progress: %d\n",
 		tp.Completions, tp.Abandonments, tp.InProgress))
+	if tp.MergedCount > 0 {
+		b.WriteString(fmt.Sprintf("   Merged: %d (%d%%) | net lines: %+d\n",
+			tp.MergedCount,
+			int(tp.MergeRate*100),
+			tp.NetLinesAdded-tp.NetLinesRemoved))
+	}
 	if tp.AvgDurationMin > 0 {
 		b.WriteString(fmt.Sprintf("   Avg duration: %d min\n", tp.AvgDurationMin))
 	}
