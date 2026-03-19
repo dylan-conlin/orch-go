@@ -125,6 +125,9 @@ func GenerateContext(cfg *Config) (string, error) {
 		}
 	}
 
+	// Generate governance context for worker agents (not orchestrators)
+	governanceContext := GenerateGovernanceContext(cfg.NoTrack)
+
 	data := contextData{
 		Task:                  cfg.Task,
 		BeadsID:               cfg.BeadsID,
@@ -170,6 +173,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		ExploreDepth:          cfg.ExploreDepth,
 		ExploreParentSkill:    cfg.ExploreParentSkill,
 		ExploreJudgeModel:     cfg.ExploreJudgeModel,
+		GovernanceContext:     governanceContext,
 	}
 
 	var buf bytes.Buffer

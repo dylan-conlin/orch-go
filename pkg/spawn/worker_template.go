@@ -174,7 +174,10 @@ This applies to:
 - Prevents the system from learning about recurring friction
 - Bypasses stakeholders who should know about the limitation
 - Creates hidden technical debt
+{{if .GovernanceContext}}
 
+{{.GovernanceContext}}
+{{end}}
 DELIVERABLES (REQUIRED):
 1. **FIRST:** Verify project location: pwd (must be {{.ProjectDir}})
 {{if .ProducesInvestigation}}
@@ -466,4 +469,5 @@ type contextData struct {
 	ExploreDepth          int      // Max iteration depth (1=single pass, N=judge triggers re-exploration)
 	ExploreParentSkill    string   // Original skill (investigation/architect)
 	ExploreJudgeModel     string   // Model override for judge agent (cross-model experiment)
+	GovernanceContext     string   // Governance-protected paths section for pre-planning awareness
 }
