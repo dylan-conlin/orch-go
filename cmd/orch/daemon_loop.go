@@ -149,6 +149,9 @@ func daemonSetup() (*daemonLoopState, error) {
 	// Wire trigger expiry service (auto-close stale daemon:trigger issues)
 	d.TriggerExpiry = daemon.NewDefaultTriggerExpiryService()
 
+	// Wire detector outcome tracking (precision measurement via beads resolution rates)
+	d.DetectorOutcomes = daemon.NewDefaultDetectorOutcomeService()
+
 	// Wire digest producer (scans .kb/ artifacts, produces thinking products)
 	{
 		projectDir, _ := os.Getwd()

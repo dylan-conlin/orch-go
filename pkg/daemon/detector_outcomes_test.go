@@ -132,6 +132,35 @@ func TestDetectorBudgetAdjustment_InsufficientSamples(t *testing.T) {
 	}
 }
 
+func TestExtractDetectorName(t *testing.T) {
+	tests := []struct {
+		name   string
+		labels []string
+		want   string
+	}{
+		{"extracts detector name", []string{"daemon:trigger", "daemon:trigger:model_contradictions"}, "model_contradictions"},
+		{"no detector label", []string{"daemon:trigger", "triage:ready"}, ""},
+		{"empty labels", nil, ""},
+		{"picks first match", []string{"daemon:trigger:hotspot_acceleration", "daemon:trigger:knowledge_decay"}, "hotspot_acceleration"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractDetectorName(tt.labels)
+			if got != tt.want {
+				t.Errorf("extractDetectorName(%v) = %q, want %q", tt.labels, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewDefaultDetectorOutcomeService(t *testing.T) {
+	svc := NewDefaultDetectorOutcomeService()
+	if svc == nil {
+		t.Fatal("NewDefaultDetectorOutcomeService() returned nil")
+	}
+}
+
 // --- Mocks ---
 
 type mockDetectorOutcomeService struct {

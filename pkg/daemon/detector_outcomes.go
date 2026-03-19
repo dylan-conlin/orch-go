@@ -4,6 +4,12 @@
 // whether those issues led to useful work (completed) or waste (abandoned).
 package daemon
 
+import (
+	"strings"
+
+	"github.com/dylan-conlin/orch-go/pkg/beads"
+)
+
 const (
 	// MinResolvedForPenalty is the minimum number of resolved (completed + abandoned)
 	// issues before a detector can be penalized. Prevents overreacting to small samples.
@@ -98,4 +104,77 @@ func AdjustedBudget(baseBudget int, detectorName string, outcomes map[string]*De
 	}
 
 	return baseBudget
+}
+
+// defaultDetectorOutcomeService queries beads for all daemon:trigger issues
+// and maps their status/close_reason to DetectorIssue outcomes.
+type defaultDetectorOutcomeService struct{}
+
+// NewDefaultDetectorOutcomeService creates the production detector outcome service.
+func NewDefaultDetectorOutcomeService() DetectorOutcomeService {
+	return &defaultDetectorOutcomeService{}
+}
+
+func (s *defaultDetectorOutcomeService) ListDetectorIssues() ([]DetectorIssue, error) {
+	// List ALL issues (open + closed) with the daemon:trigger label
+	socketPath, err := beads.FindSocketPath("")
+	if err != nil {
+		return nil, err
+	}
+
+	client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+	if err := client.Connect(); err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	beadsIssues, err := client.List(&beads.ListArgs{
+		LabelsAny: []string{TriggerLabel},
+		Limit:     beads.IntPtr(0),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result []DetectorIssue
+	for _, bi := range beadsIssues {
+		detector := extractDetectorName(bi.Labels)
+		if detector == "" {
+			continue
+		}
+
+		di := DetectorIssue{
+			ID:       bi.ID,
+			Detector: detector,
+			Status:   bi.Status,
+		}
+
+		// Map close_reason to outcome
+		if bi.Status == "closed" {
+			switch bi.CloseReason {
+			case "completed":
+				di.Outcome = "completed"
+			case "abandoned", "expired", "wontfix", "duplicate":
+				di.Outcome = "abandoned"
+			default:
+				di.Outcome = "abandoned" // unknown close reason → pessimistic
+			}
+		}
+
+		result = append(result, di)
+	}
+	return result, nil
+}
+
+// extractDetectorName finds the detector name from daemon:trigger:{name} labels.
+func extractDetectorName(labels []string) string {
+	for _, label := range labels {
+		if strings.HasPrefix(label, "daemon:trigger:") {
+			name := strings.TrimPrefix(label, "daemon:trigger:")
+			if name != "" {
+				return name
+			}
+		}
+	}
+	return ""
 }

@@ -80,8 +80,8 @@ func TestModelContradictionsDetector_FindsContradictions(t *testing.T) {
 	if s.IssueType != "task" {
 		t.Errorf("IssueType = %q, want task", s.IssueType)
 	}
-	if s.Priority != 2 {
-		t.Errorf("Priority = %d, want 2", s.Priority)
+	if s.Priority != 3 {
+		t.Errorf("Priority = %d, want 3", s.Priority)
 	}
 }
 

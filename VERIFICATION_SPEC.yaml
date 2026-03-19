@@ -1,30 +1,29 @@
-issue: orch-go-of3lp
-title: "Per-detector false positive tracking for daemon trigger system"
+issue: orch-go-wzziz
+title: "Lower model contradictions detector P2→P3, wire outcome tracking"
 skill: feature-impl
 tier: light
 
 verification:
   automated:
-    - command: "go test ./pkg/daemon/ -run 'TestExpiredTriggerIssue_DetectorName' -v"
-      expected: "PASS (5 subtests)"
-    - command: "go test ./pkg/daemon/ -run 'TestDaemon_RunPeriodicTriggerExpiry_TracksDetectorOutcomes' -v"
-      expected: "PASS"
-    - command: "go test ./pkg/daemon/ -run 'TestDaemon_RunPeriodicTriggerExpiry_DetectorOutcomesExcludeErrors' -v"
-      expected: "PASS"
-    - command: "go build ./..."
-      expected: "clean compile"
+    - command: "go test ./pkg/daemon/ -run TestModelContradictions -v -count=1"
+      expected: "PASS — Priority = 3 (was 2)"
+    - command: "go test ./pkg/daemon/ -run 'TestExtractDetectorName|TestNewDefaultDetectorOutcome|TestComputeDetectorOutcomes|TestDetectorBudget' -v -count=1"
+      expected: "PASS — all outcome tracking tests pass"
+    - command: "go build ./cmd/orch/"
+      expected: "clean compile with DetectorOutcomes wiring"
 
   manual:
-    - step: "Run daemon with verbose, let trigger expiry fire, check events.jsonl for trigger.outcome events"
+    - step: "grep 'Priority:.*3' pkg/daemon/trigger_detectors_phase2.go — model_contradictions is P3"
+    - step: "grep 'DetectorOutcomes' cmd/orch/daemon_loop.go — wiring exists"
 
 deliverables:
-  - path: pkg/daemon/trigger_expiry.go
-    description: "Labels field on ExpiredTriggerIssue, DetectorName() method, DetectorOutcomes map on TriggerExpiryResult"
-  - path: pkg/daemon/trigger_expiry_service.go
-    description: "Pass issue labels through to ExpiredTriggerIssue"
-  - path: pkg/daemon/trigger_expiry_test.go
-    description: "3 new tests for detector name extraction, outcome tracking, error exclusion"
-  - path: pkg/events/logger.go
-    description: "EventTypeTriggerOutcome constant"
-  - path: cmd/orch/daemon_periodic.go
-    description: "Emit per-detector trigger.outcome events during expiry"
+  - path: pkg/daemon/trigger_detectors_phase2.go
+    description: "Changed model_contradictions Priority from 2 to 3"
+  - path: pkg/daemon/detector_outcomes.go
+    description: "Added defaultDetectorOutcomeService (beads query), extractDetectorName, NewDefaultDetectorOutcomeService"
+  - path: pkg/daemon/detector_outcomes_test.go
+    description: "Added TestExtractDetectorName table test and TestNewDefaultDetectorOutcomeService"
+  - path: pkg/daemon/trigger_detectors_phase2_test.go
+    description: "Updated priority assertion from 2 to 3"
+  - path: cmd/orch/daemon_loop.go
+    description: "Wired d.DetectorOutcomes = daemon.NewDefaultDetectorOutcomeService()"

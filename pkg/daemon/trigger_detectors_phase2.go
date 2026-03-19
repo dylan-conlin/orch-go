@@ -61,7 +61,7 @@ func (d *ModelContradictionsDetector) Detect() ([]TriggerSuggestion, error) {
 			Title:       fmt.Sprintf("Unresolved model contradiction: %s (probe: %s)", c.ModelSlug, c.ProbeFilename),
 			Description: fmt.Sprintf("Probe %s contradicts model %s but the model hasn't been updated since the probe was created. The model's last update was %s, probe date was %s.", c.ProbeFilename, c.ModelSlug, c.ModelUpdated.Format("2006-01-02"), c.ProbeDate.Format("2006-01-02")),
 			IssueType:   "task",
-			Priority:    2,
+			Priority:    3,
 			Labels:      []string{"skill:capture-knowledge"},
 		})
 	}
