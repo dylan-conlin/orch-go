@@ -210,6 +210,37 @@ func TestBuildGateAudit_AnomalyLowCoverage(t *testing.T) {
 	}
 }
 
+func TestBuildGateAudit_RemovedGatesFiltered(t *testing.T) {
+	now := time.Now().Unix()
+	events := []StatsEvent{
+		{Type: "session.spawned", Timestamp: now - 100},
+		{Type: "spawn.gate_decision", Timestamp: now - 50, Data: map[string]interface{}{
+			"gate_name": "triage", "decision": "allow",
+		}},
+		// These gates were removed from the spawn pipeline — should be filtered
+		{Type: "spawn.gate_decision", Timestamp: now - 60, Data: map[string]interface{}{
+			"gate_name": "verification", "decision": "allow",
+		}},
+		{Type: "spawn.gate_decision", Timestamp: now - 70, Data: map[string]interface{}{
+			"gate_name": "drain", "decision": "allow",
+		}},
+		{Type: "spawn.gate_decision", Timestamp: now - 80, Data: map[string]interface{}{
+			"gate_name": "concurrency", "decision": "allow",
+		}},
+		{Type: "spawn.gate_decision", Timestamp: now - 90, Data: map[string]interface{}{
+			"gate_name": "ratelimit", "decision": "allow",
+		}},
+	}
+
+	result := buildGateAudit(events, 7)
+	if len(result.Gates) != 1 {
+		t.Errorf("expected 1 gate (triage only), got %d", len(result.Gates))
+	}
+	if len(result.Gates) > 0 && result.Gates[0].Gate != "triage" {
+		t.Errorf("expected triage gate, got %s", result.Gates[0].Gate)
+	}
+}
+
 func TestBuildGateAudit_OutsideWindowIgnored(t *testing.T) {
 	now := time.Now().Unix()
 	old := now - 86400*40 // 40 days ago

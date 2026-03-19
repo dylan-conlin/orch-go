@@ -36,6 +36,7 @@ Examples:
   orch harness audit --days 7     # Last 7 days
   orch harness audit --json       # Machine-readable output`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		emitCommandInvoked("harness audit", flagsFromCmd(cmd)...)
 		return runHarnessAudit()
 	},
 }
@@ -110,6 +111,17 @@ func outputGateAudit(result *GateAuditResult) error {
 	return nil
 }
 
+// removedGates lists gates that were removed from the spawn pipeline.
+// Historical events for these gates are ignored in the audit to avoid
+// false zero-fire anomaly warnings.
+// See pkg/orch/spawn_preflight.go line 9.
+var removedGates = map[string]bool{
+	"verification": true,
+	"drain":        true,
+	"concurrency":  true,
+	"ratelimit":    true,
+}
+
 func buildGateAudit(events []StatsEvent, days int) *GateAuditResult {
 	cutoff := time.Now().Unix() - int64(days)*86400
 
@@ -163,7 +175,7 @@ func buildGateAudit(events []StatsEvent, days int) *GateAuditResult {
 			}
 			gateName, _ := e.Data["gate_name"].(string)
 			decision, _ := e.Data["decision"].(string)
-			if gateName == "" || decision == "" {
+			if gateName == "" || decision == "" || removedGates[gateName] {
 				continue
 			}
 			gc, ok := gateMap[gateName]

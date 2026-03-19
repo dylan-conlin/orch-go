@@ -139,10 +139,10 @@ func buildEmptyHarnessResponse(days int) *HarnessResponse {
 		Pipeline:              buildDefaultPipeline(0, nil),
 		FalsificationVerdicts: buildDefaultVerdicts(),
 		MeasurementCoverage: MeasurementCoverage{
-			TotalComponents: 13,
+			TotalComponents: 12,
 			WithMeasurement: 0,
 			ProxyOnly:       3,
-			Unmeasured:      10,
+			Unmeasured:      9,
 		},
 	}
 }
@@ -154,7 +154,6 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 	var totalSpawns int
 	triageBypassed := 0
 	hotspotBypassed := 0
-	verificationBypassed := 0
 
 	gateDecisions := make(map[string]map[string]int)
 	lastGateFired := make(map[string]int64)
@@ -226,14 +225,11 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 		case "spawn.hotspot_bypassed":
 			hotspotBypassed++
 
-		case "spawn.verification_bypassed":
-			verificationBypassed++
-
 		case "spawn.gate_decision":
 			if event.Data != nil {
 				gate, _ := event.Data["gate_name"].(string)
 				decision, _ := event.Data["decision"].(string)
-				if gate != "" && decision != "" {
+				if gate != "" && decision != "" && !removedGates[gate] {
 					if gateDecisions[gate] == nil {
 						gateDecisions[gate] = make(map[string]int)
 					}
@@ -311,7 +307,7 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 		}
 	}
 
-	pipeline := buildPipeline(totalSpawns, triageBypassed, hotspotBypassed, verificationBypassed, gateDecisions, lastGateFired, totalCompletions, firstAccretionEvent)
+	pipeline := buildPipeline(totalSpawns, triageBypassed, hotspotBypassed, gateDecisions, lastGateFired, totalCompletions, firstAccretionEvent)
 
 	// Compute accretion velocity from snapshots
 	var accVelocity *AccretionVelocity
@@ -332,7 +328,7 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 		coveragePct = float64(minField) / float64(totalCompletions) * 100
 	}
 
-	verdicts := buildVerdicts(totalSpawns, triageBypassed, hotspotBypassed, verificationBypassed, gateDecisions)
+	verdicts := buildVerdicts(totalSpawns, triageBypassed, hotspotBypassed, gateDecisions)
 
 	measured := 0
 	collecting := 0
@@ -382,10 +378,10 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 		},
 		FalsificationVerdicts: verdicts,
 		MeasurementCoverage: MeasurementCoverage{
-			TotalComponents: 13,
+			TotalComponents: 12,
 			WithMeasurement: measured + collecting,
 			ProxyOnly:       3,
-			Unmeasured:      13 - measured - collecting - 3,
+			Unmeasured:      12 - measured - collecting - 3,
 		},
 		ExplorationMetrics: explMetrics,
 	}
@@ -439,10 +435,10 @@ func computeAccretionVelocity(snapshots []accretionSnapshot) *AccretionVelocity 
 }
 
 func buildDefaultPipeline(totalSpawns int, lastGateFired map[string]int64) []PipelineStage {
-	return buildPipeline(totalSpawns, 0, 0, 0, nil, lastGateFired, 0, 0)
+	return buildPipeline(totalSpawns, 0, 0, nil, lastGateFired, 0, 0)
 }
 
-func buildPipeline(totalSpawns, triageBypassed, hotspotBypassed, verificationBypassed int, gateDecisions map[string]map[string]int, lastGateFired map[string]int64, totalCompletions int, firstAccretionEvent int64) []PipelineStage {
+func buildPipeline(totalSpawns, triageBypassed, hotspotBypassed int, gateDecisions map[string]map[string]int, lastGateFired map[string]int64, totalCompletions int, firstAccretionEvent int64) []PipelineStage {
 	ptrFloat := func(f float64) *float64 { return &f }
 	safeRate := func(count, total int) *float64 {
 		if total == 0 {
@@ -459,18 +455,12 @@ func buildPipeline(totalSpawns, triageBypassed, hotspotBypassed, verificationByp
 
 	triageTotal := triageBypassed
 	hotspotTotal := hotspotBypassed
-	verificationTotal := verificationBypassed
 	hotspotBlocked := 0
-	verificationBlocked := 0
 
 	if gateDecisions != nil {
 		if d, ok := gateDecisions["hotspot"]; ok {
 			hotspotBlocked += d["block"]
 			hotspotTotal += d["bypass"]
-		}
-		if d, ok := gateDecisions["verification"]; ok {
-			verificationBlocked += d["block"]
-			verificationTotal += d["bypass"]
 		}
 		if d, ok := gateDecisions["triage"]; ok {
 			triageTotal += d["bypass"]
@@ -500,17 +490,6 @@ func buildPipeline(totalSpawns, triageBypassed, hotspotBypassed, verificationByp
 					Bypassed:          hotspotTotal,
 					Blocked:           hotspotBlocked,
 					LastFired:         formatTimestamp(lastGateFired["hotspot"]),
-				},
-				{
-					Name:              "verification_gate",
-					Type:              "hard",
-					MeasurementStatus: statusFromCount(verificationTotal + verificationBlocked),
-					FireRate:          safeRate(verificationTotal+verificationBlocked, totalSpawns),
-					BlockRate:         safeRate(verificationBlocked, totalSpawns),
-					BypassRate:        safeRate(verificationTotal, totalSpawns),
-					Bypassed:          verificationTotal,
-					Blocked:           verificationBlocked,
-					LastFired:         formatTimestamp(lastGateFired["verification"]),
 				},
 			},
 		},
@@ -589,11 +568,11 @@ func statusFromCount(count int) string {
 }
 
 func buildDefaultVerdicts() map[string]FalsificationVerdict {
-	return buildVerdicts(0, 0, 0, 0, nil)
+	return buildVerdicts(0, 0, 0, nil)
 }
 
-func buildVerdicts(totalSpawns, triageBypassed, hotspotBypassed, verificationBypassed int, gateDecisions map[string]map[string]int) map[string]FalsificationVerdict {
-	totalFireCount := triageBypassed + hotspotBypassed + verificationBypassed
+func buildVerdicts(totalSpawns, triageBypassed, hotspotBypassed int, gateDecisions map[string]map[string]int) map[string]FalsificationVerdict {
+	totalFireCount := triageBypassed + hotspotBypassed
 	if gateDecisions != nil {
 		for _, decisions := range gateDecisions {
 			for _, count := range decisions {

@@ -263,7 +263,7 @@ func TestHarnessIntegration_PipelineFourStages(t *testing.T) {
 	}
 
 	expectedStages := map[string][]string{
-		"spawn":      {"triage_gate", "drain_gate", "hotspot_gate", "verification_gate"},
+		"spawn":      {"triage_gate", "hotspot_gate"},
 		"authoring":  {"claude_md", "spawn_context", "kb_knowledge"},
 		"pre_commit": {"accretion_gate", "build_gate"},
 		"completion": {"verification_pipeline", "explain_back"},

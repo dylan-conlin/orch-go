@@ -41,8 +41,8 @@ func TestHandleHarnessReport_EmptyEvents(t *testing.T) {
 		t.Errorf("expected 4 falsification verdicts, got %d", len(resp.FalsificationVerdicts))
 	}
 
-	if resp.MeasurementCoverage.TotalComponents != 13 {
-		t.Errorf("expected 13 total components, got %d", resp.MeasurementCoverage.TotalComponents)
+	if resp.MeasurementCoverage.TotalComponents != 12 {
+		t.Errorf("expected 12 total components, got %d", resp.MeasurementCoverage.TotalComponents)
 	}
 }
 
@@ -245,7 +245,7 @@ func TestAccretionSnapshot_FlatFormat(t *testing.T) {
 
 func TestBuildVerdicts_LowFireRate(t *testing.T) {
 	// 100 spawns, 2 bypasses total = 2% fire rate < 5% threshold
-	verdicts := buildVerdicts(100, 1, 1, 0, nil)
+	verdicts := buildVerdicts(100, 1, 1, nil)
 	v := verdicts["gates_are_irrelevant"]
 	if v.Status != "confirmed" {
 		t.Errorf("expected 'confirmed' for low fire rate, got '%s'", v.Status)
@@ -253,7 +253,7 @@ func TestBuildVerdicts_LowFireRate(t *testing.T) {
 }
 
 func TestBuildVerdicts_NoSpawns(t *testing.T) {
-	verdicts := buildVerdicts(0, 0, 0, 0, nil)
+	verdicts := buildVerdicts(0, 0, 0, nil)
 	v := verdicts["gates_are_irrelevant"]
 	if v.Status != "insufficient_data" {
 		t.Errorf("expected 'insufficient_data' with no spawns, got '%s'", v.Status)
