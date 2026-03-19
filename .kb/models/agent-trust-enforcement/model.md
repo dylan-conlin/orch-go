@@ -2,7 +2,7 @@
 
 **Domain:** Agent execution constraints / OPSEC / Environment control
 **Last Updated:** 2026-03-19
-**Validation Status:** WORKING HYPOTHESIS — synthesized from 7 investigations + 3 threads across scs-special-projects. Core patterns validated against two production incidents (OshCut detection Mar 6, custom OPSEC replacement Mar 19). Not yet tested beyond the orch-go / price-watch / toolshed ecosystem.
+**Validation Status:** WORKING HYPOTHESIS — synthesized from 9 investigations + 3 threads across scs-special-projects. Core patterns validated against two production incidents (OshCut detection Mar 6, custom OPSEC replacement Mar 19). 17 testable claims: 11 confirmed, 2 open, 1 untested, 1 partially confirmed.
 **Synthesized From:**
 - `scs-special-projects/.kb/investigations/2026-03-19-inv-audit-orch-go-against-claude.md` — Lifecycle-phase separation: orch-go adds pre-spawn + OS-level enforcement absent from Claude Code
 - `scs-special-projects/.kb/investigations/2026-03-19-inv-evaluate-claude-code-native-sandbox.md` — srt replaces custom OPSEC; allowlist > blocklist
@@ -180,6 +180,13 @@ Six classes of bypass exist for any application-level enforcement. These were em
 | C8 | Credential exfiltration (bypass class 4) is irreducible — no structural enforcement prevents an agent with file read access from using credentials | **Untested** | Inferred from bypass taxonomy. No test has attempted credential isolation. | A mechanism that prevents credential use without removing credential access from the agent's filesystem |
 | C9 | Defense-in-depth layers that exist only in development provide false confidence about production security posture | **Confirmed** | Docker proxy-gateway (dev only) vs Render/Fly.io (zero egress control). Design doc claimed multi-layer system but L2 was dev-only. | A deployment platform (Render, Fly.io) that provides per-service egress firewall equivalent to Docker's `internal: true` |
 | C10 | The trust hierarchy (L1-L4) correctly predicts which enforcement mechanisms will be bypassed first under agent pressure | **Partially confirmed** | L4 (convention) bypassed first (pw-w8r0). L3 (application) bypassed by non-standard tools. L1 (infrastructure) not bypassed in any test. | An L1 mechanism bypassed before an L4 mechanism in a real agent session, or an L4 mechanism that holds while L1 fails |
+| C11 | Over-privileged credentials amplify bypass impact — the slave DB user has 12.6x more access than needed (88 tables vs 7 used) | **Confirmed** | Direct psql: `information_schema.table_privileges` shows SELECT, INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER, REFERENCES on all 88 public tables. Toolshed uses 7 tables. Creating a restricted role requires `postgres` superuser (Dylan lacks `rolcreaterole`). | A restricted `toolshed_readonly` role is provisioned, reducing access to 7 tables |
+| C12 | PW SlaveDbConnection has zero write prevention — naming convention ("slave"/"read-only") is the only guard | **Confirmed** | Code review: `slave_db_connection.rb:97-104` uses raw `PG.connect`, no `default_transaction_read_only`. `conn.exec(sql)` accepts arbitrary SQL. Contrast with Toolshed `client.go:54` which at least sets RuntimeParam. | `SET default_transaction_read_only = on` added after PG.connect in SlaveDbConnection |
+| C13 | Server-side prompt construction is structurally safer than frontend passthrough for PII enforcement | **Confirmed** | Batch analysis (server builds prompts from raw data, controls anonymization) = 3/3 paths anonymized. Chat (server passes frontend context unchanged) = 0/1 anonymized for PII-containing endpoint. The data flow pattern determines whether enforcement is structurally possible. | A passthrough endpoint that reliably enforces anonymization without server-side content inspection |
+| C14 | WebFetch/WebSearch tools bypass both sandbox-exec wrapping and proxy env vars — they run inside the Claude CLI Bun process | **Open** | Architecture analysis identifies the gap in both custom and native sandbox. Both approaches require `permissions.deny` rules (application-layer, not transport-layer). Not behaviorally verified end-to-end with a live agent session. | End-to-end test of a sandboxed agent attempting WebFetch to a non-allowed domain |
+| C15 | Production deployments (Render, Fly.io) have zero egress control — defense-in-depth collapses to single application layer | **Confirmed** | `render.yaml`: no HTTP_PROXY, no egress config. `fly.toml`: no egress restrictions. Docker `internal: true` network only in `docker-compose.yml` (dev). Production has single-layer defense. | Render or Fly.io provides per-service egress firewall capability |
+| C16 | "It's your call" is risk transfer, not delegation of trust — organizational risk and technical risk are independent dimensions | **Open** | Thread analysis: Jim's pattern (slave DB removal, personal Claude accounts, scraping decision deferral) consistently transfers concentrated personal liability while capturing diffuse organizational value. OPSEC harness reduces technical risk but not organizational exposure. | Written authorization or equity/profit-sharing that aligns risk and value on the same person |
+| C17 | Infrastructure-backed answers are defensible; assurance-backed answers are not | **Confirmed** | OPSEC harness (sandbox, allowlist, OS-level enforcement) creates a structurally defensible posture. Compare: "I told the agent not to" (assurance) vs "the agent physically cannot reach that domain" (infrastructure). The OshCut incident proved assurance failed; srt evaluation proved infrastructure works. | An assurance-backed control that proves more reliable than an infrastructure-backed one over 50+ agent sessions |
 
 ---
 
@@ -236,8 +243,10 @@ Three threads synthesized the pattern:
 - `scs-special-projects/.kb/investigations/2026-03-19-inv-audit-orch-go-reinvented-wheels.md`
 - `scs-special-projects/.kb/investigations/2026-03-19-architect-layer1-local-opsec-enforcement.md`
 - `scs-special-projects/.kb/investigations/2026-03-18-inv-investigate-agent-execution-environment-bypass.md`
+- `scs-special-projects/.kb/investigations/2026-03-18-redteam-toolshed-security-assessment.md`
 - `scs-special-projects/.kb/investigations/2026-03-17-inv-investigate-bypass-surface-toolshed-price.md`
 - `scs-special-projects/.kb/investigations/2026-03-17-inv-investigate-toolshed-pii-exposure-ai.md`
+- `scs-special-projects/.kb/investigations/2026-03-17-inv-investigate-toolshed-slave-db-credential.md`
 
 **Threads (pattern synthesis):**
 - `scs-special-projects/.kb/threads/2026-03-19-environment-control-as-agent-trust.md`
@@ -255,6 +264,10 @@ Three threads synthesized the pattern:
 - `pkg/spawn/claude.go:70-142` — Launch command builder (policy→enforcement adapter)
 - `pkg/spawn/gates/*.go` — Spawn gate implementations (policy decisions)
 - `pkg/hook/schema.go` — Hook output validation (fills Claude Code CLI gap)
+- `toolshed/pkg/scsdb/client.go:54` — RuntimeParams read-only guard (L2 enforcement, bypassable)
+- `price-watch/backend/app/services/slave_db_connection.rb:97-104` — No read-only enforcement (zero guard)
+- `price-watch/backend/app/middleware/competitor_proxy_enforcement.rb:24` — Faraday-only middleware (L3 enforcement)
+- `toolshed/internal/expedite/chat_handler.go:75` — PII passthrough gap (no server-side anonymization)
 
 ### Merged Probes
 
