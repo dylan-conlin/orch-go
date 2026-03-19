@@ -26,7 +26,6 @@ allowed-tools:
 - Bash
 - Write
 - Edit
-- WebFetch
 - WebSearch
 - question
 deliverables:

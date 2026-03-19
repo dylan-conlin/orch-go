@@ -480,7 +480,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `init` - Initialize orch in a project
 - `sync` - Sync state
 - `tree` - Generate file tree
-- `fetch-md [url]` - Fetch URL as markdown
+- `fetch-md [url]` - Fetch URL as markdown (legacy — prefer `scrape <url>` for smarter extraction)
 - `dupdetect [dir]` - Run duplicate detection on directory
 - `docs list/mark/unmark` - Documentation tracking
 - `automation list` - List automation rules

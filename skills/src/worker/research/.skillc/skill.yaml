@@ -9,7 +9,7 @@ description: Web-based research producing structured recommendations with uncert
 dependencies:
   - worker-base
 allowed-tools:
-- WebFetch
+- Bash
 - WebSearch
 - Read
 - Write

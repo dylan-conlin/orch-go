@@ -12,6 +12,7 @@ orch        → agent coordination     (spawn, monitor, complete, daemon)
 beads (bd)  → what work needs doing  (issues, dependencies, tracking)
 kb          → knowledge management   (investigations, decisions, quick entries)
 skillc      → skill compilation      (modular skills → SKILL.md)
+scrape      → URL content extraction (7 strategies: API, YouTube, vision, Playwright, HTML, PDF)
 opencode    → agent execution        (Claude frontend, session management)
 ```
 
