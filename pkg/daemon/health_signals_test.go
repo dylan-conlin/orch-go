@@ -212,9 +212,9 @@ func TestComputeDaemonHealth_VerificationPaused(t *testing.T) {
 	}
 
 	summary := ComputeDaemonHealth(status, now)
-	sig := findSignal(summary, "Verification")
+	sig := findSignal(summary, "Evidence Check")
 	if sig == nil {
-		t.Fatal("expected Verification signal")
+		t.Fatal("expected Evidence Check signal")
 	}
 	if sig.Level != "red" {
 		t.Errorf("expected red for paused verification, got %s", sig.Level)
@@ -241,9 +241,9 @@ func TestComputeDaemonHealth_VerificationLow(t *testing.T) {
 	}
 
 	summary := ComputeDaemonHealth(status, now)
-	sig := findSignal(summary, "Verification")
+	sig := findSignal(summary, "Evidence Check")
 	if sig == nil {
-		t.Fatal("expected Verification signal")
+		t.Fatal("expected Evidence Check signal")
 	}
 	if sig.Level != "yellow" {
 		t.Errorf("expected yellow for 1 remaining, got %s", sig.Level)
@@ -328,9 +328,9 @@ func TestComputeDaemonHealth_NoVerification(t *testing.T) {
 	}
 
 	summary := ComputeDaemonHealth(status, now)
-	sig := findSignal(summary, "Verification")
+	sig := findSignal(summary, "Evidence Check")
 	if sig == nil {
-		t.Fatal("expected Verification signal")
+		t.Fatal("expected Evidence Check signal")
 	}
 	// No verification data = green (not configured)
 	if sig.Level != "green" {

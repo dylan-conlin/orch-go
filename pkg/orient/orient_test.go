@@ -1042,7 +1042,7 @@ func TestFormatOrientation_DaemonHealthNonGreen(t *testing.T) {
 				{Name: "Daemon Liveness", Level: "green", Detail: "polling normally"},
 				{Name: "Capacity", Level: "red", Detail: "3/3 slots used, 10 queued"},
 				{Name: "Queue Depth", Level: "yellow", Detail: "30 issues ready"},
-				{Name: "Verification", Level: "green", Detail: "4 completions before pause"},
+				{Name: "Evidence Check", Level: "green", Detail: "4 completions before pause"},
 				{Name: "Unresponsive", Level: "green", Detail: "all agents responsive"},
 				{Name: "Questions", Level: "yellow", Detail: "2 agent(s) waiting for input"},
 			},
@@ -1067,8 +1067,8 @@ func TestFormatOrientation_DaemonHealthNonGreen(t *testing.T) {
 	if strings.Contains(output, "Daemon Liveness") {
 		t.Error("green Daemon Liveness should not appear")
 	}
-	if strings.Contains(output, "Verification") {
-		t.Error("green Verification should not appear")
+	if strings.Contains(output, "Evidence Check") {
+		t.Error("green Evidence Check should not appear")
 	}
 }
 
@@ -1080,7 +1080,7 @@ func TestFormatOrientation_DaemonHealthAllGreen(t *testing.T) {
 				{Name: "Daemon Liveness", Level: "green", Detail: "polling normally"},
 				{Name: "Capacity", Level: "green", Detail: "0/3 slots used"},
 				{Name: "Queue Depth", Level: "green", Detail: "5 issues ready"},
-				{Name: "Verification", Level: "green", Detail: "4 completions before pause"},
+				{Name: "Evidence Check", Level: "green", Detail: "4 completions before pause"},
 				{Name: "Unresponsive", Level: "green", Detail: "all agents responsive"},
 				{Name: "Questions", Level: "green", Detail: "no pending questions"},
 			},

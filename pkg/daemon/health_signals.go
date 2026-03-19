@@ -101,10 +101,10 @@ func computeQueueDepth(status *DaemonStatus) DaemonHealthSignal {
 	return sig
 }
 
-// computeVerification checks verification gate pressure.
+// computeVerification checks evidence check gate pressure.
 // Green: >2 remaining or not configured, Yellow: 1-2 remaining, Red: paused
 func computeVerification(status *DaemonStatus) DaemonHealthSignal {
-	sig := DaemonHealthSignal{Name: "Verification"}
+	sig := DaemonHealthSignal{Name: "Evidence Check"}
 
 	if status.Verification == nil {
 		sig.Level = "green"
@@ -116,7 +116,7 @@ func computeVerification(status *DaemonStatus) DaemonHealthSignal {
 	switch {
 	case v.IsPaused:
 		sig.Level = "red"
-		sig.Detail = "paused — verification required"
+		sig.Detail = "paused — evidence check required"
 	case v.RemainingBeforePause <= 2:
 		sig.Level = "yellow"
 		sig.Detail = fmt.Sprintf("%d completions before pause", v.RemainingBeforePause)
