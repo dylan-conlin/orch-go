@@ -296,6 +296,34 @@ type Config struct {
 	// InvestigationOrphanThreshold is how long an investigation can be in_progress without
 	// completion before being flagged as orphaned. Default is 48 hours.
 	InvestigationOrphanThreshold time.Duration
+
+	// VerificationFailedEscalationEnabled controls whether the daemon periodically
+	// escalates verification-failed agents to triage:review for human attention.
+	// Issues labeled daemon:verification-failed sit in_progress indefinitely after
+	// exhausting their retry budget — this task adds triage:review after a timeout.
+	VerificationFailedEscalationEnabled bool
+
+	// VerificationFailedEscalationInterval is how often to scan for verification-failed issues.
+	// Default is 30 minutes.
+	VerificationFailedEscalationInterval time.Duration
+
+	// VerificationFailedEscalationTimeout is how long a verification-failed issue must
+	// exist before being escalated to triage:review. Default is 1 hour.
+	VerificationFailedEscalationTimeout time.Duration
+
+	// LightweightCleanupEnabled controls whether the daemon periodically closes stale
+	// tier:lightweight issues (created by --no-track spawns, including exploration children).
+	// These issues are ephemeral by design and should be closed when their parent completes
+	// or they've been idle too long.
+	LightweightCleanupEnabled bool
+
+	// LightweightCleanupInterval is how often to scan for stale lightweight issues.
+	// Default is 30 minutes.
+	LightweightCleanupInterval time.Duration
+
+	// LightweightCleanupTimeout is how long a tier:lightweight issue can be in_progress
+	// before being auto-closed. Default is 2 hours.
+	LightweightCleanupTimeout time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -365,8 +393,14 @@ func DefaultConfig() Config {
 		TriggerExpiryMaxAge:            14 * 24 * time.Hour, // 14-day TTL for trigger issues
 		DigestEnabled:                  true,
 		DigestInterval:                 30 * time.Minute,
-		InvestigationOrphanEnabled:     true,
-		InvestigationOrphanInterval:    time.Hour,      // Hourly check
-		InvestigationOrphanThreshold:   48 * time.Hour, // 48h before flagging
+		InvestigationOrphanEnabled:               true,
+		InvestigationOrphanInterval:              time.Hour,      // Hourly check
+		InvestigationOrphanThreshold:             48 * time.Hour, // 48h before flagging
+		VerificationFailedEscalationEnabled:      true,
+		VerificationFailedEscalationInterval:     30 * time.Minute, // Check every 30 minutes
+		VerificationFailedEscalationTimeout:      time.Hour,        // 1h before escalating to triage:review
+		LightweightCleanupEnabled:                true,
+		LightweightCleanupInterval:               30 * time.Minute, // Check every 30 minutes
+		LightweightCleanupTimeout:                2 * time.Hour,    // 2h before auto-closing
 	}
 }

@@ -87,8 +87,9 @@ func (d *testAgentDiscoverer) HasExistingSessionOrError(beadsID string) (bool, e
 	return d.HasExistingSession(beadsID), nil
 }
 
-func TestRunPeriodicTasks_NothingDue(t *testing.T) {
-	// All periodic tasks disabled — should return empty result, no events
+// disableAllPeriodicTasks returns a config with all periodic tasks disabled.
+// Tests that exercise one specific task enable just that task.
+func disableAllPeriodicTasks() daemon.Config {
 	config := daemon.DefaultConfig()
 	config.ReflectEnabled = false
 	config.ReflectModelDriftEnabled = false
@@ -100,7 +101,24 @@ func TestRunPeriodicTasks_NothingDue(t *testing.T) {
 	config.AgreementCheckEnabled = false
 	config.BeadsHealthEnabled = false
 	config.FrictionAccumulationEnabled = false
+	config.ArtifactSyncEnabled = false
 	config.RegistryRefreshEnabled = false
+	config.SynthesisAutoCreateEnabled = false
+	config.LearningRefreshEnabled = false
+	config.PlanStalenessEnabled = false
+	config.ProactiveExtractionEnabled = false
+	config.TriggerScanEnabled = false
+	config.TriggerExpiryEnabled = false
+	config.DigestEnabled = false
+	config.InvestigationOrphanEnabled = false
+	config.VerificationFailedEscalationEnabled = false
+	config.LightweightCleanupEnabled = false
+	return config
+}
+
+func TestRunPeriodicTasks_NothingDue(t *testing.T) {
+	// All periodic tasks disabled — should return empty result, no events
+	config := disableAllPeriodicTasks()
 
 	d := daemon.NewWithConfig(config)
 	tmpDir := t.TempDir()
@@ -114,19 +132,9 @@ func TestRunPeriodicTasks_NothingDue(t *testing.T) {
 }
 
 func TestRunPeriodicTasks_ReflectionError(t *testing.T) {
-	config := daemon.DefaultConfig()
+	config := disableAllPeriodicTasks()
 	config.ReflectEnabled = true
 	config.ReflectInterval = 1 * time.Millisecond
-	config.ReflectModelDriftEnabled = false
-	config.KnowledgeHealthEnabled = false
-	config.CleanupEnabled = false
-	config.RecoveryEnabled = false
-	config.OrphanDetectionEnabled = false
-	config.PhaseTimeoutEnabled = false
-	config.AgreementCheckEnabled = false
-	config.BeadsHealthEnabled = false
-	config.FrictionAccumulationEnabled = false
-	config.RegistryRefreshEnabled = false
 
 	d := daemon.NewWithConfig(config)
 	d.Reflector = &testReflector{
@@ -157,20 +165,9 @@ func TestRunPeriodicTasks_ReflectionError(t *testing.T) {
 }
 
 func TestRunPeriodicTasks_CleanupLogsEvent(t *testing.T) {
-	config := daemon.DefaultConfig()
-	config.ReflectEnabled = false
-	config.ReflectModelDriftEnabled = false
-	config.KnowledgeHealthEnabled = false
+	config := disableAllPeriodicTasks()
 	config.CleanupEnabled = true
 	config.CleanupInterval = 1 * time.Millisecond
-	config.RecoveryEnabled = false
-	config.OrphanDetectionEnabled = false
-	config.PhaseTimeoutEnabled = false
-	config.AgreementCheckEnabled = false
-	config.BeadsHealthEnabled = false
-	config.FrictionAccumulationEnabled = false
-	config.ArtifactSyncEnabled = false
-	config.RegistryRefreshEnabled = false
 
 	d := daemon.NewWithConfig(config)
 	d.Cleaner = &testSessionCleaner{
@@ -207,20 +204,10 @@ func TestRunPeriodicTasks_CleanupLogsEvent(t *testing.T) {
 }
 
 func TestRunPeriodicTasks_KnowledgeHealthSnapshot(t *testing.T) {
-	config := daemon.DefaultConfig()
-	config.ReflectEnabled = false
-	config.ReflectModelDriftEnabled = false
+	config := disableAllPeriodicTasks()
 	config.KnowledgeHealthEnabled = true
 	config.KnowledgeHealthInterval = 1 * time.Millisecond
 	config.KnowledgeHealthThreshold = 50
-	config.CleanupEnabled = false
-	config.RecoveryEnabled = false
-	config.OrphanDetectionEnabled = false
-	config.PhaseTimeoutEnabled = false
-	config.AgreementCheckEnabled = false
-	config.BeadsHealthEnabled = false
-	config.FrictionAccumulationEnabled = false
-	config.RegistryRefreshEnabled = false
 
 	d := daemon.NewWithConfig(config)
 	d.KnowledgeHealth = &testKnowledgeHealthService{
@@ -251,22 +238,11 @@ func TestRunPeriodicTasks_RecoveryErrorLogsEvent(t *testing.T) {
 	// Recovery calls GetActiveAgents() directly (not mockable via setter).
 	// In test environment without beads, it returns an error which should
 	// produce an error event in the log.
-	config := daemon.DefaultConfig()
-	config.ReflectEnabled = false
-	config.ReflectModelDriftEnabled = false
-	config.KnowledgeHealthEnabled = false
-	config.CleanupEnabled = false
+	config := disableAllPeriodicTasks()
 	config.RecoveryEnabled = true
 	config.RecoveryInterval = 1 * time.Millisecond
 	config.RecoveryIdleThreshold = 1 * time.Hour
 	config.RecoveryRateLimit = 1 * time.Hour
-	config.OrphanDetectionEnabled = false
-	config.PhaseTimeoutEnabled = false
-	config.AgreementCheckEnabled = false
-	config.BeadsHealthEnabled = false
-	config.FrictionAccumulationEnabled = false
-	config.ArtifactSyncEnabled = false
-	config.RegistryRefreshEnabled = false
 
 	d := daemon.NewWithConfig(config)
 
@@ -306,21 +282,10 @@ func TestRunPeriodicTasks_RecoveryErrorLogsEvent(t *testing.T) {
 }
 
 func TestRunPeriodicTasks_OrphanDetectionLogsEvent(t *testing.T) {
-	config := daemon.DefaultConfig()
-	config.ReflectEnabled = false
-	config.ReflectModelDriftEnabled = false
-	config.KnowledgeHealthEnabled = false
-	config.CleanupEnabled = false
-	config.RecoveryEnabled = false
+	config := disableAllPeriodicTasks()
 	config.OrphanDetectionEnabled = true
 	config.OrphanDetectionInterval = 1 * time.Millisecond
 	config.OrphanAgeThreshold = 1 * time.Hour
-	config.PhaseTimeoutEnabled = false
-	config.AgreementCheckEnabled = false
-	config.BeadsHealthEnabled = false
-	config.FrictionAccumulationEnabled = false
-	config.ArtifactSyncEnabled = false
-	config.RegistryRefreshEnabled = false
 
 	d := daemon.NewWithConfig(config)
 	// Mock GetActiveAgents to return no agents

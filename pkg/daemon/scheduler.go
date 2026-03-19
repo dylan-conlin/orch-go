@@ -24,7 +24,9 @@ const (
 	TaskTriggerScan          = "trigger_scan"
 	TaskTriggerExpiry        = "trigger_expiry"
 	TaskDigest               = "digest"
-	TaskInvestigationOrphan  = "investigation_orphan"
+	TaskInvestigationOrphan             = "investigation_orphan"
+	TaskVerificationFailedEscalation   = "verification_failed_escalation"
+	TaskLightweightCleanup             = "lightweight_cleanup"
 )
 
 // periodicTask holds the scheduling state for a single periodic task.
@@ -140,6 +142,8 @@ func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s.Register(TaskTriggerExpiry, cfg.TriggerExpiryEnabled, cfg.TriggerExpiryInterval)
 	s.Register(TaskDigest, cfg.DigestEnabled, cfg.DigestInterval)
 	s.Register(TaskInvestigationOrphan, cfg.InvestigationOrphanEnabled, cfg.InvestigationOrphanInterval)
+	s.Register(TaskVerificationFailedEscalation, cfg.VerificationFailedEscalationEnabled, cfg.VerificationFailedEscalationInterval)
+	s.Register(TaskLightweightCleanup, cfg.LightweightCleanupEnabled, cfg.LightweightCleanupInterval)
 	return s
 }
 

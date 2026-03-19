@@ -205,6 +205,16 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 		}
 	}
 
+	// Verification-failed escalation (promote stuck verification-failed to triage:review)
+	if r := d.RunPeriodicVerificationFailedEscalation(); r != nil {
+		handleVerificationFailedEscalationResult(r, timestamp, verbose, logger)
+	}
+
+	// Lightweight cleanup (close stale --no-track / exploration child issues)
+	if r := d.RunPeriodicLightweightCleanup(); r != nil {
+		handleLightweightCleanupResult(r, timestamp, verbose, logger)
+	}
+
 	return result
 }
 
@@ -687,6 +697,56 @@ func handleInvestigationOrphanResult(r *daemon.InvestigationOrphanResult, timest
 			"orphans":    r.OrphanCount,
 			"scanned":    r.ScannedCount,
 			"orphan_ids": orphanIDs,
+			"message":    r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+	}
+}
+
+func handleVerificationFailedEscalationResult(r *daemon.VerificationFailedEscalationResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Verification-failed escalation error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.verification_failed_escalation", map[string]interface{}{
+			"escalated": 0,
+			"error":     r.Error.Error(),
+			"message":   r.Message,
+		})
+	} else if r.EscalatedCount > 0 {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		escalatedIDs := make([]string, 0, len(r.Escalated))
+		for _, e := range r.Escalated {
+			escalatedIDs = append(escalatedIDs, e.BeadsID)
+		}
+		logDaemonEvent(logger, "daemon.verification_failed_escalation", map[string]interface{}{
+			"escalated":    r.EscalatedCount,
+			"scanned":      r.ScannedCount,
+			"escalated_ids": escalatedIDs,
+			"message":      r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+	}
+}
+
+func handleLightweightCleanupResult(r *daemon.LightweightCleanupResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Lightweight cleanup error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.lightweight_cleanup", map[string]interface{}{
+			"closed":  0,
+			"error":   r.Error.Error(),
+			"message": r.Message,
+		})
+	} else if r.ClosedCount > 0 {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		closedIDs := make([]string, 0, len(r.Closed))
+		for _, c := range r.Closed {
+			closedIDs = append(closedIDs, c.BeadsID)
+		}
+		logDaemonEvent(logger, "daemon.lightweight_cleanup", map[string]interface{}{
+			"closed":     r.ClosedCount,
+			"scanned":    r.ScannedCount,
+			"closed_ids": closedIDs,
 			"message":    r.Message,
 		})
 	} else if verbose {
