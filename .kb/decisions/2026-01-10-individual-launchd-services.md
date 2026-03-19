@@ -38,12 +38,12 @@ launchd (macOS native supervisor)
 ### Plists Created
 
 **OpenCode:** `~/Library/LaunchAgents/com.opencode.serve.plist`
-- Direct execution: `/Users/dylanconlin/.bun/bin/opencode serve --port 4096`
+- Direct execution: `~/.bun/bin/opencode serve --port 4096`
 - KeepAlive: true (auto-restart on crash)
 - RunAtLoad: true (start at login)
 
 **orch serve:** `~/Library/LaunchAgents/com.orch.serve.plist`
-- Direct execution: `/Users/dylanconlin/bin/orch serve`
+- Direct execution: `~/bin/orch serve`
 - KeepAlive: true
 - RunAtLoad: true
 
@@ -54,7 +54,7 @@ launchd (macOS native supervisor)
 - Note: Required wrapper because bun needs working directory set
 
 **orch doctor:** `~/Library/LaunchAgents/com.orch.doctor.plist`
-- Monitoring daemon: `/Users/dylanconlin/bin/orch doctor --daemon`
+- Monitoring daemon: `~/bin/orch doctor --daemon`
 - KeepAlive: true (daemon itself supervised)
 - Polls services every 30s, kills orphans
 
@@ -161,3 +161,8 @@ launchctl list | grep -E "opencode|orch"  # launchd status
 - Epic: orch-go-95vz4 (Dashboard Reliability Infrastructure)
 - Session transcript: sess-4432.txt (overmind debugging session)
 - Crash recovery tests: Confirmed 2026-01-10 09:04
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-10-inv-p0-supervise-overmind-via-launchd.md
+- .kb/investigations/archived/2026-01-09-inv-overmind-vs-launchd-prototype.md

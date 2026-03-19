@@ -29,3 +29,8 @@ Answered empirically: manual frontmatter edit is sufficient. The initial concern
 The open question about a CLI command resolves to: **not needed**. Plan completion is a low-frequency operation (plans span weeks/months). Manual `**Status:** completed` edit is proportionate. Adding a CLI command would be over-engineering — the filtering infrastructure already works, and there's no completion verification to automate (unlike agent completion which has gates).
 
 Status values are well-defined: `active`, `completed`, `superseded`, `draft`.
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-11-design-exploration-orchestrator-lifecycle.md
+- .kb/investigations/2026-03-01-design-complete-pipeline-extraction.md

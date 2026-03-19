@@ -130,3 +130,7 @@ This decision operationalizes the model:
 - `.kb/models/decidability-graph.md` - The model this operationalizes
 - `.kb/decisions/2026-01-07-strategic-orchestrator-model.md` - Orchestrator role (with 2026-01-19 refinement)
 - `kb-227b01` - Context-scoping as irreducible orchestrator function
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-05-inv-document-decision-authority-criteria-agents.md

@@ -1,6 +1,6 @@
 # Probe: Does `bd-sync-safe.sh` leave direct read commands immediately usable after sync?
 
-**Model:** /Users/dylanconlin/Documents/personal/orch-go/.kb/models/beads-integration-architecture/model.md
+**Model:** ~/Documents/personal/orch-go/.kb/models/beads-integration-architecture/model.md
 **Date:** 2026-02-09
 **Status:** Complete
 
@@ -38,7 +38,7 @@ PY
 
 **Environment:**
 
-- Repo: `/Users/dylanconlin/Documents/personal/orch-go`
+- Repo: `~/Documents/personal/orch-go`
 - Changed file: `scripts/bd-sync-safe.sh`
 - Worktree is intentionally dirty (expected unrelated sync commit failures)
 

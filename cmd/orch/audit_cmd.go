@@ -179,6 +179,8 @@ const auditLaunchdLabel = "com.orch.audit-select"
 // auditPlistContent generates the launchd plist XML for weekly audit selection.
 // Runs every Monday at 9:00 AM.
 func auditPlistContent(orchPath, projectDir, logPath string) string {
+	home, _ := os.UserHomeDir()
+	pathEnv := fmt.Sprintf("%s/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:%s/go/bin", home, home)
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -209,10 +211,10 @@ func auditPlistContent(orchPath, projectDir, logPath string) string {
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/Users/dylanconlin/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/Users/dylanconlin/go/bin</string>
+        <string>%s</string>
     </dict>
 </dict>
-</plist>`, auditLaunchdLabel, orchPath, projectDir, logPath, logPath)
+</plist>`, auditLaunchdLabel, orchPath, projectDir, logPath, logPath, pathEnv)
 }
 
 func runAuditInstall(cmd *cobra.Command, args []string) error {

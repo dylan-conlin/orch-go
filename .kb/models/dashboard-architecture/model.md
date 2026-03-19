@@ -445,3 +445,12 @@ All 14 probes merged into this model on 2026-03-06:
 | `2026-02-17-knowledge-tree-duplicate-fix` | CONFIRMS | Deduplication already fixed via `cloneNodeRecursiveWithDedup()`; first-parent-wins strategy |
 | `2026-02-25-probe-work-graph-unassigned-cross-project` | EXTENDS | `buildActiveAgentMap()` local-only; cross-project in_progress issues always show 'unassigned' |
 | `2026-02-25-probe-dashboard-web-ui-framework-and-responsive-patterns` | EXTENDS | Full tech stack: shadcn-svelte + Tailwind v3 + 28 themes + 25 stores + 5-tier responsive grid |
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-05-design-review-dashboard-architecture-request-handling.md
+- .kb/investigations/2026-02-13-inv-recover-dashboard-web-ui-entropy.md
+- .kb/investigations/archived/2025-12-23-inv-audit-swarm-dashboard-web-ui.md
+- .kb/investigations/2026-01-18-inv-update-dashboard-architecture-md-evolution.md
+- .kb/investigations/archived/2025-12-26-design-web-dashboard-daemon-visibility.md
+- .kb/investigations/archived/2026-01-10-inv-dashboard-supervision-circular-debugging.md

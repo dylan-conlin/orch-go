@@ -369,15 +369,6 @@ func findOrchProjectDir() string {
 		}
 	}
 
-	// Try common location
-	home, err := os.UserHomeDir()
-	if err == nil {
-		commonPath := filepath.Join(home, "Documents", "personal", "orch-go")
-		if _, err := os.Stat(filepath.Join(commonPath, "Procfile")); err == nil {
-			return commonPath
-		}
-	}
-
 	return ""
 }
 

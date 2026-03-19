@@ -760,3 +760,8 @@ Common feature requests or operational changes that would violate this model's i
 - `cmd/orch/architecture_lint_test.go` - Structural guardrails preventing registry recreation (forbidden packages/files)
 - `cmd/orch/contract_two_lane_test.go` - 12-scenario acceptance matrix enforcing two-lane architecture contract
 - `.beads/issues.jsonl` - Canonical completion source
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-02-13-inv-update-agent-lifecycle-state-model.md
+- .kb/investigations/2026-02-27-inv-design-centralized-agent-lifecycle-state.md

@@ -60,7 +60,7 @@ grep -rn 'exec\.Command("bd"' --include='*.go' | grep -v test | grep -v .kb/
 cd ~/Documents/personal/beads
 git remote -v
 # origin = steveyegge/beads (upstream)
-# fork = dylan-conlin/beads (Dylan's fork)
+# fork = user/beads (Dylan's fork)
 
 git log --oneline origin/main..HEAD | wc -l
 # 43 commits ahead of upstream

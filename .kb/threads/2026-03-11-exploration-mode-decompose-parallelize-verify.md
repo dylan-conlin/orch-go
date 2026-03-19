@@ -30,3 +30,7 @@ All 4 phases are now shipped and tested:
 - No `.kb/guides/` documentation for exploration mode
 
 The core insight held: exploration is upstream of enforcement — explore freely in isolation, existing gates filter what gets promoted to the codebase.
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-11-inv-probe-adding-exploration-mode-routing.md

@@ -18,7 +18,7 @@ Does the spawn pipeline properly process Go template variables (`{{.BeadsID}}`, 
 ### Test 1: Examine SPAWN_CONTEXT.md for unprocessed template variables
 
 ```bash
-grep -c '{{.BeadsID}}' /Users/dylanconlin/Documents/personal/orch-go/.orch/workspace/og-arch-process-skill-content-20feb-0721/SPAWN_CONTEXT.md
+grep -c '{{.BeadsID}}' ~/Documents/personal/orch-go/.orch/workspace/og-arch-process-skill-content-20feb-0721/SPAWN_CONTEXT.md
 ```
 
 ### Test 2: Trace skill content flow through code
@@ -32,7 +32,7 @@ Examined:
 ### Test 3: Count template variables in spawned context
 
 ```bash
-grep -E '\{\{\.BeadsID\}\}|\{\{if eq \.Tier' /Users/dylanconlin/Documents/personal/orch-go/.orch/workspace/og-arch-process-skill-content-20feb-0721/SPAWN_CONTEXT.md | wc -l
+grep -E '\{\{\.BeadsID\}\}|\{\{if eq \.Tier' ~/Documents/personal/orch-go/.orch/workspace/og-arch-process-skill-content-20feb-0721/SPAWN_CONTEXT.md | wc -l
 ```
 
 ---

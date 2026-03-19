@@ -25,3 +25,7 @@ This constraint was identified and recorded as a kn entry.
 **Promoted from:** quick entry kb-0d4528 (constraint)
 **Original date:** 2026-03-10
 
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-02-14-design-backend-agnostic-session-contract.md

@@ -266,3 +266,8 @@ session.status { status: "idle" }    ← Agent finished
 - `pkg/opencode/sse.go` - SSE stream parsing (~159 lines)
 - `pkg/opencode/monitor.go` - Completion detection (~221 lines)
 - `cmd/orch/spawn_cmd.go` - Session creation (cross-project bug location)
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-20-design-explore-tradeoffs-orch-opencode-integration.md
+- .kb/investigations/archived/2025-12-19-inv-client-opencode-session-management.md

@@ -2,7 +2,7 @@
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** 
-**Supersedes:** /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2026-01-18-design-opencode-binary-resolution.md
+**Supersedes:** ~/Documents/personal/orch-go/.kb/investigations/2026-01-18-design-opencode-binary-resolution.md
 **Superseded-By:** 
 
 

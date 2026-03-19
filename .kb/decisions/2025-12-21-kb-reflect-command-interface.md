@@ -97,3 +97,8 @@ kb query "stale decisions"
 - **Parent Epic:** orch-go-ws4z "System Self-Reflection - Temporal Pattern Awareness"
 - **Input Investigations:** ws4z.7, ws4z.8, ws4z.9, ws4z.10, 4kwt.8
 - **Prior Decision:** `.kb/decisions/2025-12-21-minimal-artifact-taxonomy.md` (5+3 artifact types)
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-26-simple-implement-kb-supersede-command-decision.md
+- .kb/investigations/archived/2025-12-21-design-kb-reflect-command-specification.md

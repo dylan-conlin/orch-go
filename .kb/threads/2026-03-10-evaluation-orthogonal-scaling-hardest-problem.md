@@ -80,3 +80,10 @@ Resolving this thread. Its core thesis — that agentic scaling amplifies whatev
 3. **Ongoing work in evidence-quality thread** (2026-03-15, active): The deeper question — can the system confront disconfirming evidence about itself? — continues there, including a real incident (Mar 16) where self-measurement triggered destructive feedback, demonstrating the thread's thesis in practice.
 
 4. **Dylan's strategic boundary** (what needs external certification vs. what internal review handles) remains the operational filter. Internal evaluation handles consistency/structure/hygiene; external review is reserved for coherence→authority conversions (publication, policy, theory claims).
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-20-design-synthesis-protocol-schema.md
+- .kb/investigations/archived/2025-12-25-inv-design-kb-ask-command-inline.md
+- .kb/investigations/archived/2025-12-20-inv-beta-flash-synthesis-protocol-design.md
+- .kb/investigations/archived/2025-12-25-design-orchestrator-completion-lifecycle-two.md

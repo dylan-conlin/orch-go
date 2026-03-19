@@ -47,3 +47,10 @@ The advisory gate printed "✓ Health score: 73 (C)" on every spawn — giving t
 - Supersedes: `2026-03-10-health-score-targets-65-floor-gate-80-target.md` (floor gate portion)
 - Evidence: `.kb/models/harness-engineering/probes/2026-03-10-probe-health-score-calibration-vs-structural-improvement.md`
 - Evidence: `.kb/models/knowledge-accretion/probes/2026-03-10-probe-health-score-structural-improvement-validation.md`
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-03-inv-gate-orch-spawn-issue-beads.md
+- .kb/investigations/archived/2026-01-15-inv-verify-test-first-gate-duplicate-spawn-5.md
+- .kb/investigations/2026-02-19-design-atomic-spawn-workspace-manifest-orch-agent.md
+- .kb/investigations/2026-03-13-inv-measure-spawn-rate-limiter-concurrency.md

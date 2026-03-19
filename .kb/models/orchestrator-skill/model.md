@@ -276,3 +276,7 @@ Stable state → feature additions ("add X to the skill") → accretion
 - **General theory:** `.kb/global/models/behavioral-grammars/model.md` — probabilistic constraint principles
 - **Content types:** `.kb/models/skill-content-transfer/` — knowledge/stance/behavioral taxonomy with N=90 evidence
 - **Defect classes:** `.kb/models/defect-class-taxonomy/model.md` — Class 3 (Stale Artifact Accumulation) applies to accretion cycle
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-23-inv-fix-skill-constraint-scoping-currently.md

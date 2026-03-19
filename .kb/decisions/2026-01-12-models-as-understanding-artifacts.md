@@ -183,3 +183,7 @@ Conversation with Dylan, Jan 12, 2026. Started from "Understanding Through Engag
 2. **Should models have their own `kb` subcommands?** (`kb create model`, `kb list models`)
 3. **How do we prevent model drift?** (Model says X, code does Y - who catches this?)
 4. **When do investigations promote to models?** (3+ investigations? Pattern emerges? Orchestrator judgment?)
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-14-design-spawn-context-model-inclusion.md

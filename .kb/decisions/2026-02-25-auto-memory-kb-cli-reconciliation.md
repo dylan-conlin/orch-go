@@ -145,4 +145,10 @@ Rejected because auto-memory has no governance, no discoverability by other agen
 - Claude Code memory docs: `~/.claude/docs/official/claude-code/memory.md`
 - Context Injection Architecture: `.kb/models/context-injection/model.md`
 - Knowledge Placement Table: `~/.claude/CLAUDE.md` (section: "Knowledge Placement")
-- Current auto-memory: `~/.claude-personal/projects/-Users-dylanconlin-Documents-personal-orch-go/memory/MEMORY.md`
+- Current auto-memory: `~/.claude-personal/projects/-Users-user-Documents-personal-orch-go/memory/MEMORY.md`
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-03-inv-recover-priority-cli-commands-reconcile.md
+- .kb/investigations/archived/2025-12-26-inv-auto-detect-cli-commands-needing.md
+- .kb/investigations/archived/2025-12-26-inv-auto-detect-new-cli-commands.md

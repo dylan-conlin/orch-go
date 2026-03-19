@@ -39,3 +39,8 @@ Thread resolved. Core insight absorbed into production:
 - Investigation stance reframing: documented in `skill-content-transfer` probe (2026-03-06), not yet rewritten
 - Detection-to-action gap (stance improves perception but not output decisions): active in evidence-quality thread (2026-03-15)
 - Systematic-debugging stance classification: not yet validated experimentally
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-03-inv-agents-report-phase-complete-via.md
+- .kb/investigations/2026-03-05-inv-experiment-stance-generalization-11-13.md

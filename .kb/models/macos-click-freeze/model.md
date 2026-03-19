@@ -339,3 +339,7 @@ Services disabled in Session 15:
 - `launchctl list | grep` output - Service state verification
 - `ioreg` output - IOKit HID device registration (Karabiner DriverKit presence)
 - Activity Monitor - Memory pressure metrics during freeze
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-02-13-inv-probe-capture-current-macos-service.md

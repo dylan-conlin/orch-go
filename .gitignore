@@ -34,6 +34,22 @@ tmp/
 
 # Agent workspace artifacts (ephemeral, per-session)
 .orch/workspace/
+.orch/workspace-archive/
+.orch/session/
+
+# Beads issue data (personal)
+.beads/issues.jsonl
+
+# Claude Code project memory (personal)
+.claude/projects/
+
+# Investigations (personal — models, guides, decisions, threads are public)
+.kb/investigations/
+
+# Global knowledge files (personal)
+.kb/global/gap-tracker.json
+.kb/global/projects.json
+.kb/global/groups.yaml
 
 # Dev/Ops mode (local state, not committed)
 .dev-mode

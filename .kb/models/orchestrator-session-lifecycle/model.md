@@ -335,7 +335,7 @@ The COMPREHEND → TRIAGE → SYNTHESIZE frame describes what the orchestrator d
 4. Feature-impl skill has no checkpoint to verify architect alignment before implementing
 5. Agent entered implementation within 3 minutes of planning, insufficient exploration time
 
-**Evidence:** orch-go-68gcy built `pkg/harness/` + `cmd/harness/` inside orch-go when architect orch-go-sb13k had designed `github.com/dylan-conlin/harness` as a separate repo. Required immediate revert (b305e6d35).
+**Evidence:** orch-go-68gcy built `pkg/harness/` + `cmd/harness/` inside orch-go when architect orch-go-sb13k had designed `github.com/user/harness` as a separate repo. Required immediate revert (b305e6d35).
 
 **Status:** Unmitigated — no spawn pipeline change yet. Same failure can recur whenever an issue description contradicts a prior architect design.
 
@@ -654,3 +654,8 @@ Three failure modes drove the majority of the skill's evolution:
 - `pkg/verify/check.go:VerifyCompletionWithTier()` - Three-tier verification logic
 - `cmd/orch/session.go` - Session management commands (start, status, resume)
 - `cmd/orch/architecture_lint_test.go` - Lint test forbidding sessions.json and registry packages
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-22-inv-audit-orchestration-lifecycle-post-registry.md
+- .kb/investigations/archived/2025-12-25-inv-investigate-orchestration-lifecycle-end-end.md

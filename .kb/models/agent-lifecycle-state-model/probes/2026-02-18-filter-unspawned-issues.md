@@ -4,7 +4,7 @@ Does the beads-first dashboard filter exclude unspawned issues so only issues wi
 What I Tested
 
 - `curl -sk https://localhost:3348/api/agents | python3 -c "import json,sys; data=json.load(sys.stdin); print('agents', len(data)); print('dead', sum(1 for a in data if a.get('status')=='dead'))"`
-- `go run -ldflags "-X main.sourceDir=/Users/dylanconlin/Documents/personal/orch-go" ./cmd/orch serve --port 3349 >/tmp/orch-serve-1074.log 2>&1 & pid=$!; sleep 4; curl -sk https://localhost:3349/api/agents | python3 -c "import json,sys; data=json.load(sys.stdin); print('agents', len(data)); print('dead', sum(1 for a in data if a.get('status')=='dead'))"; kill $pid`
+- `go run -ldflags "-X main.sourceDir=~/Documents/personal/orch-go" ./cmd/orch serve --port 3349 >/tmp/orch-serve-1074.log 2>&1 & pid=$!; sleep 4; curl -sk https://localhost:3349/api/agents | python3 -c "import json,sys; data=json.load(sys.stdin); print('agents', len(data)); print('dead', sum(1 for a in data if a.get('status')=='dead'))"; kill $pid`
 
 What I Observed
 

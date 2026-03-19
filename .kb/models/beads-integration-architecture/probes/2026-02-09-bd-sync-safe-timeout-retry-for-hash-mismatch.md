@@ -1,6 +1,6 @@
 # Probe: Can `bd-sync-safe.sh` recover from hash-mismatch import stalls without manual kill/retry?
 
-**Model:** /Users/dylanconlin/Documents/personal/orch-go/.kb/models/beads-integration-architecture/model.md
+**Model:** ~/Documents/personal/orch-go/.kb/models/beads-integration-architecture/model.md
 **Date:** 2026-02-09
 **Status:** Complete
 
@@ -32,7 +32,7 @@ PY
 
 **Environment:**
 
-- Repo: `/Users/dylanconlin/Documents/personal/orch-go`
+- Repo: `~/Documents/personal/orch-go`
 - Changed file: `scripts/bd-sync-safe.sh`
 - Stubbed `bd` forced first sync call to emit hash-mismatch lines and sleep past timeout
 

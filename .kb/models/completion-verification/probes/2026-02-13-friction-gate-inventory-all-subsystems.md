@@ -22,7 +22,7 @@ The completion-verification model documents 3 verification layers (Phase, Eviden
 ```bash
 python3 -c "
 import json, collections
-events = [json.loads(l) for l in open('/Users/dylanconlin/.orch/events.jsonl')]
+events = [json.loads(l) for l in open('~/.orch/events.jsonl')]
 # Count by event type, gate, reason
 # Cross-reference bypass vs failure rates per gate
 "

@@ -136,3 +136,8 @@ At session end:
 - `~/.kb/principles.md:697`
 - `~/.kb/principles.md:796`
 - `.kb/decisions/2026-01-07-synthesis-is-strategic-orchestrator-work.md`
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-21-inv-reflection-checkpoint-pattern-agent-sessions.md
+- .kb/investigations/archived/2025-12-21-inv-design-self-reflection-protocol-specification.md

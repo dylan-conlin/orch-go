@@ -2,7 +2,7 @@
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** 
-**Supersedes:** /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2026-01-18-inv-design-questions-first-class-entities.md
+**Supersedes:** ~/Documents/personal/orch-go/.kb/investigations/2026-01-18-inv-design-questions-first-class-entities.md
 **Superseded-By:** 
 
 
@@ -172,3 +172,9 @@ Question emerges → OPEN → Investigation spawned → INVESTIGATING → Unders
 - `2026-01-17-five-tier-completion-escalation-model.md` - Knowledge work surfacing pattern
 - `2026-01-12-models-as-understanding-artifacts.md` - Understanding artifacts lifecycle
 - `2026-01-14-verification-bottleneck-principle.md` - Gatekeeping patterns
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-18-inv-design-questions-first-class-entities.md
+- .kb/investigations/2026-03-05-inv-architect-unified-reliability-design-orch.md
+- .kb/investigations/2026-01-18-inv-add-questions-view-orch-go.md

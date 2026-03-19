@@ -17,9 +17,9 @@ func TestLoadFromFile(t *testing.T) {
       - orch-go
       - orch-cli
       - kb-cli
-  scs:
+  corp:
     account: work
-    parent: scs-special-projects
+    parent: corp-monorepo
 `
 	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
 		t.Fatal(err)
@@ -42,12 +42,12 @@ func TestLoadFromFile(t *testing.T) {
 		t.Errorf("orch.Projects count = %d, want 3", len(orch.Projects))
 	}
 
-	scs := cfg.Groups["scs"]
-	if scs.Account != "work" {
-		t.Errorf("scs.Account = %q, want %q", scs.Account, "work")
+	corp := cfg.Groups["corp"]
+	if corp.Account != "work" {
+		t.Errorf("corp.Account = %q, want %q", corp.Account, "work")
 	}
-	if scs.Parent != "scs-special-projects" {
-		t.Errorf("scs.Parent = %q, want %q", scs.Parent, "scs-special-projects")
+	if corp.Parent != "corp-monorepo" {
+		t.Errorf("corp.Parent = %q, want %q", corp.Parent, "corp-monorepo")
 	}
 }
 
@@ -141,9 +141,9 @@ func TestGroupsForProject_ExplicitMembership(t *testing.T) {
 				Account:  "personal",
 				Projects: []string{"orch-go", "orch-cli", "kb-cli"},
 			},
-			"scs": {
+			"corp": {
 				Account: "work",
-				Parent:  "scs-special-projects",
+				Parent:  "corp-monorepo",
 			},
 		},
 	}
@@ -167,27 +167,27 @@ func TestGroupsForProject_ExplicitMembership(t *testing.T) {
 func TestGroupsForProject_ParentInference(t *testing.T) {
 	cfg := &Config{
 		Groups: map[string]Group{
-			"scs": {
+			"corp": {
 				Account: "work",
-				Parent:  "scs-special-projects",
+				Parent:  "corp-monorepo",
 			},
 		},
 	}
 
 	kbProjects := map[string]string{
-		"scs-special-projects": "/home/user/work/scs-special-projects",
-		"toolshed":             "/home/user/work/scs-special-projects/toolshed",
-		"price-watch":          "/home/user/work/scs-special-projects/price-watch",
+		"corp-monorepo": "/home/user/work/corp-monorepo",
+		"toolshed":             "/home/user/work/corp-monorepo/toolshed",
+		"price-watch":          "/home/user/work/corp-monorepo/price-watch",
 		"orch-go":              "/home/user/personal/orch-go",
 	}
 
-	// toolshed is a child of scs-special-projects
+	// toolshed is a child of corp-monorepo
 	groups := cfg.GroupsForProject("toolshed", kbProjects)
 	if len(groups) != 1 {
 		t.Fatalf("expected 1 group for toolshed, got %d", len(groups))
 	}
-	if groups[0].Name != "scs" {
-		t.Errorf("expected group name %q, got %q", "scs", groups[0].Name)
+	if groups[0].Name != "corp" {
+		t.Errorf("expected group name %q, got %q", "corp", groups[0].Name)
 	}
 
 	// price-watch is also a child
@@ -196,7 +196,7 @@ func TestGroupsForProject_ParentInference(t *testing.T) {
 		t.Fatalf("expected 1 group for price-watch, got %d", len(groups))
 	}
 
-	// orch-go is NOT a child of scs-special-projects
+	// orch-go is NOT a child of corp-monorepo
 	groups = cfg.GroupsForProject("orch-go", kbProjects)
 	if len(groups) != 0 {
 		t.Errorf("expected 0 groups for orch-go, got %d", len(groups))
@@ -206,25 +206,25 @@ func TestGroupsForProject_ParentInference(t *testing.T) {
 func TestGroupsForProject_ParentIsSelfMember(t *testing.T) {
 	cfg := &Config{
 		Groups: map[string]Group{
-			"scs": {
+			"corp": {
 				Account: "work",
-				Parent:  "scs-special-projects",
+				Parent:  "corp-monorepo",
 			},
 		},
 	}
 
 	kbProjects := map[string]string{
-		"scs-special-projects": "/home/user/work/scs-special-projects",
-		"toolshed":             "/home/user/work/scs-special-projects/toolshed",
+		"corp-monorepo": "/home/user/work/corp-monorepo",
+		"toolshed":             "/home/user/work/corp-monorepo/toolshed",
 	}
 
 	// The parent project itself should be a member of its own group
-	groups := cfg.GroupsForProject("scs-special-projects", kbProjects)
+	groups := cfg.GroupsForProject("corp-monorepo", kbProjects)
 	if len(groups) != 1 {
-		t.Fatalf("expected 1 group for parent scs-special-projects, got %d", len(groups))
+		t.Fatalf("expected 1 group for parent corp-monorepo, got %d", len(groups))
 	}
-	if groups[0].Name != "scs" {
-		t.Errorf("expected group name %q, got %q", "scs", groups[0].Name)
+	if groups[0].Name != "corp" {
+		t.Errorf("expected group name %q, got %q", "corp", groups[0].Name)
 	}
 }
 
@@ -312,24 +312,24 @@ func TestSiblingsOf(t *testing.T) {
 func TestSiblingsOf_ParentInference(t *testing.T) {
 	cfg := &Config{
 		Groups: map[string]Group{
-			"scs": {
+			"corp": {
 				Account: "work",
-				Parent:  "scs-special-projects",
+				Parent:  "corp-monorepo",
 			},
 		},
 	}
 
 	kbProjects := map[string]string{
-		"scs-special-projects": "/home/user/work/scs-special-projects",
-		"toolshed":             "/home/user/work/scs-special-projects/toolshed",
-		"price-watch":          "/home/user/work/scs-special-projects/price-watch",
-		"sendassist":           "/home/user/work/scs-special-projects/sendassist",
+		"corp-monorepo": "/home/user/work/corp-monorepo",
+		"toolshed":             "/home/user/work/corp-monorepo/toolshed",
+		"price-watch":          "/home/user/work/corp-monorepo/price-watch",
+		"sendassist":           "/home/user/work/corp-monorepo/sendassist",
 		"orch-go":              "/home/user/personal/orch-go",
 	}
 
 	siblings := cfg.SiblingsOf("toolshed", kbProjects)
 
-	// Should include price-watch, sendassist, scs-special-projects but NOT toolshed or orch-go
+	// Should include price-watch, sendassist, corp-monorepo but NOT toolshed or orch-go
 	found := map[string]bool{}
 	for _, s := range siblings {
 		found[s] = true
@@ -340,14 +340,14 @@ func TestSiblingsOf_ParentInference(t *testing.T) {
 	if !found["sendassist"] {
 		t.Error("expected sendassist in siblings")
 	}
-	if !found["scs-special-projects"] {
-		t.Error("expected scs-special-projects in siblings")
+	if !found["corp-monorepo"] {
+		t.Error("expected corp-monorepo in siblings")
 	}
 	if found["toolshed"] {
 		t.Error("toolshed should not be in its own siblings")
 	}
 	if found["orch-go"] {
-		t.Error("orch-go should not be in scs siblings")
+		t.Error("orch-go should not be in corp siblings")
 	}
 }
 
@@ -402,21 +402,21 @@ func TestAllProjectsInGroups(t *testing.T) {
 func TestResolveGroupMembers_ParentGroup(t *testing.T) {
 	cfg := &Config{
 		Groups: map[string]Group{
-			"scs": {
+			"corp": {
 				Account: "work",
-				Parent:  "scs-special-projects",
+				Parent:  "corp-monorepo",
 			},
 		},
 	}
 
 	kbProjects := map[string]string{
-		"scs-special-projects": "/home/user/work/scs-special-projects",
-		"toolshed":             "/home/user/work/scs-special-projects/toolshed",
-		"price-watch":          "/home/user/work/scs-special-projects/price-watch",
+		"corp-monorepo": "/home/user/work/corp-monorepo",
+		"toolshed":             "/home/user/work/corp-monorepo/toolshed",
+		"price-watch":          "/home/user/work/corp-monorepo/price-watch",
 		"orch-go":              "/home/user/personal/orch-go",
 	}
 
-	members := cfg.ResolveGroupMembers("scs", kbProjects)
+	members := cfg.ResolveGroupMembers("corp", kbProjects)
 
 	if len(members) != 3 {
 		t.Fatalf("expected 3 members (parent + 2 children), got %d: %v", len(members), members)
@@ -426,7 +426,7 @@ func TestResolveGroupMembers_ParentGroup(t *testing.T) {
 	for _, m := range members {
 		found[m] = true
 	}
-	if !found["scs-special-projects"] {
+	if !found["corp-monorepo"] {
 		t.Error("expected parent project in members")
 	}
 	if !found["toolshed"] {
@@ -436,7 +436,7 @@ func TestResolveGroupMembers_ParentGroup(t *testing.T) {
 		t.Error("expected price-watch in members")
 	}
 	if found["orch-go"] {
-		t.Error("orch-go should not be in scs members")
+		t.Error("orch-go should not be in corp members")
 	}
 }
 
@@ -444,7 +444,7 @@ func TestAccountForProjectDir_ExplicitMember(t *testing.T) {
 	cfg := &Config{
 		Groups: map[string]Group{
 			"orch": {Account: "personal", Projects: []string{"orch-go", "beads"}},
-			"scs":  {Account: "work", Projects: []string{"toolshed"}},
+			"corp":  {Account: "work", Projects: []string{"toolshed"}},
 		},
 	}
 	kbProjects := map[string]string{
@@ -464,15 +464,15 @@ func TestAccountForProjectDir_ExplicitMember(t *testing.T) {
 func TestAccountForProjectDir_ParentInferred(t *testing.T) {
 	cfg := &Config{
 		Groups: map[string]Group{
-			"scs": {Account: "work", Parent: "scs-special-projects"},
+			"corp": {Account: "work", Parent: "corp-monorepo"},
 		},
 	}
 	kbProjects := map[string]string{
-		"scs-special-projects": "/home/user/work/scs-special-projects",
-		"price-watch":          "/home/user/work/scs-special-projects/price-watch",
+		"corp-monorepo": "/home/user/work/corp-monorepo",
+		"price-watch":          "/home/user/work/corp-monorepo/price-watch",
 	}
 
-	if got := cfg.AccountForProjectDir("/home/user/work/scs-special-projects/price-watch", kbProjects); got != "work" {
+	if got := cfg.AccountForProjectDir("/home/user/work/corp-monorepo/price-watch", kbProjects); got != "work" {
 		t.Errorf("expected work for price-watch (parent-inferred), got %q", got)
 	}
 }

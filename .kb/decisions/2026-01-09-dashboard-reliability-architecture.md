@@ -242,3 +242,7 @@ if (Date.now() - Date.parse(cacheTime) > 60000) {
 - Investigation: `.kb/investigations/2025-12-22-debug-dashboard-shows-0-agents-despite-api-returning-209.md`
 - Investigation: `.kb/investigations/2025-12-24-inv-dashboard-phase-badges-not-showing.md`
 - Constraint: 186 investigations mention "restart"
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-03-audit-comprehensive-orch-go-bugs-reliability-architecture.md

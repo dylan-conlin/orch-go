@@ -103,7 +103,7 @@ Based on code analysis, price-watch should have **identical** Codex access to or
 - Provider disabled lists (none configured)
 
 Possible alternative explanations requiring further investigation:
-- The `x-opencode-directory` header may not be set correctly when spawning for price-watch (different base path: `/Users/dylanconlin/Documents/work/...` vs `/Users/dylanconlin/Documents/personal/...`)
+- The `x-opencode-directory` header may not be set correctly when spawning for price-watch (different base path: `~/Documents/work/...` vs `~/Documents/personal/...`)
 - Instance for price-watch may never have been initialized on the current server
 - Error may be elsewhere in the pipeline (model alias resolution in orch-go, session creation, etc.)
 

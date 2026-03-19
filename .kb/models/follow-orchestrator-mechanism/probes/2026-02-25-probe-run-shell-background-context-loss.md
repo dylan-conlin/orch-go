@@ -37,7 +37,7 @@ set-hook -g after-select-window 'run-shell -b "echo #{session_name} >> /tmp/log"
 - **`#{session_name}` expanded in hook command string**: Always returns correct session (the one where the window was selected).
 - **Root cause**: `run-shell -b` executes asynchronously. The background process has no inherent client context. When the script calls `tmux display-message -p`, tmux must pick a client arbitrarily.
 
-**Second bug found**: Directory basename `scs-special-projects` doesn't match workers session name `workers-toolshed` (monorepo with nested `.orch/` directories at both parent and child levels).
+**Second bug found**: Directory basename `work-monorepo` doesn't match workers session name `workers-toolshed` (monorepo with nested `.orch/` directories at both parent and child levels).
 
 ---
 

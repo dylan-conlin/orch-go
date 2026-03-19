@@ -92,3 +92,7 @@ Future work: Capture Dylan's tool experience in a queryable format so AI can ask
 - **Source:** `.kb/investigations/2026-01-09-inv-trust-calibration-meta-pattern.md`
 - **Post-mortem:** `.kb/post-mortems/2026-01-09-launchd-recommendation-failure.md`
 - **Principle:** Pressure Over Compensation - don't compensate by providing context manually; fix the system
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-09-inv-trust-calibration-meta-pattern.md

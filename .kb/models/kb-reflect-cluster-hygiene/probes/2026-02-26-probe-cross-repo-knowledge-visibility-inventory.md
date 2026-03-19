@@ -88,7 +88,7 @@ Enumerated every .kb/ directory across the system:
 
 **B. 2 unregistered repos with .kb/ directories**
 
-`badge-tracker` and `scs-explorer` have `.kb/` directories but are not in `projects.json`. `discoverProjects()` would only find them if they're within 3 levels of `~/Documents` — at depth 4 under `~/Documents/work/SendCutSend/scs-special-projects/`, they'd be missed by the directory walk too.
+`badge-tracker` and `work-explorer` have `.kb/` directories but are not in `projects.json`. `discoverProjects()` would only find them if they're within 3 levels of `~/Documents` — at depth 4 under `~/Documents/work/WorkCorp/work-monorepo/`, they'd be missed by the directory walk too.
 
 **C. Daemon never uses --global**
 
@@ -152,4 +152,4 @@ Should `kb reflect` gain awareness of `~/.kb/` (global artifacts), or should a s
 
 1. Daemon should consider running `kb reflect --global` periodically (currently single-project only)
 2. `~/.kb/` needs its own reflection path or explicit inclusion in `discoverProjects()`
-3. `badge-tracker` and `scs-explorer` should be registered in `projects.json`
+3. `badge-tracker` and `work-explorer` should be registered in `projects.json`

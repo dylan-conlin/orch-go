@@ -17,24 +17,24 @@ How does the skillc pipeline (source -> compile -> deploy -> agent load) actuall
 ```bash
 pwd
 which skillc
-file /Users/dylanconlin/bin/skillc
-stat -f "%Sm %N" /Users/dylanconlin/.claude/skills/meta/orchestrator/SKILL.md \
-  /Users/dylanconlin/.opencode/skill/meta/orchestrator/SKILL.md \
-  /Users/dylanconlin/.opencode/skill/SKILL.md \
-  /Users/dylanconlin/.claude/skills/src/meta/orchestrator/SKILL.md \
-  /Users/dylanconlin/.claude/skills/skills/src/meta/orchestrator/SKILL.md \
-  /Users/dylanconlin/orch-knowledge/skills/src/meta/orchestrator/SKILL.md \
-  /Users/dylanconlin/Documents/personal/orch-cli/skills/orchestrator/SKILL.md \
-  /Users/dylanconlin/.config/opencode/agent/orchestrator.md
+file ~/bin/skillc
+stat -f "%Sm %N" ~/.claude/skills/meta/orchestrator/SKILL.md \
+  ~/.opencode/skill/meta/orchestrator/SKILL.md \
+  ~/.opencode/skill/SKILL.md \
+  ~/.claude/skills/src/meta/orchestrator/SKILL.md \
+  ~/.claude/skills/skills/src/meta/orchestrator/SKILL.md \
+  ~/orch-knowledge/skills/src/meta/orchestrator/SKILL.md \
+  ~/Documents/personal/orch-cli/skills/orchestrator/SKILL.md \
+  ~/.config/opencode/agent/orchestrator.md
 ```
 
 Reviewed skillc deploy and compiler behavior in:
-- `/Users/dylanconlin/Documents/personal/skillc/cmd/skillc/main.go`
-- `/Users/dylanconlin/Documents/personal/skillc/pkg/compiler/compiler.go`
+- `~/Documents/personal/skillc/cmd/skillc/main.go`
+- `~/Documents/personal/skillc/pkg/compiler/compiler.go`
 
 Reviewed orch-go spawn load path in:
-- `/Users/dylanconlin/Documents/personal/orch-go/pkg/skills/loader.go`
-- `/Users/dylanconlin/Documents/personal/orch-go/pkg/orch/extraction.go`
+- `~/Documents/personal/orch-go/pkg/skills/loader.go`
+- `~/Documents/personal/orch-go/pkg/orch/extraction.go`
 
 ---
 

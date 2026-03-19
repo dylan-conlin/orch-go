@@ -147,3 +147,8 @@ For high-performance bulk operations (like `orch clean`), completion is inferred
 | Probe | Date | Verdict | Key Finding |
 |-------|------|---------|-------------|
 | `probes/2026-02-28-probe-archived-workspace-accumulation-git-clutter.md` | 2026-02-28 | Extends | Archival was fixed but created a new gap — 1,708 archived dirs (149MB) accumulate without TTL. 10,448 workspace files historically committed to git; `.gitignore` had no `.orch` entries. `orch rework` is the binding constraint (needs archived workspaces within days of completion). Lifecycle needs a 5th stage: Expire. |
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-06-inv-define-workspace-cleanup-strategy-context.md
+- .kb/investigations/archived/2025-12-21-inv-workspace-lifecycle-when-workspaces-created.md

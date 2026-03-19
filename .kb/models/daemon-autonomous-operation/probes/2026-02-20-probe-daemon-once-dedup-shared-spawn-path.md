@@ -12,7 +12,7 @@ Do OnceExcluding and OnceWithSlot share the same dedup and status-update logic a
 - `go test ./pkg/daemon -run TestDaemon_SpawnIssue_StatusUpdateFailureReleasesSlot`
 
 # What I Observed
-- Test passed: `ok   github.com/dylan-conlin/orch-go/pkg/daemon`
+- Test passed: `ok   github.com/user/orch-go/pkg/daemon`
 
 # Model Impact
 - Confirms: Dedup/status-update guard logic is centralized in a shared spawn path and remains enforced (status update failure blocks spawn, releases slot, no spawn call).

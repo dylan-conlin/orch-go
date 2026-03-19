@@ -523,3 +523,7 @@ A literature review against 40 years of human factors research (Bainbridge 1983 
 - Dashboard should follow High-Performance HMI: quiet for normal progress, color/alerts for anomalies and blocked work.
 - Agent spawn visibility should answer all three SA levels: what agents are running (SA-1), why they were spawned and what they depend on (SA-2), what's likely to complete/block next (SA-3).
 - **Bainbridge's Irony #3 is live in this system:** when the daemon handles everything autonomously, Dylan's manual intervention skill degrades. The daemon's autonomous spawning amplifies this risk. The design should ensure Dylan periodically engages with raw system behavior, not just orchestrator-mediated summaries.
+
+## Auto-Linked Investigations
+
+- .kb/investigations/synthesized/system-learning-loop/2025-12-25-inv-system-learning-loop-convert-gaps.md

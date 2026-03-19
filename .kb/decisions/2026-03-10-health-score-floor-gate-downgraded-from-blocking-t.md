@@ -23,3 +23,10 @@ This decision was initially captured as a quick kn entry and has now been promot
 **Promoted from:** quick entry kb-3e651d (decision)
 **Original date:** 2026-03-10
 
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-02-28-design-daemon-agreements-integration.md
+- .kb/investigations/2026-03-01-design-control-plane-data-plane-separation.md
+- .kb/investigations/2026-03-05-inv-design-domain-aware-spawn-routing.md
+- .kb/investigations/2026-03-10-design-kb-health-portable-codebase-health-score.md

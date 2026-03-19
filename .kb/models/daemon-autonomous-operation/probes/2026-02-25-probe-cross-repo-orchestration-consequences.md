@@ -8,25 +8,25 @@
 
 ## Question
 
-The cross-repo orchestration decision (`scs-special-projects/.kb/decisions/2026-02-25-cross-repo-orchestration-from-parent.md`) says: strategic issues live in scs-special-projects parent repo beads, implementation issues stay in child repos, orchestrator runs from parent and spawns into child repos with `--workdir`. After fixes orch-go-1230/1231, what in orch-go already supports this pattern, what's broken/missing, and what gaps need filling?
+The cross-repo orchestration decision (`work-monorepo/.kb/decisions/2026-02-25-cross-repo-orchestration-from-parent.md`) says: strategic issues live in work-monorepo parent repo beads, implementation issues stay in child repos, orchestrator runs from parent and spawns into child repos with `--workdir`. After fixes orch-go-1230/1231, what in orch-go already supports this pattern, what's broken/missing, and what gaps need filling?
 
 ---
 
 ## What I Tested
 
-### 1. scs-special-projects Registry Status
+### 1. work-monorepo Registry Status
 ```bash
 kb projects list --json
 # Result: 18 projects listed
-# scs-special-projects is NOT registered
+# work-monorepo is NOT registered
 # Child repos ARE registered: price-watch, toolshed, specs-platform, sendassist
 ```
 
-### 2. scs-special-projects Beads Config
+### 2. work-monorepo Beads Config
 ```bash
-cat ~/Documents/work/SendCutSend/scs-special-projects/.beads/config.yaml
+cat ~/Documents/work/WorkCorp/work-monorepo/.beads/config.yaml
 # Result: issue-prefix is commented out (no explicit prefix)
-# Default would be "scs-special-projects" (from directory name)
+# Default would be "work-monorepo" (from directory name)
 ```
 
 ### 3. Daemon ProjectRegistry Source
@@ -56,7 +56,7 @@ cat ~/Documents/work/SendCutSend/scs-special-projects/.beads/config.yaml
 // cmd/orch/serve_beads.go:464-501
 // handleBeads() accepts project_dir query param
 // Can query any project's beads via CLI client
-// Dashboard CAN show scs-special-projects if given the path
+// Dashboard CAN show work-monorepo if given the path
 ```
 
 ### 7. Work-Graph Cross-Project Support
@@ -72,7 +72,7 @@ cat ~/Documents/work/SendCutSend/scs-special-projects/.beads/config.yaml
 // cmd/orch/serve_agents_cache.go:396, 439
 // listSessionsAcrossProjects() queries all kb projects
 // getKBProjects() parses kb projects list
-// scs-special-projects NOT in kb projects → invisible
+// work-monorepo NOT in kb projects → invisible
 ```
 
 ---
@@ -112,16 +112,16 @@ cat ~/Documents/work/SendCutSend/scs-special-projects/.beads/config.yaml
 
 ### WHAT'S BROKEN/MISSING
 
-1. **scs-special-projects is NOT in `kb projects list`**
+1. **work-monorepo is NOT in `kb projects list`**
    - The daemon's ProjectRegistry builds from `kb projects list`
-   - scs-special-projects is not registered → daemon never polls it
-   - **Fix:** `cd ~/Documents/work/SendCutSend/scs-special-projects && kb init`
+   - work-monorepo is not registered → daemon never polls it
+   - **Fix:** `cd ~/Documents/work/WorkCorp/work-monorepo && kb init`
    - This is an operational gap, not a code gap
 
-2. **scs-special-projects has no explicit beads issue-prefix**
+2. **work-monorepo has no explicit beads issue-prefix**
    - `config.yaml` has `issue-prefix` commented out
-   - ProjectRegistry falls back to directory name: `scs-special-projects`
-   - Prefix is very long → issue IDs like `scs-special-projects-123`
+   - ProjectRegistry falls back to directory name: `work-monorepo`
+   - Prefix is very long → issue IDs like `work-monorepo-123`
    - **Fix:** Set `issue-prefix: scs-sp` in `.beads/config.yaml`
 
 3. **Completion processing is single-project only**
@@ -138,7 +138,7 @@ cat ~/Documents/work/SendCutSend/scs-special-projects/.beads/config.yaml
 
 5. **Dashboard has no "parent repo" context concept**
    - Dashboard shows stats/agents for whatever project it's configured for
-   - No mechanism to show "scs-special-projects as coordination hub" with child repos underneath
+   - No mechanism to show "work-monorepo as coordination hub" with child repos underneath
    - No aggregate view of strategic issues + their child implementation issues
 
 6. **Cross-repo dependency tracking is text-only**
@@ -157,7 +157,7 @@ cat ~/Documents/work/SendCutSend/scs-special-projects/.beads/config.yaml
 8. **Daemon where-to-run ambiguity**
    - Decision says "orchestrator runs from parent"
    - But daemon currently runs from orch-go (where it's built)
-   - Running daemon from scs-special-projects would make parent polling automatic
+   - Running daemon from work-monorepo would make parent polling automatic
    - But then orch-go issues wouldn't be polled (unless also in registry)
    - **The daemon needs to run from SOMEWHERE and poll EVERYWHERE**
 
@@ -175,11 +175,11 @@ cat ~/Documents/work/SendCutSend/scs-special-projects/.beads/config.yaml
    - Current: No mechanism to know when all children are done
    - Need: Something that watches child repo closures and signals parent readiness
 
-3. **What context does cc personal from scs-special-projects get?**
+3. **What context does cc personal from work-monorepo get?**
    - Claude Code loads CLAUDE.md from current directory
-   - scs-special-projects CLAUDE.md describes the portfolio structure
+   - work-monorepo CLAUDE.md describes the portfolio structure
    - Orchestrator skill loaded via `~/.claude/skills/meta/orchestrator/`
-   - `orch spawn --workdir ~/Documents/work/SendCutSend/toolshed investigation "X"` would work
+   - `orch spawn --workdir ~/Documents/work/WorkCorp/toolshed investigation "X"` would work
    - The orchestrator has correct strategic context from parent CLAUDE.md
 
 4. **How does the work-graph render cross-repo relationships?**
@@ -207,8 +207,8 @@ cat ~/Documents/work/SendCutSend/scs-special-projects/.beads/config.yaml
 - **Severity:** This blocks the core workflow the decision describes
 
 **Operational Prerequisites (must be done to make decision work):**
-1. `cd ~/Documents/work/SendCutSend/scs-special-projects && kb init` — register parent repo
-2. Set `issue-prefix: scs-sp` in `scs-special-projects/.beads/config.yaml`
+1. `cd ~/Documents/work/WorkCorp/work-monorepo && kb init` — register parent repo
+2. Set `issue-prefix: scs-sp` in `work-monorepo/.beads/config.yaml`
 3. Daemon must run with ProjectRegistry that includes scs-sp
 
 ---

@@ -148,3 +148,10 @@ Six investigations explored these gaps:
 - **Epic:** orch-go-4kwt (Amnesia-Resilient Artifact Architecture)
 - **Investigation:** `.kb/investigations/2025-12-21-design-minimal-artifact-taxonomy.md`
 - **Principle:** Session Amnesia (foundational constraint)
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-02-28-design-session-debrief-artifact-system.md
+- .kb/investigations/archived/2026-01-07-design-screenshot-artifact-storage-decision.md
+- .kb/investigations/archived/2025-12-27-inv-add-skill-change-taxonomy-decision.md
+- .kb/investigations/archived/2025-12-21-design-minimal-artifact-taxonomy.md

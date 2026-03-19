@@ -59,11 +59,11 @@ This confirms:
 ```yaml
 accounts:
     personal:
-        email: dylan.conlin@gmail.com
+        email: user@example.com
         refresh_token: sk-ant-ort01-...
         source: saved
     work:
-        email: dylan.conlin@sendcutsend.com
+        email: user@example.com
         refresh_token: sk-ant-ort01-...
         source: saved
 default: personal

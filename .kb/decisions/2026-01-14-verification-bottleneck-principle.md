@@ -67,3 +67,9 @@ When tempted to skip verification: "Am I building on verified foundations, or am
 - **Source:** `.kb/investigations/2026-01-10-inv-trace-verification-bottleneck-story-system.md`
 - **Post-mortems:** `2025-12-21-inv-deep-post-mortem-last-24.md`, `2026-01-02-system-spiral-dec27-jan02.md`
 - **Pattern:** Understanding Lag (observability improves faster than understanding)
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-15-inv-fix-tmux-socket-path-orch.md
+- .kb/investigations/2026-03-17-design-ground-truth-metric-injection-daemon-orient.md
+- .kb/investigations/archived/2026-01-10-inv-trace-verification-bottleneck-story-system.md

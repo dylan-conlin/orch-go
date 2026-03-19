@@ -126,3 +126,7 @@ bd ready --type question --label subtype:factual
 - **Investigation:** `.kb/investigations/2026-01-19-inv-evaluate-encoding-options-question-subtypes.md`
 - **Model:** `.kb/models/decidability-graph.md` - Question subtypes and authority levels
 - **Decision:** `.kb/decisions/2026-01-18-questions-as-first-class-entities.md` - Question bead type
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-06-inv-daemon-doesn-see-issues-newly.md

@@ -54,7 +54,7 @@ Read `context.go:226-428`. Confirmed:
 
 ```bash
 ls ~/.kb/  # decisions/, investigations/, guides/, models/ all exist
-readlink -f ~/.kb/  # → /Users/dylanconlin/orch-knowledge/kb
+readlink -f ~/.kb/  # → ~/orch-knowledge/kb
 ```
 
 Global store has: 17 decisions, 9 investigations, 10 guides, 8 models. Same directory structure as project-level `.kb/`, so existing search functions work directly.
@@ -78,7 +78,7 @@ Read `orch-go/pkg/spawn/kbcontext.go:117-175`. The spawn system uses a tiered st
 
 2. **kb context needs its own approach** (not covered in prior investigation). A new `GetGlobalStoreContext()` function can reuse `searchGuidesDir()`, `searchModelsDir()`, `SearchArtifacts()` directly by passing `~/.kb/` paths. This should be called at the command handler level (not inside `GetContext`) to avoid N-times execution in global mode.
 
-3. **Edge case confirmed:** `~/.kb/` → `/Users/dylanconlin/orch-knowledge/kb/` is a symlink. `os.Stat` follows symlinks by default (Go behavior). No special handling needed unless we want to detect and prevent double-counting with `orch-knowledge/.kb/`. Since the paths are different (`orch-knowledge/kb/` vs `orch-knowledge/.kb/`), this is not a risk.
+3. **Edge case confirmed:** `~/.kb/` → `~/orch-knowledge/kb/` is a symlink. `os.Stat` follows symlinks by default (Go behavior). No special handling needed unless we want to detect and prevent double-counting with `orch-knowledge/.kb/`. Since the paths are different (`orch-knowledge/kb/` vs `orch-knowledge/.kb/`), this is not a risk.
 
 4. **Performance validated:** Global store has ~44 .md files to search. At ~100ms for stemmed search of 44 files, this adds negligible latency. The 5-second timeout in orch-go's spawn system is not at risk.
 

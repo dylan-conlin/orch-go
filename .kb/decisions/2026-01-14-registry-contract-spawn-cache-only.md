@@ -88,3 +88,9 @@ type Registry struct {
 - **Source:** `.kb/investigations/2026-01-11-inv-registry-abandonment-workflow-validate-simple.md`
 - **Code:** `pkg/registry/registry.go`
 - **Principle:** Document what the system actually does, not what it was designed to do
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-20-inv-plan-refactoring-pkg-registry-act.md
+- .kb/investigations/archived/2025-12-21-inv-phase-evaluate-spawn-session-id.md
+- .kb/investigations/archived/2026-01-08-inv-second-test-spawn-verify-registry.md

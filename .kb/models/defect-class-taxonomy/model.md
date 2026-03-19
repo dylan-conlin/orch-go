@@ -293,3 +293,8 @@ Stale artifact accumulation (3) makes scope expansion (0) dangerous. Cross-proje
 **Primary evidence:**
 - 459 `fix:` commits from `git log --since="2025-12-01" --grep="fix:"` — raw data
 - 60+ closed bug issues from `bd list --status=closed --type=bug` — instance source
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-05-inv-post-mortem-price-watch-orchestration.md
+- .kb/investigations/2026-02-28-audit-stalled-agent-failure-patterns.md

@@ -96,7 +96,7 @@ $ go test ./pkg/beads -run TestGetBlockingDependencies -v
 === RUN   TestGetBlockingDependencies/mixed:_blocks_closed_+_relates_to_open
 --- PASS: TestGetBlockingDependencies (0.00s)
 PASS
-ok  	github.com/dylan-conlin/orch-go/pkg/beads	0.005s
+ok  	github.com/user/orch-go/pkg/beads	0.005s
 ```
 
 All 16 test cases pass (11 existing + 5 new).

@@ -87,7 +87,7 @@ Manual overmind start is acceptable because:
 ```xml
 <key>ProgramArguments</key>
 <array>
-    <string>/Users/dylanconlin/bin/orch</string>
+    <string>~/bin/orch</string>
     <string>doctor</string>
     <string>--daemon</string>
 </array>

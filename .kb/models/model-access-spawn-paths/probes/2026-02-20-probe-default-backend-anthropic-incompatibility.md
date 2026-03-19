@@ -19,7 +19,7 @@ Testing if the resolve_test.go failures (4 pre-existing) are caused by the incom
 
 ```bash
 # 1. Ran the failing tests to see error messages
-cd /Users/dylanconlin/Documents/personal/orch-go && go test -v ./pkg/spawn/... -run TestResolve 2>&1 | head -60
+cd ~/Documents/personal/orch-go && go test -v ./pkg/spawn/... -run TestResolve 2>&1 | head -60
 
 # Output showed 6 failures, all with same error:
 # resolve_test.go:102: Resolve() error = backend opencode does not support provider anthropic (set allow_anthropic_opencode: true to override)
@@ -33,7 +33,7 @@ cd /Users/dylanconlin/Documents/personal/orch-go && go test -v ./pkg/spawn/... -
 # Tests didn't account for opencode + anthropic incompatibility
 
 # 4. Ran all tests after code was already fixed
-cd /Users/dylanconlin/Documents/personal/orch-go && go test -v ./pkg/spawn/... -run TestResolve 2>&1
+cd ~/Documents/personal/orch-go && go test -v ./pkg/spawn/... -run TestResolve 2>&1
 
 # All 27 tests pass (including 4 that were failing)
 ```

@@ -131,3 +131,8 @@ Decision tree for new templates:
 **Mitigation:**
 - This decision document serves as reference
 - Help text in each CLI should mention template location
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-15-inv-update-model-template-md-explicit.md
+- .kb/investigations/archived/2026-01-17-inv-add-decision-linkage-investigation-template.md

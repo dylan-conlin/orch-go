@@ -172,7 +172,7 @@ credits_used = ceil(input_tokens × input_rate + output_tokens × output_rate)
 
 **Test evidence (Jan 20-21):**
 - Wiped `~/.claude-docker/`, logged in as gmail account
-- Usage charged to gmail (2%→3%) while sendcutsend stayed at 94-95%
+- Usage charged to gmail (2%→3%) while workcorp stayed at 94-95%
 - Copying Statsig fingerprint did NOT bypass 97% quota
 
 **When to use Docker escape hatch:**
@@ -284,7 +284,7 @@ Per-spawn account selection enables capacity-aware routing across multiple Max a
 
 | Field      | Purpose                                          | Example                    |
 |------------|--------------------------------------------------|----------------------------|
-| `email`    | Account identifier                               | `dylan@sendcutsend.com`    |
+| `email`    | Account identifier                               | `user@example.com`    |
 | `tier`     | Subscription tier (affects quota)                 | `20x`, `5x`               |
 | `role`     | Routing priority                                  | `primary`, `spillover`     |
 | `config_dir` | Claude CLI config directory for account isolation | `~/.claude-personal`     |

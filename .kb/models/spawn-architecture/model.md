@@ -563,3 +563,17 @@ Agent works in: ~/target-project/
 - `2026-03-01-probe-architect-missed-skillc-kb-context-gap` — Extended: keyword-based retrieval has structural blindspot when critical decision is in different semantic domain; orchestrator framing can pre-commit to wrong repo before architect considers tool placement
 - `2026-03-03-probe-no-track-invisible-agent-operational-cost` — Extended: `--no-track` creates third invisible agent class outside both two-lane architecture lanes; 5 `isUntrackedBeadsID()` guards accumulated; should be replaced with lightweight tracking
 - `2026-03-03-probe-spreadsheet-generation-skill-vs-mcp` — Extended: confirmed skill/MCP boundary principle: when existing tool surface (Bash+Write) is sufficient, solution is a skill not an MCP plugin; MCP warranted only when tool surface cannot accomplish the task
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/epic-management-deprecated/2026-01-13-inv-analyze-understanding-artifact-architecture-epic.md
+- .kb/investigations/2026-03-04-inv-design-system-prompt-skill-injection.md
+- .kb/investigations/archived/2025-12-23-debug-headless-spawn-model-format.md
+- .kb/investigations/archived/2025-12-25-inv-orchestrator-pre-spawn-context-gathering.md
+- .kb/investigations/archived/2025-12-25-inv-extend-skill-yaml-schema-spawn.md
+- .kb/investigations/archived/2026-01-13-inv-analyze-orchestrator-session-management-architecture.md
+- .kb/investigations/archived/2026-01-17-inv-analyze-spawn-value-ratio.md
+- .kb/investigations/archived/2025-12-26-design-multi-project-orchestration-architecture.md
+- .kb/investigations/archived/2026-01-04-inv-phase-skill-type-detection-spawn.md
+- .kb/investigations/2026-03-16-inv-design-minimal-harness-openscad-agent.md
+- .kb/investigations/archived/2025-12-22-inv-headless-spawn-registers-wrong-project.md

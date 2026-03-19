@@ -125,3 +125,7 @@ func DetermineEscalation(skill string, verification *VerificationResult, synthes
 
 - `.kb/decisions/2026-01-14-verification-bottleneck-principle.md` - Why verification needs gatekeeping
 - `.kb/decisions/2026-01-16-single-daemon-orchestration-home.md` - Daemon architecture context
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-27-inv-completion-escalation-model-completed-agents.md

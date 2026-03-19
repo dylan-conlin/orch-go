@@ -3,7 +3,7 @@ title: "Harness engineering as strategic position — build → publish → tool
 status: resolved
 created: 2026-03-08
 updated: 2026-03-10
-resolved_to: "https://dylanconlin.com/blog/harness-engineering"
+resolved_to: "https://example.com/blog/harness-engineering"
 ---
 
 # Harness engineering as strategic position — build → publish → tooling

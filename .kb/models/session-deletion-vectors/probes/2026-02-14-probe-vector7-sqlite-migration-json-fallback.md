@@ -59,7 +59,7 @@ grep "Storage\.\|Database\." packages/opencode/src/session/index.ts
 # ENOENT on .json file → NotFoundError with path in message
 ```
 
-The error `Resource not found: /Users/dylanconlin/.local/share/opencode/storage/session/b402cf59.../ses_3a4eb29b5ffe...json` matches `Storage.read(["session", projectID, sessionID])` which constructs path `{storageDir}/session/{projectID}/{sessionID}.json`. This is the **pre-migration code path**, NOT `session_diff` (which would be `session_diff/{sessionID}.json`).
+The error `Resource not found: ~/.local/share/opencode/storage/session/b402cf59.../ses_3a4eb29b5ffe...json` matches `Storage.read(["session", projectID, sessionID])` which constructs path `{storageDir}/session/{projectID}/{sessionID}.json`. This is the **pre-migration code path**, NOT `session_diff` (which would be `session_diff/{sessionID}.json`).
 
 ### 4. JSON migration gate
 

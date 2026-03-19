@@ -29,3 +29,9 @@ Skill content transfer experiments revealed a U-curve: behavioral constraints wi
 **Promoted from:** quick entry kb-2a6199 (decision)
 **Original date:** 2026-03-04
 
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-01-investigation-orchestrator-skill-behavioral-testing-baseline.md
+- .kb/investigations/2026-03-04-design-grammar-first-skill-architecture.md
+- .kb/investigations/2026-03-01-inv-formal-grammar-theory-llm-constraint-systems.md

@@ -556,3 +556,7 @@ kb reflect --type stale
 **Threads:**
 - `.kb/threads/2026-03-09-knowledge-accretion-does-knowledge-have.md` — Initial question formulation
 - `.kb/threads/2026-03-10-kind-theory-this-ostrom-scale.md` — Theory type resolved: diagnostic framework (Ostrom-scale), not natural law
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-10-inv-probe-falsifiability-theory-called-knowledge.md

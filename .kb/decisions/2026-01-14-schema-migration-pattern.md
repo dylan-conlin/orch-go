@@ -97,3 +97,7 @@ Apply to ANY schema change that affects discovery/lookup:
 - **Source:** `.kb/investigations/2026-01-13-design-session-resume-discovery-failure.md`
 - **Implementation:** `.kb/investigations/2026-01-13-inv-implement-backward-compatible-session-resume.md`
 - **Principle:** Coherence Over Patches - fix the structure, don't patch around it
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-26-inv-evaluate-whether-web-markdown-mcp.md

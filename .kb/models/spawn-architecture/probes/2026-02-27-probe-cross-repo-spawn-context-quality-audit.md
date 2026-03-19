@@ -24,7 +24,7 @@ $ kb context "pricing strategy"
 # Returns: ZERO toolshed knowledge
 
 # From toolshed CWD (correct target)
-$ cd ~/Documents/work/SendCutSend/scs-special-projects/toolshed
+$ cd ~/Documents/work/WorkCorp/work-monorepo/toolshed
 $ kb context "pricing strategy"
 # Returns: toolshed decisions (SSE streaming for AI pricing panel)
 # Returns: toolshed models (Toolshed ↔ Price Watch Integration, Toolshed Architecture)
@@ -169,5 +169,5 @@ Verification git_diff gate should accept `cross_repo_dirs` in workspace manifest
 
 - The Feb 25 probe identified the correct bug class but fixed only one layer (group filtering). The CWD dependency in `runKBContextQuery` is the root cause.
 - Priority: Critical for cross-repo spawn quality. Every cross-repo toolshed/price-watch spawn is currently receiving wrong knowledge.
-- The `scs` group in groups.yaml uses `parent: scs-special-projects` which correctly maps toolshed and price-watch as siblings. Once `cmd.Dir` is set, the local search will find toolshed's .kb/ knowledge.
+- The `scs` group in groups.yaml uses `parent: work-monorepo` which correctly maps toolshed and price-watch as siblings. Once `cmd.Dir` is set, the local search will find toolshed's .kb/ knowledge.
 - The gap analysis false-positive (high quality score on wrong-project knowledge) means operators have no signal that spawns are degraded.

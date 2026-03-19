@@ -323,3 +323,12 @@ Add to `orch doctor`:
 - `~/Documents/personal/beads/cmd/bd/main.go` - Daemon auto-start logic
 - `~/Documents/personal/beads/internal/storage/sqlite/` - SQLite storage implementation with WAL mode
 - `.beads/daemon.log` - Historical daemon restart logs showing rapid cycles
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-05-inv-design-orchestrator-session-lifecycle-without.md
+- .kb/investigations/archived/2025-12-26-inv-spawn-context-includes-invalid-beads.md
+- .kb/investigations/archived/2025-12-19-inv-set-beads-issue-status-progress.md
+- .kb/investigations/archived/2026-01-08-inv-handle-multiple-agents-same-beads.md
+- .kb/investigations/archived/2025-12-25-inv-beads-database-pollution-orch-go.md
+- .kb/investigations/archived/2025-12-24-inv-follow-up-ecosystem-audit-orch.md

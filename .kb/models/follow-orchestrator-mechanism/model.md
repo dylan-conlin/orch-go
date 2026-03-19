@@ -289,7 +289,7 @@ set-hook -g after-select-window 'run-shell -b "~/.local/bin/sync-workers-session
 
 **Symptom:** Orchestrator window switches but Ghostty doesn't follow (wrong session targeted)
 
-**Root cause:** For monorepos or projects with nested `.orch/` directories, `basename(project_root)` (e.g., `scs-special-projects`) doesn't match the actual workers session name (e.g., `workers-toolshed`).
+**Root cause:** For monorepos or projects with nested `.orch/` directories, `basename(project_root)` (e.g., `work-monorepo`) doesn't match the actual workers session name (e.g., `workers-toolshed`).
 
 **Fix:** Add `tmux_session:` field to `.orch/config.yaml` for projects where directory basename ≠ workers session name. Script reads config-based override before falling back to basename.
 
@@ -418,3 +418,10 @@ tmux source-file ~/.tmux.conf.local  # Reload
 - `~/.tmux.conf.local` - `after-select-window` hook configuration (line ~58-61)
 - `~/.local/bin/sync-workers-session.sh` - Ghostty auto-switch script with CWD detection
 - `web/src/lib/stores/context.ts` - Dashboard context polling logic
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-14-inv-dashboard-follow-orchestrator-broken-implemented.md
+- .kb/investigations/archived/2026-01-16-inv-dashboard-follow-mode-project-mismatch.md
+- .kb/investigations/archived/2026-01-07-inv-dashboard-beads-follow-orchestrator-tmux.md
+- .kb/investigations/synthesized/system-learning-loop/2025-12-22-inv-design-beginner-agent-learning-environment.md

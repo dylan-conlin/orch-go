@@ -2,20 +2,20 @@
 
 **Domain:** Agent execution constraints / OPSEC / Environment control
 **Last Updated:** 2026-03-19
-**Validation Status:** WORKING HYPOTHESIS — synthesized from 9 investigations + 3 threads across scs-special-projects. Core patterns validated against two production incidents (OshCut detection Mar 6, custom OPSEC replacement Mar 19). 17 testable claims: 11 confirmed, 2 open, 1 untested, 1 partially confirmed.
+**Validation Status:** WORKING HYPOTHESIS — synthesized from 9 investigations + 3 threads across work-monorepo. Core patterns validated against two production incidents (OshCut detection Mar 6, custom OPSEC replacement Mar 19). 17 testable claims: 11 confirmed, 2 open, 1 untested, 1 partially confirmed.
 **Synthesized From:**
-- `scs-special-projects/.kb/investigations/2026-03-19-inv-audit-orch-go-against-claude.md` — Lifecycle-phase separation: orch-go adds pre-spawn + OS-level enforcement absent from Claude Code
-- `scs-special-projects/.kb/investigations/2026-03-19-inv-evaluate-claude-code-native-sandbox.md` — srt replaces custom OPSEC; allowlist > blocklist
-- `scs-special-projects/.kb/investigations/2026-03-19-inv-audit-orch-go-reinvented-wheels.md` — <5% OSS overlap; value is in cross-cutting glue, not reimplemented algorithms
-- `scs-special-projects/.kb/investigations/2026-03-19-architect-layer1-local-opsec-enforcement.md` — Custom sandbox-exec + tinyproxy architecture (superseded by srt)
-- `scs-special-projects/.kb/investigations/2026-03-18-inv-investigate-agent-execution-environment-bypass.md` — 6 bypass classes; probe pw-w8r0 caused OshCut detection via bare-IP curl
-- `scs-special-projects/.kb/investigations/2026-03-17-inv-investigate-bypass-surface-toolshed-price.md` — CompetitorProxyEnforcement is Faraday-only; 6 bypass classes
-- `scs-special-projects/.kb/investigations/2026-03-17-inv-investigate-toolshed-pii-exposure-ai.md` — Anonymization works server-side (controlled), fails on passthrough (uncontrolled)
-- `scs-special-projects/.kb/investigations/2026-03-17-inv-investigate-toolshed-slave-db-credential.md` — DB credential 12.6x over-privileged; application-level vs structural write prevention
-- `scs-special-projects/.kb/investigations/2026-03-18-redteam-toolshed-security-assessment.md` — Auth stack solid; AI integration layer has CORS, prompt injection, anonymization gaps
-- `scs-special-projects/.kb/threads/2026-03-19-environment-control-as-agent-trust.md` — Trust is structural, not verbal; 4-layer enforcement model
-- `scs-special-projects/.kb/threads/2026-03-19-policy-layer-vs-enforcement-layer.md` — Policy (WHAT) vs enforcement (HOW); orch-go owns policy, platforms own enforcement
-- `scs-special-projects/.kb/threads/2026-03-19-risk-value-asymmetry-sp-role.md` — Infrastructure-backed answers vs assurance-backed answers
+- `work-monorepo/.kb/investigations/2026-03-19-inv-audit-orch-go-against-claude.md` — Lifecycle-phase separation: orch-go adds pre-spawn + OS-level enforcement absent from Claude Code
+- `work-monorepo/.kb/investigations/2026-03-19-inv-evaluate-claude-code-native-sandbox.md` — srt replaces custom OPSEC; allowlist > blocklist
+- `work-monorepo/.kb/investigations/2026-03-19-inv-audit-orch-go-reinvented-wheels.md` — <5% OSS overlap; value is in cross-cutting glue, not reimplemented algorithms
+- `work-monorepo/.kb/investigations/2026-03-19-architect-layer1-local-opsec-enforcement.md` — Custom sandbox-exec + tinyproxy architecture (superseded by srt)
+- `work-monorepo/.kb/investigations/2026-03-18-inv-investigate-agent-execution-environment-bypass.md` — 6 bypass classes; probe pw-w8r0 caused OshCut detection via bare-IP curl
+- `work-monorepo/.kb/investigations/2026-03-17-inv-investigate-bypass-surface-toolshed-price.md` — CompetitorProxyEnforcement is Faraday-only; 6 bypass classes
+- `work-monorepo/.kb/investigations/2026-03-17-inv-investigate-toolshed-pii-exposure-ai.md` — Anonymization works server-side (controlled), fails on passthrough (uncontrolled)
+- `work-monorepo/.kb/investigations/2026-03-17-inv-investigate-toolshed-slave-db-credential.md` — DB credential 12.6x over-privileged; application-level vs structural write prevention
+- `work-monorepo/.kb/investigations/2026-03-18-redteam-toolshed-security-assessment.md` — Auth stack solid; AI integration layer has CORS, prompt injection, anonymization gaps
+- `work-monorepo/.kb/threads/2026-03-19-environment-control-as-agent-trust.md` — Trust is structural, not verbal; 4-layer enforcement model
+- `work-monorepo/.kb/threads/2026-03-19-policy-layer-vs-enforcement-layer.md` — Policy (WHAT) vs enforcement (HOW); orch-go owns policy, platforms own enforcement
+- `work-monorepo/.kb/threads/2026-03-19-risk-value-asymmetry-sp-role.md` — Infrastructure-backed answers vs assurance-backed answers
 
 **Related Models:**
 - `.kb/models/architectural-enforcement/model.md` — Four-layer gate mechanisms for code quality (complementary domain)
@@ -238,20 +238,20 @@ Three threads synthesized the pattern:
 ## References
 
 **Investigations (primary evidence):**
-- `scs-special-projects/.kb/investigations/2026-03-19-inv-audit-orch-go-against-claude.md`
-- `scs-special-projects/.kb/investigations/2026-03-19-inv-evaluate-claude-code-native-sandbox.md`
-- `scs-special-projects/.kb/investigations/2026-03-19-inv-audit-orch-go-reinvented-wheels.md`
-- `scs-special-projects/.kb/investigations/2026-03-19-architect-layer1-local-opsec-enforcement.md`
-- `scs-special-projects/.kb/investigations/2026-03-18-inv-investigate-agent-execution-environment-bypass.md`
-- `scs-special-projects/.kb/investigations/2026-03-18-redteam-toolshed-security-assessment.md`
-- `scs-special-projects/.kb/investigations/2026-03-17-inv-investigate-bypass-surface-toolshed-price.md`
-- `scs-special-projects/.kb/investigations/2026-03-17-inv-investigate-toolshed-pii-exposure-ai.md`
-- `scs-special-projects/.kb/investigations/2026-03-17-inv-investigate-toolshed-slave-db-credential.md`
+- `work-monorepo/.kb/investigations/2026-03-19-inv-audit-orch-go-against-claude.md`
+- `work-monorepo/.kb/investigations/2026-03-19-inv-evaluate-claude-code-native-sandbox.md`
+- `work-monorepo/.kb/investigations/2026-03-19-inv-audit-orch-go-reinvented-wheels.md`
+- `work-monorepo/.kb/investigations/2026-03-19-architect-layer1-local-opsec-enforcement.md`
+- `work-monorepo/.kb/investigations/2026-03-18-inv-investigate-agent-execution-environment-bypass.md`
+- `work-monorepo/.kb/investigations/2026-03-18-redteam-toolshed-security-assessment.md`
+- `work-monorepo/.kb/investigations/2026-03-17-inv-investigate-bypass-surface-toolshed-price.md`
+- `work-monorepo/.kb/investigations/2026-03-17-inv-investigate-toolshed-pii-exposure-ai.md`
+- `work-monorepo/.kb/investigations/2026-03-17-inv-investigate-toolshed-slave-db-credential.md`
 
 **Threads (pattern synthesis):**
-- `scs-special-projects/.kb/threads/2026-03-19-environment-control-as-agent-trust.md`
-- `scs-special-projects/.kb/threads/2026-03-19-policy-layer-vs-enforcement-layer.md`
-- `scs-special-projects/.kb/threads/2026-03-19-risk-value-asymmetry-sp-role.md`
+- `work-monorepo/.kb/threads/2026-03-19-environment-control-as-agent-trust.md`
+- `work-monorepo/.kb/threads/2026-03-19-policy-layer-vs-enforcement-layer.md`
+- `work-monorepo/.kb/threads/2026-03-19-risk-value-asymmetry-sp-role.md`
 
 **Related models in orch-go:**
 - `.kb/models/architectural-enforcement/model.md` — Code quality gates (complementary enforcement domain)

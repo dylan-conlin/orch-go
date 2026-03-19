@@ -14,11 +14,11 @@ Does removing all Glass browser automation references from the orch ecosystem le
 1. **Grep sweep** across all target directories:
    - `~/.claude/CLAUDE.md` - global instructions
    - `~/.claude/skills/` (3 deployed copies + orch-knowledge source)
-   - `/Users/dylanconlin/Documents/personal/orch-go/pkg/` - Go code
-   - `/Users/dylanconlin/Documents/personal/orch-go/docs/` - documentation
-   - `/Users/dylanconlin/Documents/personal/orch-go/.kb/guides/` - knowledge guides
-   - `/Users/dylanconlin/.orch/ECOSYSTEM.md` - runtime ecosystem registry
-   - `/Users/dylanconlin/orch-knowledge/skills/src/` - canonical skill sources
+   - `~/Documents/personal/orch-go/pkg/` - Go code
+   - `~/Documents/personal/orch-go/docs/` - documentation
+   - `~/Documents/personal/orch-go/.kb/guides/` - knowledge guides
+   - `~/.orch/ECOSYSTEM.md` - runtime ecosystem registry
+   - `~/orch-knowledge/skills/src/` - canonical skill sources
 
 2. **Code removal** in `pkg/verify/visual.go`:
    - Removed 14 Glass-specific regex patterns from `visualEvidencePatterns`

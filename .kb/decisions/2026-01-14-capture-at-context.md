@@ -134,3 +134,7 @@ This is a precedent for future principle candidates.
 
 - `.kb/decisions/2026-01-04-gate-refinement-passable-by-gated.md` - Gate Over Remind caveat
 - `orch-knowledge/.kb/decisions/2025-11-14-session-amnesia-foundational-constraint.md` - Session Amnesia
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-06-design-worker-skill-industry-practice-audit.md

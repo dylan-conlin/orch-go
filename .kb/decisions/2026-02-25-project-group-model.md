@@ -34,8 +34,8 @@ groups:
 
   scs:
     account: work
-    parent: scs-special-projects
-    # Children auto-discovered: toolshed, price-watch, specs-platform, sendassist, scs-slack
+    parent: work-monorepo
+    # Children auto-discovered: toolshed, price-watch, specs-platform, sendassist, work-slack
 ```
 
 ## Resolution Algorithm
@@ -69,6 +69,10 @@ groups:
 
 ## References
 
-- Cross-repo orchestration decision: `scs-special-projects/.kb/decisions/2026-02-25-cross-repo-orchestration-from-parent.md`
+- Cross-repo orchestration decision: `work-monorepo/.kb/decisions/2026-02-25-cross-repo-orchestration-from-parent.md`
 - Investigation: `.kb/investigations/2026-02-25-design-project-group-model.md`
 - Code: `pkg/spawn/kbcontext.go:15-22` (OrchEcosystemRepos), `pkg/daemon/project_resolution.go` (ProjectRegistry)
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-12-design-cross-project-orchestration-friction.md

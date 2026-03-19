@@ -23,7 +23,7 @@ var OrchEcosystemRepos = map[string]bool{
 }
 ```
 
-**Observed:** The `filterToOrchEcosystem()` function (line 207) uses a HARDCODED allowlist. When spawning in `toolshed` and local search returns <3 matches, global search expands but then post-filters to only orch ecosystem repos. **All SCS project matches (price-watch, specs-platform, sendassist, scs-slack) are discarded.** This means:
+**Observed:** The `filterToOrchEcosystem()` function (line 207) uses a HARDCODED allowlist. When spawning in `toolshed` and local search returns <3 matches, global search expands but then post-filters to only orch ecosystem repos. **All SCS project matches (price-watch, specs-platform, sendassist, work-slack) are discarded.** This means:
 - Spawning into toolshed CANNOT surface price-watch kb artifacts
 - Spawning into price-watch CANNOT surface toolshed kb artifacts
 - The sibling context need is completely blocked by hardcoded allowlist
@@ -34,7 +34,7 @@ var OrchEcosystemRepos = map[string]bool{
 
 ```bash
 kb projects list --json
-# Returns 19 projects, ALL registered, including scs-special-projects
+# Returns 19 projects, ALL registered, including work-monorepo
 ```
 
 **Observed:** ProjectRegistry calls `kb projects list --json` and builds a flat `prefixToDir` map. No grouping concept exists. The daemon iterates ALL 19 projects on every poll cycle (line 583 of daemon.go). There is no way to:
@@ -48,12 +48,12 @@ kb projects list --json
 
 **Observed:** YES — clear structural pattern in kb projects output:
 ```
-scs-special-projects → ~/Documents/work/SendCutSend/scs-special-projects
-price-watch          → ~/Documents/work/SendCutSend/scs-special-projects/price-watch
-toolshed             → ~/Documents/work/SendCutSend/scs-special-projects/toolshed
-specs-platform       → ~/Documents/work/SendCutSend/scs-special-projects/specs-platform
-sendassist           → ~/Documents/work/SendCutSend/scs-special-projects/sendassist
-scs-slack            → ~/Documents/work/SendCutSend/scs-special-projects/scs-slack
+work-monorepo → ~/Documents/work/WorkCorp/work-monorepo
+price-watch          → ~/Documents/work/WorkCorp/work-monorepo/price-watch
+toolshed             → ~/Documents/work/WorkCorp/work-monorepo/toolshed
+specs-platform       → ~/Documents/work/WorkCorp/work-monorepo/specs-platform
+sendassist           → ~/Documents/work/WorkCorp/work-monorepo/sendassist
+work-slack            → ~/Documents/work/WorkCorp/work-monorepo/work-slack
 ```
 
 Child project paths are all subdirectories of the parent project path. This relationship is unambiguous and stable.

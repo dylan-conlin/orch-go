@@ -96,3 +96,11 @@ All three conditions would need to be true simultaneously:
 - Probe: `.kb/models/agent-lifecycle-state-model/probes/2026-02-24-probe-claude-code-plan-mode-feature-impl-alignment.md`
 - Model: `.kb/models/agent-lifecycle-state-model/` (continuous observability assumption confirmed)
 - Prior decisions: dual spawn architecture, daemon unified config construction
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-04-inv-design-analyze-pkg-daemon-daemon.md
+- .kb/investigations/archived/2026-01-06-inv-daemon-auto-complete-agents-report.md
+- .kb/investigations/archived/2026-01-03-inv-test-spawned-agents-complete-work.md
+- .kb/investigations/archived/2025-12-26-inv-dashboard-active-section-not-showing.md
+- .kb/investigations/archived/2026-01-06-inv-daemon-spawns-duplicate-agents-same.md

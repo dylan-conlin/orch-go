@@ -25,3 +25,8 @@ Publication abandoned. The adversarial gates (publish gate, claim-upgrade scanne
 ## 2026-03-17 — Resolution
 
 Resolving this thread. The closed-loop risk is now a well-understood failure mode with five documented instances, a complete post-mortem, and an adopted countermeasure (uncontaminated Codex gate design per .kb/decisions/2026-03-10-adopt-uncontaminated-codex-gate-design-claim-ledg.md). The sibling "validation gap" thread resolved to the same gate. The deeper ongoing concern — whether the system can confront disconfirming evidence about itself — continues in the evidence-quality thread (2026-03-15-evidence-quality-adversarial-grounding-against.md), which has active entries through Mar 16 including a real incident where self-measurement triggered destructive feedback. That thread is the right venue for ongoing vigilance; this thread's core contribution (naming the closed-loop pattern and establishing external review as the break) is complete.
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-26-inv-api-endpoint-api-agents-hangs.md
+- .kb/investigations/synthesized/serve-performance/2026-01-04-inv-orch-serve-shows-closed-agents.md

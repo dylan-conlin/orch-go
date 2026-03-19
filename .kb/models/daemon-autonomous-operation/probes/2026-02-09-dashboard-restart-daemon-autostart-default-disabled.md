@@ -29,8 +29,8 @@ ORCH_DASHBOARD_START_DAEMON=1 orch-dashboard restart && overmind status
 
 **Environment:**
 - Host: macOS (local orch environment)
-- Dashboard script: `/Users/dylanconlin/bin/orch-dashboard`
-- Project dir: `/Users/dylanconlin/Documents/personal/orch-go`
+- Dashboard script: `~/bin/orch-dashboard`
+- Project dir: `~/Documents/personal/orch-go`
 
 ---
 

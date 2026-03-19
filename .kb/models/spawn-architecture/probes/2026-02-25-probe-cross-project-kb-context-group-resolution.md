@@ -25,7 +25,7 @@ func detectCurrentProjectName() string {
 }
 ```
 
-When `orch spawn --workdir ~/Documents/work/.../toolshed` is invoked from orch-go directory, `os.Getwd()` returns `/Users/dylanconlin/Documents/personal/orch-go`, NOT the toolshed path.
+When `orch spawn --workdir ~/Documents/work/.../toolshed` is invoked from orch-go directory, `os.Getwd()` returns `~/Documents/personal/orch-go`, NOT the toolshed path.
 
 ### Test 2: Trace the call chain
 
@@ -47,15 +47,15 @@ The `projectDir` parameter is available in `gatherKBContext()` (line 162) but is
 groups:
   scs:
     account: work
-    parent: scs-special-projects
+    parent: work-monorepo
 ```
 
 `kb projects list --json` shows:
-- `toolshed` at `/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/toolshed`
-- `scs-special-projects` at `/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects`
-- `price-watch` at `/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/price-watch`
+- `toolshed` at `~/Documents/work/WorkCorp/work-monorepo/toolshed`
+- `work-monorepo` at `~/Documents/work/WorkCorp/work-monorepo`
+- `price-watch` at `~/Documents/work/WorkCorp/work-monorepo/price-watch`
 
-Since toolshed's path IS a subdirectory of scs-special-projects, `GroupsForProject("toolshed", kbProjects)` would correctly return the "scs" group — IF it received "toolshed" as the project name.
+Since toolshed's path IS a subdirectory of work-monorepo, `GroupsForProject("toolshed", kbProjects)` would correctly return the "scs" group — IF it received "toolshed" as the project name.
 
 ### Test 4: Go unit test confirming the bug
 

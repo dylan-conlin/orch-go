@@ -96,7 +96,7 @@ A fire-and-forget race existed in MCP hot-reload: `InstanceBootstrap` called `MC
 
 ### Remote Setup
 ```
-fork     → git@github.com:dylan-conlin/opencode.git  (Dylan's GitHub fork)
+fork     → git@github.com:user/opencode.git  (Dylan's GitHub fork)
 origin   → https://github.com/sst/opencode            (upstream, stale Jan 27)
 upstream → https://github.com/sst/opencode.git         (upstream, fetched Feb 5)
 ```
@@ -390,3 +390,7 @@ server.instance.disposed
 | `probes/2026-02-18-probe-state-create-rejected-promise-cache.md` | 2026-02-18 | CONFIRMS + EXTENDS | Empirically confirmed rejected Promise caching (`attempts=1, samePromise=true`); fix validated enabling retry after rejection |
 | `probes/2026-02-18-probe-verify-session-metadata-api.md` | 2026-02-18 | CONFIRMS | Metadata persists via `Session.setMetadata`; TTL cleanup guards busy sessions; `GET /session/status` returns liveness only, not metadata |
 | `probes/2026-02-20-probe-mcp-hot-reload-production-failure.md` | 2026-02-20 | EXTENDS | Documented MCP watcher fire-and-forget race condition (double unawaited async init); fix applied and verified with regression test |
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-25-inv-opencode-crashes-no-user-message.md

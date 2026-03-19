@@ -62,7 +62,7 @@ Current agent's manifest (`og-inv-investigate-work-graph-24feb-fc8a`):
   "workspace_name": "og-inv-investigate-work-graph-24feb-fc8a",
   "skill": "investigation",
   "beads_id": "orch-go-1177",
-  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "project_dir": "~/Documents/personal/orch-go",
   "git_baseline": "a6a24f4e61c74ecfb2c3284a6eaf202d6b99aaa3",
   "spawn_time": "2026-02-24T10:42:23-08:00",
   "tier": "full",

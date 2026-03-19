@@ -159,3 +159,8 @@ Two enforcement mechanisms cover different granularities:
 - `.kb/models/architectural-enforcement/model.md` — Multi-layer enforcement model (this decision extends it)
 - AgentSpec (ICSE 2026), PCAS — Field research confirming infrastructure > instruction for enforcement
 - `.kb/decisions/2026-01-08-observation-infrastructure-principle.md` — "Infrastructure Over Instruction" principle
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-27-design-action-batching-layer-playwright.md
+- .kb/investigations/archived/2025-12-26-design-two-infrastructure-failures-revealed-missing.md

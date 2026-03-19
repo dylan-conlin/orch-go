@@ -302,3 +302,8 @@ Tmux-Based Spawns (default for Anthropic)
 ## Probes
 
 - 2026-03-18: Knowledge decay verification — reframed model from "escape hatch" to "backend independence." Claude CLI is now default, not opt-in. Fixed stale file references, updated decision trees, removed dead link to orch-knowledge docs.
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-14-inv-track-escape-hatch-spawn-usage.md
+- .kb/investigations/archived/2026-01-14-inv-track-escape-hatch-stats-impl.md

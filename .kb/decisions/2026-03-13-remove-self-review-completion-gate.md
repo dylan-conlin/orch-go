@@ -31,3 +31,7 @@ After running for ~1 week across 71 events (27 failures, 44 bypasses), the gate 
 - **Positive:** Eliminates highest-bypass gate, stops normalizing overrides, removes `--skip-self-review` ceremony
 - **Mitigation:** Manual self-review checklist still in skill phases; `go vet`/`go build` gates (V2, 0% FP) catch real compilation issues
 - **Risk:** If agents leave debug statements, no automated catch until code review. Accepted because the gate never caught any in practice.
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-26-inv-ui-completion-gate-require-screenshot.md

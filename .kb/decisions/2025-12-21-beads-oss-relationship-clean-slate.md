@@ -100,3 +100,8 @@ Submit all features as PRs, wait for merge.
 - Investigation: `.kb/investigations/2025-12-21-inv-beads-oss-relationship-fork-vs.md`
 - Beads repo: `~/Documents/personal/beads`
 - Upstream: `https://github.com/steveyegge/beads`
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-21-inv-beads-kb-workspace-relationships-how.md
+- .kb/investigations/archived/2025-12-21-inv-beads-oss-relationship-fork-vs.md

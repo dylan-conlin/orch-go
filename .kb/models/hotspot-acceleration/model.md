@@ -218,3 +218,30 @@ Files that are healthy now but could become hotspots:
 - daemon/completion_processing_test.go — real growth but safe (438 lines, growth drivers exhausted)
 - status_infra.go — false positive (extraction artifact from status_cmd.go, 308 lines)
 - plan_cmd.go — false positive (create-then-extract pattern, 368 lines)
+
+## Auto-Linked Investigations
+
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-cmd-orch-hotspot-spawn.md
+- .kb/investigations/2026-03-17-inv-hotspot-acceleration-experiments-coordination-demo.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-pkg-daemon-compliance-test.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-pkg-spawn-templates.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-cmd-orch-plan-test.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-experiments-coordination-demo.md
+- .kb/investigations/2026-03-17-hotspot-acceleration-pkg-daemon-digest.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-pkg-thread-thread-test.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-pkg-daemon-issue.md
+- .kb/investigations/2026-03-17-hotspot-acceleration-pkg-daemon-preview.md
+- .kb/investigations/2026-03-17-hotspot-acceleration-pkg-kbgate-publish.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-pkg-account-account.md
+- .kb/investigations/2026-03-17-hotspot-acceleration-cmd-orch-spawn.md
+- .kb/investigations/2026-03-17-inv-hotspot-acceleration-cmd-orch-plan.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-pkg-daemon-pidlock.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-pkg-orient-debrief-test.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-pkg-group-group.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-experiments-coordination-demo-trial10.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-pkg-daemon-extraction.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-experiments-coordination-demo-trial8.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-pkg-daemon-daemon.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-pkg-skills-loader-test.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-experiments-coordination-demo-trial2.md
+- .kb/investigations/simple/2026-03-17-hotspot-acceleration-cmd-orch-stats.md

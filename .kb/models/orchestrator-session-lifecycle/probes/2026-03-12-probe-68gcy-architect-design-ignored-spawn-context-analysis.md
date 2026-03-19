@@ -8,7 +8,7 @@
 
 ## Question
 
-The orchestrator-session-lifecycle failure mode taxonomy (probe 2026-03-11) catalogs skill failure modes. Agent orch-go-68gcy was spawned as feature-impl to consolidate harness tools. Architect orch-go-sb13k had explicitly designed harness as a SEPARATE repo (github.com/dylan-conlin/harness) with zero orch-go dependencies. The agent instead built pkg/harness/ + cmd/harness/ inside orch-go, requiring a revert. **Does the spawn pipeline's knowledge-feedback chain reliably surface architect designs to feature-impl agents?**
+The orchestrator-session-lifecycle failure mode taxonomy (probe 2026-03-11) catalogs skill failure modes. Agent orch-go-68gcy was spawned as feature-impl to consolidate harness tools. Architect orch-go-sb13k had explicitly designed harness as a SEPARATE repo (github.com/user/harness) with zero orch-go dependencies. The agent instead built pkg/harness/ + cmd/harness/ inside orch-go, requiring a revert. **Does the spawn pipeline's knowledge-feedback chain reliably surface architect designs to feature-impl agents?**
 
 ---
 
@@ -31,7 +31,7 @@ git log --format="%ai %H %s" 7cb584747..5f48ae16f
 ```
 
 Timeline:
-- **2026-03-11 19:05** — Architect sb13k committed design: "Extract 3 zero-dependency packages... into new github.com/dylan-conlin/harness repo... zero orch-go dependency"
+- **2026-03-11 19:05** — Architect sb13k committed design: "Extract 3 zero-dependency packages... into new github.com/user/harness repo... zero orch-go dependency"
 - **2026-03-12 11:46** — 68gcy issue created (~16.5 hours later)
 - **2026-03-12 11:47** — 68gcy agent enters Planning
 - **2026-03-12 11:49** — 68gcy plans pkg/harness extraction INSIDE orch-go (2 minutes later)
@@ -92,7 +92,7 @@ The feature-impl skill has no checkpoint like "if an architect investigation exi
 The agent entered implementation 3 minutes after starting. With 2+ minutes of planning, the agent designed an approach that matched the issue description's framing without exploring the architect investigation. A longer planning phase might have surfaced the conflict.
 
 ### Counter-evidence:
-The issue was created by `dylanconlin` 16.5 hours after the architect committed. The issue description itself was the primary source of the contradiction — this suggests the issue was written WITHOUT referencing the architect's design, or was written to describe a different (internal consolidation) approach that was later recognized as conflicting.
+The issue was created by `user` 16.5 hours after the architect committed. The issue description itself was the primary source of the contradiction — this suggests the issue was written WITHOUT referencing the architect's design, or was written to describe a different (internal consolidation) approach that was later recognized as conflicting.
 
 ---
 

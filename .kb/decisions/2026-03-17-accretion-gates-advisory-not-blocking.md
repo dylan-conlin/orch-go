@@ -212,3 +212,7 @@ Remove `--force-hotspot`, `--architect-ref`, `--reason` flag definitions and plu
 
 ### Prior Decision (Amended)
 - `.kb/decisions/2026-02-26-three-layer-hotspot-enforcement.md` — Three-layer design this amends
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-05-inv-design-orchestrator-coordination-plans-persist.md

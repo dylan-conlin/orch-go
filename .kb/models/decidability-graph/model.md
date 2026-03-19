@@ -588,3 +588,7 @@ The Question lifecycle (Open → Investigating → Answered → Closed) isn't fu
 |-------|------|---------|-------------|
 | `probes/2026-02-09-context-scoping-reducibility-daemon-vs-manual.md` | 2026-02-09 | Extends | Daemon routing is only 42% of spawns; manual skill selection diverges from type inference 49% of the time — scoping is high-judgment on the majority path, not mostly deterministic. Beads issues lack a `source` field (instrumentation gap). |
 | `probes/2026-03-01-probe-context-scoping-irreducibility.md` | 2026-03-01 | Confirms + Extends | 8 concrete cases confirm workers handle framing questions given adequate context; zero capability-limited failures across 800+ workspaces. Orchestrator irreducibility is structural (aggregation position, scope authorization), not capability-based. |
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-05-inv-design-systematic-mapping-decidability-graph.md

@@ -523,3 +523,13 @@ Empirically confirmed that `feature-impl` spawned with V2 + TierLight creates co
 - `pkg/verify/accretion.go` — Accretion gate with pre-existing bloat detection and net-negative bypass
 - `cmd/orch/hotspot.go` — Bloat scanner with 13-directory exclusion list; `skipBloatDirs`, `buildOutputPrefixes`
 - `cmd/orch/hotspot_coupling.go` — Coupling-cluster analysis (4th hotspot type, 389 lines, standalone file)
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-03-inv-recover-priority-verification-gates-git.md
+- .kb/investigations/archived/2026-01-04-inv-phase-completion-verification-orchestrator-spawns.md
+- .kb/investigations/2026-02-14-inv-remove-pure-noise-completion-gates.md
+- .kb/investigations/archived/2026-01-10-inv-phase-2-completion-verification.md
+- .kb/investigations/archived/2025-12-27-inv-implement-cross-project-completion-adding.md
+- .kb/investigations/archived/2026-01-17-inv-enhance-agent-reporting-verification-gates.md
+- .kb/investigations/archived/2025-12-23-inv-implement-phase-gates-verification-orch.md

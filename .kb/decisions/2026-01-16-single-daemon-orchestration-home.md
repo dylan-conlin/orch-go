@@ -74,3 +74,8 @@ Each project runs its own daemon instance via launchd, managing its own work que
 - `.kb/guides/daemon.md` - Daemon operational guide
 - `.kb/models/daemon-autonomous-operation/model.md` - Daemon behavior model
 - `CLAUDE.md` - Orchestration Home Directory section
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/cross-project-operations/2026-01-06-inv-cross-project-daemon-single-daemon.md
+- .kb/investigations/2026-03-05-inv-design-review-daemon-capacity-tracking.md

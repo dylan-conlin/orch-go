@@ -121,3 +121,7 @@ Architect investigations produce structural constraints (4-layer enforcement, CA
 **Evidence:** spawnIssue() 245 lines with 6 dedup layers; runDaemonLoop 697 lines with 12 inline subsystems; beads lacks native CAS.
 **Knowledge:** Inside-out simplification: (1) collapse dedup to composable gate pipeline, (2) extract scheduler, (3) launchd management. Beads CAS simulated in Go via fresh-check + update behind local mutex.
 **Next:** Phase 1 (dedup pipeline) shipped — refactored into SpawnPipeline with 5 composable gates (`pkg/daemon/spawn_gate.go`, 312 lines) + execution layer (`pkg/daemon/spawn_execution.go`, 277 lines). Not collapsed to ~60 lines as originally designed, but architecturally cleaner and testable.
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-02-14-inv-fix-skill-inference-architect-title.md

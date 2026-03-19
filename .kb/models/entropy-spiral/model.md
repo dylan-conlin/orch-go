@@ -184,3 +184,7 @@ Only category 1 indicates a spiral. The current ratio (0.88:1 overall) is a nois
 - 0.96:1 fix:feat ratio
 - 0 human commits in 26 days
 - 3 post-mortems with identical root causes, 0 mitigations implemented between them
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-02-13-inv-recover-pkg-attention-system-entropy.md

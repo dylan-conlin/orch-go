@@ -17,7 +17,7 @@
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2026-01-18-inv-ci-implement-role-aware-injection.md
+**Supersedes:** ~/Documents/personal/orch-go/.kb/investigations/2026-01-18-inv-ci-implement-role-aware-injection.md
 **Superseded-By:** [Path to artifact that replaced this, if applicable]
 
 ---
@@ -88,3 +88,8 @@ Spawned agents (worker, orchestrator, meta-orchestrator) receive their context t
 **Risks:**
 - If CLAUDE_CONTEXT not set, agent incorrectly receives session resume (mitigation: verify spawn machinery sets it)
 - Silent skip makes debugging harder (mitigation: CLAUDE_CONTEXT observable via env)
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-18-inv-ci-implement-role-aware-injection.md
+- .kb/investigations/archived/2026-01-14-inv-duration-aware-session-resume-filtering.md

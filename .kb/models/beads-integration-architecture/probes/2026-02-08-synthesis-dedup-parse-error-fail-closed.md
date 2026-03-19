@@ -26,7 +26,7 @@ Added a targeted regression test in `kb-cli/cmd/kb/reflect_test.go` that:
 - asserts `exists == true` and `err == nil`
 
 **Environment:**
-- Repo under test: `/Users/dylanconlin/Documents/personal/kb-cli`
+- Repo under test: `~/Documents/personal/kb-cli`
 - Branch state: dirty working tree with unrelated in-flight changes
 
 ---
@@ -35,7 +35,7 @@ Added a targeted regression test in `kb-cli/cmd/kb/reflect_test.go` that:
 
 **Output:**
 ```text
-ok  github.com/dylanconlin/kb-cli/cmd/kb  0.032s
+ok  github.com/user/kb-cli/cmd/kb  0.032s
 ```
 
 **Key observations:**

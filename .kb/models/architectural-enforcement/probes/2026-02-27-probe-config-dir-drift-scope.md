@@ -42,7 +42,7 @@ Confirmed via Claude Code documentation that `CLAUDE_CONFIG_DIR` redirects ALL u
 
 ```bash
 jq '.oauthAccount' ~/.claude-personal/.claude.json
-# → personal OAuth account (dylan.conlin@gmail.com)
+# → personal OAuth account (user@example.com)
 ```
 
 Auth stored in `.claude.json` within config dir — confirms dirs MUST remain separate for runtime data.

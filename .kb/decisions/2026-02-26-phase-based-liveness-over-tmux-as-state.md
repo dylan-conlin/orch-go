@@ -85,3 +85,10 @@ The tmux liveness approach violated two invariants from the two-lane decision:
 ### Model Updates
 - `.kb/models/agent-lifecycle-state-model/model.md` — Updated Feb 25 with phase-based liveness section and Invariant 9
 - `.kb/decisions/2026-02-18-two-lane-agent-discovery.md` — Amendment section (Feb 24) and updated domain boundaries table
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-08-inv-bug-worker-agents-cause-tmux.md
+- .kb/investigations/synthesized/code-extraction-patterns/2026-01-03-inv-extract-serve-agents-go-serve.md
+- .kb/investigations/synthesized/code-extraction-patterns/2026-01-04-inv-phase-extract-serve-agents-events.md
+- .kb/investigations/synthesized/code-extraction-patterns/2026-01-04-inv-phase-extract-serve-agents-cache.md

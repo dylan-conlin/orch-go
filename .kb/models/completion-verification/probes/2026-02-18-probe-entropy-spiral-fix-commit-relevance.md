@@ -25,7 +25,7 @@ git cat-file -e master:<path>
 python3 - <<'PY'
 import subprocess, json
 from pathlib import Path
-repo = Path('/Users/dylanconlin/Documents/personal/orch-go')
+repo = Path('~/Documents/personal/orch-go')
 workspace = repo / '.orch/workspace/og-inv-audit-fix-commits-18feb-0583'
 def run(cmd, input_text=None):
     result = subprocess.run(cmd, input=input_text, text=True, capture_output=True)
@@ -100,8 +100,8 @@ Still-relevant fixes (patch applies cleanly):
 
 Artifacts generated:
 
-- `/Users/dylanconlin/Documents/personal/orch-go/.orch/workspace/og-inv-audit-fix-commits-18feb-0583/fix-commit-audit.csv`
-- `/Users/dylanconlin/Documents/personal/orch-go/.orch/workspace/og-inv-audit-fix-commits-18feb-0583/fix-commit-audit-summary.json`
+- `~/Documents/personal/orch-go/.orch/workspace/og-inv-audit-fix-commits-18feb-0583/fix-commit-audit.csv`
+- `~/Documents/personal/orch-go/.orch/workspace/og-inv-audit-fix-commits-18feb-0583/fix-commit-audit-summary.json`
 
 ---
 

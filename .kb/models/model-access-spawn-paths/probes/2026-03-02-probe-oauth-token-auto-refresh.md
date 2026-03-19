@@ -144,7 +144,7 @@ Copied keychain personal token into accounts.yaml, then ran `orch usage` which r
     <key>Label</key><string>com.orch.token-keepalive</string>
     <key>ProgramArguments</key>
     <array>
-      <string>/Users/dylanconlin/bin/orch</string>
+      <string>~/bin/orch</string>
       <string>usage</string>
     </array>
     <key>StartCalendarInterval</key>

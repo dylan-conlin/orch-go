@@ -530,3 +530,13 @@ output, _ := cmd.Output()
 | `probes/2026-02-17-bd-sync-precommit-hook-deadlock.md` | 2026-02-17 | Contradicts | c2af5a82 deadlock fix is incomplete; second deadlock path via pre-commit hook → `bd sync --flush-only` still exists, 100% reproducible |
 | `probes/2026-02-20-beads-fork-integration-audit.md` | 2026-02-20 | Contradicts (multiple) | Wrong socket path (global vs project-local), 5 nonexistent file references, 11 direct exec.Command violations, clean-slate decision reversed with 43 fork commits |
 | `probes/2026-03-01-beads-cas-atomic-status-transitions.md` | 2026-03-01 | Confirms + Extends | Confirms unconditional UPDATE (no CAS); extends with feasibility proof that CAS is implementable in ~80-120 LOC using existing ErrConflict infrastructure |
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-26-inv-implement-pkg-beads-rpc-client.md
+- .kb/investigations/archived/2025-12-25-inv-implement-pkg-beads-go-rpc.md
+- .kb/investigations/archived/2025-12-25-inv-design-beads-integration-strategy-orch.md
+- .kb/investigations/archived/2025-12-21-inv-orch-complete-closes-beads-issue.md
+- .kb/investigations/archived/2025-12-25-inv-migrate-verify-getcomments-getcommentsbatch-use.md
+- .kb/investigations/2026-02-20-inv-audit-beads-fork-integration.md
+- .kb/investigations/archived/2025-12-25-inv-migrate-daemon-listreadyissues-use-new.md

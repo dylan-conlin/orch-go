@@ -23,3 +23,7 @@ This decision was initially captured as a quick kn entry and has now been promot
 **Promoted from:** quick entry kb-aaa5a7 (decision)
 **Original date:** 2026-03-09
 
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-11-design-plan-beads-integration-gap.md

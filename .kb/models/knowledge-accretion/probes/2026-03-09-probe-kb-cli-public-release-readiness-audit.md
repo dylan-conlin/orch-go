@@ -88,7 +88,7 @@ Searched all .go files for orch-specific references:
 | CI/CD | MISSING | No .github/workflows/ directory |
 | GoReleaser | MISSING | No .goreleaser.yml |
 | CLAUDE.md | TEMPLATE ONLY | References .orch/CLAUDE.md, has no actual project context |
-| Installation | PARTIAL | go install works but module path is github.com/dylanconlin/kb-cli |
+| Installation | PARTIAL | go install works but module path is github.com/user/kb-cli |
 | .gitignore | OK | Ignores /kb binary and .orch/ |
 
 ### Test 6: kb context --extract-models gap verification

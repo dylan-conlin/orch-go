@@ -11,3 +11,9 @@ resolved_to: ".kb/models/knowledge-accretion/probes/2026-03-10-probe-falsifiabil
 ## 2026-03-08
 
 Nine questions surfaced from reviewing the harness engineering model. Three became beads (orch-go-xbqnk: minimum viable harness, orch-go-ycdbr: governance health metric, orch-go-v892h: escape hatch tracking). The remaining six need more experience before they're actionable: (1) Does governance tooling generalize or is it inherently bespoke? (2) What's the exact soft harness budget curve — 5 slots? 7? How do multiple sources interact? (5) What happens when the routing table is complete — does accretion stop or find new failure modes? (7) How does model capability interact with governance needs — do stronger models need fewer or more gates? These crystallize through doing, not investigating. Premature: Phase 6 durability (finish it first) and self-extending harness (Layer 4 is aspirational).
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-11-design-session-resume-protocol.md
+- .kb/investigations/2026-02-27-design-flow-integrated-knowledge-surfacing.md
+- .kb/investigations/archived/2025-12-25-inv-pattern-tool-relationship-shareability.md

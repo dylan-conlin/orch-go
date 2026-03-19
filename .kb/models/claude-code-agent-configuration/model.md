@@ -154,3 +154,9 @@ Agents get more capabilities than needed because CLI flag adoption lags. Investi
 **Related models:**
 - `.kb/models/skill-content-transfer/` — How skill content transfers to agents (three content types)
 - `.kb/models/spawn-architecture/` — Spawn infrastructure architecture
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-08-design-portable-harness-tooling.md
+- .kb/investigations/2026-02-27-inv-claude-code-worktree-agent-isolation.md
+- .kb/investigations/archived/2026-01-16-inv-audit-sessionstart-hooks-claude-code.md

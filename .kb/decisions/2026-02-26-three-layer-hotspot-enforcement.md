@@ -176,3 +176,7 @@ When `orch spawn` detects hotspots:
 
 ### Quick Entries (superseded by this decision)
 - kb-3d169f: "force-hotspot requires architect-ref with verified closed architect issue"
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-09-design-extraction-plan-three-near-critical.md

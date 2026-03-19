@@ -161,3 +161,15 @@ orch spawn --mode opencode investigation "task"
 - Investigation: `.kb/investigations/2026-01-09-debug-gemini-flash-rate-limiting.md`
 - Constraint: `kb-eaf467` (Opus blocked via OAuth)
 - Decision: `kb-81f105` (Attempted plugin bypass)
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-09-inv-implement-claude-mode-spawn-pkg.md
+- .kb/investigations/archived/2025-12-20-inv-make-headless-mode-default-deprecate.md
+- .kb/investigations/archived/2026-01-10-inv-fix-dual-mode-spawn-bug.md
+- .kb/investigations/archived/2025-12-20-inv-fix-spawn-use-standalone-mode.md
+- .kb/investigations/archived/2026-01-09-inv-test-dual-spawn-mode-implementation.md
+- .kb/investigations/archived/2026-01-09-inv-recovery-mode-spawn-system-failure.md
+- .kb/investigations/archived/2025-12-20-inv-implement-headless-spawn-mode-add.md
+- .kb/investigations/archived/2025-12-21-inv-implement-attach-mode-tmux-spawn.md
+- .kb/investigations/archived/2025-12-22-inv-flip-default-spawn-mode-headless.md

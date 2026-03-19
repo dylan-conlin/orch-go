@@ -152,3 +152,7 @@ H3 now has data. The LLM intent gate was measured against a 100-pair dataset (50
 **Infrastructure note:** Had to fix intent-check.sh to use `--output-format stream-json` and extract first assistant turn, because Claude CLI Stop hooks corrupt `--print` text output. The hook injects a synthetic user message that causes a second model turn, polluting the structured output the gate expects. This is a general issue for any tool using `claude --print` in environments with hooks.
 
 **Raw data:** `~/Documents/personal/openscad-harness/test/results/2026-03-16-213035/`
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-02-28-inv-cross-project-interface-agreement-coverage-gaps.md

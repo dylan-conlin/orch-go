@@ -157,3 +157,8 @@ Secondary SSE (agentlog) → Opt-in via "Follow" button
 | Date | Change | Reason |
 |------|--------|--------|
 | 2026-01-17 | Decision created | Synthesized from 8 investigations to prevent re-investigation |
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-02-27-design-implementation-architecture-flow-integrated-knowledge-surfacing.md
+- .kb/investigations/synthesized/sse-event-sourced-monitoring/2025-12-19-inv-client-sse-event-monitoring.md

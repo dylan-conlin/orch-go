@@ -90,3 +90,7 @@ Rejected — extraction requires understanding responsibility clusters and depen
 - `.kb/investigations/2026-03-01-design-doctor-go-extraction-plan.md`
 - `.kb/investigations/2026-02-26-design-defect-class-pipeline-activation.md`
 - `.kb/guides/code-extraction-patterns.md`
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-02-28-design-archived-workspace-gitignore-ttl.md

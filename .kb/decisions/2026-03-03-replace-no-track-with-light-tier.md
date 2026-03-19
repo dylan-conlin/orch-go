@@ -161,3 +161,7 @@ Yes, with per-tier caps. Excluding them (current `--no-track` behavior) is the s
 - **Two-Lane decision:** `.kb/decisions/2026-02-18-two-lane-agent-discovery.md` (acknowledges --no-track as pressure point)
 - **Cross-project epic investigation:** `.kb/investigations/archived/epic-management-deprecated/2025-12-21-inv-cross-project-epic-orchestration-patterns.md`
 - **Untracked cleanup investigation:** `.kb/investigations/archived/2026-01-04-inv-untracked-agents-cleanup-path-problem.md`
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-27-inv-dismiss-button-light-tier-pending.md

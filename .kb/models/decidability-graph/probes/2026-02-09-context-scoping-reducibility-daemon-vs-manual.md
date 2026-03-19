@@ -19,7 +19,7 @@ Is orchestrator context-scoping mostly reducible to a deterministic pipeline (da
 ```bash
 python3 - <<'PY'
 import json
-path='/Users/dylanconlin/Documents/personal/orch-go/.beads/issues.jsonl'
+path='~/Documents/personal/orch-go/.beads/issues.jsonl'
 rows=0
 with_source=0
 for line in open(path,encoding='utf-8',errors='ignore'):
@@ -37,7 +37,7 @@ PY
 python3 - <<'PY'
 import json,glob,os,datetime
 from collections import defaultdict
-root='/Users/dylanconlin/Documents/personal/orch-go'
+root='~/Documents/personal/orch-go'
 records={}
 for mp in glob.glob(os.path.join(root,'.orch','workspace','**','AGENT_MANIFEST.json'),recursive=True):
     sp=os.path.join(os.path.dirname(mp),'SPAWN_CONTEXT.md')
@@ -57,7 +57,7 @@ for line in open(os.path.join(root,'.beads','issues.jsonl'),encoding='utf-8',err
     iid=o.get('id')
     if iid and iid not in issues: issues[iid]=o
 session=[]; daemon=[]; bypass=[]
-for line in open('/Users/dylanconlin/.orch/events.jsonl',encoding='utf-8',errors='ignore'):
+for line in open('~/.orch/events.jsonl',encoding='utf-8',errors='ignore'):
     line=line.strip()
     if not line.startswith('{'): continue
     try:e=json.loads(line)
@@ -112,7 +112,7 @@ PY
 
 **Environment:**
 
-- Repo: `/Users/dylanconlin/Documents/personal/orch-go`
+- Repo: `~/Documents/personal/orch-go`
 - Data sources: `.beads/issues.jsonl`, `.orch/workspace/**/AGENT_MANIFEST.json`, `.orch/workspace/**/SPAWN_CONTEXT.md`, `~/.orch/events.jsonl`
 - Daemon inference mapping validated against `pkg/daemon/skill_inference.go`
 

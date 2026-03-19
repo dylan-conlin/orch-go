@@ -438,3 +438,21 @@ Intervention: daemon polls metrics file → threshold check → inject via API
 | `2026-02-14-worker-detection-stress-test.md` | 2026-02-14 | Complete | Confirms stress test execution (55 tool calls) that validated worker detection and context_usage metric firing; final result already incorporated in model Summary |
 | `2026-02-14-metrics-redesign-architecture-validation.md` | 2026-02-14 | Complete | Extends model: documents session-start injection as a 3rd injection mechanism; dual JSONL writers; and validates that removing action_ratio/analysis_paralysis (72% of noise events) doesn't break behavioral proxy coverage |
 | `2026-02-20-probe-worker-health-injection.md` | 2026-02-20 | Complete | Extends model: confirms worker detection caches only true; documents accurate thresholds for all 5 worker health metrics including accretion_warning for large file edits (>800 lines) |
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-01-08-inv-opencode-plugin-session-compaction-preservation.md
+- .kb/investigations/archived/2026-01-08-inv-investigate-opencode-plugin-capabilities-ecosystem.md
+- .kb/investigations/synthesized/coaching-plugin/2026-01-11-inv-pivot-coaching-plugin-two-frame.md
+- .kb/investigations/synthesized/coaching-plugin/2026-01-17-inv-design-review-coaching-plugin-failures.md
+- .kb/investigations/archived/2026-01-08-inv-opencode-plugin-surface-relevant-constraints.md
+- .kb/investigations/synthesized/coaching-plugin/2026-01-16-inv-orch-go-investigation-test-coaching.md
+- .kb/investigations/synthesized/coaching-plugin/2026-01-17-inv-design-deep-analysis-opencode-coaching-plugin.md
+- .kb/investigations/synthesized/coaching-plugin/2026-01-17-inv-update-coaching-plugin-session-metadata.md
+- .kb/investigations/archived/2026-01-14-inv-opencode-plugin-loader-crashes-fn3.md
+- .kb/investigations/synthesized/coaching-plugin/2026-01-10-inv-orchestrator-coaching-plugin-prototype.md
+- .kb/investigations/synthesized/coaching-plugin/2026-01-18-inv-understand-coaching-plugin-status-current.md
+- .kb/investigations/synthesized/coaching-plugin/2026-01-11-inv-review-design-coaching-plugin-injection.md
+- .kb/investigations/synthesized/coaching-plugin/2026-01-17-inv-fix-detectworkersession-caching-bug-coaching.md
+- .kb/investigations/synthesized/coaching-plugin/2026-01-10-inv-orchestrator-coaching-plugin-technical-design.md
+- .kb/investigations/archived/2026-01-08-inv-test-opencode-plugin-event-reliability.md

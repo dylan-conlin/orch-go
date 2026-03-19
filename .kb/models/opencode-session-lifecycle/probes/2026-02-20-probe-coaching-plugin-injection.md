@@ -18,7 +18,7 @@ Reviewed project plugin implementation and plugin system guide, then checked the
 
 ```bash
 pwd
-wc -l "/Users/dylanconlin/.orch/event-test.jsonl"
+wc -l "~/.orch/event-test.jsonl"
 # Read recent lines near end of event-test.jsonl
 ```
 

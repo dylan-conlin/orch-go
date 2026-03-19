@@ -23,3 +23,9 @@ This decision was initially captured as a quick kn entry and has now been promot
 **Promoted from:** quick entry kb-ed3edc (decision)
 **Original date:** 2026-03-10
 
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-02-24-design-automatic-account-distribution-claude-cli.md
+- .kb/investigations/2026-02-20-design-progressive-skill-disclosure.md
+- .kb/investigations/2026-03-01-design-extraction-go-self-hotspot-extraction-plan.md

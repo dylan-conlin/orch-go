@@ -14,7 +14,7 @@ Why does the staleness detector keep firing for this model when the content is a
 
 **Evidence:** `~/.local/share/opencode/auth.json` appears 42 times in staleness events as "deleted" despite existing.
 
-**Root Cause:** `checkModelStaleness()` in `pkg/spawn/kbcontext.go` only checks `strings.HasPrefix(filePath, "/")` for absolute paths. Paths starting with `~` are treated as relative and prepended with `projectDir`, producing invalid paths like `/Users/dylanconlin/Documents/personal/orch-go/~/.local/share/opencode/auth.json`.
+**Root Cause:** `checkModelStaleness()` in `pkg/spawn/kbcontext.go` only checks `strings.HasPrefix(filePath, "/")` for absolute paths. Paths starting with `~` are treated as relative and prepended with `projectDir`, producing invalid paths like `~/Documents/personal/orch-go/~/.local/share/opencode/auth.json`.
 
 **Fix Applied:** Added tilde expansion before the absolute path check. Now `~/` paths are expanded to the actual home directory via `os.UserHomeDir()`.
 

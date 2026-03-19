@@ -1,6 +1,6 @@
 # Probe: complete_pipeline.go Extraction Boundaries
 
-**Model:** Code Extraction Patterns (`/Users/dylanconlin/Documents/personal/orch-go/.kb/models/extract-patterns/model.md`)
+**Model:** Code Extraction Patterns (`~/Documents/personal/orch-go/.kb/models/extract-patterns/model.md`)
 **Status:** Complete
 **Date:** 2026-03-01
 **Agent:** og-arch-complete-pipeline-go-01mar-363e

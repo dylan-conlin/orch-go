@@ -87,3 +87,8 @@ Workspaces are self-describing via metadata files:
 - **Code:** `cmd/orch/clean_cmd.go:archiveStaleWorkspaces()`
 - **Guide:** `.kb/guides/workspace-lifecycle.md`
 - **Constraint:** Registry is caching layer, not source of truth (all data exists in OpenCode/tmux/beads)
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2025-12-26-inv-add-review-state-tracking-workspace.md
+- .kb/investigations/2026-02-27-design-skip-flag-reason-tracking.md

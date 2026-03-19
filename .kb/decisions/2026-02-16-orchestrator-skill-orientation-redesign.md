@@ -2,7 +2,7 @@
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** 
-**Supersedes:** /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2026-02-16-design-orchestrator-skill-orientation-redesign.md
+**Supersedes:** ~/Documents/personal/orch-go/.kb/investigations/2026-02-16-design-orchestrator-skill-orientation-redesign.md
 **Superseded-By:** 
 
 
@@ -110,3 +110,9 @@ State must externalize to files. ORIENTATION_FRAME captures the "why" at spawn t
 
 - `2026-02-14-verifiability-first-hard-constraint.md` — Two-gate verification (preserved unchanged)
 - `2026-01-04-orchestrator-session-lifecycle.md` — Session lifecycle (extended with orientation state)
+
+## Auto-Linked Investigations
+
+- .kb/investigations/archived/2026-02-16-design-orchestrator-skill-orientation-redesign.md
+- .kb/investigations/2026-02-28-design-orientation-frame-gate-friction-biggest.md
+- .kb/investigations/archived/2026-01-13-inv-add-orchestrator-skill-decision-tree.md
