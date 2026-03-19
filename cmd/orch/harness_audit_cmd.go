@@ -176,7 +176,7 @@ func buildGateAudit(events []StatsEvent, days int) *GateAuditResult {
 				gc.blocks++
 			case "bypass":
 				gc.bypasses++
-			case "allow", "advisory":
+			case "allow", "advisory", "warn":
 				gc.allows++
 			}
 		}

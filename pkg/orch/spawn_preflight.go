@@ -20,7 +20,14 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage bool
 		logGateDecision("triage", "allow", input.SkillName, input.IssueID, "daemon-driven spawn", nil)
 	}
 
-	CheckGovernance(input.Task, input.SkillName, input.DaemonDriven)
+	govResult := CheckGovernance(input.Task, input.SkillName, input.DaemonDriven)
+	if govResult != nil {
+		var matchedPatterns []string
+		for _, p := range govResult.MatchedPaths {
+			matchedPatterns = append(matchedPatterns, p.Pattern)
+		}
+		logGateDecision("governance", "warn", input.SkillName, input.IssueID, "task references governance-protected paths", matchedPatterns)
+	}
 
 	var hotspotResult *gates.HotspotResult
 	if hotspotCheckFunc != nil {

@@ -41,6 +41,8 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 	if d.Pool != nil {
 		slot = d.Pool.TryAcquire()
 		if slot == nil {
+			logDaemonGateDecision("concurrency", "block", skill, issue.ID,
+				fmt.Sprintf("At capacity: %d/%d slots occupied", d.Pool.Active(), d.Pool.MaxWorkers()))
 			return &OnceResult{
 				Processed: false,
 				Issue:     issue,

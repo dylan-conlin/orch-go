@@ -102,6 +102,43 @@ func TestHotspotAutoBypassEmitsGateDecision(t *testing.T) {
 	}
 }
 
+func TestGovernanceGateEmitsWarnEvent(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+
+	logger := events.NewLogger(logPath)
+	// Simulate what spawn_preflight.go does when governance matches
+	_ = logger.LogGateDecision(events.GateDecisionData{
+		GateName:    "governance",
+		Decision:    "warn",
+		Skill:       "feature-impl",
+		BeadsID:     "orch-go-gov01",
+		Reason:      "task references governance-protected paths",
+		TargetFiles: []string{"pkg/spawn/gates/", "pkg/verify/"},
+	})
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	var event events.Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to unmarshal event: %v", err)
+	}
+
+	if event.Data["gate_name"] != "governance" {
+		t.Errorf("gate_name = %v, want %q", event.Data["gate_name"], "governance")
+	}
+	if event.Data["decision"] != "warn" {
+		t.Errorf("decision = %v, want %q", event.Data["decision"], "warn")
+	}
+	targetFiles, ok := event.Data["target_files"].([]interface{})
+	if !ok || len(targetFiles) != 2 {
+		t.Errorf("target_files should have 2 entries, got %v", event.Data["target_files"])
+	}
+}
+
 func TestLogGateDecision_AllowDecisions(t *testing.T) {
 	// Verify that allow events for gates produce valid spawn.gate_decision events.
 	tests := []struct {

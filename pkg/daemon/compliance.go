@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -58,14 +59,30 @@ func (d *Daemon) CheckPreSpawnGates() SpawnGateSignal {
 			if d.Config.Verbose {
 				fmt.Printf("  Rate limited: %s\n", msg)
 			}
+			reason := fmt.Sprintf("Rate limited: %d/%d spawns in the last hour", count, d.RateLimiter.MaxPerHour)
+			logDaemonGateDecision("ratelimit", "block", "", "", reason)
 			return SpawnGateSignal{
 				Allowed: false,
-				Reason:  fmt.Sprintf("Rate limited: %d/%d spawns in the last hour", count, d.RateLimiter.MaxPerHour),
+				Reason:  reason,
 			}
 		}
 	}
 
 	return SpawnGateSignal{Allowed: true}
+}
+
+// logDaemonGateDecision emits a spawn.gate_decision event for daemon-level enforcement.
+// This makes daemon gates (concurrency, ratelimit, governance) visible to harness audit,
+// which only counts events in events.jsonl.
+func logDaemonGateDecision(gateName, decision, skill, beadsID, reason string) {
+	logger := events.NewLogger(events.DefaultLogPath())
+	_ = logger.LogGateDecision(events.GateDecisionData{
+		GateName: gateName,
+		Decision: decision,
+		Skill:    skill,
+		BeadsID:  beadsID,
+		Reason:   reason,
+	})
 }
 
 // IssueFilterResult indicates whether an issue passes compliance filters.
