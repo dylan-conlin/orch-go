@@ -85,7 +85,7 @@ The most insidious failure mode: treating the absence of a negative signal as a 
 
 | Metric | Old Name | What It Actually Measures | New Name |
 |--------|----------|--------------------------|----------|
-| **Skill success rates** | "Success rate" | Self-reported completion per skill | "Completion rate" |
+| **Skill success rates** | "Success rate" | Self-reported completion per skill | "Completion rate" (display only — allocation code still uses `SuccessRate` field names and ±20% quality-proxy modulation, an active instance of §3 failure mode) |
 | **Test evidence gate** | "Verification" | Pattern-matches agent claims for test output format | "Evidence check" (necessary-but-not-sufficient signal) |
 | **Orphan rate** | "91.8% orphan rate" (displayed as problem signal) | Count of unlinked investigations — but 90%+ is the natural baseline, not a problem | Removed absolute rate from orient. Replaced with "new orphans per session" (actionable delta) |
 
@@ -238,6 +238,7 @@ The rebuild addressed false confidence by splitting the measurement into two mea
 
 **Probes:**
 - `.kb/models/knowledge-accretion/probes/2026-03-18-probe-phase-transition-mechanical-to-epistemic-failures.md` — Trust pyramid, false coherence taxonomy, Phase 1 vs Phase 2 failure modes
+- 2026-03-19: Knowledge Decay Verification — All 6 concrete claims confirmed. Found active instance of §3 failure mode: `SuccessRate` field names in allocation code still use old semantics despite display relabeling.
 
 **Publications:**
 - `.kb/publications/self-measurement-report.md` — Orch-go self-measurement report (methodology and honest reporting template)
