@@ -25,6 +25,9 @@ cmd/orch/
 ├── daemon_commands.go   # Daemon command setup
 ├── daemon_loop.go       # Daemon OODA poll cycle (Sense/Orient/Decide/Act)
 ├── daemon_periodic.go   # Daemon periodic tasks (backlog cull, plan advancement)
+├── daemon_snapshot.go   # Daemon state snapshots
+├── daemon_decision_log.go # Daemon decision logging
+├── daemon_handlers.go   # Daemon HTTP handlers (once, preview, reflect)
 ├── serve*.go            # HTTP API server and handlers (agents, beads, system)
 ├── harness_*.go         # Harness governance (audit, report, init)
 ├── plan_cmd.go          # Coordination plan management
@@ -32,6 +35,12 @@ cmd/orch/
 ├── kb*.go               # Knowledge base commands (audit, init, extract, ask, gate, challenge, autolink)
 ├── stats_*.go           # Stats aggregation (spawn/completion rates, gate effectiveness, skill metrics)
 ├── session*.go          # Session management (start, end, status, history)
+├── spawn_*.go           # Spawn helpers, dry-run preview
+├── hotspot*.go          # Hotspot analysis and accretion tracking
+├── doctor*.go           # Health checks, diagnostics, defect/migration scans
+├── clean_*.go           # Clean subcommands (orphans, sessions, workspaces)
+├── swarm.go             # Batch spawn with concurrency control
+├── deploy.go            # Atomic deployment (rebuild, restart, verify)
 ├── learn.go             # Learning system (suggestions, patterns, effects)
 ├── servers.go           # Multi-project server management
 ├── precommit_cmd.go     # Pre-commit checks (accretion, model-stub, duplication)
@@ -233,7 +242,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 
 - Uses Cobra framework for CLI structure
 - Global `--server` flag for OpenCode URL
-- Subcommand groups: `account`, `daemon`, `harness`, `plan`, `control`, `hook`, `thread`, `audit`, `backlog`, `settings`, `kb`, `port`, `review`, `patterns`, `session`, `session-history`, `servers`, `learn`, `config`, `docs`, `precommit`, `model`, `logs`, `transcript`, `serve`, `stats`
+- Subcommand groups: `account`, `daemon`, `doctor`, `harness`, `plan`, `control`, `focus`, `hook`, `thread`, `audit`, `backlog`, `settings`, `kb`, `port`, `review`, `patterns`, `session`, `session-history`, `servers`, `learn`, `config`, `docs`, `precommit`, `model`, `logs`, `transcript`, `serve`, `stats`
 
 ### pkg/opencode/ (OpenCode Client)
 
