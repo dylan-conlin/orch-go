@@ -315,7 +315,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 	agreementsCheckFunc := buildAgreementsChecker()
 	openQuestionCheckFunc := buildOpenQuestionChecker()
-	hotspotResult, _, _, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnReason, hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc)
+	concurrencyCheckFunc := buildConcurrencyCheck()
+	hotspotResult, _, _, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnReason, hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc, concurrencyCheckFunc)
 	if err != nil {
 		return err
 	}

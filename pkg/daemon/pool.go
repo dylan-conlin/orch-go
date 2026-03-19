@@ -8,14 +8,24 @@ import (
 )
 
 // WorkerPool manages concurrent agent spawning with a fixed number of slots.
-// It provides a semaphore-based pattern similar to CapacityManager but simpler,
-// without the multi-account complexity.
+//
+// It uses a two-counter design to separate daemon-spawned agents from
+// externally-spawned agents (manual orch spawn, prior daemon runs):
+//
+//   - lastBeadsCount: authoritative count from beads (set during Reconcile)
+//   - pendingSpawns: daemon spawns since last Reconcile (incremented by TryAcquire)
+//   - totalActive = lastBeadsCount + pendingSpawns
+//
+// This eliminates the synthetic slot oscillation that occurred when the old
+// single-counter design tried to track external agents via add/free cycles.
+// See: scs-sp-8dm (pool reconciliation race under concurrent spawns).
 type WorkerPool struct {
-	mu          sync.Mutex
-	cond        *sync.Cond
-	maxWorkers  int
-	activeCount int
-	slots       []*Slot // Track active slots for monitoring
+	mu             sync.Mutex
+	cond           *sync.Cond
+	maxWorkers     int
+	lastBeadsCount int     // Authoritative count from last Reconcile (all agents)
+	pendingSpawns  int     // Daemon spawns since last Reconcile (not yet in beads)
+	slots          []*Slot // Track daemon-spawned slots for monitoring
 }
 
 // Slot represents an acquired worker slot.
@@ -36,6 +46,16 @@ func NewWorkerPool(maxWorkers int) *WorkerPool {
 	return p
 }
 
+// totalActive returns the effective active agent count (must be called with lock held).
+// This is the sum of the authoritative beads count and daemon-pending spawns.
+func (p *WorkerPool) totalActive() int {
+	total := p.lastBeadsCount + p.pendingSpawns
+	if total < 0 {
+		return 0
+	}
+	return total
+}
+
 // Acquire blocks until a slot becomes available or context is cancelled.
 // Returns a Slot that must be Released when the work is complete.
 func (p *WorkerPool) Acquire(ctx context.Context) (*Slot, error) {
@@ -51,10 +71,10 @@ func (p *WorkerPool) Acquire(ctx context.Context) (*Slot, error) {
 		}
 
 		// If no limit or below limit, acquire immediately
-		if p.maxWorkers <= 0 || p.activeCount < p.maxWorkers {
-			p.activeCount++
+		if p.maxWorkers <= 0 || p.totalActive() < p.maxWorkers {
+			p.pendingSpawns++
 			slot := &Slot{
-				ID:         p.activeCount,
+				ID:         p.totalActive(),
 				AcquiredAt: time.Now(),
 			}
 			p.slots = append(p.slots, slot)
@@ -84,13 +104,13 @@ func (p *WorkerPool) TryAcquire() *Slot {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.maxWorkers > 0 && p.activeCount >= p.maxWorkers {
+	if p.maxWorkers > 0 && p.totalActive() >= p.maxWorkers {
 		return nil
 	}
 
-	p.activeCount++
+	p.pendingSpawns++
 	slot := &Slot{
-		ID:         p.activeCount,
+		ID:         p.totalActive(),
 		AcquiredAt: time.Now(),
 	}
 	p.slots = append(p.slots, slot)
@@ -98,6 +118,7 @@ func (p *WorkerPool) TryAcquire() *Slot {
 }
 
 // Release marks a slot as complete, allowing another worker to start.
+// Decrements pendingSpawns (daemon's own spawn count).
 func (p *WorkerPool) Release(slot *Slot) {
 	if slot == nil {
 		return
@@ -106,8 +127,8 @@ func (p *WorkerPool) Release(slot *Slot) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.activeCount > 0 {
-		p.activeCount--
+	if p.pendingSpawns > 0 {
+		p.pendingSpawns--
 	}
 
 	// Remove slot from tracking
@@ -122,11 +143,11 @@ func (p *WorkerPool) Release(slot *Slot) {
 	p.cond.Broadcast()
 }
 
-// Active returns the number of currently active workers.
+// Active returns the total number of active agents (daemon + external).
 func (p *WorkerPool) Active() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.activeCount
+	return p.totalActive()
 }
 
 // Available returns the number of available slots.
@@ -138,7 +159,7 @@ func (p *WorkerPool) Available() int {
 	if p.maxWorkers <= 0 {
 		return 100 // No limit
 	}
-	available := p.maxWorkers - p.activeCount
+	available := p.maxWorkers - p.totalActive()
 	if available < 0 {
 		return 0
 	}
@@ -153,7 +174,7 @@ func (p *WorkerPool) AtCapacity() bool {
 	if p.maxWorkers <= 0 {
 		return false
 	}
-	return p.activeCount >= p.maxWorkers
+	return p.totalActive() >= p.maxWorkers
 }
 
 // MaxWorkers returns the maximum number of concurrent workers.
@@ -193,9 +214,10 @@ func (p *WorkerPool) Status() PoolStatus {
 		}
 	}
 
+	total := p.totalActive()
 	available := 100
 	if p.maxWorkers > 0 {
-		available = p.maxWorkers - p.activeCount
+		available = p.maxWorkers - total
 		if available < 0 {
 			available = 0
 		}
@@ -203,7 +225,7 @@ func (p *WorkerPool) Status() PoolStatus {
 
 	return PoolStatus{
 		MaxWorkers:  p.maxWorkers,
-		Active:      p.activeCount,
+		Active:      total,
 		Available:   available,
 		ActiveSlots: slotInfos,
 	}
@@ -218,54 +240,50 @@ type ReconcileResult struct {
 	Added int
 }
 
-// Reconcile synchronizes the pool's internal count with the actual number of
-// active agents. This is necessary because the pool tracks slots internally
-// but reality can diverge:
+// Reconcile synchronizes the pool with the actual number of active agents
+// from beads (the authoritative source of agent lifecycle state).
 //
-//   - Agents may complete without the daemon knowing (overnight runs, crashes,
-//     manual kills) → actualCount < pool.activeCount → free stale slots.
-//   - After daemon restart, agents from the prior run are still active but the
-//     pool starts at 0 → actualCount > pool.activeCount → add synthetic slots
-//     to prevent over-spawning past the concurrency cap.
+// Sets lastBeadsCount to actualCount and resets pendingSpawns to 0, since
+// beads has caught up with any daemon spawns from the prior cycle.
 //
-// Returns a ReconcileResult with the number of slots freed and added.
+// This design eliminates the synthetic slot oscillation that occurred when
+// external agents (manual spawns) caused repeated add/free cycles:
+//
+//   - Old behavior: actualCount > activeCount -> add synthetic slots -> agents
+//     complete -> actualCount < activeCount -> free slots -> repeat.
+//   - New behavior: lastBeadsCount is simply set to the authoritative count.
+//     No synthetic slots. No oscillation.
+//
+// Returns a ReconcileResult with Freed/Added representing the net change
+// in effective capacity (for logging, not slot management).
 func (p *WorkerPool) Reconcile(actualCount int) ReconcileResult {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	result := ReconcileResult{}
+	previousTotal := p.totalActive()
 
-	if actualCount == p.activeCount {
-		return result
+	// Update authoritative count from beads. Reset pendingSpawns because
+	// beads now reflects any daemon spawns from the prior cycle.
+	p.lastBeadsCount = actualCount
+	p.pendingSpawns = 0
+
+	newTotal := p.totalActive() // == actualCount (since pendingSpawns is 0)
+
+	if newTotal > previousTotal {
+		result.Added = newTotal - previousTotal
+	} else if newTotal < previousTotal {
+		result.Freed = previousTotal - newTotal
 	}
 
-	if actualCount > p.activeCount {
-		// More agents running than pool tracks. This happens after daemon restart
-		// when agents from the prior run are still active, or when agents are
-		// spawned externally (manual orch spawn). Create synthetic slots to
-		// account for them so the pool correctly limits total concurrency.
-		toAdd := actualCount - p.activeCount
-		for i := 0; i < toAdd; i++ {
-			p.slots = append(p.slots, &Slot{
-				ID:         p.activeCount + i + 1,
-				AcquiredAt: time.Now(),
-			})
-		}
-		p.activeCount = actualCount
-		result.Added = toAdd
-		return result
+	// Trim stale daemon slots that no longer correspond to running agents.
+	// After reconciliation, we should have at most actualCount slots.
+	// Excess slots are from daemon-spawned agents that have completed.
+	for len(p.slots) > actualCount {
+		p.slots = p.slots[1:] // Remove oldest
 	}
 
-	// actualCount < p.activeCount: agents completed without daemon knowing.
-	// Clear stale slots (oldest first) and reduce activeCount.
-	toRelease := p.activeCount - actualCount
-	for i := 0; i < toRelease && len(p.slots) > 0; i++ {
-		p.slots = p.slots[1:] // Remove oldest slot
-		result.Freed++
-	}
-	p.activeCount = actualCount
-
-	// Wake up any waiters since capacity freed up
+	// Wake up any waiters since capacity may have freed up
 	if result.Freed > 0 {
 		p.cond.Broadcast()
 	}

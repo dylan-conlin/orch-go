@@ -48,10 +48,10 @@ func runDaemonLoop() error {
 
 		reconcileResult := s.d.ReconcileWithOpenCode()
 		if reconcileResult.Freed > 0 {
-			s.dlog.Printf("[%s] Reconciled: freed %d stale slots\n", timestamp, reconcileResult.Freed)
+			s.dlog.Printf("[%s] Reconciled: %d agents completed (capacity freed)\n", timestamp, reconcileResult.Freed)
 		}
 		if reconcileResult.Added > 0 {
-			s.dlog.Printf("[%s] Reconciled: seeded %d agents from prior run (pool was under-counting)\n", timestamp, reconcileResult.Added)
+			s.dlog.Printf("[%s] Reconciled: %d new agents detected (external spawns or prior run)\n", timestamp, reconcileResult.Added)
 		}
 
 		s.checkDaemonSignals(timestamp)

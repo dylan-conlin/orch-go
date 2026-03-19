@@ -583,6 +583,143 @@ func TestWorkerPool_Reconcile_SeedThenFree(t *testing.T) {
 	p.Release(s)
 }
 
+// TestWorkerPool_ConcurrentSpawnSources_NoOscillation verifies that when
+// daemon spawns and manual spawns happen concurrently, reconciliation does NOT
+// oscillate between seeding and freeing synthetic slots.
+//
+// This is the regression test for scs-sp-8dm: "pool reconciliation race
+// condition under concurrent spawns."
+func TestWorkerPool_ConcurrentSpawnSources_NoOscillation(t *testing.T) {
+	p := NewWorkerPool(5)
+
+	// Daemon spawns 3 agents
+	s1 := p.TryAcquire()
+	s2 := p.TryAcquire()
+	s3 := p.TryAcquire()
+	if s1 == nil || s2 == nil || s3 == nil {
+		t.Fatal("Should acquire 3 slots")
+	}
+	if p.Active() != 3 {
+		t.Fatalf("Active() = %d after 3 daemon spawns, want 3", p.Active())
+	}
+
+	// 2 manual spawns happen externally (not through pool).
+	// Reconcile with beads showing 5 total agents.
+	result := p.Reconcile(5)
+	if result.Added != 2 {
+		t.Errorf("Reconcile(5): Added = %d, want 2 (2 external agents)", result.Added)
+	}
+	if p.Active() != 5 {
+		t.Errorf("Active() after reconcile = %d, want 5", p.Active())
+	}
+	if !p.AtCapacity() {
+		t.Error("Should be at capacity (5/5)")
+	}
+
+	// KEY: Second reconcile with SAME beads count should be a no-op.
+	// The old code would oscillate here because pendingSpawns was not reset.
+	result = p.Reconcile(5)
+	if result.Added != 0 || result.Freed != 0 {
+		t.Errorf("Second Reconcile(5): Added=%d Freed=%d, want both 0 (stable, no oscillation)",
+			result.Added, result.Freed)
+	}
+	if p.Active() != 5 {
+		t.Errorf("Active() after second reconcile = %d, want 5", p.Active())
+	}
+
+	// 1 daemon agent completes, 1 manual agent completes -> beads = 3
+	result = p.Reconcile(3)
+	if result.Freed != 2 {
+		t.Errorf("Reconcile(3): Freed = %d, want 2", result.Freed)
+	}
+	if p.Active() != 3 {
+		t.Errorf("Active() after completions = %d, want 3", p.Active())
+	}
+	if p.AtCapacity() {
+		t.Error("Should NOT be at capacity (3/5)")
+	}
+
+	// Daemon can spawn again
+	s4 := p.TryAcquire()
+	if s4 == nil {
+		t.Error("Should be able to acquire after agents completed")
+	}
+	if p.Active() != 4 {
+		t.Errorf("Active() after new spawn = %d, want 4", p.Active())
+	}
+
+	// Cleanup
+	p.Release(s1)
+	p.Release(s2)
+	p.Release(s3)
+	p.Release(s4)
+}
+
+// TestWorkerPool_ManualSpawns_DontCauseOscillation verifies that
+// rapid manual spawn/complete cycles don't cause repeated seeding/freeing.
+func TestWorkerPool_ManualSpawns_DontCauseOscillation(t *testing.T) {
+	p := NewWorkerPool(5)
+
+	totalReconcileAdjustments := 0
+
+	// Simulate 5 rapid cycles of manual spawn -> reconcile -> complete -> reconcile
+	for cycle := 0; cycle < 5; cycle++ {
+		// Manual spawn: beads count goes up by 1
+		beadsCount := cycle + 1
+		result := p.Reconcile(beadsCount)
+		if result.Added > 0 || result.Freed > 0 {
+			totalReconcileAdjustments++
+		}
+
+		// Immediate reconcile with same count: should be no-op
+		result = p.Reconcile(beadsCount)
+		if result.Added != 0 || result.Freed != 0 {
+			t.Errorf("Cycle %d: repeat Reconcile(%d) caused change: Added=%d Freed=%d",
+				cycle, beadsCount, result.Added, result.Freed)
+		}
+	}
+
+	// Each cycle should produce exactly 1 adjustment (the first reconcile).
+	if totalReconcileAdjustments != 5 {
+		t.Errorf("Expected exactly 5 adjustments across 5 cycles, got %d", totalReconcileAdjustments)
+	}
+}
+
+// TestWorkerPool_PendingSpawns_CorrectlyAccountedInReconcile verifies that
+// daemon spawns (pendingSpawns) are correctly reset during reconciliation.
+func TestWorkerPool_PendingSpawns_CorrectlyAccountedInReconcile(t *testing.T) {
+	p := NewWorkerPool(5)
+
+	// Reconcile sets beads count to 2
+	p.Reconcile(2)
+	if p.Active() != 2 {
+		t.Fatalf("Active() after initial reconcile = %d, want 2", p.Active())
+	}
+
+	// Daemon spawns 2 more (pendingSpawns = 2, total = 4)
+	s1 := p.TryAcquire()
+	s2 := p.TryAcquire()
+	if s1 == nil || s2 == nil {
+		t.Fatal("Should acquire 2 slots")
+	}
+	if p.Active() != 4 {
+		t.Fatalf("Active() after 2 daemon spawns = %d, want 4", p.Active())
+	}
+
+	// Beads now shows 4 (2 prior + 2 daemon spawns caught up)
+	result := p.Reconcile(4)
+	if result.Added != 0 && result.Freed != 0 {
+		t.Errorf("Reconcile(4): Added=%d Freed=%d, want both 0", result.Added, result.Freed)
+	}
+	if p.Active() != 4 {
+		t.Errorf("Active() after reconcile = %d, want 4", p.Active())
+	}
+
+	// Cleanup
+	p.Release(s1)
+	p.Release(s2)
+}
+
 func TestDaemon_ReconcileActiveAgents_SeedsOnRestart(t *testing.T) {
 	// End-to-end test: daemon with fresh pool seeds from running agent count
 	config := DefaultConfig()

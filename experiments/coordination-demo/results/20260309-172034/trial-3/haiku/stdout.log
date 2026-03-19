@@ -1,6 +1,0 @@
-✅ **Phase: Complete reported to beads**
-
-Deliverables summary:
-- **FormatBytes function** added to `pkg/display/display.go` with binary unit formatting (B, KiB, MiB, GiB, TiB)
-- **25 comprehensive test cases** added covering zero, boundaries, negative values, and edge cases
-- **All tests passing** — no regressions in existing tests

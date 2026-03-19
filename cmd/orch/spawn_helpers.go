@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/config"
+	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/display"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/orch"
@@ -204,6 +205,23 @@ func addUsageInfoToEventData(eventData map[string]interface{}, usageInfo *spawn.
 	if usageInfo.AutoSwitched {
 		eventData["usage_auto_switched"] = true
 		eventData["usage_switch_reason"] = usageInfo.SwitchReason
+	}
+}
+
+// buildConcurrencyCheck returns a ConcurrencyCheck function that queries
+// BeadsActiveCount and user-configured MaxAgents. Returns nil if user config
+// can't be loaded (fail-open: spawn proceeds without capacity check).
+func buildConcurrencyCheck() orch.ConcurrencyCheck {
+	cfg, err := userconfig.Load()
+	if err != nil {
+		return nil
+	}
+	maxAgents := cfg.DaemonMaxAgents()
+	if maxAgents <= 0 {
+		return nil
+	}
+	return func() (int, int) {
+		return daemon.BeadsActiveCount(), maxAgents
 	}
 }
 

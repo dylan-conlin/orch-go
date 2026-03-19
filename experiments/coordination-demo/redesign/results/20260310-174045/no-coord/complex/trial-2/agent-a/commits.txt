@@ -1,1 +1,0 @@
-0d219e34e feat: add VisualWidth and PadToWidth to pkg/display

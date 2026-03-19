@@ -1,14 +1,21 @@
 package orch
 
 import (
+	"fmt"
+
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 )
 
+// ConcurrencyCheck returns (activeCount, maxAgents) for capacity validation.
+// Nil means no concurrency check is available (skip the gate).
+type ConcurrencyCheck func() (activeCount int, maxAgents int)
+
 // RunPreFlightChecks performs all pre-spawn validation checks.
-// Gates removed (zero fires in 30d): verification, concurrency, ratelimit, drain.
+// Concurrency gate reinstated for manual spawns (scs-sp-8dm: manual + daemon
+// spawns in same window exceeded capacity, causing agent stalls).
 // Hotspot gate is advisory-only (never blocks) — daemon extraction cascades handle structural health.
-func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage bool, overrideReason string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error), openQuestionCheckFunc gates.OpenQuestionChecker) (*gates.HotspotResult, *gates.AgreementsResult, *gates.OpenQuestionResult, error) {
+func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage bool, overrideReason string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error), openQuestionCheckFunc gates.OpenQuestionChecker, concurrencyCheck ...ConcurrencyCheck) (*gates.HotspotResult, *gates.AgreementsResult, *gates.OpenQuestionResult, error) {
 	if err := gates.CheckTriageBypass(input.DaemonDriven, bypassTriage, input.SkillName, input.Task); err != nil {
 		logGateDecision("triage", "block", input.SkillName, input.IssueID, "manual spawn without --bypass-triage", nil)
 		return nil, nil, nil, err
@@ -18,6 +25,19 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage bool
 		logGateDecision("triage", "bypass", input.SkillName, input.IssueID, overrideReason, nil)
 	} else if input.DaemonDriven {
 		logGateDecision("triage", "allow", input.SkillName, input.IssueID, "daemon-driven spawn", nil)
+	}
+
+	// Concurrency gate: block manual spawns that would exceed system capacity.
+	// Daemon-driven spawns have their own pool-based capacity check (spawnIssue/TryAcquire).
+	if !input.DaemonDriven && len(concurrencyCheck) > 0 && concurrencyCheck[0] != nil {
+		activeCount, maxAgents := concurrencyCheck[0]()
+		if maxAgents > 0 && activeCount >= maxAgents {
+			logGateDecision("concurrency", "block", input.SkillName, input.IssueID,
+				fmt.Sprintf("%d/%d agents active", activeCount, maxAgents), nil)
+			return nil, nil, nil, fmt.Errorf("at capacity: %d/%d agents active — wait for agents to complete or use daemon workflow (triage:ready label)", activeCount, maxAgents)
+		}
+		logGateDecision("concurrency", "allow", input.SkillName, input.IssueID,
+			fmt.Sprintf("%d/%d agents active", activeCount, maxAgents), nil)
 	}
 
 	govResult := CheckGovernance(input.Task, input.SkillName, input.DaemonDriven)

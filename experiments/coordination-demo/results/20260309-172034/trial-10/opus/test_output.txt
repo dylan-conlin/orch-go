@@ -1,4 +1,0 @@
-=== RUN   TestFormatBytes
---- PASS: TestFormatBytes (0.00s)
-PASS
-ok  	github.com/dylan-conlin/orch-go/pkg/display	(cached)

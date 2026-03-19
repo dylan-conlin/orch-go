@@ -1,3 +1,0 @@
- M .beads/issues.jsonl
-?? done-a.txt
-?? plan-a.txt

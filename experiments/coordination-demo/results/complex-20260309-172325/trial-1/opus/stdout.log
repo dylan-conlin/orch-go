@@ -1,5 +1,0 @@
-Done. Added table rendering capability to `pkg/display`:
-
-- `VisualWidth` in `display.go:97-105` - returns visual width ignoring ANSI codes
-- `RenderTable` in `table.go` - auto-sized column alignment with ANSI support
-- 8 new tests for VisualWidth, 8 tests for RenderTable - all passing

@@ -1,1 +1,0 @@
-5a96cf53e feat: add FormatTable function to pkg/display
