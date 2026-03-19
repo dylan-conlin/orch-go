@@ -48,11 +48,22 @@ func init() {
 
 // GateAuditResult is the top-level result for harness audit.
 type GateAuditResult struct {
-	GeneratedAt  string           `json:"generated_at"`
-	DaysAnalyzed int              `json:"days_analyzed"`
-	TotalSpawns  int              `json:"total_spawns"`
-	Gates        []GateAuditEntry `json:"gates"`
-	Anomalies    []GateAnomaly    `json:"anomalies"`
+	GeneratedAt  string            `json:"generated_at"`
+	DaysAnalyzed int               `json:"days_analyzed"`
+	TotalSpawns  int               `json:"total_spawns"`
+	Gates        []GateAuditEntry  `json:"gates"`
+	DeadSignals  []DeadSignalEntry `json:"dead_signals,omitempty"`
+	Anomalies    []GateAnomaly     `json:"anomalies"`
+}
+
+// DeadSignalEntry flags a feedback channel with zero events over N completions.
+// Zero events + many completions = channel is likely dead (broken/disconnected),
+// not clean (nothing to report).
+type DeadSignalEntry struct {
+	Channel     string `json:"channel"`     // e.g. "verification", "accretion", "duplication"
+	Events      int    `json:"events"`      // event count in window (always 0 for dead signals)
+	Completions int    `json:"completions"` // completions in window
+	Description string `json:"description"` // what event types feed this channel
 }
 
 // GateAuditEntry contains per-gate metrics.
@@ -113,8 +124,9 @@ func buildGateAudit(events []StatsEvent, days int) *GateAuditResult {
 	// Pipeline timing: gate_name → []duration_ms
 	costSamples := make(map[string][]int)
 
-	// Count spawns in window
+	// Count spawns and completions in window
 	totalSpawns := 0
+	totalCompletions := 0
 
 	for _, e := range events {
 		if e.Timestamp < cutoff {
@@ -124,6 +136,26 @@ func buildGateAudit(events []StatsEvent, days int) *GateAuditResult {
 		switch e.Type {
 		case "session.spawned":
 			totalSpawns++
+
+		case "agent.completed":
+			totalCompletions++
+			if e.Data != nil {
+				timings, ok := e.Data["pipeline_timing"].([]interface{})
+				if ok {
+					for _, t := range timings {
+						tm, ok := t.(map[string]interface{})
+						if !ok {
+							continue
+						}
+						name, _ := tm["name"].(string)
+						durationMs, _ := tm["duration_ms"].(float64)
+						skipped, _ := tm["skipped"].(bool)
+						if name != "" && !skipped && durationMs > 0 {
+							costSamples[name] = append(costSamples[name], int(durationMs))
+						}
+					}
+				}
+			}
 
 		case "spawn.gate_decision":
 			if e.Data == nil {
@@ -146,27 +178,6 @@ func buildGateAudit(events []StatsEvent, days int) *GateAuditResult {
 				gc.bypasses++
 			case "allow", "advisory":
 				gc.allows++
-			}
-
-		case "agent.completed":
-			if e.Data == nil {
-				continue
-			}
-			timings, ok := e.Data["pipeline_timing"].([]interface{})
-			if !ok {
-				continue
-			}
-			for _, t := range timings {
-				tm, ok := t.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				name, _ := tm["name"].(string)
-				durationMs, _ := tm["duration_ms"].(float64)
-				skipped, _ := tm["skipped"].(bool)
-				if name != "" && !skipped && durationMs > 0 {
-					costSamples[name] = append(costSamples[name], int(durationMs))
-				}
 			}
 		}
 	}
@@ -233,13 +244,113 @@ func buildGateAudit(events []StatsEvent, days int) *GateAuditResult {
 		}
 	}
 
+	// Dead signal detection: flag feedback channels with zero events over N completions.
+	deadSignals, deadAnomalies := detectDeadSignals(events, cutoff, totalCompletions, days)
+	anomalies = append(anomalies, deadAnomalies...)
+
 	return &GateAuditResult{
 		GeneratedAt:  time.Now().Format(time.RFC3339),
 		DaysAnalyzed: days,
 		TotalSpawns:  totalSpawns,
 		Gates:        entries,
+		DeadSignals:  deadSignals,
 		Anomalies:    anomalies,
 	}
+}
+
+// deadSignalMinCompletions is the minimum number of completions required
+// before flagging a channel as dead. Below this threshold, zero events
+// could simply mean not enough data.
+const deadSignalMinCompletions = 10
+
+// feedbackChannel defines a feedback channel and the event types that feed it.
+type feedbackChannel struct {
+	name        string
+	eventTypes  []string
+	description string
+}
+
+// knownFeedbackChannels lists the channels we expect to produce events
+// during normal operation. If any of these have zero events over N completions,
+// they're likely dead (broken/disconnected), not clean (nothing to report).
+var knownFeedbackChannels = []feedbackChannel{
+	{
+		name:        "verification",
+		eventTypes:  []string{"verification.failed", "verification.bypassed", "verification.auto_skipped"},
+		description: "verification.failed + verification.bypassed + verification.auto_skipped",
+	},
+	{
+		name:        "accretion",
+		eventTypes:  []string{"accretion.delta"},
+		description: "accretion.delta (file growth/shrinkage per agent)",
+	},
+	{
+		name:        "duplication",
+		eventTypes:  []string{"duplication.detected", "duplication.suppressed"},
+		description: "duplication.detected + duplication.suppressed",
+	},
+	{
+		name:        "spawn_gates",
+		eventTypes:  []string{"spawn.gate_decision"},
+		description: "spawn.gate_decision (gate evaluations during spawn)",
+	},
+	{
+		name:        "trigger_outcomes",
+		eventTypes:  []string{"trigger.outcome"},
+		description: "trigger.outcome (daemon detector false positive tracking)",
+	},
+}
+
+// detectDeadSignals checks known feedback channels for zero events over N completions.
+func detectDeadSignals(events []StatsEvent, cutoff int64, completions int, days int) ([]DeadSignalEntry, []GateAnomaly) {
+	if completions < deadSignalMinCompletions {
+		return nil, nil
+	}
+
+	// Count events per channel
+	channelCounts := make(map[string]int)
+	for _, ch := range knownFeedbackChannels {
+		channelCounts[ch.name] = 0
+	}
+
+	// Build event-type-to-channel lookup
+	eventToChannel := make(map[string]string)
+	for _, ch := range knownFeedbackChannels {
+		for _, et := range ch.eventTypes {
+			eventToChannel[et] = ch.name
+		}
+	}
+
+	for _, e := range events {
+		if e.Timestamp < cutoff {
+			continue
+		}
+		if ch, ok := eventToChannel[e.Type]; ok {
+			channelCounts[ch]++
+		}
+	}
+
+	var deadSignals []DeadSignalEntry
+	var anomalies []GateAnomaly
+
+	for _, ch := range knownFeedbackChannels {
+		count := channelCounts[ch.name]
+		if count == 0 {
+			deadSignals = append(deadSignals, DeadSignalEntry{
+				Channel:     ch.name,
+				Events:      0,
+				Completions: completions,
+				Description: ch.description,
+			})
+			anomalies = append(anomalies, GateAnomaly{
+				Gate:    ch.name,
+				Type:    "dead_signal",
+				Message: fmt.Sprintf("0 events over %d completions in %dd — channel may be dead, not clean", completions, days),
+			})
+		}
+	}
+
+	return deadSignals, anomalies
 }
 
 func formatGateAuditText(result *GateAuditResult) string {
@@ -250,24 +361,34 @@ func formatGateAuditText(result *GateAuditResult) string {
 	if len(result.Gates) == 0 {
 		fmt.Fprintln(&b, "  No gate decision events found.")
 		fmt.Fprintln(&b)
-		return b.String()
-	}
+	} else {
+		// Table header
+		fmt.Fprintf(&b, "  %-22s %5s  %5s  %5s  %5s  %7s  %7s  %7s\n",
+			"GATE", "INV", "BLOCK", "BYPAS", "ALLOW", "FIRE%", "COV%", "COST")
+		fmt.Fprintf(&b, "  %s\n", strings.Repeat("─", 78))
 
-	// Table header
-	fmt.Fprintf(&b, "  %-22s %5s  %5s  %5s  %5s  %7s  %7s  %7s\n",
-		"GATE", "INV", "BLOCK", "BYPAS", "ALLOW", "FIRE%", "COV%", "COST")
-	fmt.Fprintf(&b, "  %s\n", strings.Repeat("─", 78))
-
-	for _, g := range result.Gates {
-		costStr := "  —"
-		if g.MeanCostMs > 0 {
-			costStr = fmt.Sprintf("%4dms", g.MeanCostMs)
+		for _, g := range result.Gates {
+			costStr := "  —"
+			if g.MeanCostMs > 0 {
+				costStr = fmt.Sprintf("%4dms", g.MeanCostMs)
+			}
+			fmt.Fprintf(&b, "  %-22s %5d  %5d  %5d  %5d  %6.1f%%  %6.1f%%  %s\n",
+				g.Gate, g.Invocations, g.Blocks, g.Bypasses, g.Allows,
+				g.FireRatePct, g.CoveragePct, costStr)
 		}
-		fmt.Fprintf(&b, "  %-22s %5d  %5d  %5d  %5d  %6.1f%%  %6.1f%%  %s\n",
-			g.Gate, g.Invocations, g.Blocks, g.Bypasses, g.Allows,
-			g.FireRatePct, g.CoveragePct, costStr)
+		fmt.Fprintln(&b)
 	}
-	fmt.Fprintln(&b)
+
+	// Dead signals
+	if len(result.DeadSignals) > 0 {
+		fmt.Fprintf(&b, "DEAD SIGNALS (%d completions, 0 events)\n", result.DeadSignals[0].Completions)
+		fmt.Fprintf(&b, "  %-22s %6s  %s\n", "CHANNEL", "EVENTS", "DESCRIPTION")
+		fmt.Fprintf(&b, "  %s\n", strings.Repeat("─", 60))
+		for _, ds := range result.DeadSignals {
+			fmt.Fprintf(&b, "  %-22s %6d  %s\n", ds.Channel, ds.Events, ds.Description)
+		}
+		fmt.Fprintln(&b)
+	}
 
 	// Anomalies
 	if len(result.Anomalies) > 0 {

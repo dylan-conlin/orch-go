@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -264,5 +265,139 @@ func TestFormatGateAuditJSON(t *testing.T) {
 	}
 	if parsed.DaysAnalyzed != 7 {
 		t.Errorf("expected days=7 in JSON, got %d", parsed.DaysAnalyzed)
+	}
+}
+
+func TestBuildGateAudit_DeadSignal_ZeroEventsOverManyCompletions(t *testing.T) {
+	now := time.Now().Unix()
+	var events []StatsEvent
+
+	// 15 completions — enough to trigger dead signal detection (threshold=10)
+	for i := 0; i < 15; i++ {
+		events = append(events, StatsEvent{
+			Type: "session.spawned", Timestamp: now - int64(i*100),
+			Data: map[string]interface{}{"skill": "feature-impl"},
+		})
+		events = append(events, StatsEvent{
+			Type: "agent.completed", Timestamp: now - int64(i*100),
+			Data: map[string]interface{}{"beads_id": fmt.Sprintf("test-%d", i)},
+		})
+	}
+	// No verification.failed, verification.bypassed, accretion.delta,
+	// duplication.detected, or spawn.gate_decision events at all.
+
+	result := buildGateAudit(events, 30)
+
+	if len(result.DeadSignals) == 0 {
+		t.Fatal("expected dead signal entries for channels with zero events over 15 completions")
+	}
+
+	channelsSeen := make(map[string]bool)
+	for _, ds := range result.DeadSignals {
+		channelsSeen[ds.Channel] = true
+		if ds.Completions != 15 {
+			t.Errorf("channel %s: expected 15 completions, got %d", ds.Channel, ds.Completions)
+		}
+		if ds.Events != 0 {
+			t.Errorf("channel %s: expected 0 events, got %d", ds.Channel, ds.Events)
+		}
+	}
+
+	for _, ch := range []string{"verification", "accretion", "duplication"} {
+		if !channelsSeen[ch] {
+			t.Errorf("expected dead signal for channel %q", ch)
+		}
+	}
+}
+
+func TestBuildGateAudit_DeadSignal_NotFlaggedWithFewCompletions(t *testing.T) {
+	now := time.Now().Unix()
+	var events []StatsEvent
+
+	// Only 3 completions — below threshold
+	for i := 0; i < 3; i++ {
+		events = append(events, StatsEvent{
+			Type: "agent.completed", Timestamp: now - int64(i*100),
+			Data: map[string]interface{}{"beads_id": fmt.Sprintf("test-%d", i)},
+		})
+	}
+
+	result := buildGateAudit(events, 30)
+	if len(result.DeadSignals) != 0 {
+		t.Errorf("expected no dead signals with only 3 completions, got %d", len(result.DeadSignals))
+	}
+}
+
+func TestBuildGateAudit_DeadSignal_NotFlaggedWhenEventsExist(t *testing.T) {
+	now := time.Now().Unix()
+	var events []StatsEvent
+
+	// 15 completions
+	for i := 0; i < 15; i++ {
+		events = append(events, StatsEvent{
+			Type: "agent.completed", Timestamp: now - int64(i*100),
+			Data: map[string]interface{}{"beads_id": fmt.Sprintf("test-%d", i)},
+		})
+	}
+	// Add verification events — this channel should NOT be dead
+	events = append(events, StatsEvent{
+		Type: "verification.failed", Timestamp: now - 50,
+		Data: map[string]interface{}{"gate": "test_evidence"},
+	})
+	events = append(events, StatsEvent{
+		Type: "verification.bypassed", Timestamp: now - 60,
+		Data: map[string]interface{}{"gate": "git_diff"},
+	})
+
+	result := buildGateAudit(events, 30)
+
+	for _, ds := range result.DeadSignals {
+		if ds.Channel == "verification" {
+			t.Error("verification channel should NOT be flagged as dead when it has events")
+		}
+	}
+}
+
+func TestBuildGateAudit_DeadSignal_InAnomalies(t *testing.T) {
+	now := time.Now().Unix()
+	var events []StatsEvent
+
+	for i := 0; i < 15; i++ {
+		events = append(events, StatsEvent{
+			Type: "agent.completed", Timestamp: now - int64(i*100),
+			Data: map[string]interface{}{"beads_id": fmt.Sprintf("test-%d", i)},
+		})
+	}
+
+	result := buildGateAudit(events, 30)
+
+	deadSignalAnomalies := 0
+	for _, a := range result.Anomalies {
+		if a.Type == "dead_signal" {
+			deadSignalAnomalies++
+		}
+	}
+	if deadSignalAnomalies == 0 {
+		t.Error("expected dead_signal anomalies to appear in anomalies list")
+	}
+}
+
+func TestBuildGateAudit_DeadSignal_TextOutput(t *testing.T) {
+	audit := &GateAuditResult{
+		DaysAnalyzed: 30,
+		TotalSpawns:  20,
+		DeadSignals: []DeadSignalEntry{
+			{Channel: "verification", Events: 0, Completions: 20, Description: "verification.failed + verification.bypassed"},
+		},
+		Anomalies: []GateAnomaly{
+			{Gate: "verification", Type: "dead_signal", Message: "0 events over 20 completions — channel may be dead, not clean"},
+		},
+	}
+	output := formatGateAuditText(audit)
+	if !contains(output, "DEAD SIGNALS") {
+		t.Error("expected text output to contain DEAD SIGNALS section")
+	}
+	if !contains(output, "verification") {
+		t.Error("expected text output to contain verification channel")
 	}
 }
