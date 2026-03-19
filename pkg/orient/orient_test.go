@@ -720,22 +720,35 @@ func TestFormatOrientation_ReflectSummaryEmpty(t *testing.T) {
 	}
 }
 
-func TestFormatOrientation_ReflectSummaryOrphanRate(t *testing.T) {
+func TestFormatOrientation_ReflectSummarySessionOrphans(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1},
 		ReflectSummary: &ReflectSummary{
-			Total:       5,
-			Synthesis:   5,
-			OrphanRate:  52.0,
-			OrphanTotal: 196,
+			Total:                 5,
+			Synthesis:             5,
+			SessionOrphans:        3,
+			SessionInvestigations: 5,
 		},
 	}
 	output := FormatOrientation(data)
-	if !strings.Contains(output, "Orphan rate: 52.0%") {
-		t.Errorf("missing orphan rate, got:\n%s", output)
+	if !strings.Contains(output, "Session orphans: 3 unlinked investigations (of 5 produced)") {
+		t.Errorf("missing session orphans, got:\n%s", output)
 	}
-	if !strings.Contains(output, "196 investigations") {
-		t.Errorf("missing orphan total, got:\n%s", output)
+}
+
+func TestFormatOrientation_ReflectSummarySessionOrphansAllLinked(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		ReflectSummary: &ReflectSummary{
+			Total:                 5,
+			Synthesis:             5,
+			SessionOrphans:        0,
+			SessionInvestigations: 4,
+		},
+	}
+	output := FormatOrientation(data)
+	if !strings.Contains(output, "Session orphans: 0 (all 4 investigations linked)") {
+		t.Errorf("missing all-linked message, got:\n%s", output)
 	}
 }
 

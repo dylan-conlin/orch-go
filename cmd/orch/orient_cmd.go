@@ -751,7 +751,7 @@ func parseInProgressCount(output string) int {
 
 // computeDivergenceAlerts compares activity metrics against impact metrics
 // and returns alerts for sustained gaps. Uses data already collected by orient:
-// throughput (completion rate, merge rate) and reflect summary (orphan rate, stale decisions).
+// throughput (completion rate, merge rate) and reflect summary (session orphans, stale decisions).
 func computeDivergenceAlerts(data *orient.OrientationData) []orient.DivergenceAlert {
 	tp := data.Throughput
 

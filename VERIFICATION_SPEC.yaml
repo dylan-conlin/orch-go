@@ -1,29 +1,38 @@
-issue: orch-go-wzziz
-title: "Lower model contradictions detector P2→P3, wire outcome tracking"
+issue: orch-go-tj5d9
+title: "Orphan rate: show delta per session instead of absolute rate in orient display"
 skill: feature-impl
 tier: light
 
 verification:
   automated:
-    - command: "go test ./pkg/daemon/ -run TestModelContradictions -v -count=1"
-      expected: "PASS — Priority = 3 (was 2)"
-    - command: "go test ./pkg/daemon/ -run 'TestExtractDetectorName|TestNewDefaultDetectorOutcome|TestComputeDetectorOutcomes|TestDetectorBudget' -v -count=1"
-      expected: "PASS — all outcome tracking tests pass"
     - command: "go build ./cmd/orch/"
-      expected: "clean compile with DetectorOutcomes wiring"
+      expected: "clean compile"
+    - command: "go test ./pkg/orient/ -run 'TestComputeDivergence|TestFormatDivergence|TestFormatOrientation_ReflectSummary' -v -count=1"
+      expected: "PASS — 14 tests including session orphan display and divergence"
+    - command: "go test ./pkg/kbmetrics/ -run TestComputeSession -v -count=1"
+      expected: "PASS — 4 tests for date-filtered orphan computation"
+    - command: "go test ./cmd/orch/ -run 'TestParseReflectSuggestions|TestComputeReflect' -v -count=1"
+      expected: "PASS — orphan_rate no longer parsed from reflect-suggestions.json"
 
-  manual:
-    - step: "grep 'Priority:.*3' pkg/daemon/trigger_detectors_phase2.go — model_contradictions is P3"
-    - step: "grep 'DetectorOutcomes' cmd/orch/daemon_loop.go — wiring exists"
+  display:
+    before: "Orphan rate: 91.0% (196 investigations)"
+    after_with_orphans: "Session orphans: 3 unlinked investigations (of 5 produced)"
+    after_all_linked: "Session orphans: 0 (all 4 investigations linked)"
 
 deliverables:
-  - path: pkg/daemon/trigger_detectors_phase2.go
-    description: "Changed model_contradictions Priority from 2 to 3"
-  - path: pkg/daemon/detector_outcomes.go
-    description: "Added defaultDetectorOutcomeService (beads query), extractDetectorName, NewDefaultDetectorOutcomeService"
-  - path: pkg/daemon/detector_outcomes_test.go
-    description: "Added TestExtractDetectorName table test and TestNewDefaultDetectorOutcomeService"
-  - path: pkg/daemon/trigger_detectors_phase2_test.go
-    description: "Updated priority assertion from 2 to 3"
-  - path: cmd/orch/daemon_loop.go
-    description: "Wired d.DetectorOutcomes = daemon.NewDefaultDetectorOutcomeService()"
+  - path: pkg/kbmetrics/session_orphans.go
+    description: "ComputeSessionOrphans — date-filtered orphan computation"
+  - path: pkg/kbmetrics/session_orphans_test.go
+    description: "Tests for session orphan computation"
+  - path: pkg/orient/orient.go
+    description: "ReflectSummary fields + display format changed to session-scoped"
+  - path: pkg/orient/orient_test.go
+    description: "Updated tests for session orphan display"
+  - path: pkg/orient/divergence.go
+    description: "Divergence detection uses SessionOrphans instead of OrphanRate"
+  - path: pkg/orient/divergence_test.go
+    description: "Updated divergence tests"
+  - path: cmd/orch/orient_cmd.go
+    description: "Added enrichReflectWithSessionOrphans, removed orphan_rate parsing"
+  - path: cmd/orch/orient_cmd_test.go
+    description: "Updated test for orphan_rate ignored"
