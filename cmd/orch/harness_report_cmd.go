@@ -28,6 +28,7 @@ Examples:
   orch harness report --json       # Machine-readable output
   orch harness report --verbose    # Include measurement coverage details`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		emitCommandInvoked("harness report", flagsFromCmd(cmd)...)
 		return runHarnessReport()
 	},
 }

@@ -75,6 +75,9 @@ const (
 	// EventTypeTriggerOutcome logs per-detector false positive tracking when
 	// daemon-triggered issues close without action (expired).
 	EventTypeTriggerOutcome = "trigger.outcome"
+	// EventTypeCommandInvoked logs when a measurement/diagnostic command is run,
+	// with caller context (human, daemon, orchestrator, worker) to track actual usage.
+	EventTypeCommandInvoked = "command.invoked"
 )
 
 // Event is a loggable event for events.jsonl.

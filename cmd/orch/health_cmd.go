@@ -29,6 +29,7 @@ Examples:
   orch health          # Show health score with trends
   orch health --json   # Machine-readable JSON output`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		emitCommandInvoked("health", flagsFromCmd(cmd)...)
 		// Reuse the doctor health flags for JSON output
 		doctorHealthJSON = healthJSON
 		return runDoctorHealth()

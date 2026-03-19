@@ -62,6 +62,7 @@ Examples:
   orch doctor --health         # Track health invariants with trends and alerts
   orch doctor --health-json    # Health report as JSON`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		emitCommandInvoked("doctor", flagsFromCmd(cmd)...)
 		return runDoctor()
 	},
 }

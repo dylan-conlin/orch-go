@@ -38,6 +38,7 @@ Examples:
   orch stats --verbose          # Show additional metrics
   orch stats --snapshot         # Record gate accuracy baseline`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		emitCommandInvoked("stats", flagsFromCmd(cmd)...)
 		return runStats()
 	},
 }

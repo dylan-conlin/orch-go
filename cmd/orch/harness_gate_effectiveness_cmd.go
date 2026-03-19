@@ -40,6 +40,7 @@ Examples:
   orch harness gate-effectiveness --days 14    # Last 14 days
   orch harness gate-effectiveness --json       # Machine-readable`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		emitCommandInvoked("harness gate-effectiveness", flagsFromCmd(cmd)...)
 		return runGateEffectiveness()
 	},
 }

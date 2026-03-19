@@ -652,6 +652,7 @@ Agent lifecycle events are logged to `~/.orch/events.jsonl` for stats aggregatio
 | `account.auto_switched` | spawn pipeline | Account auto-switched on rate limit |
 | `review_tier.escalated` | review | Review tier auto-escalated |
 | `trigger.outcome` | daemon | Per-detector false positive tracking (issue closed without action) |
+| `command.invoked` | measurement commands | Tracks which diagnostic commands are used and by whom (human/orchestrator/worker) |
 
 **Enrichment fields:** `verification.failed`, `agent.completed`, `verification.bypassed`, and `verification.auto_skipped` events include a `verification_level` field (V0-V3) tracking what "verified" means at completion.
 
