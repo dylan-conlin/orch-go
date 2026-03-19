@@ -16,6 +16,9 @@ var (
 	kbAuditProvenanceModel   string
 
 	kbAuditModelsJSON bool
+
+	kbAuditDecisionsJSON bool
+	kbAuditDecisionsType string
 )
 
 var kbAuditCmd = &cobra.Command{
@@ -141,12 +144,75 @@ func runKBAuditModels() error {
 	return nil
 }
 
+var kbAuditDecisionsCmd = &cobra.Command{
+	Use:   "decisions",
+	Short: "Audit decisions for structural anchoring (gates, hooks, tests, file existence)",
+	Long: `Audit .kb/decisions/ by splitting into architectural-principle vs implementation
+decisions and applying type-appropriate validation.
+
+Architectural decisions (principles, patterns, models): checked for reflection
+in gates, hooks, tests, CLAUDE.md, and daemon/skill config.
+
+Implementation decisions (specific code changes): checked for file existence
+of referenced paths and frontmatter block patterns.
+
+Each decision is scored: enforced (>= 50% checks pass), partial (some pass),
+or unanchored (no checks pass).
+
+Examples:
+  orch kb audit decisions                        # Full report
+  orch kb audit decisions --json                 # Machine-readable
+  orch kb audit decisions --type architectural   # Only architectural
+  orch kb audit decisions --type implementation  # Only implementation`,
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runKBAuditDecisions()
+	},
+}
+
+func runKBAuditDecisions() error {
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	kbDir := filepath.Join(projectDir, ".kb")
+	reports, err := kbmetrics.AuditDecisions(kbDir, projectDir)
+	if err != nil {
+		return fmt.Errorf("audit decisions: %w", err)
+	}
+
+	// Filter by type if requested
+	if kbAuditDecisionsType != "" {
+		dt := kbmetrics.DecisionType(kbAuditDecisionsType)
+		var filtered []kbmetrics.DecisionReport
+		for _, r := range reports {
+			if r.Type == dt {
+				filtered = append(filtered, r)
+			}
+		}
+		reports = filtered
+	}
+
+	if kbAuditDecisionsJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(reports)
+	}
+
+	fmt.Print(kbmetrics.FormatDecisionAuditText(reports))
+	return nil
+}
+
 func init() {
 	kbAuditProvenanceCmd.Flags().BoolVar(&kbAuditProvenanceJSON, "json", false, "Output as JSON")
 	kbAuditProvenanceCmd.Flags().BoolVar(&kbAuditProvenanceVerbose, "verbose", false, "Show individual unannotated claims")
 	kbAuditProvenanceCmd.Flags().StringVar(&kbAuditProvenanceModel, "model", "", "Audit a specific model by name")
 	kbAuditModelsCmd.Flags().BoolVar(&kbAuditModelsJSON, "json", false, "Output as JSON")
+	kbAuditDecisionsCmd.Flags().BoolVar(&kbAuditDecisionsJSON, "json", false, "Output as JSON")
+	kbAuditDecisionsCmd.Flags().StringVar(&kbAuditDecisionsType, "type", "", "Filter by type: architectural or implementation")
 	kbAuditCmd.AddCommand(kbAuditProvenanceCmd)
 	kbAuditCmd.AddCommand(kbAuditModelsCmd)
+	kbAuditCmd.AddCommand(kbAuditDecisionsCmd)
 	kbCmd.AddCommand(kbAuditCmd)
 }
