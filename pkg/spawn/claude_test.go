@@ -387,7 +387,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp, tt.configDir, tt.beadsDir, tt.beadsID, "", 0, "", "", false, 0)
+			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp, tt.configDir, tt.beadsDir, tt.beadsID, "", 0, "", "")
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {
@@ -436,7 +436,7 @@ func TestBuildClaudeLaunchCommandMaxTurns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", tt.maxTurns, "", "", false, 0)
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", tt.maxTurns, "", "")
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {
@@ -492,7 +492,7 @@ func TestBuildClaudeLaunchCommandEffort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", tt.effort, 0, "", "", false, 0)
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", tt.effort, 0, "", "")
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {
@@ -546,7 +546,7 @@ func TestBuildClaudeLaunchCommandSystemPromptFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, "", tt.systemPromptFile, false, 0)
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, "", tt.systemPromptFile)
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {
@@ -644,67 +644,6 @@ func TestWriteSkillPromptFile(t *testing.T) {
 	})
 }
 
-// TestBuildClaudeLaunchCommandOpsec tests OPSEC sandbox env var injection.
-func TestBuildClaudeLaunchCommandOpsec(t *testing.T) {
-	tests := []struct {
-		name         string
-		opsec        bool
-		proxyPort    int
-		wantContains []string
-		wantExcludes []string
-	}{
-		{
-			name:  "opsec disabled omits env vars",
-			opsec: false,
-			wantExcludes: []string{
-				"OPSEC_SANDBOX",
-				"HTTP_PROXY",
-				"HTTPS_PROXY",
-				"ALL_PROXY",
-			},
-		},
-		{
-			name:      "opsec enabled with default port",
-			opsec:     true,
-			proxyPort: 0,
-			wantContains: []string{
-				"export OPSEC_SANDBOX=1",
-				"export HTTP_PROXY=http://127.0.0.1:8199",
-				"export HTTPS_PROXY=http://127.0.0.1:8199",
-				"export ALL_PROXY=http://127.0.0.1:8199",
-			},
-		},
-		{
-			name:      "opsec enabled with custom port",
-			opsec:     true,
-			proxyPort: 9090,
-			wantContains: []string{
-				"export OPSEC_SANDBOX=1",
-				"export HTTP_PROXY=http://127.0.0.1:9090",
-				"export HTTPS_PROXY=http://127.0.0.1:9090",
-				"export ALL_PROXY=http://127.0.0.1:9090",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, "", "", tt.opsec, tt.proxyPort)
-
-			for _, want := range tt.wantContains {
-				if !strings.Contains(cmd, want) {
-					t.Errorf("command missing %q\nGot: %s", want, cmd)
-				}
-			}
-			for _, exclude := range tt.wantExcludes {
-				if strings.Contains(cmd, exclude) {
-					t.Errorf("command should not contain %q\nGot: %s", exclude, cmd)
-				}
-			}
-		})
-	}
-}
-
 // TestBuildClaudeLaunchCommandSettings tests --settings flag injection.
 func TestBuildClaudeLaunchCommandSettings(t *testing.T) {
 	tests := []struct {
@@ -738,7 +677,7 @@ func TestBuildClaudeLaunchCommandSettings(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, tt.settings, "", false, 0)
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, tt.settings, "")
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {

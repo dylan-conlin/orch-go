@@ -24,14 +24,6 @@ type Config struct {
 	Claude    ClaudeConfig      `yaml:"claude,omitempty"`   // Claude mode settings
 	OpenCode  OpenCodeConfig    `yaml:"opencode,omitempty"` // OpenCode mode settings
 	Servers   map[string]int    `yaml:"servers,omitempty"`
-	Opsec     OpsecConfig       `yaml:"opsec,omitempty"`    // OPSEC enforcement settings
-}
-
-// OpsecConfig holds settings for network egress enforcement on spawned agents.
-type OpsecConfig struct {
-	Sandbox        bool     `yaml:"sandbox"`                    // Enable sandbox-exec wrapping for Bash commands
-	ProxyPort      int      `yaml:"proxy_port,omitempty"`       // Local proxy port (default: 8199)
-	BlockedDomains []string `yaml:"blocked_domains,omitempty"`  // Additional blocked domains (merged with global)
 }
 
 // ConfigMeta tracks which YAML keys were explicitly set.

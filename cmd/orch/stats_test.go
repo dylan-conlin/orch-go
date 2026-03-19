@@ -1936,8 +1936,8 @@ func TestSkillInferenceStats(t *testing.T) {
 	if si.Abandoned != 1 {
 		t.Errorf("Abandoned = %d, want 1", si.Abandoned)
 	}
-	if si.SuccessRate < 74.9 || si.SuccessRate > 75.1 {
-		t.Errorf("SuccessRate = %.1f%%, want 75.0%%", si.SuccessRate)
+	if si.CompletionRate < 74.9 || si.CompletionRate > 75.1 {
+		t.Errorf("CompletionRate = %.1f%%, want 75.0%%", si.CompletionRate)
 	}
 
 	// By method: type=1 completed (issue-1), title=1 completed (issue-2),
@@ -1958,8 +1958,8 @@ func TestSkillInferenceStats(t *testing.T) {
 		if ms.Completed != 1 {
 			t.Errorf("type method: Completed = %d, want 1", ms.Completed)
 		}
-		if ms.SuccessRate < 99.9 {
-			t.Errorf("type method: SuccessRate = %.1f%%, want 100%%", ms.SuccessRate)
+		if ms.CompletionRate < 99.9 {
+			t.Errorf("type method: CompletionRate = %.1f%%, want 100%%", ms.CompletionRate)
 		}
 	}
 	if ms, ok := methodMap["label"]; !ok {
@@ -1968,8 +1968,8 @@ func TestSkillInferenceStats(t *testing.T) {
 		if ms.Abandoned != 1 {
 			t.Errorf("label method: Abandoned = %d, want 1", ms.Abandoned)
 		}
-		if ms.SuccessRate > 0.1 {
-			t.Errorf("label method: SuccessRate = %.1f%%, want 0%%", ms.SuccessRate)
+		if ms.CompletionRate > 0.1 {
+			t.Errorf("label method: CompletionRate = %.1f%%, want 0%%", ms.CompletionRate)
 		}
 	}
 
@@ -1990,8 +1990,8 @@ func TestSkillInferenceStats(t *testing.T) {
 		if ss.Completed != 2 {
 			t.Errorf("feature-impl: Completed = %d, want 2", ss.Completed)
 		}
-		if ss.SuccessRate < 99.9 {
-			t.Errorf("feature-impl: SuccessRate = %.1f%%, want 100%%", ss.SuccessRate)
+		if ss.CompletionRate < 99.9 {
+			t.Errorf("feature-impl: CompletionRate = %.1f%%, want 100%%", ss.CompletionRate)
 		}
 	}
 	if ss, ok := skillMap["investigation"]; !ok {

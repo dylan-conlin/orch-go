@@ -195,7 +195,9 @@ func TestParseReflectSuggestions_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestParseReflectSuggestions_OrphanRate(t *testing.T) {
+func TestParseReflectSuggestions_OrphanRateIgnored(t *testing.T) {
+	// orphan_rate in reflect-suggestions.json is no longer parsed —
+	// session-scoped orphans are computed live from .kb/investigations/
 	input := `{
 		"timestamp": "2026-03-09T00:00:00Z",
 		"synthesis": [{"topic": "test", "count": 3}],
@@ -214,11 +216,9 @@ func TestParseReflectSuggestions_OrphanRate(t *testing.T) {
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
-	if result.OrphanRate != 52.0 {
-		t.Errorf("OrphanRate = %f, want 52.0", result.OrphanRate)
-	}
-	if result.OrphanTotal != 196 {
-		t.Errorf("OrphanTotal = %d, want 196", result.OrphanTotal)
+	// Session orphans are populated by enrichReflectWithSessionOrphans, not parseReflectSuggestions
+	if result.SessionOrphans != 0 {
+		t.Errorf("SessionOrphans = %d, want 0 (not populated by parser)", result.SessionOrphans)
 	}
 }
 

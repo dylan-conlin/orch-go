@@ -17,6 +17,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/health"
+	"github.com/dylan-conlin/orch-go/pkg/kbmetrics"
 	"github.com/dylan-conlin/orch-go/pkg/orient"
 	"github.com/dylan-conlin/orch-go/pkg/thread"
 	"github.com/spf13/cobra"
@@ -129,6 +130,9 @@ func runOrient() error {
 
 	// 11. Reflect suggestions
 	data.ReflectSummary = collectReflectSuggestions()
+
+	// 11b. Session-scoped orphan count (replaces absolute orphan rate)
+	enrichReflectWithSessionOrphans(data.ReflectSummary, data.PreviousSession, projectDir)
 
 	// Divergence detection (activity vs impact metrics)
 	data.DivergenceAlerts = computeDivergenceAlerts(data)
@@ -486,10 +490,6 @@ func parseReflectSuggestions(data []byte) *orient.ReflectSummary {
 		Stale      []json.RawMessage `json:"stale"`
 		Drift      []json.RawMessage `json:"drift"`
 		Agreements []json.RawMessage `json:"agreements"`
-		OrphanRate *struct {
-			Total      int     `json:"total"`
-			OrphanRate float64 `json:"orphan_rate"`
-		} `json:"orphan_rate"`
 	}
 
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -533,13 +533,37 @@ func parseReflectSuggestions(data []byte) *orient.ReflectSummary {
 		summary.Age = computeReflectAge(raw.Timestamp)
 	}
 
-	// Orphan rate
-	if raw.OrphanRate != nil && raw.OrphanRate.Total > 0 {
-		summary.OrphanRate = raw.OrphanRate.OrphanRate
-		summary.OrphanTotal = raw.OrphanRate.Total
+	return summary
+}
+
+// enrichReflectWithSessionOrphans computes session-scoped orphan counts
+// and injects them into the ReflectSummary. Uses the previous session date
+// as the cutoff — investigations created since then are counted.
+func enrichReflectWithSessionOrphans(summary *orient.ReflectSummary, prevSession *orient.DebriefSummary, projectDir string) {
+	if summary == nil {
+		return
 	}
 
-	return summary
+	// Determine cutoff: previous session date, or 24h ago as fallback
+	var since time.Time
+	if prevSession != nil && prevSession.Date != "" {
+		parsed, err := time.Parse("2006-01-02", prevSession.Date)
+		if err == nil {
+			since = parsed
+		}
+	}
+	if since.IsZero() {
+		since = time.Now().Add(-24 * time.Hour)
+	}
+
+	kbDir := filepath.Join(projectDir, ".kb")
+	report, err := kbmetrics.ComputeSessionOrphans(kbDir, since)
+	if err != nil {
+		return
+	}
+
+	summary.SessionOrphans = report.Orphaned
+	summary.SessionInvestigations = report.Investigations
 }
 
 // computeReflectAge computes a human-readable age from an ISO timestamp.
@@ -740,9 +764,10 @@ func computeDivergenceAlerts(data *orient.OrientationData) []orient.DivergenceAl
 		input.CompletionRate = float64(tp.Completions) / float64(tp.Spawns)
 	}
 
-	// Orphan rate and stale decisions from reflect summary
+	// Session orphans and stale decisions from reflect summary
 	if data.ReflectSummary != nil {
-		input.OrphanRate = data.ReflectSummary.OrphanRate
+		input.SessionOrphans = data.ReflectSummary.SessionOrphans
+		input.SessionInvestigations = data.ReflectSummary.SessionInvestigations
 		input.StaleDecisions = data.ReflectSummary.Stale
 		// Total decisions = stale + non-stale; approximate from reflect data
 		// Stale count comes from reflect; total is not directly available,
@@ -757,13 +782,13 @@ func computeDivergenceAlerts(data *orient.OrientationData) []orient.DivergenceAl
 	eventsPath := filepath.Join(home, ".orch", "events.jsonl")
 	if store, err := events.ComputeLearning(eventsPath); err == nil {
 		var totalCompletions, totalRework int
-		var totalSuccessRate float64
+		var totalCompletionRate float64
 		var skillCount int
 		for _, sl := range store.Skills {
 			totalCompletions += sl.TotalCompletions
 			totalRework += sl.ReworkCount
 			if sl.TotalCompletions > 0 {
-				totalSuccessRate += sl.SuccessRate
+				totalCompletionRate += sl.SuccessRate
 				skillCount++
 			}
 		}
@@ -771,7 +796,7 @@ func computeDivergenceAlerts(data *orient.OrientationData) []orient.DivergenceAl
 			input.ReworkRate = float64(totalRework) / float64(totalCompletions)
 		}
 		if skillCount > 0 {
-			input.SelfReportedSuccess = totalSuccessRate / float64(skillCount)
+			input.SelfReportedCompletion = totalCompletionRate / float64(skillCount)
 		}
 	}
 

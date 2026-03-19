@@ -90,13 +90,13 @@ func (a *statsAggregator) calcSkillInferenceStats() {
 	// Compute rates
 	total := a.report.SkillInferenceStats.Completed + a.report.SkillInferenceStats.Abandoned
 	if total > 0 {
-		a.report.SkillInferenceStats.SuccessRate = float64(a.report.SkillInferenceStats.Completed) / float64(total) * 100
+		a.report.SkillInferenceStats.CompletionRate = float64(a.report.SkillInferenceStats.Completed) / float64(total) * 100
 	}
 
 	for _, ms := range methodStats {
 		t := ms.Completed + ms.Abandoned
 		if t > 0 {
-			ms.SuccessRate = float64(ms.Completed) / float64(t) * 100
+			ms.CompletionRate = float64(ms.Completed) / float64(t) * 100
 		}
 		a.report.SkillInferenceStats.ByMethod = append(a.report.SkillInferenceStats.ByMethod, *ms)
 	}
@@ -107,7 +107,7 @@ func (a *statsAggregator) calcSkillInferenceStats() {
 	for _, ss := range skillStats {
 		t := ss.Completed + ss.Abandoned
 		if t > 0 {
-			ss.SuccessRate = float64(ss.Completed) / float64(t) * 100
+			ss.CompletionRate = float64(ss.Completed) / float64(t) * 100
 		}
 		a.report.SkillInferenceStats.BySkill = append(a.report.SkillInferenceStats.BySkill, *ss)
 	}

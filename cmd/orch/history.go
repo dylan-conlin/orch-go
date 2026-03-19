@@ -36,7 +36,7 @@ var historyCmd = &cobra.Command{
 
 Analyzes workspace files to extract:
 - Skill usage patterns
-- Success rates by skill
+- Completion rates by skill
 - Adoption metrics
 
 Examples:
@@ -73,7 +73,7 @@ type SkillStats struct {
 	TotalUses      int      `json:"total_uses"`
 	SuccessfulUses int      `json:"successful_uses"`
 	FailedUses     int      `json:"failed_uses"`
-	SuccessRate    float64  `json:"success_rate"`
+	CompletionRate float64  `json:"completion_rate"`
 	Workspaces     []string `json:"workspaces"`
 }
 
@@ -327,7 +327,7 @@ func aggregateSkillStats(usages []SkillUsage) map[string]SkillStats {
 		}
 
 		if stats.TotalUses > 0 {
-			stats.SuccessRate = float64(stats.SuccessfulUses) / float64(stats.TotalUses) * 100
+			stats.CompletionRate = float64(stats.SuccessfulUses) / float64(stats.TotalUses) * 100
 		}
 
 		statsMap[usage.SkillName] = stats
@@ -374,7 +374,7 @@ func formatSkillAnalytics(analytics *SkillAnalytics) string {
 		for _, stats := range analytics.Skills {
 			successRateStr := "N/A"
 			if stats.TotalUses > 0 {
-				successRateStr = fmt.Sprintf("%.0f%% success", stats.SuccessRate)
+				successRateStr = fmt.Sprintf("%.0f%% completed", stats.CompletionRate)
 			}
 
 			usesStr := "use"

@@ -319,7 +319,7 @@
 			<div class="space-y-2">
 				<div>
 					<h2 class="text-sm font-medium">Event Data Quality</h2>
-					<p class="text-[10px] text-muted-foreground mt-0.5">How complete are completion event fields — not agent success rate</p>
+					<p class="text-[10px] text-muted-foreground mt-0.5">How complete are completion event fields — not agent completion rate</p>
 				</div>
 				<div class="rounded-md border p-3 bg-card">
 					<div class="flex items-center justify-between mb-2">

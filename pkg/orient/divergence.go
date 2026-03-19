@@ -9,8 +9,8 @@ import (
 // DivergenceThreshold is the minimum gap (0.0-1.0) before an alert fires.
 const DivergenceThreshold = 0.20
 
-// OrphanRateThreshold is the orphan rate percentage above which an alert fires.
-const OrphanRateThreshold = 30.0
+// SessionOrphanThreshold is the number of unlinked session investigations above which an alert fires.
+const SessionOrphanThreshold = 2
 
 // StaleDecisionThreshold is the fraction of stale decisions above which an alert fires.
 const StaleDecisionThreshold = 0.25
@@ -19,12 +19,13 @@ const StaleDecisionThreshold = 0.25
 type DivergenceInput struct {
 	// Activity metrics (self-reported)
 	CompletionRate      float64 // completions / spawns (0.0-1.0)
-	SelfReportedSuccess float64 // success rate from events.jsonl (0.0-1.0)
+	SelfReportedCompletion float64 // completion rate from events.jsonl (0.0-1.0)
 
 	// Ground-truth metrics (external)
-	ReworkRate float64 // rework count / completions (0.0-1.0)
-	OrphanRate     float64 // investigation orphan percentage (0-100)
-	StaleDecisions int     // count of stale decisions from reflect
+	ReworkRate            float64 // rework count / completions (0.0-1.0)
+	SessionOrphans       int     // unlinked investigations from last session
+	SessionInvestigations int    // total investigations from last session
+	StaleDecisions       int     // count of stale decisions from reflect
 	TotalDecisions int     // total decisions for stale rate computation
 
 	Days int // time window for context
@@ -44,28 +45,29 @@ type DivergenceAlert struct {
 func ComputeDivergence(input DivergenceInput) []DivergenceAlert {
 	var alerts []DivergenceAlert
 
-	// Rework gap: self-reported success vs (1 - rework rate)
+	// Rework gap: self-reported completion vs (1 - rework rate)
 	// Only meaningful when both signals are present
-	if input.SelfReportedSuccess > 0 && input.ReworkRate > 0 {
+	if input.SelfReportedCompletion > 0 && input.ReworkRate > 0 {
 		groundTruthSuccess := 1.0 - input.ReworkRate
-		gap := math.Abs(input.SelfReportedSuccess - groundTruthSuccess)
+		gap := math.Abs(input.SelfReportedCompletion - groundTruthSuccess)
 		if gap >= DivergenceThreshold {
 			alerts = append(alerts, DivergenceAlert{
 				Type:    "rework_gap",
-				Message: fmt.Sprintf("%d%% self-reported success but %d%% rework rate", pct(input.SelfReportedSuccess), pct(input.ReworkRate)),
+				Message: fmt.Sprintf("%d%% self-reported completion but %d%% rework rate", pct(input.SelfReportedCompletion), pct(input.ReworkRate)),
 				Gap:     gap,
 				Level:   alertLevel(gap),
 			})
 		}
 	}
 
-	// Orphan rate: high investigation orphan rate means work isn't connecting
-	if input.OrphanRate >= OrphanRateThreshold {
+	// Session orphans: unlinked investigations from last session
+	if input.SessionOrphans >= SessionOrphanThreshold {
+		gap := float64(input.SessionOrphans) / float64(input.SessionInvestigations)
 		alerts = append(alerts, DivergenceAlert{
-			Type:    "orphan_rate",
-			Message: fmt.Sprintf("%.0f%% investigation orphan rate — work not connecting to knowledge base", input.OrphanRate),
-			Gap:     input.OrphanRate / 100.0,
-			Level:   alertLevel(input.OrphanRate / 100.0),
+			Type:    "session_orphans",
+			Message: fmt.Sprintf("%d unlinked investigations this session — work not connecting to knowledge base", input.SessionOrphans),
+			Gap:     gap,
+			Level:   alertLevel(gap),
 		})
 	}
 

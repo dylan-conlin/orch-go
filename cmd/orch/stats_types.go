@@ -288,7 +288,7 @@ type SkillInferenceStats struct {
 	TotalInferences int                         `json:"total_inferences"`
 	Completed       int                         `json:"completed"`       // Inferred spawns that completed
 	Abandoned       int                         `json:"abandoned"`       // Inferred spawns that were abandoned
-	SuccessRate     float64                     `json:"success_rate"`    // % completed / (completed + abandoned)
+	CompletionRate  float64                     `json:"completion_rate"` // % completed / (completed + abandoned)
 	ByMethod        []InferenceMethodStats      `json:"by_method,omitempty"`
 	BySkill         []InferenceSkillStats       `json:"by_skill,omitempty"`
 }
@@ -299,16 +299,16 @@ type InferenceMethodStats struct {
 	Inferences  int     `json:"inferences"`
 	Completed   int     `json:"completed"`
 	Abandoned   int     `json:"abandoned"`
-	SuccessRate float64 `json:"success_rate"`
+	CompletionRate float64 `json:"completion_rate"`
 }
 
 // InferenceSkillStats tracks inference outcomes per inferred skill.
 type InferenceSkillStats struct {
-	Skill       string  `json:"skill"`
-	Inferences  int     `json:"inferences"`
-	Completed   int     `json:"completed"`
-	Abandoned   int     `json:"abandoned"`
-	SuccessRate float64 `json:"success_rate"`
+	Skill          string  `json:"skill"`
+	Inferences     int     `json:"inferences"`
+	Completed      int     `json:"completed"`
+	Abandoned      int     `json:"abandoned"`
+	CompletionRate float64 `json:"completion_rate"`
 }
 
 // GateAccuracyBaseline is a point-in-time snapshot of gate accuracy metrics.

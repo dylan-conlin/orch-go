@@ -418,7 +418,7 @@ func outputSkillInference(report *StatsReport) {
 	fmt.Println()
 	fmt.Println("🎯 SKILL INFERENCE ACCURACY")
 	fmt.Printf("  Inferences with outcomes: %d\n", si.TotalInferences)
-	fmt.Printf("  Completed:   %d (%.1f%%)\n", si.Completed, si.SuccessRate)
+	fmt.Printf("  Completed:   %d (%.1f%%)\n", si.Completed, si.CompletionRate)
 	fmt.Printf("  Abandoned:   %d\n", si.Abandoned)
 
 	if len(si.ByMethod) > 0 {
@@ -428,7 +428,7 @@ func outputSkillInference(report *StatsReport) {
 		fmt.Println("  " + strings.Repeat("-", 53))
 		for _, ms := range si.ByMethod {
 			fmt.Printf("  %-15s %8d %8d %8d %9.1f%%\n",
-				ms.Method, ms.Inferences, ms.Completed, ms.Abandoned, ms.SuccessRate)
+				ms.Method, ms.Inferences, ms.Completed, ms.Abandoned, ms.CompletionRate)
 		}
 	}
 
@@ -439,7 +439,7 @@ func outputSkillInference(report *StatsReport) {
 		fmt.Println("  " + strings.Repeat("-", 63))
 		for _, ss := range si.BySkill {
 			fmt.Printf("  %-25s %8d %8d %8d %9.1f%%\n",
-				truncateSkill(ss.Skill, 22), ss.Inferences, ss.Completed, ss.Abandoned, ss.SuccessRate)
+				truncateSkill(ss.Skill, 22), ss.Inferences, ss.Completed, ss.Abandoned, ss.CompletionRate)
 		}
 	}
 }
