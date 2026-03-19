@@ -161,6 +161,22 @@ The rebuild addressed false confidence by splitting the measurement into two mea
 
 **Mitigation:** Rebuilt metrics should explicitly state what they can and cannot detect. Decision audit v2 should be labeled "structural reflection check" not "decision compliance audit."
 
+### 5. Two-Gap Independence: Measuring an Action Without Its Consequences
+
+**What happens:** A system measures whether an enforcement action fired (deny count) but not what happened afterward (displacement). Closing the action-counting gap creates false confidence: "we blocked N times, therefore governance works" — while the downstream architectural cost remains invisible.
+
+**Evidence:** Governance hooks have zero observability (F1, hook audit 2026-03-12). Even with perfect deny counting, a deny count without displacement tracking is structurally equivalent to the absent-signal trap (invariant #2). The system cannot distinguish "hooks prevented bad code" from "hooks displaced code to wrong locations." Agent scs-sp-8dm was blocked from `pkg/spawn/gates/concurrency.go` and placed the logic in `pkg/orch/spawn_preflight.go` instead — the enforcement succeeded, the architecture was violated.
+
+**Mitigation:** Enforcement metrics must be paired: action-fired + consequence-measured. A deny count should not be displayed without a companion displacement signal, even if the displacement signal is labeled "unknown" or "unmeasured." This generalizes: any metric measuring a system action (gate fired, alert sent, agent blocked) creates false confidence if the downstream effect is invisible.
+
+### 6. Structural Undetectability Ceiling
+
+**What happens:** Some consequences of an enforcement action are structurally undetectable regardless of instrumentation quality. When an agent is denied and chooses an invisible workaround (completely different approach), no heuristic or commit audit can distinguish "displaced code" from "legitimate alternative." The detector's recall has an inherent ceiling < 100%.
+
+**Evidence:** Governance hook denials have four outcomes: compliance (detectable via self-report), displacement (detectable via commit heuristics), abandonment (partially detectable), invisible workaround (structurally undetectable). Any displacement metric is a floor estimate, never a ceiling.
+
+**Mitigation:** Label such metrics as floor estimates: "at least N displacements detected" rather than "N displacements occurred." Never display as "0 displacements = no displacement." This pattern applies wherever the measured concept has a component invisible to the measurement.
+
 ---
 
 ## Constraints
@@ -228,6 +244,8 @@ The rebuild addressed false confidence by splitting the measurement into two mea
 
 **2026-03-19:** Decision audit rebuilt with type-aware validation (commit d05a2997d). Completed the template case: false confidence detected → deleted → rebuilt honestly. This model created to capture the taxonomy and diagnostic protocol.
 
+**2026-03-19:** Governance displacement probe revealed two new failure modes. (1) **Two-gap independence:** measuring an action (hook deny count) without its consequence (code displacement) creates a new instance of false confidence — "we blocked N times" doesn't mean governance works. (2) **Structural undetectability ceiling:** some displacement outcomes (invisible workarounds) cannot be detected regardless of instrumentation, meaning displacement metrics are inherently floor estimates. Added §5 and §6 to "Why This Fails."
+
 ---
 
 ## References
@@ -239,6 +257,7 @@ The rebuild addressed false confidence by splitting the measurement into two mea
 **Probes:**
 - `.kb/models/knowledge-accretion/probes/2026-03-18-probe-phase-transition-mechanical-to-epistemic-failures.md` — Trust pyramid, false coherence taxonomy, Phase 1 vs Phase 2 failure modes
 - 2026-03-19: Knowledge Decay Verification — All 6 concrete claims confirmed. Found active instance of §3 failure mode: `SuccessRate` field names in allocation code still use old semantics despite display relabeling.
+- 2026-03-19: Governance Displacement Measurement Design — Confirms invariants #2 and #4. Extends model with two-gap independence (action-fired vs consequence-measured), structural undetectability ceiling, and latency-honesty tradeoff in hook instrumentation. Proposes 3-phase measurement design for governance hooks.
 
 **Publications:**
 - `.kb/publications/self-measurement-report.md` — Orch-go self-measurement report (methodology and honest reporting template)
