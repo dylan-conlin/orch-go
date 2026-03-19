@@ -67,7 +67,7 @@ func MCPConfigJSON(preset string) (string, bool) {
 // - When settings is set, adds --settings flag for worker hook isolation
 // - When systemPromptFile is set, adds --append-system-prompt with file content
 //   via command substitution and --disable-slash-commands to prevent auto-discovery
-func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsDir, beadsID, effort string, maxTurns int, settings, systemPromptFile string) string {
+func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsDir, beadsID, effort string, maxTurns int, settings, systemPromptFile string, opsecSandbox bool, opsecProxyPort int) string {
 	// Account isolation prefix: when configDir is set and non-default,
 	// unset the OAuth token and set CLAUDE_CONFIG_DIR so the Claude CLI
 	// uses the correct account's config directory.
@@ -112,6 +112,18 @@ func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsD
 		beadsIDPrefix = fmt.Sprintf("export ORCH_BEADS_ID=%s; ", beadsID)
 	}
 
+	// OPSEC sandbox prefix: when enabled, export proxy vars and sandbox flag.
+	// HTTP_PROXY catches curl/Python/Ruby; sandbox-exec catches everything
+	// including Node.js/Bun which ignore proxy vars.
+	opsecPrefix := ""
+	if opsecSandbox {
+		port := opsecProxyPort
+		if port == 0 {
+			port = 8199
+		}
+		opsecPrefix = fmt.Sprintf("export OPSEC_SANDBOX=1; export HTTP_PROXY=http://127.0.0.1:%d; export HTTPS_PROXY=http://127.0.0.1:%d; export ALL_PROXY=http://127.0.0.1:%d; ", port, port, port)
+	}
+
 	// Effort flag: controls reasoning effort level for cost/speed optimization.
 	effortFlag := ""
 	if effort != "" {
@@ -139,7 +151,7 @@ func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsD
 		systemPromptFlag = fmt.Sprintf(` --append-system-prompt "$(cat %q)" --disable-slash-commands`, systemPromptFile)
 	}
 
-	return fmt.Sprintf("%s%s%sexport ORCH_SPAWNED=1; export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s%s%s%s%s", accountPrefix, beadsDirPrefix, beadsIDPrefix, claudeContext, contextPath, effortFlag, mcpFlag, disallowFlag, maxTurnsFlag, settingsFlag, systemPromptFlag)
+	return fmt.Sprintf("%s%s%s%sexport ORCH_SPAWNED=1; export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s%s%s%s%s", accountPrefix, beadsDirPrefix, beadsIDPrefix, opsecPrefix, claudeContext, contextPath, effortFlag, mcpFlag, disallowFlag, maxTurnsFlag, settingsFlag, systemPromptFlag)
 }
 
 // SpawnClaude launches a Claude Code agent in a tmux window.
@@ -171,7 +183,14 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 	// 4. Launch claude using the context file
 	contextPath := cfg.ContextFilePath()
 
-	launchCmd := BuildClaudeLaunchCommand(contextPath, cfg.ClaudeContext(), cfg.MCP, cfg.AccountConfigDir, cfg.BeadsDir, cfg.BeadsID, cfg.Effort, cfg.MaxTurns, cfg.Settings, cfg.SystemPromptFile)
+	// When OPSEC sandbox is enabled and no explicit settings are set,
+	// use the OPSEC worker-settings.json for hook isolation + permission deny rules.
+	settings := cfg.Settings
+	if cfg.OpsecSandbox && settings == "" {
+		settings = "~/.orch/opsec/worker-settings.json"
+	}
+
+	launchCmd := BuildClaudeLaunchCommand(contextPath, cfg.ClaudeContext(), cfg.MCP, cfg.AccountConfigDir, cfg.BeadsDir, cfg.BeadsID, cfg.Effort, cfg.MaxTurns, settings, cfg.SystemPromptFile, cfg.OpsecSandbox, cfg.OpsecProxyPort)
 
 	if err := tmux.SendKeys(windowTarget, launchCmd); err != nil {
 		return nil, fmt.Errorf("failed to send launch command: %w", err)

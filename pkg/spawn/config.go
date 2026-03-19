@@ -329,6 +329,15 @@ type Config struct {
 	// is added to prevent auto-discovery (eliminates triple-loading).
 	SystemPromptFile string
 
+	// OpsecSandbox enables network sandboxing for spawned agents.
+	// When true, exports OPSEC_SANDBOX=1, HTTP_PROXY, HTTPS_PROXY,
+	// and ALL_PROXY pointing to the local opsec-proxy.
+	// Also sets Settings to the OPSEC worker-settings.json if not already set.
+	OpsecSandbox bool
+
+	// OpsecProxyPort is the local proxy port (default: 8199).
+	OpsecProxyPort int
+
 	// GatesBypassed lists spawn gates that were bypassed for this spawn.
 	// Populated from --bypass-triage, --force-hotspot flags.
 	// Included in session.spawned events for outcome correlation.
