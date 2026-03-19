@@ -195,6 +195,23 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			// Never-started detection: agents with spawn_time but no phase
+			if agents[i].Reason == "never_started" {
+				agents[i].IsNeverStarted = true
+				agents[i].IsStalled = true
+				agents[i].IsUnresponsive = true
+			} else if agents[i].Phase == "" && agents[i].SpawnedAt != "" {
+				if spawnedAt, err := time.Parse(time.RFC3339, agents[i].SpawnedAt); err == nil {
+					elapsed := now.Sub(spawnedAt)
+					if elapsed > stalledThreshold {
+						agents[i].IsStalled = true
+					}
+					if elapsed > unresponsiveThreshold {
+						agents[i].IsUnresponsive = true
+					}
+				}
+			}
+
 			// Auto-discover investigation path
 			hasReliableProjectDir := agents[i].ProjectDir != ""
 			if agents[i].InvestigationPath == "" && hasReliableProjectDir {
@@ -452,6 +469,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			// These are the agents most likely to need the orchestrator's intervention.
 			needsAttention := agentItem.Status == "dead" ||
 				agentItem.Status == "awaiting-cleanup" ||
+				agentItem.IsNeverStarted ||
 				agentItem.ContextRisk != nil
 
 			if sinceDuration > 0 && !needsAttention {

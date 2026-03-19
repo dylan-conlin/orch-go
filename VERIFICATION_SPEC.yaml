@@ -1,38 +1,26 @@
-issue: orch-go-tj5d9
-title: "Orphan rate: show delta per session instead of absolute rate in orient display"
-skill: feature-impl
-tier: light
-
 verification:
-  automated:
-    - command: "go build ./cmd/orch/"
-      expected: "clean compile"
-    - command: "go test ./pkg/orient/ -run 'TestComputeDivergence|TestFormatDivergence|TestFormatOrientation_ReflectSummary' -v -count=1"
-      expected: "PASS — 14 tests including session orphan display and divergence"
-    - command: "go test ./pkg/kbmetrics/ -run TestComputeSession -v -count=1"
-      expected: "PASS — 4 tests for date-filtered orphan computation"
-    - command: "go test ./cmd/orch/ -run 'TestParseReflectSuggestions|TestComputeReflect' -v -count=1"
-      expected: "PASS — orphan_rate no longer parsed from reflect-suggestions.json"
-
-  display:
-    before: "Orphan rate: 91.0% (196 investigations)"
-    after_with_orphans: "Session orphans: 3 unlinked investigations (of 5 produced)"
-    after_all_linked: "Session orphans: 0 (all 4 investigations linked)"
-
-deliverables:
-  - path: pkg/kbmetrics/session_orphans.go
-    description: "ComputeSessionOrphans — date-filtered orphan computation"
-  - path: pkg/kbmetrics/session_orphans_test.go
-    description: "Tests for session orphan computation"
-  - path: pkg/orient/orient.go
-    description: "ReflectSummary fields + display format changed to session-scoped"
-  - path: pkg/orient/orient_test.go
-    description: "Updated tests for session orphan display"
-  - path: pkg/orient/divergence.go
-    description: "Divergence detection uses SessionOrphans instead of OrphanRate"
-  - path: pkg/orient/divergence_test.go
-    description: "Updated divergence tests"
-  - path: cmd/orch/orient_cmd.go
-    description: "Added enrichReflectWithSessionOrphans, removed orphan_rate parsing"
-  - path: cmd/orch/orient_cmd_test.go
-    description: "Updated test for orphan_rate ignored"
+  commands_run:
+    - "go build ./pkg/discovery/ ./pkg/notify/ ./cmd/orch/"
+    - "go test ./pkg/discovery/ -count=1"
+    - "go test ./pkg/notify/ -count=1"
+    - "go test ./cmd/orch/ -run 'JoinWithReasonCodes|NeverStarted|AgentUnresponsive' -count=1"
+  expectations:
+    - "Agents spawned >10 min ago with no phase comment are marked dead/never_started"
+    - "Agents in 5-10 min window with live tmux still show active/tmux_window_alive"
+    - "Agents with phase comments are unaffected regardless of spawn time"
+    - "IsNeverStarted flag is set in dashboard API response"
+    - "Never-started agents bypass time filter in dashboard (needsAttention)"
+    - "Desktop notification fires for unresponsive agents in daemon phase timeout"
+    - "AgentUnresponsive notification respects enabled/disabled setting"
+  manual_verification:
+    - "Deploy via 'make install' and observe dashboard with a stalled agent"
+    - "Verify desktop notification appears when daemon detects unresponsive agent"
+  files_changed:
+    - pkg/discovery/discovery.go
+    - pkg/discovery/discovery_test.go
+    - pkg/notify/notify.go
+    - pkg/notify/notify_test.go
+    - cmd/orch/serve_agents_types.go
+    - cmd/orch/serve_agents_handlers.go
+    - cmd/orch/daemon_periodic.go
+    - cmd/orch/query_tracked_test.go

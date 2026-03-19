@@ -328,6 +328,13 @@ func handlePhaseTimeoutResult(r *daemon.PhaseTimeoutResult, timestamp string, ve
 			"agents":       agentIDs,
 			"message":      r.Message,
 		})
+		// Desktop notification for unresponsive agents
+		notifier := notify.Default()
+		for _, a := range r.Agents {
+			if err := notifier.AgentUnresponsive(a.BeadsID, a.IdleDuration); err != nil {
+				fmt.Fprintf(os.Stderr, "[%s] Failed to send unresponsive notification: %v\n", timestamp, err)
+			}
+		}
 	} else if verbose {
 		fmt.Printf("[%s] Phase timeout: all agents responsive\n", timestamp)
 	}

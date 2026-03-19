@@ -8,6 +8,7 @@ package notify
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/gen2brain/beeep"
@@ -108,6 +109,17 @@ func (n *Notifier) DaemonStuck(activeCount, maxAgents int) error {
 	}
 	title := "Daemon Stuck"
 	message := fmt.Sprintf("All %d/%d slots full — no spawns or completions in 10+ min", activeCount, maxAgents)
+	return n.backend.Notify(title, message, "")
+}
+
+// AgentUnresponsive sends a notification that an agent has not reported any phase.
+// Returns nil immediately if notifications are disabled.
+func (n *Notifier) AgentUnresponsive(beadsID string, duration time.Duration) error {
+	if !n.enabled {
+		return nil
+	}
+	title := fmt.Sprintf("Agent Unresponsive: %s", beadsID)
+	message := fmt.Sprintf("No phase reported in %s — may need respawn", duration.Round(time.Minute))
 	return n.backend.Notify(title, message, "")
 }
 

@@ -2,6 +2,7 @@ package notify
 
 import (
 	"testing"
+	"time"
 )
 
 // TestNotifyCompletion tests the NotifyCompletion function.
@@ -162,6 +163,42 @@ func TestDaemonStuckDisabled(t *testing.T) {
 	notifier := &Notifier{backend: mock, enabled: false}
 
 	err := notifier.DaemonStuck(5, 5)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mock.callCount != 0 {
+		t.Errorf("expected 0 calls when disabled, got %d", mock.callCount)
+	}
+}
+
+// TestAgentUnresponsive tests the AgentUnresponsive notification.
+func TestAgentUnresponsive(t *testing.T) {
+	mock := &MockNotifier{}
+	notifier := &Notifier{backend: mock, enabled: true}
+
+	err := notifier.AgentUnresponsive("scs-sp-abc", 12*time.Minute)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if mock.callCount != 1 {
+		t.Errorf("expected 1 call, got %d", mock.callCount)
+	}
+	if mock.lastTitle != "Agent Unresponsive: scs-sp-abc" {
+		t.Errorf("expected title 'Agent Unresponsive: scs-sp-abc', got '%s'", mock.lastTitle)
+	}
+	expected := "No phase reported in 12m0s — may need respawn"
+	if mock.lastMessage != expected {
+		t.Errorf("expected message %q, got %q", expected, mock.lastMessage)
+	}
+}
+
+// TestAgentUnresponsiveDisabled tests AgentUnresponsive is skipped when disabled.
+func TestAgentUnresponsiveDisabled(t *testing.T) {
+	mock := &MockNotifier{}
+	notifier := &Notifier{backend: mock, enabled: false}
+
+	err := notifier.AgentUnresponsive("scs-sp-abc", 12*time.Minute)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

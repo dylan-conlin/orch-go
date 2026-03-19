@@ -21,6 +21,11 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
+// neverStartedThreshold is the absolute time after spawn beyond which an agent
+// with no phase comment is considered never-started, regardless of tmux window state.
+// This prevents dead agents from being masked by live tmux windows indefinitely.
+const neverStartedThreshold = 10 * time.Minute
+
 // AgentStatus represents the status of a tracked agent with explicit reason codes
 // for any missing or partial data. This is the output of the single-pass query engine.
 //
@@ -53,6 +58,7 @@ type AgentStatus struct {
 	MissingSession bool `json:"missing_session,omitempty"`
 	SessionDead    bool `json:"session_dead,omitempty"`
 	MissingPhase   bool `json:"missing_phase,omitempty"`
+	NeverStarted   bool `json:"never_started,omitempty"` // True if agent was spawned 10+ min ago with no phase comment
 
 	// Human-readable explanation for degraded state
 	Reason string `json:"reason,omitempty"`
@@ -397,6 +403,12 @@ func JoinWithReasonCodes(
 			} else if !spawnTime.IsZero() && time.Since(spawnTime) < 5*time.Minute {
 				agent.Status = "active"
 				agent.Reason = "recently_spawned"
+			} else if !spawnTime.IsZero() && time.Since(spawnTime) >= neverStartedThreshold {
+				// Agent allocated 10+ min ago, never reported phase.
+				// Override tmux window check — a live window does not mean a live agent.
+				agent.Status = "dead"
+				agent.Reason = "never_started"
+				agent.NeverStarted = true
 			} else if CheckTmuxWindowAlive(manifest.WorkspaceName, manifest.ProjectDir) {
 				agent.Status = "active"
 				agent.Reason = "tmux_window_alive"

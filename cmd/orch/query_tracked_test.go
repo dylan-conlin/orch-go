@@ -685,7 +685,7 @@ func TestJoinWithReasonCodes_ClaudeBackendRecentlySpawned(t *testing.T) {
 }
 
 func TestJoinWithReasonCodes_ClaudeBackendNoPhaseStale(t *testing.T) {
-	// Mock tmux check to return false (window not alive)
+	// Agent spawned >10 min ago with no phase → never_started (overrides tmux check)
 	oldCheck := discovery.CheckTmuxWindowAlive
 	discovery.CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool { return false }
 	defer func() { discovery.CheckTmuxWindowAlive = oldCheck }()
@@ -715,12 +715,17 @@ func TestJoinWithReasonCodes_ClaudeBackendNoPhaseStale(t *testing.T) {
 	if r.Status != "dead" {
 		t.Errorf("expected Status dead for claude agent without phase and stale spawn, got %s", r.Status)
 	}
-	if r.Reason != "no_phase_reported" {
-		t.Errorf("expected Reason no_phase_reported, got %q", r.Reason)
+	if r.Reason != "never_started" {
+		t.Errorf("expected Reason never_started, got %q", r.Reason)
+	}
+	if !r.NeverStarted {
+		t.Error("expected NeverStarted=true")
 	}
 }
 
 func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
+	// Tmux fallback is only trusted in the 5-10 min window (after grace, before never-started)
+	recentTime := time.Now().Add(-7 * time.Minute).Format(time.RFC3339)
 	oldCheck := discovery.CheckTmuxWindowAlive
 	discovery.CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool {
 		if workspaceName != "og-debug-browser-02mar-abcd" {
@@ -744,7 +749,7 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
 			SpawnMode:     "claude",
 			WorkspaceName: "og-debug-browser-02mar-abcd",
 			Skill:         "systematic-debugging",
-			SpawnTime:     "2026-02-20T10:00:00Z",
+			SpawnTime:     recentTime,
 		},
 	}
 	liveness := map[string]opencode.SessionStatusInfo{}

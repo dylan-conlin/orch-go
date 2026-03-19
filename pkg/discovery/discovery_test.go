@@ -233,7 +233,7 @@ func TestJoinWithReasonCodes_ClaudeBackendRecentlySpawned(t *testing.T) {
 }
 
 func TestJoinWithReasonCodes_ClaudeBackendNoPhaseStale(t *testing.T) {
-	// Mock tmux check to return false
+	// Agent spawned >10 min ago with no phase and tmux dead → never_started
 	oldCheck := CheckTmuxWindowAlive
 	CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool { return false }
 	defer func() { CheckTmuxWindowAlive = oldCheck }()
@@ -261,12 +261,56 @@ func TestJoinWithReasonCodes_ClaudeBackendNoPhaseStale(t *testing.T) {
 	if r.Status != "dead" {
 		t.Errorf("expected Status dead, got %s", r.Status)
 	}
+	if r.Reason != "never_started" {
+		t.Errorf("expected Reason never_started, got %q", r.Reason)
+	}
+	if !r.NeverStarted {
+		t.Error("expected NeverStarted=true")
+	}
+}
+
+func TestJoinWithReasonCodes_ClaudeBackendNoPhaseNoTmux(t *testing.T) {
+	// Agent spawned 7 min ago (in 5-10 min window) with no phase and no tmux → dead/no_phase_reported
+	recentTime := time.Now().Add(-7 * time.Minute).Format(time.RFC3339)
+	oldCheck := CheckTmuxWindowAlive
+	CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool { return false }
+	defer func() { CheckTmuxWindowAlive = oldCheck }()
+
+	issues := []beads.Issue{
+		{ID: "orch-go-1210", Title: "Dead agent in grace window", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-1210": {
+			BeadsID:       "orch-go-1210",
+			ProjectDir:    "/tmp/project",
+			SpawnMode:     "claude",
+			WorkspaceName: "og-feat-dead-grace-19mar-abcd",
+			SpawnTime:     recentTime,
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{}
+
+	results := JoinWithReasonCodes(issues, manifests, liveness, nil)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "dead" {
+		t.Errorf("expected Status dead, got %s", r.Status)
+	}
 	if r.Reason != "no_phase_reported" {
 		t.Errorf("expected Reason no_phase_reported, got %q", r.Reason)
+	}
+	if r.NeverStarted {
+		t.Error("expected NeverStarted=false for agent in 5-10 min window")
 	}
 }
 
 func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
+	// Tmux fallback is only trusted between 5-10 min after spawn.
+	// After 10 min with no phase, never-started overrides tmux.
+	recentTime := time.Now().Add(-7 * time.Minute).Format(time.RFC3339)
 	oldCheck := CheckTmuxWindowAlive
 	CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool { return true }
 	defer func() { CheckTmuxWindowAlive = oldCheck }()
@@ -280,7 +324,7 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
 			ProjectDir:    "/tmp/project",
 			SpawnMode:     "claude",
 			WorkspaceName: "og-debug-browser-02mar-abcd",
-			SpawnTime:     "2026-02-20T10:00:00Z",
+			SpawnTime:     recentTime,
 		},
 	}
 	liveness := map[string]opencode.SessionStatusInfo{}
@@ -296,6 +340,83 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
 	}
 	if r.Reason != "tmux_window_alive" {
 		t.Errorf("expected Reason tmux_window_alive, got %q", r.Reason)
+	}
+}
+
+func TestJoinWithReasonCodes_ClaudeBackendNeverStarted(t *testing.T) {
+	// Agent spawned 15+ minutes ago with no phase should be marked never_started,
+	// overriding tmux window liveness check.
+	oldCheck := CheckTmuxWindowAlive
+	CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool { return true }
+	defer func() { CheckTmuxWindowAlive = oldCheck }()
+
+	staleTime := time.Now().Add(-15 * time.Minute).Format(time.RFC3339)
+	issues := []beads.Issue{
+		{ID: "orch-go-1300", Title: "Never started agent", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-1300": {
+			BeadsID:       "orch-go-1300",
+			ProjectDir:    "/tmp/project",
+			SpawnMode:     "claude",
+			WorkspaceName: "og-feat-stalled-19mar-abcd",
+			SpawnTime:     staleTime,
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{}
+
+	results := JoinWithReasonCodes(issues, manifests, liveness, nil)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "dead" {
+		t.Errorf("expected Status dead, got %s", r.Status)
+	}
+	if r.Reason != "never_started" {
+		t.Errorf("expected Reason never_started, got %q", r.Reason)
+	}
+	if !r.NeverStarted {
+		t.Error("expected NeverStarted=true")
+	}
+}
+
+func TestJoinWithReasonCodes_ClaudeBackendNeverStartedWithPhase(t *testing.T) {
+	// Agent with a phase comment should NOT be marked as never_started,
+	// even if spawned 15+ minutes ago.
+	staleTime := time.Now().Add(-15 * time.Minute).Format(time.RFC3339)
+	issues := []beads.Issue{
+		{ID: "orch-go-1310", Title: "Active agent with phase", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-1310": {
+			BeadsID:       "orch-go-1310",
+			ProjectDir:    "/tmp/project",
+			SpawnMode:     "claude",
+			WorkspaceName: "og-feat-active-19mar-abcd",
+			SpawnTime:     staleTime,
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{}
+	phases := map[string]string{
+		"orch-go-1310": "Planning - Reading codebase",
+	}
+
+	results := JoinWithReasonCodes(issues, manifests, liveness, phases)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "active" {
+		t.Errorf("expected Status active, got %s", r.Status)
+	}
+	if r.Reason != "phase_reported" {
+		t.Errorf("expected Reason phase_reported, got %q", r.Reason)
+	}
+	if r.NeverStarted {
+		t.Error("expected NeverStarted=false for agent with phase")
 	}
 }
 
