@@ -39,6 +39,14 @@ cmd/orch/
 ├── hotspot*.go          # Hotspot analysis and accretion tracking
 ├── doctor*.go           # Health checks, diagnostics, defect/migration scans
 ├── clean_*.go           # Clean subcommands (orphans, sessions, workspaces)
+├── review*.go           # Review subcommands (triage, synthesize, orphans, done)
+├── daemon_helpers.go    # Daemon utility functions
+├── daemon_launchd.go    # Daemon launchd service management
+├── lifecycle_adapters.go # Agent lifecycle infrastructure adapters
+├── knowledge_maintenance.go # KB maintenance at completion time
+├── telemetry.go         # CLI command telemetry tracking
+├── tokens.go            # Token usage display
+├── attach.go            # Workspace attachment
 ├── swarm.go             # Batch spawn with concurrency control
 ├── deploy.go            # Atomic deployment (rebuild, restart, verify)
 ├── learn.go             # Learning system (suggestions, patterns, effects)
@@ -284,6 +292,14 @@ orch-dashboard logs     # View service logs (overmind echo)
 - Learning Store for per-skill metrics from events.jsonl
 - Phase 2 trigger detectors: model contradictions, hotspot acceleration, knowledge decay, skill performance drift
 - Per-detector outcome tracking (completed/abandoned rates from beads data)
+- Proactive extraction: auto-extracts knowledge from completed agent work
+- Verification retry: retries failed verifications with backoff
+- Agreement checks: cross-validates daemon decisions
+- Synthesis auto-create: generates synthesis artifacts from accumulated findings
+- Beads health monitoring with circuit breaker
+- Phase timeout detection and escalation
+- Investigation orphan cleanup
+- Friction accumulator for system improvement signals
 
 ### pkg/digest/ (KB Artifact Digest)
 
@@ -653,6 +669,7 @@ Agent lifecycle events are logged to `~/.orch/events.jsonl` for stats aggregatio
 | `review_tier.escalated` | review | Review tier auto-escalated |
 | `trigger.outcome` | daemon | Per-detector false positive tracking (issue closed without action) |
 | `command.invoked` | measurement commands | Tracks which diagnostic commands are used and by whom (human/orchestrator/worker) |
+| `artifact.drift` | artifact sync | Documentation drift detected (files changed since last sync) |
 
 **Enrichment fields:** `verification.failed`, `agent.completed`, `verification.bypassed`, and `verification.auto_skipped` events include a `verification_level` field (V0-V3) tracking what "verified" means at completion.
 
