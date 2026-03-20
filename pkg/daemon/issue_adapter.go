@@ -164,6 +164,55 @@ func ListIssuesWithLabel(label string) ([]Issue, error) {
 	return listIssuesWithLabelCLI(label)
 }
 
+// ListAllIssuesWithLabel lists issues with a specific label across ALL statuses
+// (open, in_progress, closed, etc.). This is used by trigger dedup to prevent
+// re-creating issues for patterns that have already been investigated and closed.
+func ListAllIssuesWithLabel(label string) ([]Issue, error) {
+	if label == "" {
+		return []Issue{}, nil
+	}
+
+	// Try to use the beads RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			beadsIssues, err := client.List(&beads.ListArgs{
+				LabelsAny: []string{label},
+				Limit:     beads.IntPtr(0),
+			})
+			if err == nil {
+				// No status filtering — return all statuses
+				return convertBeadsIssues(beadsIssues), nil
+			}
+			// Fall through to CLI fallback on List() error
+		}
+		// Fall through to CLI fallback on Connect() error
+	}
+
+	// Fallback to CLI
+	return listAllIssuesWithLabelCLI(label)
+}
+
+// listAllIssuesWithLabelCLI retrieves issues with a label (all statuses) by shelling out to bd CLI.
+func listAllIssuesWithLabelCLI(label string) ([]Issue, error) {
+	// Use --status "" or no status filter to get all statuses
+	// bd list --json returns all statuses by default
+	output, err := runBdCommand("list", "--json", "--limit", "0", "-l", label)
+	if err != nil {
+		return nil, fmt.Errorf("failed to run bd list -l %s: %w", label, err)
+	}
+
+	var issues []Issue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return nil, fmt.Errorf("failed to parse issues: %w", err)
+	}
+
+	// No status filtering — return all statuses
+	return issues, nil
+}
+
 // listIssuesWithLabelCLI retrieves issues with a label by shelling out to bd CLI.
 func listIssuesWithLabelCLI(label string) ([]Issue, error) {
 	output, err := runBdCommand("list", "--json", "--limit", "0", "-l", label)

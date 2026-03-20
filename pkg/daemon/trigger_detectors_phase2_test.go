@@ -644,7 +644,7 @@ func TestDaemon_RunPeriodicTriggerScan_AllPhase2Detectors(t *testing.T) {
 		Scheduler: NewSchedulerFromConfig(cfg),
 		TriggerScan: &mockTriggerScanService{
 			CountOpenFunc: func() (int, error) { return 0, nil },
-			HasOpenFunc:   func(_, _ string) (bool, error) { return false, nil },
+			HasTriggerFunc:   func(_, _ string) (bool, error) { return false, nil },
 			CreateIssueFunc: func(s TriggerSuggestion) (string, error) {
 				createCount++
 				return fmt.Sprintf("orch-go-t%d", createCount), nil

@@ -25,13 +25,15 @@ func (s *defaultTriggerScanService) CountOpenTriggerIssues() (int, error) {
 	return len(issues), nil
 }
 
-func (s *defaultTriggerScanService) HasOpenTriggerIssue(detectorName, key string) (bool, error) {
-	// Use detector-specific label for more precise dedup
+func (s *defaultTriggerScanService) HasTriggerIssue(detectorName, key string) (bool, error) {
+	// Use detector-specific label for more precise dedup.
+	// Check ALL statuses (open + closed) to prevent re-creating issues
+	// for patterns that have already been investigated and closed.
 	label := fmt.Sprintf("daemon:trigger:%s", detectorName)
-	issues, err := ListIssuesWithLabel(label)
+	issues, err := ListAllIssuesWithLabel(label)
 	if err != nil {
 		// Fallback: check the general trigger label with key in title
-		issues, err = ListIssuesWithLabel(TriggerLabel)
+		issues, err = ListAllIssuesWithLabel(TriggerLabel)
 		if err != nil {
 			return false, err
 		}

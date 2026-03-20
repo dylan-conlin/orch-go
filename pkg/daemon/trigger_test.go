@@ -9,7 +9,7 @@ import (
 // mockTriggerScanService implements TriggerScanService for tests.
 type mockTriggerScanService struct {
 	CountOpenFunc   func() (int, error)
-	HasOpenFunc     func(detectorName, key string) (bool, error)
+	HasTriggerFunc  func(detectorName, key string) (bool, error)
 	CreateIssueFunc func(s TriggerSuggestion) (string, error)
 }
 
@@ -20,9 +20,9 @@ func (m *mockTriggerScanService) CountOpenTriggerIssues() (int, error) {
 	return 0, nil
 }
 
-func (m *mockTriggerScanService) HasOpenTriggerIssue(detectorName, key string) (bool, error) {
-	if m.HasOpenFunc != nil {
-		return m.HasOpenFunc(detectorName, key)
+func (m *mockTriggerScanService) HasTriggerIssue(detectorName, key string) (bool, error) {
+	if m.HasTriggerFunc != nil {
+		return m.HasTriggerFunc(detectorName, key)
 	}
 	return false, nil
 }
@@ -120,7 +120,7 @@ func TestDaemon_RunPeriodicTriggerScan_CreatesIssue(t *testing.T) {
 		Scheduler: NewSchedulerFromConfig(cfg),
 		TriggerScan: &mockTriggerScanService{
 			CountOpenFunc: func() (int, error) { return 0, nil },
-			HasOpenFunc:   func(_, _ string) (bool, error) { return false, nil },
+			HasTriggerFunc:   func(_, _ string) (bool, error) { return false, nil },
 			CreateIssueFunc: func(s TriggerSuggestion) (string, error) {
 				createCalled++
 				return fmt.Sprintf("orch-go-trig%d", createCalled), nil
@@ -165,7 +165,7 @@ func TestDaemon_RunPeriodicTriggerScan_BudgetEnforced(t *testing.T) {
 		Scheduler: NewSchedulerFromConfig(cfg),
 		TriggerScan: &mockTriggerScanService{
 			CountOpenFunc: func() (int, error) { return 5, nil },
-			HasOpenFunc:   func(_, _ string) (bool, error) { return false, nil },
+			HasTriggerFunc:   func(_, _ string) (bool, error) { return false, nil },
 		},
 	}
 
@@ -203,7 +203,7 @@ func TestDaemon_RunPeriodicTriggerScan_DedupSkips(t *testing.T) {
 		Scheduler: NewSchedulerFromConfig(cfg),
 		TriggerScan: &mockTriggerScanService{
 			CountOpenFunc: func() (int, error) { return 0, nil },
-			HasOpenFunc: func(detector, key string) (bool, error) {
+			HasTriggerFunc: func(detector, key string) (bool, error) {
 				return key == "existing-key", nil
 			},
 		},
@@ -244,7 +244,7 @@ func TestDaemon_RunPeriodicTriggerScan_MultipleDetectors(t *testing.T) {
 		Scheduler: NewSchedulerFromConfig(cfg),
 		TriggerScan: &mockTriggerScanService{
 			CountOpenFunc: func() (int, error) { return 0, nil },
-			HasOpenFunc:   func(_, _ string) (bool, error) { return false, nil },
+			HasTriggerFunc:   func(_, _ string) (bool, error) { return false, nil },
 			CreateIssueFunc: func(s TriggerSuggestion) (string, error) {
 				createCount++
 				return fmt.Sprintf("orch-go-trig%d", createCount), nil
@@ -297,7 +297,7 @@ func TestDaemon_RunPeriodicTriggerScan_BudgetDecrements(t *testing.T) {
 		Scheduler: NewSchedulerFromConfig(cfg),
 		TriggerScan: &mockTriggerScanService{
 			CountOpenFunc: func() (int, error) { return openCount, nil },
-			HasOpenFunc:   func(_, _ string) (bool, error) { return false, nil },
+			HasTriggerFunc:   func(_, _ string) (bool, error) { return false, nil },
 			CreateIssueFunc: func(s TriggerSuggestion) (string, error) {
 				createCount++
 				openCount++
@@ -343,7 +343,7 @@ func TestDaemon_RunPeriodicTriggerScan_DetectorError(t *testing.T) {
 		Scheduler: NewSchedulerFromConfig(cfg),
 		TriggerScan: &mockTriggerScanService{
 			CountOpenFunc: func() (int, error) { return 0, nil },
-			HasOpenFunc:   func(_, _ string) (bool, error) { return false, nil },
+			HasTriggerFunc:   func(_, _ string) (bool, error) { return false, nil },
 			CreateIssueFunc: func(s TriggerSuggestion) (string, error) {
 				createCount++
 				return "orch-go-ok", nil
@@ -422,7 +422,7 @@ func TestDaemon_RunPeriodicTriggerScan_OutcomeBudgetAdjustment(t *testing.T) {
 		Scheduler: NewSchedulerFromConfig(cfg),
 		TriggerScan: &mockTriggerScanService{
 			CountOpenFunc: func() (int, error) { return 0, nil },
-			HasOpenFunc:   func(_, _ string) (bool, error) { return false, nil },
+			HasTriggerFunc:   func(_, _ string) (bool, error) { return false, nil },
 			CreateIssueFunc: func(s TriggerSuggestion) (string, error) {
 				createCount++
 				return fmt.Sprintf("orch-go-trig%d", createCount), nil
@@ -521,6 +521,50 @@ func TestTriggerBudget_CanCreate(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("TriggerBudget{Max:%d}.CanCreate(%d) = %v, want %v", tt.max, tt.currentOpen, got, tt.want)
 		}
+	}
+}
+
+func TestDaemon_RunPeriodicTriggerScan_DedupIncludesClosed(t *testing.T) {
+	// This is the core regression test for the 97-false-positive bug:
+	// HasTriggerIssue must check ALL statuses (including closed) so that
+	// already-investigated issues are not re-created every scan cycle.
+	cfg := Config{
+		TriggerScanEnabled:  true,
+		TriggerScanInterval: time.Hour,
+		TriggerBudgetMax:    10,
+	}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+		TriggerScan: &mockTriggerScanService{
+			CountOpenFunc: func() (int, error) { return 0, nil },
+			HasTriggerFunc: func(detector, key string) (bool, error) {
+				// Simulate: the issue exists but is closed (already investigated)
+				return key == "already-investigated", nil
+			},
+		},
+	}
+
+	detectors := []PatternDetector{
+		&mockPatternDetector{
+			name: "hotspot_acceleration",
+			detectFunc: func() ([]TriggerSuggestion, error) {
+				return []TriggerSuggestion{
+					{Detector: "hotspot_acceleration", Key: "already-investigated", Title: "Hotspot: cmd/orch/main.go", IssueType: "task", Priority: 3},
+				}, nil
+			},
+		},
+	}
+
+	result := d.RunPeriodicTriggerScan(detectors)
+	if result == nil {
+		t.Fatal("expected result")
+	}
+	if result.Created != 0 {
+		t.Errorf("Created = %d, want 0 (closed issue should still dedup)", result.Created)
+	}
+	if result.SkippedDedup != 1 {
+		t.Errorf("SkippedDedup = %d, want 1", result.SkippedDedup)
 	}
 }
 

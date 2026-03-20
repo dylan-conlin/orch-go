@@ -61,8 +61,10 @@ func (b TriggerBudget) CanCreate(currentOpen int) bool {
 type TriggerScanService interface {
 	// CountOpenTriggerIssues counts all open issues with the daemon:trigger label.
 	CountOpenTriggerIssues() (int, error)
-	// HasOpenTriggerIssue checks if an open issue exists for this detector+key combo.
-	HasOpenTriggerIssue(detectorName, key string) (bool, error)
+	// HasTriggerIssue checks if an issue (any status: open, closed, etc.) exists
+	// for this detector+key combo. Checking all statuses prevents re-creating
+	// issues for patterns that have already been investigated and closed.
+	HasTriggerIssue(detectorName, key string) (bool, error)
 	// CreateTriggerIssue creates a beads issue from a trigger suggestion.
 	// Returns the created issue ID.
 	CreateTriggerIssue(s TriggerSuggestion) (string, error)
@@ -164,7 +166,7 @@ func (d *Daemon) RunPeriodicTriggerScan(detectors []PatternDetector) *TriggerSca
 		}
 
 		// Gate 2: Dedup check
-		hasOpen, err := svc.HasOpenTriggerIssue(s.Detector, s.Key)
+		hasOpen, err := svc.HasTriggerIssue(s.Detector, s.Key)
 		if err != nil {
 			// Fail-safe: skip on error
 			result.Skipped++
