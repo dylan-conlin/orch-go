@@ -218,3 +218,4 @@ Step 3 requires domain-specific composition gates — the same insight from the 
 ## Probes
 
 - 2026-03-20: SCS AI Part Builder compositional correctness gap — Smithy→SCS boundary exhibits compositional correctness gap (0% DFM recall, one-way handoff). See `.kb/models/harness-engineering/probes/2026-03-20-probe-scs-ai-part-builder-compositional-correctness.md`.
+- 2026-03-20: Knowledge decay verification — All 8 claims confirmed current against source evidence. No model update needed. Highest staleness risk: SG-04 (refinement), SG-06 (DFM integration options), SG-08 (bend params) due to Smithy active development. See `.kb/models/smithy-geometry-engine/probes/2026-03-20-probe-knowledge-decay-verification.md`.
