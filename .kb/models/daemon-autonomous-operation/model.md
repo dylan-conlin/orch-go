@@ -86,7 +86,11 @@ All spawn prerequisites are **hard gates**, not soft warnings (constraint kb-035
 | Extraction gate | Skip issue, Processed=false | Was warn-and-continue; fixed Feb 17 |
 | Rollback after spawn failure | Return wrapped error to stderr | Was warn-and-continue; fixed Feb 17 |
 
-**Acceptable warn-and-continue:** Logging failures, status file writes, resume signal checks, event logging — these are monitoring/observability, not spawn correctness.
+**Acceptable warn-and-continue:** Logging failures, status file writes, resume signal checks, event logging — these are monitoring/observability, not spawn correctness. Similarly, hotspot/accretion gates are correctly advisory (not blocking) because they affect code quality signaling, not spawn dedup correctness.
+
+**Architectural enforcement:** The `FailMode()` method on `SpawnGate` interface (`spawn_gate.go`) makes the fail-fast vs fail-open distinction a first-class concern. Gates declare their failure mode at definition time, and the pipeline runner enforces it uniformly — preventing ad-hoc error handling choices per call site.
+
+**Post-fix validation (Mar 2026):** 574 daemon spawns across 571 unique issues with 0 dedup failures and 7 would-be duplicates caught by the pipeline. See probe `2026-03-20-probe-spawn-prerequisite-hard-gates-dao02.md`.
 
 **Dependency type semantics:** `blocks` edges prevent spawning (blocking dependency). `relates_to` and `parent-child` edges do NOT block spawning. A bug in `GetBlockingDependencies()` previously treated `relates_to` as blocking via a catch-all `default` case; fixed Feb 16 with explicit type switching.
 

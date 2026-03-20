@@ -25,13 +25,16 @@ claims:
     confidence: confirmed
     priority: core
     created: "2026-03-19"
-    last_validated: "2026-02-17"
+    last_validated: "2026-03-20"
     evidence:
       - source: "Feb 14 incident: orch-go-w50 spawned 10 times in 20 minutes due to warn-and-continue on UpdateBeadsStatus failure"
         date: "2026-02-14"
         verdict: confirms
       - source: "Feb 17 fix: dependency check, epic expansion, extraction gate, rollback all converted to fail-fast"
         date: "2026-02-17"
+        verdict: confirms
+      - source: "Mar 20 probe: 574 daemon spawns (Mar 8-20), 0 dedup failures, 7 caught by pipeline. Falsification threshold (100+ cycles) exceeded."
+        date: "2026-03-20"
         verdict: confirms
     domain_tags: ["daemon", "spawn", "dedup", "gates", "fail-fast"]
     falsifies_if: "Warn-and-continue spawn prerequisites produce fewer duplicate spawns than fail-fast over 100+ daemon cycles"
