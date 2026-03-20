@@ -1,0 +1,41 @@
+verification:
+  type: investigation
+  issue: led-3th
+
+  automated_checks:
+    - name: "Model file updated"
+      command: "grep -c 'Compositional Correctness Gap' .kb/models/harness-engineering/model.md"
+      expected: "3+ occurrences (header, generalization subsection, summary)"
+
+    - name: "Three-scale evidence table present"
+      command: "grep -c 'Operation → Assembly' .kb/models/harness-engineering/model.md"
+      expected: "1 (evidence table row)"
+
+    - name: "LED evidence narrative present"
+      command: "grep -c 'LED magnetic letters' .kb/models/harness-engineering/model.md"
+      expected: "1+"
+
+    - name: "DFM evidence narrative present"
+      command: "grep -c 'Sheet metal DFM' .kb/models/harness-engineering/model.md"
+      expected: "1+"
+
+    - name: "Evolution entry added"
+      command: "grep '2026-03-20.*compositional' .kb/models/harness-engineering/model.md | wc -l"
+      expected: "1+"
+
+    - name: "Probe entry added"
+      command: "grep '2026-03-20.*Compositional correctness gap' .kb/models/harness-engineering/model.md | wc -l"
+      expected: "1"
+
+    - name: "Investigation file complete"
+      command: "grep 'Status: Complete' .kb/investigations/2026-03-20-inv-extend-harness-engineering-model-kb.md | wc -l"
+      expected: "1"
+
+    - name: "Summary mentions compositional correctness gap"
+      command: "head -25 .kb/models/harness-engineering/model.md | grep -c 'compositional correctness gap'"
+      expected: "1"
+
+  manual_checks:
+    - "Verify §8 reads as coherent narrative (compliance vs coordination → generalization → evidence → implications)"
+    - "Verify three cases (DFM, LED, daemon.go) are described with enough detail for a reader unfamiliar with any of them"
+    - "Verify the named concept 'compositional correctness gap' is clearly defined"

@@ -1,7 +1,7 @@
 # Model: Harness Engineering
 
 **Domain:** Multi-Agent Code Quality Practices
-**Last Updated:** 2026-03-17
+**Last Updated:** 2026-03-20
 **Validation Status:** WORKING HYPOTHESIS — practices are grounded in one system (orch-go, 3 months). Independent external review (Codex, Mar 10) identified the framework as "software architecture + CI/policy enforcement + tech debt management with agent vocabulary" — strongest as internal operating model, weakest when claiming to be a new discipline. The practices (hard/soft distinction, gate layering, attractor + gate pattern) work in this system. The generalizations are untested. See `.kb/threads/2026-03-10-closed-loop-risk-ai-agents.md`.
 **Synthesized From:**
 - `.kb/investigations/2026-03-07-inv-analyze-accretion-pattern-orch-go.md` — Accretion structural analysis (daemon.go +892 lines, 6 cross-cutting concerns)
@@ -14,13 +14,14 @@
 - OpenAI: "Harness Engineering" (https://openai.com/index/harness-engineering/) — Codex team, ~1M lines, zero manual code
 - `.kb/plans/2026-03-11-measurement-instrumentation.md` — Measurement audit: 52% field gaps, 0 gate events, survivorship bias architecture
 - `.kb/threads/2026-03-11-measurement-as-first-class-harness.md` — Thread: enforcement without measurement is theological
+- `.kb/global/models/signal-to-design-loop/probes/2026-03-20-probe-domain-gate-coverage-gap-physical-cad.md` — LED gate stack: 4-layer gates pass geometry that is non-functional (compositional correctness gap cross-domain evidence)
 - Fowler/Bockeler: "Harness Engineering" (https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html) — Verification gap, relocating rigor
 
 ---
 
 ## Summary (30 seconds)
 
-Harness engineering is a working label for the practice of making wrong paths mechanically impossible for AI agents, rather than instructing agents to choose right paths. It is not a new discipline — it is software architecture, CI/CD enforcement, and tech debt management applied to multi-agent workflows. It operates through two fundamentally different enforcement types: **hard harness** (deterministic, mechanically enforced, cannot be ignored — pre-commit hooks, spawn gates, `go build`, Go package structure, structural tests) and **soft harness** (probabilistic, context-dependent, driftable — skills, CLAUDE.md, knowledge bases, SPAWN_CONTEXT.md). Hard harness matters more because agents under pressure drift from soft instructions — contrastive testing (265 trials, 7 skills) showed behavioral constraints dilute to bare parity at 10+ co-resident items, and stance transfers only as attention primers, not action directives. **Every harness layer requires both an enforcement surface and a measurement surface** — enforcement without measurement is theological (you believe the gate works), measurement without enforcement is observational (you see problems but can't intervene). Evidence: dupdetect cost 111s invisibly (no measurement), 52% of completions lacked fields for analysis (survivorship bias), accretion.delta covered 4.7% of cases (silently broken). Accretion is entropy: individually correct agent commits compose into structural degradation when shared infrastructure is missing — daemon.go regrew +892 lines past its pre-extraction baseline in 60 days from 30 correct commits. OpenAI arrived at the same framework from greenfield (designed gates before code); we arrived through pain (retrofit after 3 entropy spirals, 1,625 lost commits). A useful lens for thinking about agent failures: **compliance failure** (agent doesn't follow instructions) vs **coordination failure** (agents each follow instructions correctly but collectively produce problems). In practice these are often mixed — not a clean partition. The claim that stronger models make coordination worse is plausible but uncontrolled (observed in one system, no experiment isolating model capability as the variable).
+Harness engineering is a working label for the practice of making wrong paths mechanically impossible for AI agents, rather than instructing agents to choose right paths. It is not a new discipline — it is software architecture, CI/CD enforcement, and tech debt management applied to multi-agent workflows. It operates through two fundamentally different enforcement types: **hard harness** (deterministic, mechanically enforced, cannot be ignored — pre-commit hooks, spawn gates, `go build`, Go package structure, structural tests) and **soft harness** (probabilistic, context-dependent, driftable — skills, CLAUDE.md, knowledge bases, SPAWN_CONTEXT.md). Hard harness matters more because agents under pressure drift from soft instructions — contrastive testing (265 trials, 7 skills) showed behavioral constraints dilute to bare parity at 10+ co-resident items, and stance transfers only as attention primers, not action directives. **Every harness layer requires both an enforcement surface and a measurement surface** — enforcement without measurement is theological (you believe the gate works), measurement without enforcement is observational (you see problems but can't intervene). Evidence: dupdetect cost 111s invisibly (no measurement), 52% of completions lacked fields for analysis (survivorship bias), accretion.delta covered 4.7% of cases (silently broken). Accretion is entropy: individually correct agent commits compose into structural degradation when shared infrastructure is missing — daemon.go regrew +892 lines past its pre-extraction baseline in 60 days from 30 correct commits. OpenAI arrived at the same framework from greenfield (designed gates before code); we arrived through pain (retrofit after 3 entropy spirals, 1,625 lost commits). A useful lens for thinking about agent failures: **compliance failure** (agent doesn't follow instructions) vs **coordination failure** (agents each follow instructions correctly but collectively produce problems). In practice these are often mixed — not a clean partition. Both are instances of the broader **compositional correctness gap** — individually valid components compose into non-functional wholes because gates validate at the component level while failure emerges at the composition level. This pattern appears across domains: operation→assembly (sheet metal DFM — operations pass individually, assembled part interferes), geometry→function (LED gate stack — 4-layer gates pass valid manifold STL that doesn't work as LED enclosure), agent→system (daemon.go +892 from 30 correct commits). The claim that stronger models make coordination worse is plausible but uncontrolled (observed in one system, no experiment isolating model capability as the variable).
 
 ---
 
@@ -250,7 +251,9 @@ In orch-go, conventions without enforcement have been violated. This is consiste
 - Pre-commit hooks prevent known-bad patterns
 - Escape hatches (`--force-hotspot --architect-ref`) allow bypass with justification
 
-### 8. Two Failure Modes: Compliance vs Coordination (a lens, not a partition)
+### 8. The Compositional Correctness Gap
+
+#### Compliance vs Coordination (a lens, not a partition)
 
 A useful way to think about agent failures, though in practice most failures are hybrid:
 
@@ -269,7 +272,34 @@ A useful way to think about agent failures, though in practice most failures are
 
 **Note on permanence claims:** A previous version of this model claimed harness engineering is "a permanent discipline, not transitional." This is plausible but unvalidated — it's a prediction about the future trajectory of model capabilities vs coordination needs, based on 3 months of observation in one system. The practices are useful now; whether they remain necessary as models improve is an open question.
 
-**Which gates are which:**
+#### Generalization: Compositional Correctness Gap
+
+Compliance vs coordination is one instance of a broader failure mode class: the **compositional correctness gap**. Individually valid components compose into non-functional wholes because validation gates operate at the component level while failure emerges at the composition level. This pattern appears at multiple abstraction scales:
+
+| Scale | Components Validated | Composition That Fails | What No Gate Checks |
+|-------|---------------------|----------------------|-------------------|
+| **Operation → Assembly** (sheet metal DFM) | Individual cuts, bends, hardware insertions each pass DFM rules | Composed assembly: bend line crosses hardware location, cuts weaken fold region, hardware collides after bending | Inter-operation interference in physical assembly |
+| **Geometry → Function** (LED gate stack) | Parameters valid, CGAL manifold, polygon budget met, build plate fit | Cut-channel LED routing produces disconnected channels — valid STL, non-functional enclosure | Connectivity/routing across geometric features |
+| **Agent → System** (harness engineering) | Each commit compiles, passes review, is locally rational | 30 correct commits produce +892 lines, 6 duplicated concerns, structural degradation | Cross-agent coherence over time |
+
+**The structure is identical in all three cases:**
+1. Every component passes all applicable validation gates
+2. The composed whole fails at a property no gate measures
+3. The failure is invisible to every existing gate because gates validate at a different abstraction level than function
+
+**Cross-domain evidence:**
+
+**LED magnetic letters (Mar 20 probe, ~150 renders):** An OpenSCAD 4-layer gate stack (parameter validation → geometry check → printability → intent alignment) was tested on LED channel routing for letter-shaped enclosures. The cut-channel approach (intersection of zigzag pattern with inner letter profile) passed all 4 gate layers for every letter tested — valid parameters, manifold geometry, printable solid, within polygon budget. But the channels are disconnected for every non-rectangular letter (A, M, W, H, O, L). Diagonal strokes clip horizontal channels into isolated segments. The LED strip has no continuous path. A functionally broken design that passes every gate. The guide-rail approach (raised horizontal rails clipped to inner profile) also passes all gates AND produces functional routing — but no gate can distinguish the two. See `.kb/global/models/signal-to-design-loop/probes/2026-03-20-probe-domain-gate-coverage-gap-physical-cad.md`.
+
+**Sheet metal DFM (SendCutSend domain):** Individual manufacturing operations each have well-defined validation rules — minimum bend radius, minimum hole-to-edge distance, minimum tab width, hardware insertion force limits. Each operation passes its own DFM check. But composed assembly reveals interference: a bend line crossing a hardware location deforms the insert, cut patterns weakening a fold region cause cracking, hardware placements that clear in flat layout collide after bending. Commercial DFM tools address this with assembly-level simulation, but the gap between per-operation validation and assembly validation is the same structural gap as the LED case.
+
+**daemon.go coordination failure (existing evidence):** 30 agent commits, each individually correct, composing into +892 lines of structural degradation with 6 cross-cutting concerns independently reimplemented. The build gate, review, and local rationality all passed — the composition property (system coherence) was unchecked.
+
+**Why naming this matters:** "Coordination failure" accurately describes the agent case but doesn't capture the cross-domain pattern. A sheet metal assembly doesn't "coordinate" — its operations are sequenced by a machine. LED channel routing doesn't involve multiple agents. The unifying concept is that **validation gates check component properties while failure emerges from composition properties** — and this gap exists in any domain where validation and function operate at different abstraction levels.
+
+**Implications for gate design:** The compositional correctness gap predicts where enforcement will fail: wherever the gate taxonomy covers components but not their composition. Closing the gap requires gates that operate at the composition level — assembly simulation for DFM, connectivity analysis for CAD routing, cross-agent deduplication for code. These gates are harder to build (they require domain-semantic understanding of what "correct composition" means), which is why the gap persists.
+
+#### Which gates are which
 
 | Gate | Type | Trajectory |
 |------|------|-----------|
@@ -470,6 +500,8 @@ A useful way to think about agent failures, though in practice most failures are
 
 **2026-03-17:** First post-gate effectiveness measurement (1 week since Mar 10 wiring). Raw velocity -25% (6,131→4,597/wk), but confounded by lower commit activity (-19%); per-commit velocity only -5.6%. Gate's direct blocking negligible (2 blocks, both bypassed). Indirect effect dramatic: hotspot count 12→3, daemon.go 1,559→197. Gate works as coordination mechanism (extraction pressure) not compliance mechanism (blocking). Falsification criterion #1 inconclusive — velocity metric may be wrong measure; structural health (hotspot count, file size Gini) better captures gate effect. Checkpoint Mar 24 needs commit-normalized data.
 
+**2026-03-20:** §8 generalized from "compliance vs coordination" to "compositional correctness gap." Two independent cross-domain evidence sources (LED magnetic letters gate stack, SendCutSend sheet metal DFM) showed the same structure as daemon.go coordination failure: individually valid components compose into non-functional wholes because validation gates operate at the component level. Named concept added. Three-scale evidence table added (operation→assembly, geometry→function, agent→system).
+
 ---
 
 ## References
@@ -481,6 +513,7 @@ A useful way to think about agent failures, though in practice most failures are
 - `.kb/investigations/2026-02-24-synthesis-enforcement-accretion-verification-design-burst.md` — Cross-investigation synthesis
 - `.kb/investigations/2026-02-14-inv-add-claude-md-accretion-boundaries.md` — CLAUDE.md as soft harness: progressive disclosure pattern (20→4 lines)
 - `.kb/investigations/2026-02-14-inv-fix-claude-md-remove-deleted.md` — CLAUDE.md documentation drift: stale refs to deleted pkg/registry/, duplicated sections
+- `.kb/investigations/2026-03-20-inv-extend-harness-engineering-model-kb.md` — Compositional correctness gap synthesis (LED gates + DFM + daemon.go)
 
 **Thread:**
 - `.kb/threads/2026-03-07-harness-engineering-structural-enforcement-agent.md`
@@ -532,3 +565,4 @@ A useful way to think about agent failures, though in practice most failures are
 - 2026-03-10: Blog post uncontaminated claim review — **Both published posts ("Soft Harness Doesn't Work," "Building Blind") have mild-to-moderate overclaiming, primarily implicit novelty.** 6 overclaimed, 3 unsupported, 5 fine, 2 fine-but-citable instances across both posts. Main issue: well-established concepts (affordances/Norman, PDCA/Deming, falsificationism/Popper, Conway's Law, nudge theory) described without citation, creating impression of original discovery. Threshold claims (5+ constraints, 10+ inert) stated as general findings from N=7 skills — insufficient for precise inflection points. Recommended: inline acknowledgments ("essentially Conway's Law for LLM agents"), soften thresholds to "in my system," add methodology footnote for 265-trial claim. Posts stay in first-person experiential framing which mitigates risk. Self-critical honesty ("I was wrong") is a strength. The specific context (AI agent orchestration) is genuinely novel even when the conceptual frameworks are not.
 - 2026-03-11: Measurement surface design for falsification — **Infrastructure is 80% ready; 3 targeted additions close the gaps.** Audited 40+ event types, 1400 lines of stats code, 4,831 events. Stats already compute gate_decision aggregation (GateDecisionStats) and gate effectiveness correlation (GateEffectivenessStats), but both show zeros because gate_decision events only just shipped (3 events in 7 days). Legacy bypass events show 69.5% fire rate (141/203 spawns) — gates fire on majority of spawns, falsifying "gates are irrelevant." Missing: (1) "allow" gate events for true fire rate, (2) accretion snapshots for velocity trending, (3) harness API endpoint for dashboard. Soft harness compliance NOT measurable from events — requires controlled A/B experiments. Designed 5 implementation components: gate allow events, accretion snapshots, harness API, CLI report, dashboard visualization. Confirms invariant #7 (enforcement without measurement is theological). Extends model with 4 falsification criteria and measurable thresholds.
 - 2026-03-11: Retrospective accuracy audit (Phase 3) — **Signal gates have 0% false positive rate across 173 samples.** Audited all blocks/failures for 8 signal gates (build, vet, phase_complete, synthesis, explain_back, verified, triage, accretion_precommit). Zero false positives found. Gates split into correctness gates (11 events, catch real defects) and discipline gates (162 events, measure human process compliance). Discipline gates (explain_back, verified, triage) have 100% eventual-completion rate — they enforce process without blocking correct work. Low-volume gates (build/vet n=3) have wide confidence intervals; Phase 4 prospective tracking needed. self_review (NOISE) confirmed at 79% FP rate (15/19 failures are intentional CLI output or pre-existing code). Extends model with gate accuracy data and correctness/discipline gate taxonomy.
+- 2026-03-20: Compositional correctness gap — **Compliance vs coordination is one instance of a broader cross-domain failure mode class.** LED magnetic letters gate stack (~150 renders): cut-channel LED routing passes all 4 gate layers (parameter, geometry, printability, intent) but produces disconnected channels — valid manifold STL, non-functional enclosure. Sheet metal DFM (SendCutSend): individual operations (cuts, bends, hardware) pass DFM rules but composed assembly interferes. Same structure as daemon.go +892 from 30 correct commits. Named concept "compositional correctness gap": gates validate at component level, failure emerges at composition level. §8 generalized with three-scale evidence table (operation→assembly, geometry→function, agent→system). See `.kb/investigations/2026-03-20-inv-extend-harness-engineering-model-kb.md`.
