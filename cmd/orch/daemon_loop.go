@@ -161,6 +161,9 @@ func daemonSetup() (*daemonLoopState, error) {
 		d.DigestStatePath = filepath.Join(homeDir, ".orch", "digest-state.json")
 	}
 
+	// Wire claim probe generation service (creates probe issues for stale/unconfirmed claims)
+	d.ClaimProbeService = daemon.NewDefaultClaimProbeService()
+
 	// Wire focus-aware priority boost
 	wireFocusBoost(d)
 
