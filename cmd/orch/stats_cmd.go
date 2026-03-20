@@ -5,8 +5,10 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -55,14 +57,17 @@ func runStats() error {
 	// Get events file path
 	eventsPath := getEventsPath()
 
-	// Parse all events (time filtering happens in aggregateStats)
-	events, err := parseEvents(eventsPath)
+	// Parse events within time window (+ correlation buffer for spawn lookups)
+	events, err := parseEvents(eventsPath, eventsSince(statsDays))
 	if err != nil {
 		return fmt.Errorf("failed to parse events: %w", err)
 	}
 
 	// Aggregate statistics
 	report := aggregateStats(events, statsDays)
+
+	// Collect N-value metrics (point-in-time system scale)
+	report.NValueMetrics = collectNValueMetrics(eventsPath)
 
 	// Snapshot mode: record gate accuracy baseline
 	if statsSnapshot {
@@ -84,9 +89,14 @@ func getEventsPath() string {
 	return filepath.Join(home, ".orch", "events.jsonl")
 }
 
-// parseEvents reads events from events.jsonl, returning all events.
-// Time window filtering is done in aggregateStats to support multi-window metrics.
-func parseEvents(path string) ([]StatsEvent, error) {
+// parseEvents reads events from events.jsonl, skipping events before `since`.
+// When since > 0, it estimates a file offset based on first/last timestamps
+// to avoid reading the entire file. This keeps read time proportional to the
+// requested time window instead of total file size.
+//
+// Callers should pass since = eventsSince(days) to include a correlation buffer
+// for spawn→completion lookups. Use since = 0 to read all events.
+func parseEvents(path string, since ...int64) ([]StatsEvent, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -96,8 +106,17 @@ func parseEvents(path string) ([]StatsEvent, error) {
 	}
 	defer file.Close()
 
+	var reader io.Reader = file
+
+	// When since is provided and > 0, try to seek past old events
+	if len(since) > 0 && since[0] > 0 {
+		if seekReader, ok := seekToTimestamp(file, since[0]); ok {
+			reader = seekReader
+		}
+	}
+
 	var events []StatsEvent
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(reader)
 	// Increase buffer size for potentially long lines
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 1024*1024)
@@ -122,6 +141,144 @@ func parseEvents(path string) ([]StatsEvent, error) {
 	}
 
 	return events, nil
+}
+
+// seekToTimestamp estimates the byte offset in events.jsonl where events
+// around the target timestamp begin. It reads the first and last timestamps,
+// interpolates a file position, seeks there, and skips to the next complete line.
+// Returns a reader positioned after the seek, or (nil, false) if seeking isn't beneficial.
+func seekToTimestamp(file *os.File, since int64) (io.Reader, bool) {
+	stat, err := file.Stat()
+	if err != nil || stat.Size() < 4096 {
+		return nil, false // too small to bother seeking
+	}
+	fileSize := stat.Size()
+
+	// Read first timestamp
+	firstTS := readFirstTimestamp(file)
+	if firstTS == 0 {
+		file.Seek(0, io.SeekStart)
+		return nil, false
+	}
+
+	// Read last timestamp
+	lastTS := readLastTimestamp(file, fileSize)
+	if lastTS == 0 || lastTS <= firstTS {
+		file.Seek(0, io.SeekStart)
+		return nil, false
+	}
+
+	// If since is before the first event, read everything
+	if since <= firstTS {
+		file.Seek(0, io.SeekStart)
+		return nil, false
+	}
+
+	// Interpolate: what fraction of the file should we skip?
+	totalDuration := float64(lastTS - firstTS)
+	skipDuration := float64(since - firstTS)
+	skipFraction := skipDuration / totalDuration
+
+	// Apply a safety margin — seek to 20% earlier than estimated
+	seekFraction := skipFraction * 0.8
+	if seekFraction <= 0 {
+		file.Seek(0, io.SeekStart)
+		return nil, false
+	}
+
+	seekPos := int64(float64(fileSize) * seekFraction)
+	file.Seek(seekPos, io.SeekStart)
+
+	// Skip the partial line at seek position
+	br := bufio.NewReader(file)
+	_, err = br.ReadBytes('\n')
+	if err != nil {
+		// If we can't find a newline, fall back to start
+		file.Seek(0, io.SeekStart)
+		return nil, false
+	}
+
+	return br, true
+}
+
+// readFirstTimestamp reads the first valid timestamp from the beginning of the file.
+func readFirstTimestamp(file *os.File) int64 {
+	file.Seek(0, io.SeekStart)
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 4096), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		var event struct {
+			Timestamp int64 `json:"timestamp"`
+		}
+		if err := json.Unmarshal([]byte(line), &event); err == nil && event.Timestamp > 0 {
+			return event.Timestamp
+		}
+	}
+	return 0
+}
+
+// readLastTimestamp reads the last valid timestamp from the end of the file.
+func readLastTimestamp(file *os.File, fileSize int64) int64 {
+	// Read the last 4KB to find the last line
+	readSize := int64(4096)
+	if readSize > fileSize {
+		readSize = fileSize
+	}
+	file.Seek(fileSize-readSize, io.SeekStart)
+
+	data := make([]byte, readSize)
+	n, err := io.ReadFull(file, data)
+	if err != nil && err != io.ErrUnexpectedEOF {
+		return 0
+	}
+	data = data[:n]
+
+	// Scan backwards for the last complete line
+	lastNewline := -1
+	for i := len(data) - 1; i >= 0; i-- {
+		if data[i] == '\n' {
+			if lastNewline == -1 {
+				lastNewline = i
+				continue
+			}
+			// Found the start of the last line
+			line := data[i+1 : lastNewline]
+			var event struct {
+				Timestamp int64 `json:"timestamp"`
+			}
+			if err := json.Unmarshal(line, &event); err == nil && event.Timestamp > 0 {
+				return event.Timestamp
+			}
+			break
+		}
+	}
+
+	// Edge case: only one line in the tail chunk
+	if lastNewline >= 0 {
+		line := data[:lastNewline]
+		var event struct {
+			Timestamp int64 `json:"timestamp"`
+		}
+		if err := json.Unmarshal(line, &event); err == nil && event.Timestamp > 0 {
+			return event.Timestamp
+		}
+	}
+
+	return 0
+}
+
+// eventsSince calculates the since timestamp for parseEvents.
+// It uses the requested days plus a correlation buffer to ensure
+// spawn events that precede completions within the window are included.
+const eventCorrelationBufferDays = 7
+
+func eventsSince(days int) int64 {
+	return time.Now().Unix() - int64(days+eventCorrelationBufferDays)*86400
 }
 
 func aggregateStats(events []StatsEvent, days int) *StatsReport {
@@ -280,6 +437,100 @@ func printDelta(label string, prev, curr float64) {
 		direction = "-"
 	}
 	fmt.Printf("    %-30s %6.1f%% -> %6.1f%% (%s%.1f%%)\n", label, prev, curr, direction, delta)
+}
+
+// collectNValueMetrics gathers point-in-time system scale metrics.
+// Scans workspace directories across all known projects (from ~/.kb/projects.json),
+// counts total events, and counts KB files in the current project.
+func collectNValueMetrics(eventsPath string) NValueMetrics {
+	metrics := NValueMetrics{}
+
+	// 1. Event count: total lines in events.jsonl
+	metrics.EventCount, _ = countFileLines(eventsPath)
+
+	// 2. KB file count: .md files in current project's .kb/
+	cwd, _ := os.Getwd()
+	kbDir := filepath.Join(cwd, ".kb")
+	metrics.KBFileCount = countFilesRecursive(kbDir, ".md")
+
+	// 3. Workspace count across all known projects
+	projectPaths := getProjectPathsFromRegistry()
+	if len(projectPaths) == 0 {
+		// Fallback: just use current project
+		projectPaths = []string{cwd}
+	}
+	metrics.WorkspaceProjects = len(projectPaths)
+	for _, projPath := range projectPaths {
+		wsDir := filepath.Join(projPath, ".orch", "workspace")
+		metrics.WorkspaceCount += countDirectories(wsDir)
+	}
+	if statsVerbose {
+		metrics.ProjectPaths = projectPaths
+	}
+
+	return metrics
+}
+
+// countFilesRecursive counts files with the given extension under a directory.
+func countFilesRecursive(dir string, ext string) int {
+	count := 0
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // skip errors
+		}
+		if !info.IsDir() && filepath.Ext(path) == ext {
+			count++
+		}
+		return nil
+	})
+	return count
+}
+
+// countDirectories counts immediate subdirectories (non-recursive, excludes "archived").
+func countDirectories(dir string) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, entry := range entries {
+		if entry.IsDir() && entry.Name() != "archived" {
+			count++
+		}
+	}
+	return count
+}
+
+// getProjectPathsFromRegistry reads ~/.kb/projects.json to get all known project paths.
+func getProjectPathsFromRegistry() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	registryPath := filepath.Join(home, ".kb", "projects.json")
+	data, err := os.ReadFile(registryPath)
+	if err != nil {
+		return nil
+	}
+
+	// projects.json has a "projects" key containing an array of {name, path} objects
+	var registry struct {
+		Projects []struct {
+			Path string `json:"path"`
+		} `json:"projects"`
+	}
+	if err := json.Unmarshal(data, &registry); err != nil {
+		return nil
+	}
+
+	var paths []string
+	for _, p := range registry.Projects {
+		if p.Path != "" {
+			paths = append(paths, p.Path)
+		}
+	}
+	return paths
 }
 
 func loadGateBaselines(path string) ([]GateAccuracyBaseline, error) {

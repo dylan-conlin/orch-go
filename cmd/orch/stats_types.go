@@ -56,6 +56,7 @@ type StatsReport struct {
 	GateEffectivenessStats GateEffectivenessStats          `json:"gate_effectiveness_stats,omitempty"`
 	SkillInferenceStats    SkillInferenceStats              `json:"skill_inference_stats,omitempty"`
 	CoachingStats          map[string]coaching.MetricSummary `json:"coaching_stats,omitempty"`
+	NValueMetrics          NValueMetrics                     `json:"n_value_metrics"`
 }
 
 // StatsSummary contains core metrics
@@ -309,6 +310,16 @@ type InferenceSkillStats struct {
 	Completed      int     `json:"completed"`
 	Abandoned      int     `json:"abandoned"`
 	CompletionRate float64 `json:"completion_rate"`
+}
+
+// NValueMetrics tracks scaling variables that drive behavioral accretion.
+// These are point-in-time counts (not event-derived) measuring system scale.
+type NValueMetrics struct {
+	WorkspaceCount     int      `json:"workspace_count"`               // Active workspaces across all known projects
+	WorkspaceProjects  int      `json:"workspace_projects"`            // Number of projects scanned
+	EventCount         int      `json:"event_count"`                   // Total lines in events.jsonl (all time)
+	KBFileCount        int      `json:"kb_file_count"`                 // Total files in .kb/ (current project)
+	ProjectPaths       []string `json:"project_paths,omitempty"`       // Projects scanned (verbose only)
 }
 
 // GateAccuracyBaseline is a point-in-time snapshot of gate accuracy metrics.

@@ -25,6 +25,14 @@ func outputStatsText(report *StatsReport) error {
 	fmt.Printf("Period: %s  |  Events analyzed: %d\n", report.AnalysisPeriod, report.EventsAnalyzed)
 	fmt.Println(strings.Repeat("-", 70))
 
+	// N-value metrics (system scale)
+	nv := report.NValueMetrics
+	fmt.Println()
+	fmt.Println("📐 SYSTEM SCALE (N-values)")
+	fmt.Printf("  Workspaces:    %d (across %d projects)\n", nv.WorkspaceCount, nv.WorkspaceProjects)
+	fmt.Printf("  Events:        %d (all time)\n", nv.EventCount)
+	fmt.Printf("  KB files:      %d (.md files in .kb/)\n", nv.KBFileCount)
+
 	// Core metrics
 	fmt.Println()
 	fmt.Println("🎯 CORE METRICS")

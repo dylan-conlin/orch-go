@@ -2021,3 +2021,70 @@ func TestSkillInferenceStatsNoOutcome(t *testing.T) {
 		t.Errorf("TotalInferences = %d, want 0 (no outcomes yet)", report.SkillInferenceStats.TotalInferences)
 	}
 }
+
+func TestCollectNValueMetrics(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create events.jsonl with known line count
+	eventsPath := filepath.Join(tmpDir, "events.jsonl")
+	eventsContent := `{"type":"session.spawned","timestamp":1}
+{"type":"agent.completed","timestamp":2}
+{"type":"daemon.spawn","timestamp":3}
+`
+	os.WriteFile(eventsPath, []byte(eventsContent), 0644)
+
+	// Create KB directory with .md files
+	kbDir := filepath.Join(tmpDir, ".kb")
+	os.MkdirAll(filepath.Join(kbDir, "models"), 0755)
+	os.WriteFile(filepath.Join(kbDir, "model.md"), []byte("# Model"), 0644)
+	os.WriteFile(filepath.Join(kbDir, "models", "sub.md"), []byte("# Sub"), 0644)
+	os.WriteFile(filepath.Join(kbDir, "readme.txt"), []byte("not counted"), 0644)
+
+	metrics := collectNValueMetrics(eventsPath)
+
+	if metrics.EventCount != 3 {
+		t.Errorf("EventCount = %d, want 3", metrics.EventCount)
+	}
+	// KB count depends on cwd, so we test the helpers directly
+}
+
+func TestCountFilesRecursive(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, "sub"), 0755)
+	os.WriteFile(filepath.Join(tmpDir, "a.md"), []byte("a"), 0644)
+	os.WriteFile(filepath.Join(tmpDir, "b.md"), []byte("b"), 0644)
+	os.WriteFile(filepath.Join(tmpDir, "sub", "c.md"), []byte("c"), 0644)
+	os.WriteFile(filepath.Join(tmpDir, "d.txt"), []byte("d"), 0644)
+
+	count := countFilesRecursive(tmpDir, ".md")
+	if count != 3 {
+		t.Errorf("countFilesRecursive = %d, want 3", count)
+	}
+}
+
+func TestCountDirectories(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.Mkdir(filepath.Join(tmpDir, "ws-1"), 0755)
+	os.Mkdir(filepath.Join(tmpDir, "ws-2"), 0755)
+	os.Mkdir(filepath.Join(tmpDir, "archived"), 0755) // should be excluded
+	os.WriteFile(filepath.Join(tmpDir, "file.txt"), []byte("not a dir"), 0644)
+
+	count := countDirectories(tmpDir)
+	if count != 2 {
+		t.Errorf("countDirectories = %d, want 2 (excluding archived)", count)
+	}
+}
+
+func TestCountDirectories_EmptyDir(t *testing.T) {
+	count := countDirectories("/nonexistent/path")
+	if count != 0 {
+		t.Errorf("countDirectories on nonexistent = %d, want 0", count)
+	}
+}
+
+func TestCountFilesRecursive_EmptyDir(t *testing.T) {
+	count := countFilesRecursive("/nonexistent/path", ".md")
+	if count != 0 {
+		t.Errorf("countFilesRecursive on nonexistent = %d, want 0", count)
+	}
+}
