@@ -1,0 +1,198 @@
+model: context-injection
+version: 1
+last_audit: "2026-03-19"
+
+claims:
+  - id: CI-01
+    text: "SPAWN_CONTEXT.md is the single authoritative context source for spawned agents — SessionStart hooks must back off to avoid duplication"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Redundant guidance failure mode: beads tracking appeared in bd prime, orchestrator skill, AND SPAWN_CONTEXT — triple injection caused confusion"
+        date: "2026-01-17"
+        verdict: confirms
+      - source: "Architecture audit (Mar 18): confirmed SPAWN_CONTEXT.md remains single source for workers, hooks check CLAUDE_CONTEXT and skip"
+        date: "2026-03-18"
+        verdict: confirms
+    last_validated: "2026-03-18"
+    domain_tags: ["spawn-context", "authority", "duplication", "workers"]
+    falsifies_if: "Workers perform better when receiving context from multiple injection paths (hook + SPAWN_CONTEXT) than from SPAWN_CONTEXT alone (N>20, >+5pp completion rate)"
+    tensions: []
+
+  - id: CI-02
+    text: "Role-aware filtering via CLAUDE_CONTEXT env var is the primary mechanism for preventing context cross-contamination between agent levels"
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Token bloat: workers received 86KB orchestrator skill because hooks ran without CLAUDE_CONTEXT check"
+        date: "2026-01-17"
+        verdict: confirms
+      - source: "Fix: both SessionStart hooks check CLAUDE_CONTEXT == worker and exit early — eliminated token bloat"
+        date: "2026-02-01"
+        verdict: confirms
+    last_validated: "2026-03-18"
+    domain_tags: ["CLAUDE_CONTEXT", "filtering", "role-awareness", "hooks"]
+    falsifies_if: "A context injection architecture without role filtering that avoids cross-contamination (no token bloat, no guidance mismatch) across 3+ agent levels"
+    tensions:
+      - claim: ATE-01
+        model: agent-trust-enforcement
+        type: confirms
+        note: "CLAUDE_CONTEXT is convention-layer (L4) — an agent could override the env var, but the risk is self-harm not security breach"
+
+  - id: CI-03
+    text: "Pressure over compensation — when agents lack context, fix the template/hook rather than manually pasting context into sessions"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Design principle from model creation (Jan 17): manual pasting masks systemic gaps and prevents learning"
+        date: "2026-01-17"
+        verdict: confirms
+      - source: "Drift audit (Mar 18): principle confirmed intact — no evidence of manual context injection workarounds"
+        date: "2026-03-18"
+        verdict: confirms
+    last_validated: "2026-03-18"
+    domain_tags: ["pressure", "compensation", "templates", "systemic-fix"]
+    falsifies_if: "Manual context pasting produces equivalent long-term outcomes to template fixes — no recurring gaps (measured over 30+ sessions)"
+    tensions: []
+
+  - id: CI-04
+    text: "The system implements only two retrieval primitives (global search, role filtering) — scoped auto-surfacing is absent"
+    type: observation
+    scope: local
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Scoped annotation probe (Mar 18): all injection paths use global retrieval — no mechanism ties knowledge to specific files/packages/skills"
+        date: "2026-03-18"
+        verdict: confirms
+      - source: "Gap detection (pkg/spawn/gap.go) resolutions flow into global kb quick pool — keyword matching, not resource-scoped"
+        date: "2026-03-18"
+        verdict: confirms
+    last_validated: "2026-03-18"
+    domain_tags: ["retrieval", "scoped-surfacing", "global-search", "gap"]
+    falsifies_if: "Orch-go implements a scoped auto-surfacing mechanism (annotation tied to resource ID, auto-injected at read time)"
+    tensions: []
+
+  - id: CI-05
+    text: "SessionStart hooks and SPAWN_CONTEXT.md serve different agent populations and must not be unified"
+    type: invariant
+    scope: local
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "SessionStart hooks serve interactive (orchestrator) sessions with dynamic orientation; SPAWN_CONTEXT serves spawned workers with static compiled context"
+        date: "2026-01-17"
+        verdict: confirms
+      - source: "Hook replacement (~Feb 2026): session-start.sh replaced by orient-hook.sh — different content, different purpose from SPAWN_CONTEXT"
+        date: "2026-02-01"
+        verdict: confirms
+    last_validated: "2026-03-18"
+    domain_tags: ["hooks", "spawn-context", "separation", "orchestrator", "workers"]
+    falsifies_if: "A single injection path that serves both interactive and spawned sessions without token bloat or guidance mismatch"
+    tensions: []
+
+  - id: CI-06
+    text: "KB context injection enriches SPAWN_CONTEXT with prior knowledge, but uses keyword matching with medium precision (false positives from generic terms)"
+    type: observation
+    scope: local
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "Retrieval primitives taxonomy (Mar 18): global search via kb context → keyword match → inject — medium precision"
+        date: "2026-03-18"
+        verdict: confirms
+      - source: "50+ kb quick entries accumulate needing triage — keyword surfacing creates noise"
+        date: "2026-03-18"
+        verdict: confirms
+    last_validated: "2026-03-18"
+    domain_tags: ["kb-context", "keyword-matching", "precision", "false-positives"]
+    falsifies_if: "KB context keyword matching achieves >90% precision (fewer than 10% false positive injections) over 100+ spawns"
+    tensions:
+      - claim: MH-04
+        model: measurement-honesty
+        type: extends
+        note: "KB injection precision is unmeasured — agents receive context without knowing its signal-to-noise ratio"
+
+  - id: CI-07
+    text: "PreToolUse hooks provide runtime governance injection — context injected at tool-call time, not just at session start"
+    type: mechanism
+    scope: local
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "Runtime governance hooks: gate-bd-close.py, gate-worker-git-add-all.py operate during execution (~Mar 2026)"
+        date: "2026-03-01"
+        verdict: confirms
+    last_validated: "2026-03-18"
+    domain_tags: ["PreToolUse", "hooks", "runtime", "governance"]
+    falsifies_if: "Runtime governance can be achieved entirely through session-start injection without tool-call-time hooks"
+    tensions:
+      - claim: AE-01
+        model: architectural-enforcement
+        type: confirms
+        note: "PreToolUse hooks are infrastructure enforcement — they gate actions rather than relying on instructions"
+      - claim: SCT-05
+        model: skill-content-transfer
+        type: confirms
+        note: "Hook-enforced behaviors in PreToolUse hooks should NOT be duplicated in skill text"
+
+  - id: CI-08
+    text: "Infrastructure edits during active orchestration destabilize the system — context injection config (settings.json, hooks) must not be edited while running"
+    type: invariant
+    scope: local
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "Design constraint from model creation (Jan 17): editing hooks/settings while agents are running creates inconsistent context across concurrent sessions"
+        date: "2026-01-17"
+        verdict: confirms
+    last_validated: "2026-03-18"
+    domain_tags: ["infrastructure", "live-editing", "stability", "settings"]
+    falsifies_if: "Hot-reloading context injection config (hooks, settings.json) without affecting running agent sessions"
+    tensions: []
+
+  - id: CI-09
+    text: "Context injection has four distinct paths (SessionStart hooks, SPAWN_CONTEXT.md, PreToolUse hooks, CLAUDE_CONTEXT filtering) operating at different lifecycle phases"
+    type: mechanism
+    scope: local
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Architecture audit (Mar 18): all four paths confirmed active and non-overlapping"
+        date: "2026-03-18"
+        verdict: confirms
+      - source: "Each path serves a different purpose: orientation (SessionStart), task context (SPAWN_CONTEXT), runtime governance (PreToolUse), role filtering (CLAUDE_CONTEXT)"
+        date: "2026-03-18"
+        verdict: confirms
+    last_validated: "2026-03-18"
+    domain_tags: ["architecture", "injection-paths", "lifecycle", "four-paths"]
+    falsifies_if: "Two injection paths found to be fully redundant (same content, same lifecycle phase, same audience) with no differentiation"
+    tensions:
+      - claim: ATE-06
+        model: agent-trust-enforcement
+        type: confirms
+        note: "Independent lifecycle phases — same principle applies to context injection paths as enforcement layers"
+
+  - id: CI-10
+    text: "Global retrieval without scoped annotations creates accumulation pressure — gap resolutions pile up in a single pool requiring manual triage"
+    type: observation
+    scope: local
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "50+ kb quick entries accumulated needing triage — no scoping mechanism to auto-surface at point of relevance"
+        date: "2026-03-18"
+        verdict: confirms
+      - source: "Context Hub comparison: scoped annotations auto-surface at read time with zero triage overhead"
+        date: "2026-03-18"
+        verdict: confirms
+    last_validated: "2026-03-18"
+    domain_tags: ["accumulation", "triage", "global-retrieval", "scoped-surfacing", "gap"]
+    falsifies_if: "Global retrieval pool stays manageable (<20 entries) over 60+ days without manual triage"
+    tensions: []

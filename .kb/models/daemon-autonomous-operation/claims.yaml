@@ -1,0 +1,276 @@
+model: daemon-autonomous-operation
+version: 1
+last_audit: "2026-03-19"
+
+claims:
+  - id: DAO-01
+    text: "The daemon operates in a poll-spawn-complete cycle: poll beads for triage:ready, infer skill, spawn within capacity, detect Phase: Complete, auto-complete routine work"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-19"
+    last_validated: "2026-03-17"
+    evidence:
+      - source: "39+ investigations + daemon.md guide verified Mar 1, 2026"
+        date: "2026-03-01"
+        verdict: confirms
+      - source: "Daemon extractions Mar 10-17 confirmed full cycle operating end-to-end"
+        date: "2026-03-17"
+        verdict: confirms
+    domain_tags: ["daemon", "poll-loop", "spawn", "completion", "OODA"]
+    falsifies_if: "Daemon adopts event-driven architecture (beads webhooks/SSE) and poll cycle is removed"
+    tensions: []
+
+  - id: DAO-02
+    text: "Spawn prerequisites must be hard gates (fail-fast), not soft warnings — warn-and-continue on spawn prerequisites causes duplicate spawns"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-19"
+    last_validated: "2026-02-17"
+    evidence:
+      - source: "Feb 14 incident: orch-go-w50 spawned 10 times in 20 minutes due to warn-and-continue on UpdateBeadsStatus failure"
+        date: "2026-02-14"
+        verdict: confirms
+      - source: "Feb 17 fix: dependency check, epic expansion, extraction gate, rollback all converted to fail-fast"
+        date: "2026-02-17"
+        verdict: confirms
+    domain_tags: ["daemon", "spawn", "dedup", "gates", "fail-fast"]
+    falsifies_if: "Warn-and-continue spawn prerequisites produce fewer duplicate spawns than fail-fast over 100+ daemon cycles"
+    tensions:
+      - claim: AE-01
+        model: architectural-enforcement
+        type: confirms
+        note: "Both models confirm infrastructure enforcement over instruction — daemon spawn gates are a concrete instance"
+
+  - id: DAO-03
+    text: "7-layer dedup pipeline (L0 PID lock + L1-L6) prevents duplicate spawns, with L6 (UpdateStatus) as the only fail-fast structural gate"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-19"
+    last_validated: "2026-03-11"
+    evidence:
+      - source: "L3/L4 content-aware dedup added Feb 16 after 9 duplicate issues with identical titles bypassed ID-based layers"
+        date: "2026-02-16"
+        verdict: confirms
+      - source: "Mar 11 orlcp completion-spawn loop incident: required 3 additional fixes (label filtering, triage:ready removal, CompletionDedupTracker)"
+        date: "2026-03-11"
+        verdict: confirms
+    domain_tags: ["daemon", "dedup", "pipeline", "spawn", "L6"]
+    falsifies_if: "A single-layer dedup mechanism achieves <1% duplicate rate across 500+ daemon spawns without the multi-layer pipeline"
+    tensions: []
+
+  - id: DAO-04
+    text: "Skill inference follows a 4-level priority chain: label > title > description > type fallback — only label override (Priority 1) is reliable"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-19"
+    last_validated: "2026-03-17"
+    evidence:
+      - source: "Type-based fallback table verified in skill_inference.go"
+        date: "2026-03-01"
+        verdict: confirms
+      - source: "Model inference by skill (deep reasoning → Opus, implementation → Sonnet) wired via InferModelFromSkill()"
+        date: "2026-03-17"
+        verdict: confirms
+    domain_tags: ["daemon", "skill-inference", "model-inference", "routing"]
+    falsifies_if: "Title/description heuristics (Priority 2-3) achieve >95% accuracy across 200+ issues without label override"
+    tensions:
+      - claim: SCT-01
+        model: skill-content-transfer
+        type: relates
+        note: "Skill selection determines which content types are loaded — wrong inference means wrong knowledge transfer"
+
+  - id: DAO-05
+    text: "VerificationTracker pauses daemon spawning after N unverified completions, forcing periodic human review of autonomous work"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-19"
+    last_validated: "2026-03-17"
+    evidence:
+      - source: "Threshold of 3 implemented in verification_tracker.go with signal-based resume"
+        date: "2026-02-14"
+        verdict: confirms
+      - source: "Cross-project gap: SeedFromBacklog() only reads orch-go checkpoints — restart resets counter for non-orch-go work"
+        date: "2026-03-01"
+        verdict: confirms
+    domain_tags: ["daemon", "verification", "safety", "human-review", "pause"]
+    falsifies_if: "Fully autonomous daemon operation (no verification pause) produces equivalent quality outcomes over 100+ completions"
+    tensions:
+      - claim: MH-02
+        model: measurement-honesty
+        type: extends
+        note: "Zero reworks doesn't mean zero problems — verification threshold is the mechanism that forces checking"
+
+  - id: DAO-06
+    text: "PID lock enforces single daemon instance — process-level duplication cannot be caught by issue-level dedup (L1-L6)"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-19"
+    last_validated: "2026-03-01"
+    evidence:
+      - source: "Each daemon instance has its own in-memory tracker — concurrent instances would bypass L1-L3 entirely"
+        date: "2026-02-14"
+        verdict: confirms
+      - source: "Stale PID detection via kill(pid, 0) handles crash recovery"
+        date: "2026-03-01"
+        verdict: confirms
+    domain_tags: ["daemon", "PID", "single-instance", "dedup", "L0"]
+    falsifies_if: "Multi-instance daemon with shared state (e.g., Redis-backed tracker) achieves equivalent dedup without PID lock"
+    tensions: []
+
+  - id: DAO-07
+    text: "Orphan detector resets dead agents (session/tmux gone, issue still in_progress) but intentionally preserves spawn cache to prevent thrash loops"
+    confidence: confirmed
+    priority: supporting
+    created: "2026-03-19"
+    last_validated: "2026-03-01"
+    evidence:
+      - source: "Orphan detection skips agents with Phase: Complete (waiting for review, not orphaned)"
+        date: "2026-03-01"
+        verdict: confirms
+      - source: "6h TTL provides natural cooldown — trade-off blocks legitimate retries for remainder of TTL"
+        date: "2026-03-01"
+        verdict: confirms
+    domain_tags: ["daemon", "orphan", "thrash", "spawn-cache", "recovery"]
+    falsifies_if: "Clearing spawn cache on orphan detection does not increase thrash rate over 50+ orphan events"
+    tensions: []
+
+  - id: DAO-08
+    text: "Extraction gate signals hotspot reduction by creating extraction issues — direct blocking effect is negligible (2 blocks, both bypassed), but signaling cascade reduced >800-line files from 12 to 3"
+    confidence: confirmed
+    priority: supporting
+    created: "2026-03-19"
+    last_validated: "2026-03-17"
+    evidence:
+      - source: "Mar 10-17 extraction cascade: daemon.go went from 1,559 to 197 lines, 75% fewer hotspots"
+        date: "2026-03-17"
+        verdict: confirms
+      - source: "Gate effectiveness cohort (529 spawns): no measurable quality difference between enforced and bypassed"
+        date: "2026-03-17"
+        verdict: confirms
+    domain_tags: ["daemon", "extraction", "hotspot", "signaling", "cascade"]
+    falsifies_if: "Removing the extraction gate does not increase hotspot count over a 2-week measurement period"
+    tensions:
+      - claim: AE-08
+        model: architectural-enforcement
+        type: confirms
+        note: "Both models confirm gates are signaling infrastructure, not quality gates — extraction gate is a concrete instance"
+
+  - id: DAO-09
+    text: "Cross-project operation runs from orch-go but polls all kb-registered projects — shared capacity pool, but VerificationTracker seed is orch-go-only on restart"
+    confidence: confirmed
+    priority: supporting
+    created: "2026-03-19"
+    last_validated: "2026-03-12"
+    evidence:
+      - source: "Cross-project spawn CWD bug (Feb 25): 100% of cross-project spawns failed silently before --workdir fix"
+        date: "2026-02-25"
+        verdict: confirms
+      - source: "Project group config gap (Mar 12): groups.yaml does not exist, all features fall back to hardcoded OrchEcosystemRepos"
+        date: "2026-03-12"
+        verdict: confirms
+    domain_tags: ["daemon", "cross-project", "ProjectRegistry", "groups", "capacity"]
+    falsifies_if: "Per-project daemon instances produce better outcomes than centralized cross-project polling (measured by spawn success rate, N>100)"
+    tensions: []
+
+  - id: DAO-10
+    text: "Triage workflow separates judgment (orchestrator) from execution (daemon) — daemon-routed triage:ready agents succeed 9.4x more than direct spawns"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-19"
+    last_validated: "2026-03-17"
+    evidence:
+      - source: "Triage routing success rate: 9.4x improvement for daemon-routed vs direct spawns"
+        date: "2026-03-17"
+        verdict: confirms
+      - source: "Labels control readiness: triage:ready (spawn), triage:review (skip), no label (skip)"
+        date: "2026-03-01"
+        verdict: confirms
+    domain_tags: ["daemon", "triage", "routing", "orchestrator", "success-rate"]
+    falsifies_if: "Direct spawns (bypassing triage) achieve equivalent success rate to triaged spawns over 100+ spawns"
+    tensions:
+      - claim: ATE-01
+        model: agent-trust-enforcement
+        type: relates
+        note: "Triage is a human-in-the-loop trust gate — convention alone (agent self-triage) would be insufficient"
+
+  - id: DAO-11
+    text: "CompletionOnce failure tracking pauses spawning after 3 consecutive completion failures — prevents orphaned agents accumulating when completion processing is broken"
+    confidence: confirmed
+    priority: supporting
+    created: "2026-03-19"
+    last_validated: "2026-03-01"
+    evidence:
+      - source: "CompletionFailureTracker implemented in completion_failure_tracker.go"
+        date: "2026-03-01"
+        verdict: confirms
+    domain_tags: ["daemon", "completion", "failure", "circuit-breaker", "safety"]
+    falsifies_if: "Continuing to spawn during completion failures does not increase orphan accumulation rate (N>20 failures)"
+    tensions: []
+
+  - id: DAO-12
+    text: "Daemon Config is constructed at 4 independent call sites — compiler does not catch omitted fields, causing silent feature disablement (RecoveryEnabled=false, MaxSpawnsPerHour=0 in production)"
+    confidence: confirmed
+    priority: supporting
+    created: "2026-03-19"
+    last_validated: "2026-03-17"
+    evidence:
+      - source: "RecoveryEnabled never set in runDaemonLoop → recovery silently disabled in production"
+        date: "2026-03-17"
+        verdict: confirms
+      - source: "DefaultConfig() exists but is not used in production CLI paths"
+        date: "2026-03-17"
+        verdict: confirms
+    domain_tags: ["daemon", "config", "divergence", "Go", "zero-values"]
+    falsifies_if: "All 4 construction sites are replaced with a single DefaultConfig()-based constructor"
+    tensions: []
+
+  - id: DAO-13
+    text: "Non-Anthropic models (GPT-5.2-codex) have 63-87% stall rates on daemon spawns due to context window consumption by SPAWN_CONTEXT (63-76KB files consume 40-50K GPT tokens)"
+    confidence: confirmed
+    priority: supporting
+    created: "2026-03-19"
+    last_validated: "2026-03-17"
+    evidence:
+      - source: "GPT-5.2-codex failure modes: hallucinated constraints, 145K token consumption, silent termination"
+        date: "2026-03-17"
+        verdict: confirms
+      - source: "Config resolution bug: user config default_model bypasses project config opencode.model override"
+        date: "2026-03-17"
+        verdict: confirms
+    domain_tags: ["daemon", "model", "GPT", "context-window", "stall"]
+    falsifies_if: "Non-Anthropic models achieve >80% completion rate on protocol-heavy daemon spawns (N>30)"
+    tensions: []
+
+  - id: DAO-14
+    text: "Correlated failures degrade dedup: when beads is unavailable, L4/L5/L6 all degrade simultaneously — no atomic CAS between L5 (status check) and L6 (status update)"
+    confidence: confirmed
+    priority: supporting
+    created: "2026-03-19"
+    last_validated: "2026-03-01"
+    evidence:
+      - source: "Known limitation documented: TOCTOU race window between L5 and L6"
+        date: "2026-03-01"
+        verdict: confirms
+      - source: "L2/L4/L5 are fail-open — allow spawn if backing service unavailable"
+        date: "2026-02-16"
+        verdict: confirms
+    domain_tags: ["daemon", "dedup", "correlated-failure", "beads", "TOCTOU"]
+    falsifies_if: "Atomic CAS at beads layer eliminates the TOCTOU race window between status check and update"
+    tensions: []
+
+  - id: DAO-15
+    text: "Sibling sequencing defers test-writing issues until implementation siblings complete — prevents build breakage from tests referencing unimplemented types"
+    confidence: confirmed
+    priority: supporting
+    created: "2026-03-19"
+    last_validated: "2026-03-18"
+    evidence:
+      - source: "Mar 18 scrape project: test agent scrape-9w3 wrote tests for types not yet implemented by sibling agents"
+        date: "2026-03-18"
+        verdict: confirms
+      - source: "ShouldDeferTestIssue() runs in Decide phase with title/description heuristics"
+        date: "2026-03-18"
+        verdict: confirms
+    domain_tags: ["daemon", "sequencing", "tests", "siblings", "ordering"]
+    falsifies_if: "Unordered parallel spawning of test+implementation siblings produces fewer build failures than deferral (N>20 sibling pairs)"
+    tensions: []
