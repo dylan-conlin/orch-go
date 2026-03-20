@@ -1,7 +1,10 @@
 package orch
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
 func TestResolveCrossRepoBeadsDir(t *testing.T) {
@@ -111,6 +114,66 @@ func TestDetermineBeadsID_PassesProjectDir(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCheckActiveAgent_TmuxWindowBlocks(t *testing.T) {
+	// Save and restore originals
+	origFind := FindTmuxWindowByBeadsID
+	origActive := IsTmuxPaneActive
+	t.Cleanup(func() {
+		FindTmuxWindowByBeadsID = origFind
+		IsTmuxPaneActive = origActive
+	})
+
+	t.Run("active tmux window blocks spawn", func(t *testing.T) {
+		FindTmuxWindowByBeadsID = func(beadsID string) (*tmux.WindowInfo, string, error) {
+			return &tmux.WindowInfo{
+				Index: "3",
+				ID:    "@42",
+				Name:  "og-debug-test [orch-go-hw6ej]",
+			}, "workers-orch-go", nil
+		}
+		IsTmuxPaneActive = func(windowID string) bool { return true }
+
+		err := CheckActiveAgent("orch-go-hw6ej", "http://127.0.0.1:99999")
+		if err == nil {
+			t.Fatal("expected error when active tmux window exists")
+		}
+		if !strings.Contains(err.Error(), "already in_progress with active agent (tmux") {
+			t.Errorf("unexpected error message: %v", err)
+		}
+		if !strings.Contains(err.Error(), "workers-orch-go") {
+			t.Errorf("error should mention tmux session name: %v", err)
+		}
+	})
+
+	t.Run("idle tmux window allows respawn", func(t *testing.T) {
+		FindTmuxWindowByBeadsID = func(beadsID string) (*tmux.WindowInfo, string, error) {
+			return &tmux.WindowInfo{
+				Index: "3",
+				ID:    "@42",
+				Name:  "og-debug-test [orch-go-hw6ej]",
+			}, "workers-orch-go", nil
+		}
+		IsTmuxPaneActive = func(windowID string) bool { return false }
+
+		err := CheckActiveAgent("orch-go-hw6ej", "http://127.0.0.1:99999")
+		if err != nil {
+			t.Errorf("idle tmux window should not block spawn: %v", err)
+		}
+	})
+
+	t.Run("no tmux window allows respawn", func(t *testing.T) {
+		FindTmuxWindowByBeadsID = func(beadsID string) (*tmux.WindowInfo, string, error) {
+			return nil, "", nil
+		}
+		IsTmuxPaneActive = func(windowID string) bool { return false }
+
+		err := CheckActiveAgent("orch-go-hw6ej", "http://127.0.0.1:99999")
+		if err != nil {
+			t.Errorf("no tmux window should not block spawn: %v", err)
+		}
+	})
 }
 
 func TestDetectCrossRepo(t *testing.T) {

@@ -10,8 +10,19 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/beadsutil"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
+
+// FindTmuxWindowByBeadsID searches all tmux sessions for a window matching the
+// given beads ID. Returns nil window if not found. Package-level variable for test mocking.
+var FindTmuxWindowByBeadsID = func(beadsID string) (*tmux.WindowInfo, string, error) {
+	return tmux.FindWindowByBeadsIDAllSessions(beadsID)
+}
+
+// IsTmuxPaneActive checks if a tmux pane has an active (non-shell) process.
+// Package-level variable for test mocking.
+var IsTmuxPaneActive = tmux.IsPaneActive
 
 func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isOrchestrator, isMetaOrchestrator bool, serverURL string, noTrack bool, workspaceName string, createBeadsFn func(string, string, string, string) (string, error), projectDir string) (string, error) {
 	skipBeadsForOrchestrator := isOrchestrator || isMetaOrchestrator
@@ -40,15 +51,8 @@ func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isO
 				return "", fmt.Errorf("issue %s is already closed", beadsID)
 			}
 			if issue.Status == "in_progress" {
-				client := opencode.NewClient(serverURL)
-				sessions, _ := client.ListSessions("")
-				for _, s := range sessions {
-					if strings.Contains(s.Title, beadsID) {
-						if client.IsSessionActive(s.ID, 30*time.Minute) {
-							return "", fmt.Errorf("issue %s is already in_progress with active agent (session %s). Use 'orch send %s' to interact or 'orch abandon %s' to restart", beadsID, s.ID, s.ID, beadsID)
-						}
-						fmt.Fprintf(os.Stderr, "Note: found stale session %s for issue %s (no activity in 30m)\n", shortID(s.ID), beadsID)
-					}
+				if err := CheckActiveAgent(beadsID, serverURL); err != nil {
+					return "", err
 				}
 				if complete, err := verify.IsPhaseComplete(beadsID, projectDir); err == nil && complete {
 					return "", fmt.Errorf("issue %s has Phase: Complete but is not closed. Run 'orch complete %s' first", beadsID, beadsID)
@@ -186,6 +190,37 @@ func ResolveCrossRepoBeadsDir(beadsID, cwd, projectDir string, issueExists func(
 	}
 	// Issue must be in CWD's project — inject BEADS_DIR so agent can reach it.
 	return cwdBeadsDir
+}
+
+// CheckActiveAgent checks whether an in_progress issue has a live agent in either
+// OpenCode (headless) or tmux (Claude CLI). Returns a non-nil error describing
+// the active agent if one is found, nil if no active agent exists.
+//
+// This is the core dedup check for the manual spawn path. It prevents duplicate
+// spawns when the daemon has already picked up an issue via triage:ready.
+func CheckActiveAgent(beadsID, serverURL string) error {
+	// Check OpenCode sessions (headless backend)
+	client := opencode.NewClient(serverURL)
+	sessions, _ := client.ListSessions("")
+	for _, s := range sessions {
+		if strings.Contains(s.Title, beadsID) {
+			if client.IsSessionActive(s.ID, 30*time.Minute) {
+				return fmt.Errorf("issue %s is already in_progress with active agent (session %s). Use 'orch send %s' to interact or 'orch abandon %s' to restart", beadsID, s.ID, s.ID, beadsID)
+			}
+			fmt.Fprintf(os.Stderr, "Note: found stale session %s for issue %s (no activity in 30m)\n", shortID(s.ID), beadsID)
+		}
+	}
+	// Check tmux windows (Claude CLI backend)
+	// The default backend spawns agents in tmux, not OpenCode.
+	// Without this check, manual spawns race with daemon-spawned
+	// tmux agents because they're invisible to the OpenCode query above.
+	if window, sessionName, err := FindTmuxWindowByBeadsID(beadsID); err == nil && window != nil {
+		if IsTmuxPaneActive(window.ID) {
+			return fmt.Errorf("issue %s is already in_progress with active agent (tmux %s:%s). Use 'orch abandon %s' to restart", beadsID, sessionName, window.Name, beadsID)
+		}
+		fmt.Fprintf(os.Stderr, "Note: found tmux window for %s but pane is idle (agent exited)\n", beadsID)
+	}
+	return nil
 }
 
 // resolveShortBeadsID delegates to beadsutil.ResolveShortIDSimple.
