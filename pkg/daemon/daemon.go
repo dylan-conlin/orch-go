@@ -125,7 +125,13 @@ type Daemon struct {
 	// ActiveCounter counts active agents for pool reconciliation.
 	ActiveCounter ActiveCounter
 	// Agents discovers agents for orphan detection and recovery.
+	// During a cycle (between BeginCycle/EndCycle), this is wrapped with
+	// cachedAgentDiscoverer to share a single GetActiveAgents() call across
+	// all periodic tasks.
 	Agents AgentDiscoverer
+	// uncachedAgents holds the original AgentDiscoverer during a cycle.
+	// Set by BeginCycle(), restored by EndCycle().
+	uncachedAgents AgentDiscoverer
 	// StatusUpdater updates beads issue status.
 	StatusUpdater IssueUpdater
 
@@ -221,6 +227,10 @@ type Daemon struct {
 
 	// TensionClusterService creates architect issues for tension clusters.
 	TensionClusterService TensionClusterService
+
+	// CapacityPoll polls account capacity and writes to file cache.
+	// When nil, uses the default implementation that calls ListAccountsWithCapacity.
+	CapacityPoll CapacityPollService
 }
 
 // New creates a new Daemon instance with default configuration.

@@ -41,6 +41,12 @@ type periodicTasksResult struct {
 // runPeriodicTasks runs all periodic maintenance tasks and handles their output.
 // Returns any snapshots needed by the caller for status file writing.
 func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *events.Logger) periodicTasksResult {
+	// Cache agent discovery for this cycle: recovery, orphan detection,
+	// phase timeout, and question detection all call GetActiveAgents().
+	// BeginCycle wraps d.Agents so all four share a single beads query.
+	d.BeginCycle()
+	defer d.EndCycle()
+
 	var result periodicTasksResult
 
 	// Reflection

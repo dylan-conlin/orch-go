@@ -139,8 +139,14 @@ func (d *Daemon) RunPeriodicRecovery() *RecoveryResult {
 		return nil
 	}
 
-	// Get list of active agents via workspace + OpenCode discovery
-	agents, err := GetActiveAgents()
+	// Get list of active agents via workspace + OpenCode discovery.
+	// Uses d.Agents so the result is shared with other periodic tasks
+	// when the daemon is running within a BeginCycle/EndCycle pair.
+	agentDiscoverer := d.Agents
+	if agentDiscoverer == nil {
+		agentDiscoverer = &defaultAgentDiscoverer{}
+	}
+	agents, err := agentDiscoverer.GetActiveAgents()
 	if err != nil {
 		return &RecoveryResult{
 			ResumedCount: 0,
