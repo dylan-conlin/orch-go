@@ -34,6 +34,7 @@ func TestDefaultReviewTier_SkillDefaults(t *testing.T) {
 		{"codebase-audit", "", ReviewScan},
 		{"design-session", "", ReviewScan},
 		{"ux-audit", "", ReviewScan},
+		{"exploration-orchestrator", "", ReviewScan},
 
 		// review skills
 		{"feature-impl", "", ReviewReview},

@@ -31,7 +31,8 @@ var SkillVerifyLevelDefaults = map[string]string{
 	"codebase-audit": VerifyV1,
 	"design-session": VerifyV1,
 	"probe":          VerifyV1,
-	"ux-audit":       VerifyV1,
+	"ux-audit":                  VerifyV1,
+	"exploration-orchestrator":  VerifyV1,
 
 	// V2: Evidence — implementation-focused skills
 	"feature-impl":         VerifyV2,

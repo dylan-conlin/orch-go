@@ -30,7 +30,8 @@ var SkillReviewTierDefaults = map[string]string{
 	"research":       ReviewScan,
 	"codebase-audit": ReviewScan,
 	"design-session": ReviewScan,
-	"ux-audit":       ReviewScan,
+	"ux-audit":                  ReviewScan,
+	"exploration-orchestrator":  ReviewScan,
 
 	// review: full review — implementation and architecture skills
 	"feature-impl":         ReviewReview,

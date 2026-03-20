@@ -37,7 +37,8 @@ var SkillTierDefaults = map[string]string{
 	"research":             TierFull,
 	"codebase-audit":       TierFull,
 	"design-session":       TierFull,
-	"systematic-debugging": TierFull, // Produces investigation file with findings
+	"systematic-debugging":       TierFull, // Produces investigation file with findings
+	"exploration-orchestrator":   TierFull, // Produces investigation artifacts via parallel decomposition
 
 	// Light tier: Implementation-focused skills
 	"feature-impl":        TierLight,
@@ -69,7 +70,8 @@ var SkillProducesInvestigation = map[string]bool{
 	"architect":           true,
 	"research":            true,
 	"codebase-audit":      true,
-	"reliability-testing": true,
+	"reliability-testing":      true,
+	"exploration-orchestrator": true,
 }
 
 // DefaultProducesInvestigationForSkill returns whether a skill should produce investigation artifacts.
@@ -358,6 +360,12 @@ type Config struct {
 	// uses a different model to catch blind spots (e.g., "sonnet" when workers use "opus").
 	ExploreJudgeModel string
 
+	// DisallowTools is the comma-separated list of tools to disallow via --disallowedTools.
+	// When set, passed directly to Claude CLI. This decouples tool restrictions from
+	// CLAUDE_CONTEXT, allowing explore orchestrators to run as workers while still
+	// restricting orchestrator-level tools (Agent, Edit, Write, NotebookEdit).
+	DisallowTools string
+
 	// ClaimContext is the formatted claim probe context section for SPAWN_CONTEXT.md.
 	// Populated when the beads issue has a "claim:XX-NN" label, providing the probe agent
 	// with claim text, falsification condition, and existing evidence.
@@ -566,11 +574,17 @@ func generateProjectPrefix(projectName string) string {
 
 // ClaudeContext returns the CLAUDE_CONTEXT env var value for this spawn.
 // This determines which hooks fire in the spawned agent:
-// - "worker" for worker agents (default)
+// - "worker" for worker agents (default, and for exploration orchestrators)
 // - "orchestrator" for orchestrator agents
 // - "meta-orchestrator" for meta-orchestrator agents
+//
+// Exploration orchestrators are reclassified as workers: they have skill-type
+// "orchestrator" for tool restrictions but run in worker lifecycle (worker hooks,
+// workers tmux session). Tool restrictions are preserved via DisallowTools field.
 func (c *Config) ClaudeContext() string {
 	switch {
+	case c.Explore:
+		return "worker"
 	case c.IsMetaOrchestrator:
 		return "meta-orchestrator"
 	case c.IsOrchestrator:

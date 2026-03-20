@@ -37,6 +37,7 @@ func TestDefaultVerifyLevel_SkillDefaults(t *testing.T) {
 		{"design-session", "", VerifyV1},
 		{"probe", "", VerifyV1},
 		{"ux-audit", "", VerifyV1},
+		{"exploration-orchestrator", "", VerifyV1},
 
 		// V2 skills
 		{"feature-impl", "", VerifyV2},

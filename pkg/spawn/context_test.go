@@ -564,6 +564,7 @@ func TestDefaultTierForSkill(t *testing.T) {
 		{"codebase-audit", TierFull},
 		{"design-session", TierFull},
 		{"systematic-debugging", TierFull},
+		{"exploration-orchestrator", TierFull},
 
 		// Light tier skills (implementation-focused)
 		{"feature-impl", TierLight},
