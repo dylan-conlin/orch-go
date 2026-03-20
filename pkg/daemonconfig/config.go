@@ -324,6 +324,15 @@ type Config struct {
 	// LightweightCleanupTimeout is how long a tier:lightweight issue can be in_progress
 	// before being auto-closed. Default is 2 hours.
 	LightweightCleanupTimeout time.Duration
+
+	// ClaimProbeGenerationEnabled controls whether the daemon generates probe issues
+	// for stale or unconfirmed claims in active models. Claims are read from
+	// .kb/models/*/claims.yaml files.
+	ClaimProbeGenerationEnabled bool
+
+	// ClaimProbeGenerationInterval is how often to check for probe-eligible claims.
+	// Default is 2 hours.
+	ClaimProbeGenerationInterval time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -402,5 +411,7 @@ func DefaultConfig() Config {
 		LightweightCleanupEnabled:                true,
 		LightweightCleanupInterval:               30 * time.Minute, // Check every 30 minutes
 		LightweightCleanupTimeout:                2 * time.Hour,    // 2h before auto-closing
+		ClaimProbeGenerationEnabled:              true,
+		ClaimProbeGenerationInterval:             2 * time.Hour, // Every 2 hours
 	}
 }

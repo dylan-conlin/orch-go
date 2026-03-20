@@ -215,6 +215,9 @@ type Daemon struct {
 	// ProjectDirNames maps project prefixes to directory basenames for focus matching.
 	// Built from ProjectRegistry at daemon startup.
 	ProjectDirNames map[string]string
+
+	// ClaimProbeService generates probe issues for stale/unconfirmed claims.
+	ClaimProbeService ClaimProbeService
 }
 
 // New creates a new Daemon instance with default configuration.

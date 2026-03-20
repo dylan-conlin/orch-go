@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/claims"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
@@ -109,6 +110,9 @@ func runOrient() error {
 		// Stale models: up to 2
 		data.StaleModels = orient.FilterStaleModels(allModels, 2)
 	}
+
+	// 6b. Knowledge edges from claims.yaml files
+	data.ClaimEdges = collectClaimEdges(modelsDir, now)
 
 	// 7. Focus
 	data.FocusGoal = collectFocus()
@@ -300,6 +304,68 @@ func selectRelevantModels(models []orient.ModelFreshness, maxCount int) []orient
 	}
 
 	return candidates
+}
+
+// collectClaimEdges reads claims.yaml files from model directories and collects
+// notable edges (tensions, stale-in-active-area, unconfirmed core claims).
+// Returns pre-formatted text for orient output, or empty string if no edges found.
+func collectClaimEdges(modelsDir string, now time.Time) string {
+	files, err := claims.ScanAll(modelsDir)
+	if err != nil || len(files) == 0 {
+		return ""
+	}
+
+	// Extract active keywords from recent spawn events (last 7 days)
+	activeKeywords := extractRecentSpawnKeywords(now)
+
+	edges := claims.CollectEdges(files, now, activeKeywords, 5)
+	return claims.FormatEdges(edges)
+}
+
+// extractRecentSpawnKeywords extracts domain-relevant keywords from recent
+// spawn events in events.jsonl (last 7 days).
+func extractRecentSpawnKeywords(now time.Time) []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	eventsPath := filepath.Join(home, ".orch", "events.jsonl")
+	evts, err := parseOrientEvents(eventsPath)
+	if err != nil {
+		return nil
+	}
+
+	cutoff := now.Add(-7 * 24 * time.Hour).Unix()
+	keywordSet := make(map[string]bool)
+
+	for _, e := range evts {
+		if e.Timestamp < cutoff {
+			continue
+		}
+		if e.Type != "session.spawned" {
+			continue
+		}
+		if e.Data == nil {
+			continue
+		}
+		// Extract skill and task keywords from spawn events
+		if skill, ok := e.Data["skill"].(string); ok && skill != "" {
+			keywordSet[skill] = true
+		}
+		if task, ok := e.Data["task"].(string); ok {
+			for _, word := range strings.Fields(strings.ToLower(task)) {
+				if len(word) > 3 { // skip short words
+					keywordSet[word] = true
+				}
+			}
+		}
+	}
+
+	keywords := make([]string, 0, len(keywordSet))
+	for kw := range keywordSet {
+		keywords = append(keywords, kw)
+	}
+	return keywords
 }
 
 // collectPreviousSession finds and parses the most recent session debrief.

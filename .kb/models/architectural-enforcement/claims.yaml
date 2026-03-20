@@ -1,0 +1,146 @@
+model: architectural-enforcement
+version: 1
+last_audit: "2026-03-19"
+
+claims:
+  - id: AE-01
+    text: "Gates are signaling infrastructure, not quality gates"
+    type: mechanism
+    scope: local
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Mar 17 gate effectiveness cohort (529 spawns, 258 with gates)"
+        date: "2026-03-17"
+        verdict: confirms
+    last_validated: "2026-03-17"
+    domain_tags: ["gates", "enforcement", "accretion", "signaling"]
+    falsifies_if: "Gate enforcement produces measurably higher individual agent quality than bypass cohort (>10pp difference, N>100)"
+    tensions: []
+    model_md_ref: "## Summary, ## Critical Invariants #8"
+
+  - id: AE-02
+    text: "Enforcement without guidance creates displacement"
+    type: mechanism
+    scope: local
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Exploration orch-go-javy8 (3 investigations, Mar 19)"
+        date: "2026-03-19"
+        verdict: confirms
+      - source: "Agent scs-sp-8dm: concurrency gate displaced to spawn_preflight.go"
+        date: "2026-03-19"
+        verdict: confirms
+    last_validated: "2026-03-19"
+    domain_tags: ["hooks", "displacement", "governance", "deny"]
+    falsifies_if: "Deny hooks without redirect hints produce architecturally correct placement in >80% of cases"
+    tensions:
+      - claim: MH-05
+        model: measurement-honesty
+        type: extends
+        note: "Two-gap independence: deny count without displacement tracking is false confidence"
+    model_md_ref: "## Why This Fails #4, ## Critical Invariants #9"
+
+  - id: AE-03
+    text: "Behavioral constraints dilute at 5+ co-resident items, inert at 10+"
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Orchestrator skill behavioral testing (N=7, Mar 1)"
+        date: "2026-03-01"
+        verdict: confirms
+      - source: "Constraint dilution threshold test (N=8, Mar 1)"
+        date: "2026-03-01"
+        verdict: confirms
+    last_validated: "2026-03-01"
+    domain_tags: ["skills", "constraints", "dilution", "behavioral"]
+    falsifies_if: "10+ behavioral constraints in a skill document produce compliance rates significantly above bare Claude baseline (>20pp, N>20)"
+    tensions:
+      - claim: SCT-05
+        model: skill-content-transfer
+        type: confirms
+        note: "Invariant 5 distinguishes attention primers (transfer) from action directives (don't transfer)"
+    model_md_ref: "## Critical Invariants #6"
+
+  - id: AE-04
+    text: "Gates must be infrastructure-enforced, not instruction-reliant"
+    type: invariant
+    scope: local
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Orchestrator skill 17:1 signal ratio measurement"
+        date: "2026-03-01"
+        verdict: confirms
+    last_validated: "2026-03-01"
+    domain_tags: ["gates", "enforcement", "infrastructure", "prompts"]
+    falsifies_if: "Prompt-only enforcement achieves >90% compliance rate under production conditions (multiple system prompt layers, N>50)"
+    tensions: []
+    model_md_ref: "## Critical Invariants #1"
+
+  - id: AE-05
+    text: "Gates must be passable by the gated party"
+    type: invariant
+    scope: local
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Architect gate exemption design (Feb 2026)"
+        date: "2026-02-14"
+        verdict: confirms
+    last_validated: "2026-02-14"
+    domain_tags: ["gates", "exemptions", "architect", "investigation"]
+    falsifies_if: "Zero false positives from gates blocking legitimate work patterns over a 30-day period (N>100 gate evaluations)"
+    tensions: []
+    model_md_ref: "## Critical Invariants #2"
+
+  - id: AE-06
+    text: "Escape hatches must exist but with accountability"
+    type: invariant
+    scope: local
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "--force-hotspot requires --architect-ref design (Feb 2026)"
+        date: "2026-02-14"
+        verdict: confirms
+    last_validated: "2026-02-14"
+    domain_tags: ["gates", "escape-hatch", "accountability", "hotspot"]
+    falsifies_if: "Removing all escape hatches produces better architectural outcomes than gated escapes (measured by accretion rate, N>50)"
+    tensions: []
+    model_md_ref: "## Critical Invariants #3"
+
+  - id: AE-07
+    text: "Toolchain reliability underlies all enforcement"
+    type: invariant
+    scope: local
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "skillc deploy silent failure investigation (Feb 2025)"
+        date: "2026-02-25"
+        verdict: confirms
+    last_validated: "2026-02-25"
+    domain_tags: ["skillc", "deploy", "toolchain", "reliability"]
+    falsifies_if: "Agents with stale skill deployments produce equivalent quality to agents with current skills (measured by completion rate, N>30)"
+    tensions: []
+    model_md_ref: "## Critical Invariants #4"
+
+  - id: AE-08
+    text: "Advisory gates converted from blocking after 100% bypass rate over 2-week measurement"
+    type: observation
+    scope: local
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "Decision 2026-03-17 accretion-gates-advisory-not-blocking"
+        date: "2026-03-17"
+        verdict: confirms
+    last_validated: "2026-03-17"
+    domain_tags: ["gates", "advisory", "accretion", "bypass"]
+    falsifies_if: "Re-converting advisory gates to blocking produces bypass rate <50% over a 2-week measurement period"
+    tensions: []
+    model_md_ref: "## Summary, CLAUDE.md Accretion Boundaries"

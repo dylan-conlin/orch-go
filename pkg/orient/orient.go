@@ -121,6 +121,7 @@ type OrientationData struct {
 	ActiveThreads   []ActiveThread   `json:"active_threads,omitempty"`
 	RelevantModels  []ModelFreshness `json:"relevant_models,omitempty"`
 	StaleModels     []ModelFreshness `json:"stale_models,omitempty"`
+	ClaimEdges      string           `json:"claim_edges,omitempty"` // Pre-formatted claim edges text
 	HealthSummary   *HealthSummary   `json:"health_summary,omitempty"`
 	DaemonHealth    *DaemonHealthView `json:"daemon_health,omitempty"`
 	Changelog       []ChangelogEntry `json:"changelog,omitempty"`
@@ -225,6 +226,11 @@ func FormatOrientation(data *OrientationData) string {
 
 	// Stale models section
 	formatStaleModels(&b, data.StaleModels)
+
+	// Knowledge edges (claim-level tensions, staleness, unconfirmed)
+	if data.ClaimEdges != "" {
+		b.WriteString(data.ClaimEdges)
+	}
 
 	// Health summary section
 	formatHealthSummary(&b, data.HealthSummary)

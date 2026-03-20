@@ -215,6 +215,11 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 		handleLightweightCleanupResult(r, timestamp, verbose, logger)
 	}
 
+	// Claim probe generation (create investigation issues for stale/unconfirmed claims)
+	if r := d.RunPeriodicClaimProbeGeneration(); r != nil {
+		handleClaimProbeResult(r, timestamp, verbose)
+	}
+
 	return result
 }
 
@@ -758,6 +763,16 @@ func handleLightweightCleanupResult(r *daemon.LightweightCleanupResult, timestam
 		})
 	} else if verbose {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+	}
+}
+
+func handleClaimProbeResult(r *daemon.ClaimProbeResult, timestamp string, verbose bool) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Claim probe error: %v\n", timestamp, r.Error)
+	} else if r.ProbeCount > 0 {
+		fmt.Printf("[%s] Claim probe: %s\n", timestamp, r.Message)
+	} else if verbose {
+		fmt.Printf("[%s] Claim probe: %s\n", timestamp, r.Message)
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/checkpoint"
+	"github.com/dylan-conlin/orch-go/pkg/claims"
 	"github.com/dylan-conlin/orch-go/pkg/dupdetect"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/identity"
@@ -356,11 +357,14 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 		}
 	}
 
-	// Surface probe verdicts for orchestrator review
+	// Surface probe verdicts for orchestrator review and update claims.yaml
 	if target.WorkspacePath != "" {
 		probeVerdicts := verify.FindProbesForWorkspace(target.WorkspacePath, target.WorkProjectDir)
 		if len(probeVerdicts) > 0 {
 			fmt.Print(verify.FormatProbeVerdicts(probeVerdicts))
+
+			// Update claims.yaml for probes that reference claims
+			updateClaimsFromProbeVerdicts(probeVerdicts, target.WorkProjectDir)
 		}
 	}
 
@@ -589,4 +593,47 @@ func cleanDiscoveredWorkTitle(description string) string {
 		}
 	}
 	return title
+}
+
+// updateClaimsFromProbeVerdicts checks each probe verdict for claim references
+// and updates claims.yaml files accordingly. Only probes that explicitly
+// reference a claim ID (via "claim: XX-NN") are processed.
+func updateClaimsFromProbeVerdicts(verdicts []verify.ProbeVerdict, projectDir string) {
+	modelsDir := filepath.Join(projectDir, ".kb", "models")
+	now := time.Now()
+
+	for _, v := range verdicts {
+		// Read probe file content to check for claim reference
+		content, err := os.ReadFile(v.ProbePath)
+		if err != nil {
+			continue
+		}
+
+		ref := claims.ExtractClaimRef(string(content))
+		if ref == nil {
+			continue
+		}
+
+		// Fill in fields from probe verdict
+		ref.ModelName = v.ModelName
+		ref.Verdict = v.Verdict
+		ref.Source = fmt.Sprintf("Probe: %s (%s)", v.Title, now.Format("2006-01-02"))
+
+		result, err := claims.ApplyProbeVerdict(modelsDir, *ref, now)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  Warning: claim update failed for %s: %v\n", ref.ClaimID, err)
+			continue
+		}
+
+		if result.Action == "not_found" {
+			continue // Silently skip claims not in claims.yaml
+		}
+
+		fmt.Printf("  Claim update: %s\n", result.Message)
+
+		// For contradictions, note that orchestrator review is needed
+		if result.Action == "contested" {
+			fmt.Printf("  !! Claim %s contested — orchestrator review required\n", ref.ClaimID)
+		}
+	}
 }

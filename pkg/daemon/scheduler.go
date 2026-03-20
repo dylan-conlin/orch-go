@@ -27,6 +27,7 @@ const (
 	TaskInvestigationOrphan             = "investigation_orphan"
 	TaskVerificationFailedEscalation   = "verification_failed_escalation"
 	TaskLightweightCleanup             = "lightweight_cleanup"
+	TaskClaimProbeGeneration           = "claim_probe_generation"
 )
 
 // periodicTask holds the scheduling state for a single periodic task.
@@ -144,6 +145,7 @@ func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s.Register(TaskInvestigationOrphan, cfg.InvestigationOrphanEnabled, cfg.InvestigationOrphanInterval)
 	s.Register(TaskVerificationFailedEscalation, cfg.VerificationFailedEscalationEnabled, cfg.VerificationFailedEscalationInterval)
 	s.Register(TaskLightweightCleanup, cfg.LightweightCleanupEnabled, cfg.LightweightCleanupInterval)
+	s.Register(TaskClaimProbeGeneration, cfg.ClaimProbeGenerationEnabled, cfg.ClaimProbeGenerationInterval)
 	return s
 }
 
