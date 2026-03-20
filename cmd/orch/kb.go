@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/dylan-conlin/orch-go/pkg/claims"
 	"github.com/dylan-conlin/orch-go/pkg/kbmetrics"
 	"github.com/spf13/cobra"
 )
@@ -33,6 +34,10 @@ var (
 	// kb claims flags
 	kbClaimsJSON    bool
 	kbClaimsVerbose bool
+
+	// kb clusters flags
+	kbClustersJSON      bool
+	kbClustersThreshold int
 )
 
 var kbCreateCmd = &cobra.Command{
@@ -286,6 +291,74 @@ func runKBClaims() error {
 	return nil
 }
 
+var kbClustersCmd = &cobra.Command{
+	Use:   "clusters",
+	Short: "Show tension clusters — cross-model claim convergence points",
+	Long: `Scan .kb/models/*/claims.yaml and find tension clusters where multiple
+models reference the same target claim.
+
+A tension cluster forms when N+ claims from 2+ models point at the same
+target claim via tensions (extends, contradicts, confirms). These are
+convergence points that often signal areas needing architectural attention.
+
+Scoring: contradicts=3, extends=2, confirms=1, plus (distinct_models-1)*2.
+
+Examples:
+  orch kb clusters                  # Default threshold (3)
+  orch kb clusters --threshold 2    # Lower threshold
+  orch kb clusters --json           # Machine-readable output`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		projectDir, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		return runKBClusters(projectDir, kbClustersThreshold, kbClustersJSON)
+	},
+}
+
+func runKBClusters(projectDir string, threshold int, jsonOutput bool) error {
+	modelsDir := filepath.Join(projectDir, ".kb", "models")
+	files, err := claims.ScanAll(modelsDir)
+	if err != nil {
+		return fmt.Errorf("scan claims: %w", err)
+	}
+
+	if len(files) == 0 {
+		fmt.Println("No claims.yaml files found in .kb/models/")
+		return nil
+	}
+
+	clusters := claims.FindClusters(files, threshold)
+
+	if jsonOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(clusters)
+	}
+
+	if len(clusters) == 0 {
+		fmt.Printf("No tension clusters found (threshold=%d, scanned %d models)\n", threshold, len(files))
+		return nil
+	}
+
+	fmt.Printf("Tension Clusters (%d found, threshold=%d)\n", len(clusters), threshold)
+	fmt.Printf("==========================================\n\n")
+
+	for _, c := range clusters {
+		fmt.Printf("%-12s  target: %s (%s)  score: %.0f\n", c.ID, c.TargetClaim, c.TargetModel, c.Score)
+		if len(c.DomainTags) > 0 {
+			fmt.Printf("              tags: %s\n", joinKeywords(c.DomainTags))
+		}
+		fmt.Printf("              models: %s\n", joinKeywords(c.Models))
+		for _, m := range c.Claims {
+			fmt.Printf("                - %s (%s) [%s] %s\n", m.ClaimID, m.ModelName, m.TensionType, m.Note)
+		}
+		fmt.Println()
+	}
+
+	return nil
+}
+
 var kbAutolinkCmd = &cobra.Command{
 	Use:   "autolink",
 	Short: "Auto-link orphaned investigations to models/threads/decisions by topic matching",
@@ -388,6 +461,9 @@ func init() {
 	kbOrphansCmd.Flags().BoolVar(&kbOrphansJSON, "json", false, "Output as JSON")
 	kbOrphansCmd.Flags().BoolVar(&kbOrphansStratified, "stratified", false, "Break orphans into categories: empty, negative-result, superseded, positive-unlinked")
 
+	kbClustersCmd.Flags().BoolVar(&kbClustersJSON, "json", false, "Output as JSON")
+	kbClustersCmd.Flags().IntVar(&kbClustersThreshold, "threshold", 3, "Minimum tensions pointing at same target")
+
 	kbAutolinkCmd.Flags().BoolVar(&kbAutolinkApply, "apply", false, "Write links (default: dry-run)")
 	kbAutolinkCmd.Flags().BoolVar(&kbAutolinkJSON, "json", false, "Output as JSON")
 	kbAutolinkCmd.Flags().IntVar(&kbAutolinkMinScore, "min-score", 4, "Minimum match score to suggest a link")
@@ -400,6 +476,7 @@ func init() {
 	kbCmd.AddCommand(kbClaimsCmd)
 	kbCmd.AddCommand(kbOrphansCmd)
 	kbCmd.AddCommand(kbAutolinkCmd)
+	kbCmd.AddCommand(kbClustersCmd)
 	kbCmd.AddCommand(kbCreateCmd)
 	rootCmd.AddCommand(kbCmd)
 }

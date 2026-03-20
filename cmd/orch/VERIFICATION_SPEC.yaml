@@ -1,0 +1,8 @@
+test_command: "go test ./cmd/orch/ -run TestRunKBClusters -v"
+expectations:
+  - "3 test cases pass: NoModelsDir, NoClusters, WithClusters"
+  - "orch kb clusters prints tension clusters from live .kb/models/*/claims.yaml"
+  - "orch kb clusters --json outputs JSON array"
+  - "orch kb clusters --threshold N adjusts minimum tension count"
+manual_verification:
+  - "go build -o /tmp/orch-test ./cmd/orch/ && /tmp/orch-test kb clusters"
