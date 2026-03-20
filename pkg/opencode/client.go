@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -65,6 +66,32 @@ func NewClientWithTimeout(serverURL string, timeout time.Duration) *Client {
 			},
 		},
 	}
+}
+
+// IsReachable performs a fast TCP probe to check if the server is listening.
+// Uses a 500ms timeout to fail fast instead of waiting for full HTTP timeouts.
+func (c *Client) IsReachable() bool {
+	u, err := url.Parse(c.ServerURL)
+	if err != nil {
+		return false
+	}
+	host := u.Host
+	if host == "" {
+		return false
+	}
+	if !strings.Contains(host, ":") {
+		if u.Scheme == "https" {
+			host += ":443"
+		} else {
+			host += ":80"
+		}
+	}
+	conn, err := net.DialTimeout("tcp", host, 500*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
 }
 
 // SendMessageAsync sends a message to an existing session asynchronously.

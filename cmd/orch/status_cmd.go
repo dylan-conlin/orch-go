@@ -169,6 +169,10 @@ func runStatus(serverURL string) error {
 	client := opencode.NewClient(serverURL)
 	now := time.Now()
 
+	// Fast connectivity check: probe OpenCode server before making HTTP calls.
+	// When unreachable, skip all OpenCode enrichment to avoid multiple 10s timeouts.
+	opencodeReachable := client.IsReachable()
+
 	// Get current project directory
 	projectDir, _ := os.Getwd()
 
@@ -190,16 +194,17 @@ func runStatus(serverURL string) error {
 		agents = append(agents, info)
 	}
 
-	// Enrich with session data for runtime/processing status
-	// queryTrackedAgents provides liveness (active/idle/retrying) but not timestamps or processing details.
-	sessions, _ := listSessionsAcrossProjects(client, projectDir)
+	// Enrich with session data for runtime/processing status.
+	// Skip when OpenCode is unreachable — local discovery still provides agent list.
 	sessionMap := make(map[string]*opencode.Session)
-	for i := range sessions {
-		sessionMap[sessions[i].ID] = &sessions[i]
-	}
-
 	sessionStatusMap := make(map[string]opencode.SessionStatusInfo)
-	{
+
+	if opencodeReachable {
+		sessions, _ := listSessionsAcrossProjects(client, projectDir)
+		for i := range sessions {
+			sessionMap[sessions[i].ID] = &sessions[i]
+		}
+
 		statusIDs := make([]string, 0, len(agents))
 		for _, a := range agents {
 			if a.SessionID != "" {
@@ -327,21 +332,24 @@ func runStatus(serverURL string) error {
 	accounts := getAccountUsage()
 
 	// Fetch token usage - in compact mode, only for running agents (expensive operation)
-	for i := range filteredAgents {
-		agent := &filteredAgents[i]
-		if agent.SessionID == "" || agent.SessionID == "tmux-stalled" {
-			continue
-		}
-		if !statusAll && !agent.IsProcessing {
-			continue
-		}
-		tokens, err := client.GetSessionTokens(agent.SessionID)
-		if err == nil && tokens != nil {
-			agent.Tokens = tokens
-			if agent.IsProcessing && !agent.IsPhantom && !agent.IsCompleted {
-				isStalled := globalStallTracker.Update(agent.SessionID, tokens)
-				if isStalled {
-					agent.IsStalled = true
+	// Skip when OpenCode is unreachable to avoid per-agent timeout delays.
+	if opencodeReachable {
+		for i := range filteredAgents {
+			agent := &filteredAgents[i]
+			if agent.SessionID == "" || agent.SessionID == "tmux-stalled" {
+				continue
+			}
+			if !statusAll && !agent.IsProcessing {
+				continue
+			}
+			tokens, err := client.GetSessionTokens(agent.SessionID)
+			if err == nil && tokens != nil {
+				agent.Tokens = tokens
+				if agent.IsProcessing && !agent.IsPhantom && !agent.IsCompleted {
+					isStalled := globalStallTracker.Update(agent.SessionID, tokens)
+					if isStalled {
+						agent.IsStalled = true
+					}
 				}
 			}
 		}

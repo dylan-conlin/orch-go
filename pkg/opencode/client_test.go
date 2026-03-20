@@ -2531,3 +2531,31 @@ func TestWaitForSessionIdleServerError(t *testing.T) {
 		t.Errorf("Expected 'failed to get session status' error, got: %v", err)
 	}
 }
+
+func TestIsReachable(t *testing.T) {
+	t.Run("reachable server", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		if !client.IsReachable() {
+			t.Error("Expected server to be reachable")
+		}
+	})
+
+	t.Run("unreachable server", func(t *testing.T) {
+		client := NewClient("http://127.0.0.1:19999")
+		if client.IsReachable() {
+			t.Error("Expected server to be unreachable")
+		}
+	})
+
+	t.Run("invalid URL", func(t *testing.T) {
+		client := NewClient("://invalid")
+		if client.IsReachable() {
+			t.Error("Expected invalid URL to return unreachable")
+		}
+	})
+}
