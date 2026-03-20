@@ -1,0 +1,159 @@
+model: measurement-honesty
+version: 1
+last_audit: "2026-03-19"
+
+claims:
+  - id: MH-01
+    text: "A metric that cannot go red provides no information — displaying it is negative value because it suppresses uncertainty awareness"
+    type: invariant
+    scope: universal
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Orient display showed three mutually-reinforcing green metrics hiding 91.8% orphan rate, 54.4% FP decision audit"
+        date: "2026-03-16"
+        verdict: confirms
+      - source: "Trust audit (Mar 18): 3 of 8 subsystems deleted as false confidence"
+        date: "2026-03-18"
+        verdict: confirms
+    last_validated: "2026-03-18"
+    domain_tags: ["metrics", "false-confidence", "measurement", "orient"]
+    falsifies_if: "An always-green metric that operators consciously treat as informative (not just displayed) without developing false confidence — demonstrated over 30+ sessions"
+    tensions: []
+    model_md_ref: "## Critical Invariants #1"
+
+  - id: MH-02
+    text: "Absent negative signal is not positive signal — empty feedback channels indicate unused channels, not perfection"
+    type: invariant
+    scope: universal
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "GroundTruthAdjustedRate: 0 reworks across 817 completions inflated quality by +7.3pp"
+        date: "2026-03-18"
+        verdict: confirms
+      - source: "Governance displacement: deny count without displacement tracking is structurally equivalent (Mar 19)"
+        date: "2026-03-19"
+        verdict: confirms
+    last_validated: "2026-03-19"
+    domain_tags: ["metrics", "absent-signal", "rework", "feedback"]
+    falsifies_if: "A system with zero negative signals in a feedback channel that is independently verified as actively used and working correctly"
+    tensions:
+      - claim: AE-09
+        model: architectural-enforcement
+        type: extends
+        note: "Deny count without displacement tracking is a concrete instance of this invariant"
+    model_md_ref: "## Critical Invariants #2, ## The Absent-Signal Trap"
+
+  - id: MH-03
+    text: "Trust level must be visible alongside the metric — identical display of MEDIUM and HIGH trust metrics inflates ensemble trustworthiness"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "Trust pyramid was inverted: 6 LOW/FALSE signals displayed prominently, 2 HIGH signals invisible (Mar 18)"
+        date: "2026-03-18"
+        verdict: confirms
+    last_validated: "2026-03-18"
+    domain_tags: ["metrics", "trust", "display", "orient"]
+    falsifies_if: "Operators correctly weight metrics with hidden trust levels — no false confidence from undifferentiated display (N>20 sessions)"
+    tensions: []
+    model_md_ref: "## Critical Invariants #3"
+
+  - id: MH-04
+    text: "Precision must be measured before the metric is operational — unknown SNR means operators can't correctly weight the signal"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Duplication detector operated weeks at assumed 0% FP — actual 35% (Mar 13)"
+        date: "2026-03-13"
+        verdict: confirms
+    last_validated: "2026-03-13"
+    domain_tags: ["metrics", "precision", "false-positive", "dupdetect"]
+    falsifies_if: "A metric with unknown precision that operators correctly weight via intuition — no bypass reflex or false confidence over 50+ exposures"
+    tensions: []
+    model_md_ref: "## Critical Invariants #4"
+
+  - id: MH-05
+    text: "Metrics that validate themselves are circular — self-reported completion feeding allocation creates a closed loop"
+    type: invariant
+    scope: universal
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Self-reported completion → allocation scoring → spawn selection → completion — circular (Mar 18)"
+        date: "2026-03-18"
+        verdict: confirms
+      - source: "SuccessRate field names in allocation code still use old semantics despite display relabeling"
+        date: "2026-03-19"
+        verdict: confirms
+    last_validated: "2026-03-19"
+    domain_tags: ["metrics", "circularity", "allocation", "self-report"]
+    falsifies_if: "A self-validating metric loop that produces accurate results — independently verified by external ground truth"
+    tensions:
+      - claim: AE-09
+        model: architectural-enforcement
+        type: extends
+        note: "Deny count without displacement tracking is a two-gap instance — measuring action without consequence"
+    model_md_ref: "## Critical Invariants #5"
+
+  - id: MH-06
+    text: "Delete before fixing — deleting a false-confidence metric is always safe; fixing risks producing a more sophisticated false-confidence metric"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Decision audit lifecycle: detected false confidence → deleted → rebuilt with type-aware validation (commit d05a2997d)"
+        date: "2026-03-19"
+        verdict: confirms
+      - source: "3 of 8 measurement subsystems deleted in trust audit — no functionality loss (Mar 18)"
+        date: "2026-03-18"
+        verdict: confirms
+    last_validated: "2026-03-19"
+    domain_tags: ["metrics", "deletion", "false-confidence", "rebuild"]
+    falsifies_if: "A false-confidence metric successfully fixed in-place (without delete/rebuild cycle) that produces honest signal — verified over 30+ days"
+    tensions: []
+    model_md_ref: "## Critical Invariants #6, ## The Decision Audit as Template Case"
+
+  - id: MH-07
+    text: "Two-gap independence: measuring an enforcement action without its consequence creates false confidence"
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Governance hooks: 63 denials, zero displacement tracking — deny count ≠ governance works (Mar 19)"
+        date: "2026-03-19"
+        verdict: confirms
+      - source: "Agent scs-sp-8dm: enforcement succeeded but architecture violated — invisible consequence"
+        date: "2026-03-19"
+        verdict: confirms
+    last_validated: "2026-03-19"
+    domain_tags: ["metrics", "enforcement", "displacement", "hooks", "two-gap"]
+    falsifies_if: "An enforcement action metric without consequence tracking that operators do NOT treat as evidence of governance effectiveness (N>20 sessions)"
+    tensions:
+      - claim: AE-09
+        model: architectural-enforcement
+        type: confirms
+        note: "Displacement is the concrete consequence that deny counts miss"
+    model_md_ref: "## Why This Fails #5"
+
+  - id: MH-08
+    text: "Structural undetectability ceiling: some enforcement consequences are inherently invisible — displacement metrics are floor estimates"
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "Four hook denial outcomes: compliance (detectable), displacement (partially), abandonment (partially), invisible workaround (undetectable)"
+        date: "2026-03-19"
+        verdict: confirms
+    last_validated: "2026-03-19"
+    domain_tags: ["metrics", "displacement", "detection", "floor-estimate"]
+    falsifies_if: "A displacement detection method that achieves 100% recall — catching invisible workarounds as well as obvious displacement"
+    tensions: []
+    model_md_ref: "## Why This Fails #6"

@@ -1,0 +1,142 @@
+model: skill-content-transfer
+version: 1
+last_audit: "2026-03-19"
+
+claims:
+  - id: SCT-01
+    text: "Skills contain three content types — knowledge, stance, and behavioral — that transfer through fundamentally different mechanisms"
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "144 trials across 3 variants (Mar 1-6): knowledge +5 lift, stance +4 to +7 on cross-source, behavioral at bare parity"
+        date: "2026-03-06"
+        verdict: confirms
+      - source: "Worker skill section audit confirms taxonomy applies to all skills, not just orchestrator (Mar 6)"
+        date: "2026-03-06"
+        verdict: confirms
+    last_validated: "2026-03-06"
+    domain_tags: ["skills", "transfer", "knowledge", "stance", "behavioral"]
+    falsifies_if: "A behavioral constraint that transfers as reliably as knowledge content at 10+ co-resident constraints (>+3 lift, N>20)"
+    tensions: []
+    model_md_ref: "## Core Mechanism, ## Three Content Types"
+
+  - id: SCT-02
+    text: "Behavioral constraints dilute at 5+ co-resident items and become inert at 10+"
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "v3 skill with 50+ constraints scored at bare parity on 5/7 scenarios (Mar 1, N=7)"
+        date: "2026-03-01"
+        verdict: confirms
+      - source: "Delegation prohibition 1/8, anti-sycophancy 3/8, reconnection 0-1/8 — all at bare (Mar 1)"
+        date: "2026-03-01"
+        verdict: confirms
+    last_validated: "2026-03-01"
+    domain_tags: ["skills", "dilution", "behavioral", "constraints"]
+    falsifies_if: "10+ behavioral constraints in a skill produce compliance rates significantly above bare baseline (>20pp, N>20)"
+    tensions:
+      - claim: AE-06
+        model: architectural-enforcement
+        type: confirms
+        note: "Both models confirm 5+ dilution threshold from same evidence base"
+    model_md_ref: "## Critical Invariants #2, ## Evidence (behavioral)"
+
+  - id: SCT-03
+    text: "Knowledge content produces measurable lift (+5 points) — routing tables, templates, vocabulary are the most valuable skill content"
+    type: observation
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Bare 17/56, with knowledge 22/56 — lift concentrated in routing (+4/8), framing (+2/8), intent (+2/8)"
+        date: "2026-03-01"
+        verdict: confirms
+      - source: "Knowledge additions don't dilute — exploration mode routing (8 lines) added without degradation (Mar 11 probe)"
+        date: "2026-03-11"
+        verdict: confirms
+    last_validated: "2026-03-11"
+    domain_tags: ["skills", "knowledge", "transfer", "routing", "vocabulary"]
+    falsifies_if: "Knowledge content (routing tables, templates) produces no measurable lift compared to bare Claude (N>20, <+2 difference)"
+    tensions: []
+    model_md_ref: "## Evidence (knowledge), ## Critical Invariants #1"
+
+  - id: SCT-04
+    text: "Stance transfers only as attention primer, not as action directive — perception-changing items work, behavior-changing items don't"
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Orchestrator stance ('look for implicit assumptions'): 0% → 83% on implicit contradictions (N=6, Mar 5-6)"
+        date: "2026-03-06"
+        verdict: confirms
+      - source: "Investigation stance ('test before concluding'): zero lift, 54 trials, 3 scenarios (Mar 6)"
+        date: "2026-03-06"
+        verdict: confirms
+      - source: "Stance as cross-source primer: +5 on S12 (relationship tracing), +4 on S13 (freshness), -2 on S11 (single-source)"
+        date: "2026-03-06"
+        verdict: confirms
+    last_validated: "2026-03-06"
+    domain_tags: ["skills", "stance", "attention-primer", "action-directive", "cross-source"]
+    falsifies_if: "An action directive stance item that produces measurable lift in text/--print mode (>+3 median change, N>12)"
+    tensions: []
+    model_md_ref: "## Critical Invariants #5, ## Evidence (stance)"
+
+  - id: SCT-05
+    text: "Hook-enforced behaviors must NOT appear in skill text — dual authority creates confusion and degrades trust"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "When both hook AND skill text prohibit the same action, agents receive conflicting signal types (Mar 4)"
+        date: "2026-03-04"
+        verdict: confirms
+    last_validated: "2026-03-04"
+    domain_tags: ["skills", "hooks", "dual-authority", "enforcement"]
+    falsifies_if: "Dual authority (hook + skill text for same behavior) produces higher compliance than hook alone (N>20)"
+    tensions: []
+    model_md_ref: "## Critical Invariants #4"
+
+  - id: SCT-06
+    text: "Knowledge gaps include missing domain practices (a11y, performance, observability), not just routing tables"
+    type: observation
+    scope: bounded
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "Worker skill industry practice audit: systemic a11y absence across feature-impl, codebase-audit, design-session (Mar 6 probe)"
+        date: "2026-03-06"
+        verdict: confirms
+    last_validated: "2026-03-06"
+    domain_tags: ["skills", "knowledge", "a11y", "industry-practices", "gaps"]
+    falsifies_if: "Agents reliably apply industry practices (a11y, performance regression, error boundaries) without explicit knowledge items in skill docs"
+    tensions: []
+    model_md_ref: "## Critical Invariants #6"
+
+  - id: SCT-07
+    text: "Auto-scorer indicators must be validated per-scenario against human ratings before trusting measurements"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "Human calibration (24 blind-rated): S09 rho=0.980 (near-perfect), S11 rho=0.141 (broken), overall 0.637 (Mar 6)"
+        date: "2026-03-06"
+        verdict: confirms
+      - source: "Scorer vocabulary bias toward skill-enhanced responses — 3/4 biggest disagreements on bare variants"
+        date: "2026-03-06"
+        verdict: confirms
+    last_validated: "2026-03-06"
+    domain_tags: ["measurement", "auto-scorer", "human-calibration", "vocabulary-bias"]
+    falsifies_if: "An auto-scorer with uncalibrated indicators that produces human-correlated results across scenario types (rho>0.8 per-scenario, N>10 scenarios)"
+    tensions:
+      - claim: MH-04
+        model: measurement-honesty
+        type: confirms
+        note: "Precision must be measured before operational — auto-scorer with unknown per-scenario correlation is the same pattern"
+    model_md_ref: "## Critical Invariants #7, ## Measurement Calibration"
