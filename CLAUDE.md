@@ -515,7 +515,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `init` - Initialize orch in a project
 - `sync` - Sync state
 - `tree` - Generate file tree
-- `fetch-md [url]` - Fetch URL as markdown (legacy — prefer `scrape <url>` for smarter extraction)
+- `fetch-md [url]` - Fetch URL as markdown (DEPRECATED — use `scrape <url>` instead)
 - `dupdetect [dir]` - Run duplicate detection on directory
 - `docs list/mark/unmark` - Documentation tracking
 - `automation list` - List automation rules
@@ -561,6 +561,7 @@ orch version
 - **Non-Anthropic models**: GPT-4o/GPT-5.2-codex have 67-87% stall rates on protocol-heavy skills (architect, investigation). Use Anthropic models for these.
 - **BEADS_DIR**: `BEADS_DIR=~/path/.beads bd close/update/list` enables cross-project beads operations from any directory
 - **Skill sources**: Live in `orch-go/skills/src/`, deployed via `skillc deploy` to `~/.claude/skills/`
+- **URL-to-markdown**: Use `scrape <url>` CLI, NOT the web-to-markdown MCP tools (`mcp__web-to-markdown__*`). `scrape` auto-selects the best extraction strategy (API, Playwright, screenshot+vision, HTML, PDF, YouTube) per URL type. The MCP is a dumb HTML fetcher with no strategy selection.
 - **Playwright CLI**: Default for visual verification (1 bash call, ~1s). MCP only for interactive page exploration. On SSE-heavy pages, use `domcontentloaded` + `waitForSelector`, not `networkidle`.
 
 ## Tab-Indented File Editing
