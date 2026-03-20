@@ -232,14 +232,84 @@ placement: "pkg/completion/"
 	}
 }
 
-func TestCheckArtifact_MissingYAML(t *testing.T) {
+func TestCheckArtifact_MissingYAML_NoSynthesis(t *testing.T) {
 	dir := t.TempDir()
 	result := CheckArtifact(dir, "feature")
 	if result.Passed {
-		t.Error("expected failure for missing COMPLETION.yaml")
+		t.Error("expected failure when both COMPLETION.yaml and SYNTHESIS.md are missing")
 	}
 	if len(result.Errors) == 0 {
 		t.Error("expected at least one error")
+	}
+}
+
+func TestCheckArtifact_MissingYAML_FallbackToSynthesis(t *testing.T) {
+	dir := t.TempDir()
+	// Create SYNTHESIS.md with enough content to derive artifact fields
+	synthesis := `# SYNTHESIS
+
+**Agent:** test-agent
+**Issue:** orch-go-test
+**Outcome:** success
+
+## TLDR
+
+Fixed the authentication bug in session handler.
+
+## Delta (What Changed)
+
+- Fixed null pointer in auth middleware
+
+## Evidence (What Was Observed)
+
+go test ./pkg/auth/ — 12 passed, 0 failed
+
+## Knowledge (What Was Learned)
+
+Created .kb/decisions/2026-03-20-auth-fix.md
+
+## Next (What Should Happen)
+
+**Recommendation:** close
+
+### Follow-up Work
+- Monitor for regressions
+`
+	writeFile(t, dir, "SYNTHESIS.md", synthesis)
+
+	// Bug type requires: verification, finding, follow_up — all derivable from synthesis
+	result := CheckArtifact(dir, "bug")
+	if !result.Passed {
+		t.Errorf("expected pass when SYNTHESIS.md provides required fields, got errors: %v", result.Errors)
+	}
+}
+
+func TestCheckArtifact_MissingYAML_SynthesisMissingRequiredFields(t *testing.T) {
+	dir := t.TempDir()
+	// SYNTHESIS.md with only TLDR (no Evidence section)
+	synthesis := `# SYNTHESIS
+
+## TLDR
+
+Did some work.
+`
+	writeFile(t, dir, "SYNTHESIS.md", synthesis)
+
+	// Feature type requires verification (Evidence), kb_atom, follow_up, placement
+	// Only finding (from TLDR) will be populated
+	result := CheckArtifact(dir, "feature")
+	if result.Passed {
+		t.Error("expected failure when SYNTHESIS.md doesn't provide all required feature fields")
+	}
+}
+
+func TestCheckArtifact_MissingYAML_EmptySynthesis(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "SYNTHESIS.md", "")
+
+	result := CheckArtifact(dir, "task")
+	if result.Passed {
+		t.Error("expected failure for empty SYNTHESIS.md")
 	}
 }
 

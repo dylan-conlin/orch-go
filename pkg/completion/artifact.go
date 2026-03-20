@@ -4,7 +4,9 @@
 package completion
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -116,12 +118,35 @@ func PrePopulateFromSynthesis(workspacePath string) (*Artifact, error) {
 
 // CheckArtifact is the top-level validation entry point.
 // It parses COMPLETION.yaml, validates required fields, and returns the result.
+// When COMPLETION.yaml is missing, it falls back to deriving fields from
+// SYNTHESIS.md — agents are instructed to create SYNTHESIS.md (not COMPLETION.yaml),
+// so the gate should accept synthesis-derived data rather than always failing.
 func CheckArtifact(workspacePath, issueType string) ArtifactResult {
 	art, err := ParseArtifact(workspacePath)
 	if err != nil {
-		return ArtifactResult{
-			Passed: false,
-			Errors: []string{fmt.Sprintf("COMPLETION.yaml: %v", err)},
+		if !errors.Is(err, fs.ErrNotExist) {
+			// Parse error (malformed YAML) — report as failure
+			return ArtifactResult{
+				Passed: false,
+				Errors: []string{fmt.Sprintf("COMPLETION.yaml: %v", err)},
+			}
+		}
+
+		// COMPLETION.yaml doesn't exist — fall back to SYNTHESIS.md
+		art, err = PrePopulateFromSynthesis(workspacePath)
+		if err != nil {
+			return ArtifactResult{
+				Passed: false,
+				Errors: []string{fmt.Sprintf("COMPLETION.yaml missing and SYNTHESIS.md unreadable: %v", err)},
+			}
+		}
+
+		// Check if synthesis provided any useful data
+		if art.Finding == "" && art.Verification == "" {
+			return ArtifactResult{
+				Passed: false,
+				Errors: []string{"COMPLETION.yaml missing and SYNTHESIS.md has no extractable completion data (needs TLDR/Delta and Evidence sections)"},
+			}
 		}
 	}
 
