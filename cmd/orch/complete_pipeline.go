@@ -364,7 +364,7 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 			fmt.Print(verify.FormatProbeVerdicts(probeVerdicts))
 
 			// Update claims.yaml for probes that reference claims
-			updateClaimsFromProbeVerdicts(probeVerdicts, target.WorkProjectDir)
+			updateClaimsFromProbeVerdicts(probeVerdicts, target.WorkProjectDir, target.BeadsProjectDir)
 		}
 	}
 
@@ -598,7 +598,8 @@ func cleanDiscoveredWorkTitle(description string) string {
 // updateClaimsFromProbeVerdicts checks each probe verdict for claim references
 // and updates claims.yaml files accordingly. Only probes that explicitly
 // reference a claim ID (via "claim: XX-NN") are processed.
-func updateClaimsFromProbeVerdicts(verdicts []verify.ProbeVerdict, projectDir string) {
+// For contradictions, creates a P2 triage:review beads issue.
+func updateClaimsFromProbeVerdicts(verdicts []verify.ProbeVerdict, projectDir, beadsProjectDir string) {
 	modelsDir := filepath.Join(projectDir, ".kb", "models")
 	now := time.Now()
 
@@ -631,9 +632,41 @@ func updateClaimsFromProbeVerdicts(verdicts []verify.ProbeVerdict, projectDir st
 
 		fmt.Printf("  Claim update: %s\n", result.Message)
 
-		// For contradictions, note that orchestrator review is needed
-		if result.Action == "contested" {
-			fmt.Printf("  !! Claim %s contested — orchestrator review required\n", ref.ClaimID)
+		switch result.Action {
+		case "contested":
+			fmt.Printf("  !! Claim %s contested — creating P2 review issue\n", ref.ClaimID)
+			createContradictionIssue(ref.ClaimID, ref.ModelName, v.Title, beadsProjectDir)
+		case "self_validating":
+			fmt.Printf("  ⚠ Claim %s: probe evidence overlaps existing sources — skipped\n", ref.ClaimID)
 		}
 	}
+}
+
+// createContradictionIssue creates a P2 triage:review beads issue for a contradicted claim.
+func createContradictionIssue(claimID, modelName, probeTitle, beadsProjectDir string) {
+	socketPath, err := beads.FindSocketPath(beadsProjectDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  Warning: cannot create contradiction issue (no beads socket): %v\n", err)
+		return
+	}
+
+	client := beads.NewClient(socketPath)
+	if err := client.Connect(); err != nil {
+		fmt.Fprintf(os.Stderr, "  Warning: cannot create contradiction issue: %v\n", err)
+		return
+	}
+	defer client.Close()
+
+	title := fmt.Sprintf("Claim %s (%s) contradicted by probe: %s", claimID, modelName, probeTitle)
+	issue, err := client.Create(&beads.CreateArgs{
+		Title:     title,
+		IssueType: "task",
+		Priority:  2,
+		Labels:    []string{"triage:review"},
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  Warning: failed to create contradiction issue: %v\n", err)
+		return
+	}
+	fmt.Printf("  Created review issue: %s\n", issue.ID)
 }

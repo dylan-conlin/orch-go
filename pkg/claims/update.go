@@ -30,6 +30,62 @@ func ExtractClaimRef(content string) *ProbeClaimRef {
 	}
 }
 
+// CheckEvidenceIndependence checks if a probe's evidence source overlaps with
+// existing evidence on a claim. Returns true if overlap is detected (self-validating).
+// This prevents circular validation where a probe "confirms" using the same data
+// the claim already cites.
+func CheckEvidenceIndependence(claim Claim, probeSource string) bool {
+	if len(claim.Evidence) == 0 {
+		return false
+	}
+	probeLower := strings.ToLower(probeSource)
+	// Extract significant words (4+ chars) from probe source
+	probeWords := extractSignificantWords(probeLower)
+	if len(probeWords) == 0 {
+		return false
+	}
+
+	for _, ev := range claim.Evidence {
+		evLower := strings.ToLower(ev.Source)
+		evWords := extractSignificantWords(evLower)
+		// Count overlapping significant words
+		overlap := 0
+		for _, pw := range probeWords {
+			for _, ew := range evWords {
+				if pw == ew {
+					overlap++
+					break
+				}
+			}
+		}
+		// If >40% of probe's significant words match an existing source, flag it
+		if len(probeWords) > 0 && float64(overlap)/float64(len(probeWords)) > 0.4 {
+			return true
+		}
+	}
+	return false
+}
+
+// extractSignificantWords returns words of 4+ characters, lowercased, excluding
+// common stop words and date patterns.
+func extractSignificantWords(s string) []string {
+	stopWords := map[string]bool{
+		"probe": true, "from": true, "with": true, "that": true, "this": true,
+		"have": true, "been": true, "were": true, "will": true, "when": true,
+		"2026": true, "2025": true, "2024": true,
+	}
+	words := strings.FieldsFunc(s, func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'))
+	})
+	var result []string
+	for _, w := range words {
+		if len(w) >= 4 && !stopWords[w] {
+			result = append(result, w)
+		}
+	}
+	return result
+}
+
 // UpdateResult describes what happened when updating a claim.
 type UpdateResult struct {
 	ClaimID   string
@@ -76,6 +132,13 @@ func ApplyProbeVerdict(modelsDir string, ref ProbeClaimRef, now time.Time) (*Upd
 
 	switch strings.ToLower(ref.Verdict) {
 	case "confirms":
+		// Safeguard 1: Evidence independence check
+		if CheckEvidenceIndependence(*claim, ref.Source) {
+			result.Action = "self_validating"
+			result.Message = fmt.Sprintf("claim %s probe evidence overlaps existing sources — flagged as self-validating", ref.ClaimID)
+			// Do NOT update confidence or save — return early
+			return result, nil
+		}
 		claim.Confidence = Confirmed
 		claim.LastValidated = dateStr
 		claim.Evidence = append(claim.Evidence, Evidence{

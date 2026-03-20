@@ -128,6 +128,99 @@ func TestApplyProbeVerdict_Contradicts(t *testing.T) {
 	}
 }
 
+func TestCheckEvidenceIndependence_Independent(t *testing.T) {
+	claim := Claim{
+		ID:   "TM-01",
+		Text: "Test claim",
+		Evidence: []Evidence{
+			{Source: "Mar 17 gate effectiveness cohort (529 spawns)", Date: "2026-03-17", Verdict: "confirms"},
+		},
+	}
+	probeSource := "Probe: fresh-measurement-2026-03-19 (2026-03-19)"
+
+	overlap := CheckEvidenceIndependence(claim, probeSource)
+	if overlap {
+		t.Error("expected independent evidence, got overlap")
+	}
+}
+
+func TestCheckEvidenceIndependence_Overlapping(t *testing.T) {
+	claim := Claim{
+		ID:   "TM-01",
+		Text: "Test claim",
+		Evidence: []Evidence{
+			{Source: "Mar 17 gate effectiveness cohort (529 spawns)", Date: "2026-03-17", Verdict: "confirms"},
+		},
+	}
+	// Probe cites the same cohort data
+	probeSource := "Probe: gate effectiveness cohort reanalysis (2026-03-19)"
+
+	overlap := CheckEvidenceIndependence(claim, probeSource)
+	if !overlap {
+		t.Error("expected overlap detected, got independent")
+	}
+}
+
+func TestCheckEvidenceIndependence_NoExistingEvidence(t *testing.T) {
+	claim := Claim{
+		ID:       "TM-01",
+		Text:     "Test claim",
+		Evidence: nil,
+	}
+	probeSource := "Probe: any source (2026-03-19)"
+
+	overlap := CheckEvidenceIndependence(claim, probeSource)
+	if overlap {
+		t.Error("expected independent (no existing evidence), got overlap")
+	}
+}
+
+func TestApplyProbeVerdict_SelfValidating(t *testing.T) {
+	dir := t.TempDir()
+	modelDir := filepath.Join(dir, "test-model")
+	os.MkdirAll(modelDir, 0755)
+
+	initial := &File{
+		Model:   "test-model",
+		Version: 1,
+		Claims: []Claim{
+			{
+				ID:         "TM-01",
+				Text:       "Test claim",
+				Confidence: Unconfirmed,
+				Priority:   PriorityCore,
+				Evidence: []Evidence{
+					{Source: "gate effectiveness cohort analysis", Date: "2026-03-17", Verdict: "confirms"},
+				},
+			},
+		},
+	}
+	SaveFile(filepath.Join(modelDir, "claims.yaml"), initial)
+
+	now := time.Date(2026, 3, 19, 0, 0, 0, 0, time.UTC)
+	ref := ProbeClaimRef{
+		ClaimID:   "TM-01",
+		ModelName: "test-model",
+		Verdict:   "confirms",
+		Source:    "Probe: gate effectiveness cohort revalidation (2026-03-19)",
+	}
+
+	result, err := ApplyProbeVerdict(dir, ref, now)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Action != "self_validating" {
+		t.Errorf("Action = %q, want %q", result.Action, "self_validating")
+	}
+
+	// Verify the claim was NOT updated to confirmed
+	updated, _ := LoadFile(filepath.Join(modelDir, "claims.yaml"))
+	c := updated.Claims[0]
+	if c.Confidence == Confirmed {
+		t.Error("claim should not be confirmed when evidence is self-validating")
+	}
+}
+
 func TestApplyProbeVerdict_NotFound(t *testing.T) {
 	dir := t.TempDir()
 	modelDir := filepath.Join(dir, "test-model")
