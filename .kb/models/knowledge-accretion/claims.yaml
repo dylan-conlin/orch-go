@@ -1,0 +1,306 @@
+model: knowledge-accretion
+version: 1
+last_audit: "2026-03-19"
+
+claims:
+  - id: KA-01
+    text: "Shared artifacts degrade from correct contributions when agents lack coordination — locally correct + locally correct ≠ globally correct"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-09"
+    last_validated: "2026-03-11"
+    evidence:
+      - source: "daemon.go +892 lines from 30 correct commits over 60 days"
+        date: "2026-03-09"
+        verdict: confirms
+      - source: "85.5% orphan rate (997/1,166 investigations unconnected to models)"
+        date: "2026-03-09"
+        verdict: confirms
+      - source: "100% merge conflict rate in coordination demo (N=10)"
+        date: "2026-03-09"
+        verdict: confirms
+    domain_tags: ["accretion", "coordination", "core-claim"]
+    falsifies_if: "Amnesiac agents contributing to shared mutable substrates WITHOUT coordination produce globally coherent output in >80% of cases (N>50)"
+    tensions: []
+
+  - id: KA-02
+    text: "Five conditions correlate with degradation: (1) multiple agents write, (2) agents are amnesiac, (3) contributions are locally correct, (4) contributions must compose non-trivially, (5) no structural coordination mechanism exists"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-09"
+    last_validated: "2026-03-10"
+    evidence:
+      - source: "Falsifiability probe: 15+ counterexample systems tested, none survive condition-checking"
+        date: "2026-03-10"
+        verdict: confirms
+      - source: "Condition 5 (non-trivial composition) added to prevent over-prediction in additive substrates (logs, coral reefs)"
+        date: "2026-03-10"
+        verdict: confirms
+    domain_tags: ["accretion", "conditions", "falsifiability"]
+    falsifies_if: "A system meeting all five conditions that does NOT exhibit accretion-style degradation — demonstrated with rigorous condition verification"
+    tensions: []
+
+  - id: KA-03
+    text: "Every convention without a gate will eventually be violated — confirmed in both code and knowledge substrates"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-08"
+    last_validated: "2026-03-17"
+    evidence:
+      - source: "Probe-to-model merge convention: 4 contradicts verdicts accumulated unmerged before batch resolution"
+        date: "2026-03-09"
+        verdict: confirms
+      - source: "Prior Work tables convention: 48% of investigations skip them"
+        date: "2026-03-09"
+        verdict: confirms
+      - source: "Decision enforcement convention: 1.8% enforcement rate (1/56 decisions)"
+        date: "2026-03-09"
+        verdict: confirms
+      - source: "Gate effectiveness cohort (529 spawns): gates are signaling, not quality gates — 100% accretion gate bypass rate over 2-week measurement"
+        date: "2026-03-17"
+        verdict: confirms
+    domain_tags: ["gates", "conventions", "enforcement", "invariant"]
+    falsifies_if: "A soft convention (no infrastructure enforcement) that maintains >90% compliance over 60+ days with 50+ agent sessions"
+    tensions:
+      - claim: AE-01
+        model: architectural-enforcement
+        type: confirms
+        note: "Same invariant confirmed in knowledge substrate — gates must be infrastructure-enforced"
+      - claim: AE-08
+        model: architectural-enforcement
+        type: extends
+        note: "Gates are signaling infrastructure, not quality gates — advisory gates still shift aggregate behavior"
+
+  - id: KA-04
+    text: "Models are the fundamental unit of knowledge organization — without models, knowledge is homeless"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-09"
+    last_validated: "2026-03-09"
+    evidence:
+      - source: "Pre-model era: 94.7% orphan rate; model era: 52.0% orphan rate — models halved orphan production"
+        date: "2026-03-09"
+        verdict: confirms
+      - source: "Probe system structurally couples findings to models via directory placement (.kb/models/{name}/probes/)"
+        date: "2026-03-09"
+        verdict: confirms
+    domain_tags: ["models", "knowledge-organization", "orphans", "attractors"]
+    falsifies_if: "An alternative knowledge organization unit (not models) achieves lower orphan rates (<40%) in an amnesiac multi-agent system"
+    tensions: []
+
+  - id: KA-05
+    text: "Attention-primed attractors become structurally-coupled via the probe system — probes are the knowledge equivalent of Go's import system"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-09"
+    last_validated: "2026-03-09"
+    evidence:
+      - source: "Orphan rate dropped from 94.7% (pre-probe, attention-only) to 52.0% (post-probe, structural coupling)"
+        date: "2026-03-09"
+        verdict: confirms
+      - source: "Probes live in .kb/models/{name}/probes/ — directory placement creates structural connection independent of attention"
+        date: "2026-03-09"
+        verdict: confirms
+    domain_tags: ["attractors", "probes", "structural-coupling", "attention-priming"]
+    falsifies_if: "Attention-primed attractors (without structural coupling like probe directories) achieve the same orphan rate reduction as structurally-coupled attractors"
+    tensions: []
+
+  - id: KA-06
+    text: "Three model behaviors: attractor (pulls new work), capstone (settles topic, reduces investigation), dormant (exists but generates no probes)"
+    confidence: confirmed
+    priority: supporting
+    created: "2026-03-09"
+    last_validated: "2026-03-09"
+    evidence:
+      - source: "daemon-autonomous-operation: 34 probes across 13 dates — sustained attractor"
+        date: "2026-03-09"
+        verdict: confirms
+      - source: "entropy-spiral: reference rate dropped 12.5% to 8.8% after formalization — capstone behavior"
+        date: "2026-03-09"
+        verdict: confirms
+      - source: "7 models with 0 probes — dormant"
+        date: "2026-03-09"
+        verdict: confirms
+    domain_tags: ["models", "attractors", "capstone", "dormant", "taxonomy"]
+    falsifies_if: "A model that doesn't fit any of the three behaviors — consistently generating work but neither attracting new investigation nor settling the topic"
+    tensions: []
+
+  - id: KA-07
+    text: "The orphan rate natural baseline is 40-50% — the actionable signal is 'genuinely lost' knowledge (~10% of investigations), not raw orphan rate"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-09"
+    last_validated: "2026-03-17"
+    evidence:
+      - source: "Six-category orphan taxonomy from 35-file sample: implementation-as-investigation (30-45%), audit/design (25-33%), exploratory (15-20%), genuinely lost (~20% of orphans), negative results (5-7%), superseded (3-5%)"
+        date: "2026-03-09"
+        verdict: confirms
+      - source: "Automated stratified analysis (N=1170): positive-unlinked 85.5%, negative-result 12.4%, superseded 2.1%, empty 0%"
+        date: "2026-03-17"
+        verdict: confirms
+    domain_tags: ["orphans", "baseline", "metrics", "knowledge-health"]
+    falsifies_if: "A multi-agent knowledge system achieving <20% orphan rate without sacrificing exploratory investigation (agents not overly constrained by --model flags)"
+    tensions:
+      - claim: MH-01
+        model: measurement-honesty
+        type: extends
+        note: "Raw orphan rate displayed without decomposition is a metric that suppresses nuance — the 85.5% headline number hides that most orphans are natural"
+
+  - id: KA-08
+    text: "Accretion, attractors, gates, and entropy measurement are substrate-independent — they emerge from system properties, not substrate properties"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-09"
+    last_validated: "2026-03-10"
+    evidence:
+      - source: "Confirmed in code (daemon.go bloat), knowledge (orphan rate), and OPSEC (price-watch detection incident) — three substrates"
+        date: "2026-03-10"
+        verdict: confirms
+      - source: "15+ counterexample systems tested (natural, engineered, human) — all that resist accretion do so through coordination"
+        date: "2026-03-10"
+        verdict: confirms
+    domain_tags: ["substrate-independence", "generalization", "theory"]
+    falsifies_if: "A substrate meeting all five conditions where accretion does NOT occur and the substrate has no coordination mechanisms (explicit, substrate-embedded, or environmental)"
+    tensions:
+      - claim: MH-04
+        model: measurement-honesty
+        type: extends
+        note: "Substrate-independence claim is from N=3 in one system — precision of the generalization is unmeasured beyond internal testing"
+
+  - id: KA-09
+    text: "Creation is always cheaper than removal — this asymmetry produces a universal ratchet toward growth"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-10"
+    last_validated: "2026-03-10"
+    evidence:
+      - source: "73% of feature flags never removed (FlagShark industry data)"
+        date: "2026-03-10"
+        verdict: confirms
+      - source: "85% of shared drive data is dark/ROT (Veritas industry data)"
+        date: "2026-03-10"
+        verdict: confirms
+      - source: "spawn_cmd.go shrank -1,755 then regrew +483 in 3 weeks — re-accretion"
+        date: "2026-03-09"
+        verdict: confirms
+    domain_tags: ["ratchet", "creation-removal-asymmetry", "growth"]
+    falsifies_if: "A shared mutable substrate where removal is systematically cheaper than creation WITHOUT external forcing functions (regulatory mandates, storage limits)"
+    tensions: []
+
+  - id: KA-10
+    text: "Anti-accretion mechanisms can themselves accrete or create second-order pathologies — cure without meta-coordination shifts accretion to a different dimension"
+    confidence: confirmed
+    priority: supporting
+    created: "2026-03-10"
+    last_validated: "2026-03-10"
+    evidence:
+      - source: "Wikipedia bots conflict with each other unpredictably (PLOS ONE research)"
+        date: "2026-03-10"
+        verdict: confirms
+      - source: "Stack Overflow aggressive moderation drove away contributors"
+        date: "2026-03-10"
+        verdict: confirms
+      - source: "Scientific peer review creates publication bias"
+        date: "2026-03-10"
+        verdict: confirms
+    domain_tags: ["meta-coordination", "second-order", "anti-accretion", "pathology"]
+    falsifies_if: "An anti-accretion mechanism that operates long-term (>1 year) without producing any second-order pathologies or requiring meta-coordination"
+    tensions:
+      - claim: AE-09
+        model: architectural-enforcement
+        type: confirms
+        note: "Deny hooks without redirect create displacement — a concrete instance of anti-accretion mechanisms creating second-order problems"
+
+  - id: KA-11
+    text: "Knowledge gates are all advisory — zero hard gates exist for knowledge transitions (investigation→model, probe→model, quick entry dedup, decision→implementation)"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-09"
+    last_validated: "2026-03-11"
+    evidence:
+      - source: "Gate audit: every knowledge transition is ungated or advisory-only (6 transitions documented)"
+        date: "2026-03-09"
+        verdict: confirms
+      - source: "One exception: model-stub pre-commit gate (orch precommit model-stub) blocks unfilled template placeholders"
+        date: "2026-03-11"
+        verdict: partially_confirms
+    domain_tags: ["gates", "knowledge", "advisory", "enforcement-gap"]
+    falsifies_if: "Hard gates on knowledge transitions (blocking commit/merge on violated conventions) that do NOT reduce exploratory investigation throughput by >30%"
+    tensions:
+      - claim: AE-01
+        model: architectural-enforcement
+        type: extends
+        note: "Knowledge substrate proves the same invariant — instruction-reliant gates fail at the same rates"
+
+  - id: KA-12
+    text: "The framework is a diagnostic tool (Ostrom-scale institutional analysis), not a natural law — it predicts WHERE accretion concentrates and WHAT interventions reduce it, but not rate, form, or threshold"
+    confidence: confirmed
+    priority: core
+    created: "2026-03-10"
+    last_validated: "2026-03-10"
+    evidence:
+      - source: "Ostrom framing thread: knowledge accretion maps to existing governance concepts (Ostrom, Conway, Brooks) with agent vocabulary"
+        date: "2026-03-10"
+        verdict: confirms
+      - source: "Independent Codex review: core claims are restatements of existing coordination concepts"
+        date: "2026-03-10"
+        verdict: confirms
+    domain_tags: ["theory-type", "diagnostic", "ostrom", "framing"]
+    falsifies_if: "The framework makes quantitative predictions (rate, form, threshold) that are independently verified across 3+ systems by external researchers"
+    tensions:
+      - claim: MH-01
+        model: measurement-honesty
+        type: extends
+        note: "Overclaiming theory status is a form of false confidence — the model itself identified this and corrected to 'working hypothesis'"
+
+  - id: KA-13
+    text: "Measurement-improvement bias: fixing a broken metric appears as improvement in the measured thing — systems tracking their own health must distinguish 'got healthier' from 'got better at measuring'"
+    confidence: confirmed
+    priority: supporting
+    created: "2026-03-10"
+    last_validated: "2026-03-10"
+    evidence:
+      - source: "Health score jumped 37→69 in one snapshot when total_source_files tracking was added — pure measurement fix, not structural change"
+        date: "2026-03-10"
+        verdict: confirms
+    domain_tags: ["metrics", "measurement-bias", "health-score", "false-improvement"]
+    falsifies_if: "A self-tracking health metric that reliably distinguishes measurement calibration changes from actual health changes without external validation"
+    tensions:
+      - claim: MH-05
+        model: measurement-honesty
+        type: confirms
+        note: "Self-validating metrics create circular confidence — measurement-improvement bias is a specific instance"
+
+  - id: KA-14
+    text: "Digital substrates lack environmental coordination (unlike biological substrates) — requiring all coordination to be explicitly engineered"
+    confidence: confirmed
+    priority: supporting
+    created: "2026-03-10"
+    last_validated: "2026-03-10"
+    evidence:
+      - source: "Coordination taxonomy: explicit (type systems), substrate-embedded (CRDTs), environmental (stigmergy) — digital substrates have only explicit and rare substrate-embedded"
+        date: "2026-03-10"
+        verdict: confirms
+      - source: ".go files don't resist bloat through physics; .kb/ directories don't resist orphans through chemistry"
+        date: "2026-03-10"
+        verdict: confirms
+    domain_tags: ["coordination", "digital-substrates", "environmental", "engineering"]
+    falsifies_if: "A digital substrate with emergent environmental coordination (not explicitly engineered) that prevents accretion — analogous to biological stigmergy"
+    tensions: []
+
+  - id: KA-15
+    text: "Tooling inverts the importance hierarchy — the most important artifacts (models) have the least tooling support, while the highest-volume artifact (investigations) has the most"
+    confidence: confirmed
+    priority: supporting
+    created: "2026-03-09"
+    last_validated: "2026-03-11"
+    evidence:
+      - source: "kb create investigation exists; kb create model and kb create probe did not exist at time of measurement"
+        date: "2026-03-09"
+        verdict: confirms
+      - source: "kb init creates investigations/, decisions/, guides/ but not models/ directory"
+        date: "2026-03-09"
+        verdict: confirms
+    domain_tags: ["tooling", "importance-hierarchy", "models", "investigations"]
+    falsifies_if: "Tooling parity (equal support for model and investigation creation) does NOT change the orphan rate or model creation velocity"
+    tensions: []
