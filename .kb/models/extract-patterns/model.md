@@ -1,7 +1,7 @@
 # Model: Code Extraction Patterns
 
 **Domain:** Architecture / Refactoring / Context Management
-**Last Updated:** 2026-03-19
+**Last Updated:** 2026-03-19 (drift update: extraction.go deletion, complete_pipeline extraction, serve_agents family update)
 **Synthesized From:** 13 investigations (Jan 3-8, 2026) into Go (main.go, serve.go) and Svelte component extraction
 
 ---
@@ -75,7 +75,7 @@ Smaller, cohesive files are more resilient to **Session Amnesia**. A new agent c
 - **800 lines:** Extraction trigger. Files crossing this threshold must be extracted to reach the 400-line target.
 
 **Reasoning:** 800 lines is the heuristic limit where "Context Noise" begins to degrade agent reasoning. But empirical data (Mar 2026 probe, n=12 files) shows that extracting to "just under 800" fails — residuals left at 600-700 re-cross 800 within weeks. Residuals extracted to <400 lines resist re-accretion:
-- Residuals at <400: doctor.go (269), extraction.go (280), session.go (121) — stable
+- Residuals at <400: doctor.go (269), session.go (121) — stable (extraction.go was here at 280 but was later fully extracted and deleted)
 - Residuals at 600-700: daemon.go (715→896), context.go (~600→895) — re-accreted past 800
 
 **Key evidence:** Extracted satellite files (100-300 lines) show zero post-extraction commits across 9 files sampled. All new feature work lands in the residual parent, never satellites. This means: the more code moved to satellites, the more code resists re-accretion.
@@ -98,20 +98,24 @@ Smaller, cohesive files are more resilient to **Session Amnesia**. A new agent c
 - Proved that tab-based component splitting reduces Svelte file size while maintaining reactivity.
 
 ### Feb 18, 2026: `serve_agents.go` extraction validates domain handler pattern
-- `serve_agents.go` (1713 lines) extracted into 7 domain-specific files: `serve_agents_handlers.go` (732), `serve_agents_discovery.go` (324), `serve_agents_activity.go` (224), `serve_agents_status.go` (264), `serve_agents_gap.go` (120), `serve_agents_cache_handler.go` (36), `serve_agents_types.go` (59)
-- Largest satellite (handlers, 732 lines) still above ideal 200-400 range but well below original monolith
-- Confirms Phase 3 (Handler extraction) pattern from the Extraction Hierarchy
+- `serve_agents.go` (1713 lines) extracted into 8 domain-specific files: `serve_agents_handlers.go` (563), `serve_agents_cache.go` (719), `serve_agents_discovery.go` (289), `serve_agents_status.go` (297), `serve_agents_events.go` (259), `serve_agents_activity.go` (224), `serve_agents_gap.go` (120), `serve_agents_cache_handler.go` (39), `serve_agents_types.go` (67)
 - `serve_agents.go` itself deleted — the file that was originally evidence of extraction FROM `serve.go` became evidence of extraction being a recursive need
+- Confirms Phase 3 (Handler extraction) pattern from the Extraction Hierarchy
+- Post-extraction accretion: `serve_agents_cache.go` (719 lines) approaching 800-line trigger — candidate for next extraction cycle
+- Line counts as of Mar 2026; handlers satellite reduced from initial 732 to 563 through further extraction
 
 ### Feb 19, 2026: `pkg/orch/extraction.go` hotspot analysis
 - At 2011 lines (2.5x gate), 9 cohesive extraction domains identified
 - 22 commits/28 days with fix-on-fix pattern confirmed degradation signal
 - Established: `pkg/` package extraction is simpler (no circular import risk) than `cmd/orch/` extraction
 
-### Mar 1, 2026: Partial extraction insufficient; pipeline phase pattern established
-- After extracting `spawn_modes.go` (530 lines) and `spawn_helpers.go` (148 lines), `extraction.go` remained at 1632 lines (2x gate)
-- 7 remaining extraction domains mapped; complete extraction plan documented (spawn_types, spawn_inference, spawn_preflight, spawn_kb_context, spawn_backend, spawn_beads, spawn_design)
-- `complete_pipeline.go` (970 lines) probe established "pipeline phase extraction" as a distinct pattern
+### Mar 1, 2026: `extraction.go` fully extracted and deleted
+- After partial extraction left 1632 lines, full extraction completed into 8 domain files:
+  `spawn_pipeline.go` (472), `spawn_modes.go` (532), `spawn_helpers.go` (148), `spawn_types.go` (68), `spawn_inference.go` (103), `spawn_preflight.go` (121), `spawn_kb_context.go` (186), `spawn_backend.go` (141), `spawn_beads.go` (241), `spawn_design.go` (73)
+- `extraction.go` deleted — the monolith that triggered the extraction emergency pattern no longer exists
+- Validates the "extraction emergency" threshold: high churn + high line count demanded complete extraction, not partial
+- `complete_pipeline.go` (970 lines) also extracted into: `complete_verification.go` (365), `complete_lifecycle.go` (340), `complete_postlifecycle.go` (683), `complete_hotspot.go` (309), `complete_model_impact.go` (238), `complete_checklist.go` (203)
+- Pipeline phase extraction established as a distinct pattern (vs. domain handler extraction)
 - Advisory dispatcher fan-out (10+ callsites across 6+ files) is inherently high-coupling — structural, not pathological
 
 ### Mar 10, 2026: Three-Number Framework established (200/400/800)
@@ -145,12 +149,14 @@ Smaller, cohesive files are more resilient to **Session Amnesia**. A new agent c
 | Probe | Date | Key Finding |
 |-------|------|-------------|
 | `2026-02-19-probe-extraction-go-hotspot-analysis.md` | 2026-02-19 | extraction.go at 2.5x gate (2011 lines), 9 domains, 22 commits/28 days; pkg/ extraction simpler than cmd/orch/ (no circular import risk); high churn + high line count = extraction emergency |
-| `2026-03-01-probe-extraction-go-self-hotspot.md` | 2026-03-01 | After partial extraction still at 1632 lines; 7 domains remain; complete 4-phase plan with target files; duplicate `isInfrastructureWork` in cmd/orch/spawn_cmd.go and pkg/orch (tech debt) |
-| `2026-03-01-probe-complete-pipeline-extraction-boundaries.md` | 2026-03-01 | Pipeline phase extraction pattern established; `complete_pipeline.go` (970 lines) extracts to complete_verification.go + complete_lifecycle.go; advisory dispatcher inherently high-coupling |
+| `2026-03-01-probe-extraction-go-self-hotspot.md` | 2026-03-01 | After partial extraction still at 1632 lines; 7 domains remain; complete 4-phase plan with target files; duplicate `isInfrastructureWork` in cmd/orch/spawn_cmd.go and pkg/orch (tech debt). **Resolved:** Full extraction completed Mar 1, 2026; `extraction.go` deleted. |
+| `2026-03-01-probe-complete-pipeline-extraction-boundaries.md` | 2026-03-01 | Pipeline phase extraction pattern established; `complete_pipeline.go` (970 lines) extracts to complete_verification.go + complete_lifecycle.go; advisory dispatcher inherently high-coupling. **Resolved:** Extraction completed; `complete_pipeline.go` now 672 lines with 6 satellites. |
 
 **Primary Evidence (Verify These):**
-- `cmd/orch/shared.go` - Shared utilities extraction (extracted first to break cross-dependencies)
-- `cmd/orch/serve_agents_*.go` - Domain handler family (7 files) extracted from monolithic `serve_agents.go` (itself extracted from `serve.go`); `serve_agents.go` deleted Feb 2026
-- `cmd/orch/serve_agents_cache.go` - Sub-domain infrastructure extraction
-- `cmd/orch/main.go` - Package main showing multiple file split within same package
+- `cmd/orch/shared.go` (303 lines) - Shared utilities extraction (extracted first to break cross-dependencies)
+- `cmd/orch/serve_agents_*.go` - Domain handler family (8 files + tests) extracted from monolithic `serve_agents.go` (itself extracted from `serve.go`); `serve_agents.go` deleted Feb 2026
+- `cmd/orch/serve_agents_cache.go` (719 lines) - Sub-domain infrastructure extraction; approaching 800-line trigger
+- `cmd/orch/complete_*.go` - Pipeline phase extraction family (7 files) extracted from `complete_pipeline.go` (Feb-Mar 2026)
+- `pkg/orch/spawn_*.go` - Domain extraction family (10 files) from deleted `extraction.go` (Mar 2026)
+- `cmd/orch/main.go` (354 lines) - Package main showing multiple file split within same package
 - `web/src/lib/components/agent-detail/` - Svelte tab component extraction pattern
