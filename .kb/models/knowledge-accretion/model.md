@@ -1,7 +1,7 @@
 # Model: Knowledge Accretion
 
 **Domain:** Multi-Agent Knowledge Systems
-**Last Updated:** 2026-03-11
+**Last Updated:** 2026-03-20
 **Validation Status:** WORKING HYPOTHESIS — not externally validated. Built by one person with AI agents that optimize for coherence. Independent external review (Codex, Mar 10) identified core claims as restatements of existing governance/coordination concepts (Ostrom, Conway, Brooks) with agent vocabulary. Observations are real; theoretical framing is overclaimed. See `.kb/threads/2026-03-10-closed-loop-risk-ai-agents.md`.
 **Synthesized From:**
 - `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-accretion-accretion-attractor-gate-dynamics.md` — Empirical measurement across 1,166 investigations, 32 models, 187 probes
@@ -43,7 +43,7 @@ Conditions 1-3 are context-setters (common in most modern systems). Condition 4 
 
 **Note:** A previous version of this model included a formula (`accretion_risk = f(amnesia_level × compositional_complexity / coordination_strength)`). This was removed — none of the variables have units or measured values. It was a formula-shaped sentence, not a measurement.
 
-**Observed in:** Code (daemon.go +892 lines from 30 correct commits), knowledge artifacts (85.5% orphan rate). Whether the pattern holds in other contexts is unknown — no external validation exists.
+**Observed in:** Code (daemon.go +892 lines from 30 correct commits), knowledge artifacts (85.5% orphan rate), runtime behavior (O(n) operations where N grew silently from correct usage — 5 instances measured 2026-03-20). Whether the pattern holds in other contexts is unknown — no external validation exists.
 
 ---
 
@@ -206,6 +206,7 @@ The physics hold for any shared mutable substrate where the four conditions are 
 |-----------|-----------|-----------|-------|----------------|--------|
 | **Code** (orch-go) | daemon.go +892 lines, 6 cross-cutting dupes | pkg/ packages (structural coupling) | Pre-commit, spawn, completion, `go build` | Fix:feat ratio, hotspot analysis | **Confirmed** |
 | **Knowledge** (.kb/) | 87.6% orphan investigations (52% model-era) | Models pull probes (structural coupling via directory) | None hard (all advisory) | Orphan rate, synthesis backlog | **Confirmed** |
+| **Runtime behavior** (orch-go) | O(n) operations degrade silently as workspace/event/KB counts grow; 153K-line events.jsonl parsed on every `orch stats`; ~895 workspaces scanned cross-project on every `orch status` | None — no structural destination routes "scan" decisions | None — no metric tracks N values or alerts on latency thresholds | **None** — degradation invisible until user pain | **Confirmed** — 5 instances measured (2026-03-20 probe) |
 | **OPSEC** (price-watch) | 5 detection signals over 5 months, invisible until catastrophic failure | Safe patterns contaminate unsafe contexts; middleware routes to proxy | Convention → middleware → startup → network isolation | **None pre-detection** — adversary IS the measurement | **Confirmed** — see `price-watch/.kb/models/opsec-substrate/model.md` |
 | **Database schemas** | Column bloat, unused tables | Normalized entity structure | Migration validation, FK constraints | Dead columns, orphan tables | Hypothesized |
 | **Config systems** | Setting sprawl | Config categories/namespaces | Schema validation | Unused settings, duplicate keys | Hypothesized |
@@ -267,7 +268,7 @@ The investigation/probe/model cycle separates cleanly into **substrate** (the kn
 
 4. **The orphan rate decomposes into six categories; the natural baseline is 40-50%.** The raw 85.5% (now 87.6% by strict measurement) is inflated by pre-model era artifacts (83% of corpus, 94.7% orphan rate). The model-era rate is **52.0%** — within the healthy range for an exploratory system. Orphans decompose into: implementation-as-investigation (~30-45%), audit/design (~25-33%), exploratory (~15-20%), genuinely lost (~20% of orphans, ~10% of total), negative results (~5-7%), and superseded (~3-5%). The actionable signal is the "genuinely lost" rate (~10% of investigations), not the raw orphan rate. Analogous to dead code: 5-15% dead code is healthy in code; 40-50% orphan rate is healthy in knowledge due to inherently higher exploration rates.
 
-5. **Accretion, attractors, gates, and entropy are substrate-independent.** They emerge from system properties (multiple writers, no persistent memory, local correctness, non-trivial composition, no structural coordination), not substrate properties. Code, knowledge, and OPSEC are three confirmed instances. OPSEC extends the evidence to adversarial substrates where entropy is invisible to internal metrics and failure is binary/catastrophic. The same dynamics should appear in any substrate meeting the five conditions.
+5. **Accretion, attractors, gates, and entropy are substrate-independent.** They emerge from system properties (multiple writers, no persistent memory, local correctness, non-trivial composition, no structural coordination), not substrate properties. Code, knowledge, OPSEC, and runtime behavior are four confirmed instances. Runtime behavior extends the evidence to a substrate where the *code* doesn't change — only the data it operates on grows. OPSEC extends to adversarial substrates where entropy is invisible to internal metrics. The same dynamics should appear in any substrate meeting the five conditions.
 
 6. **The framework is falsifiable and conditionally predictive — diagnostic, not legislative.** Systematic search across 15+ candidate counterexamples (natural systems: ant colonies, coral reefs, immune systems; engineered: CRDTs, blockchains, event stores; human: Wikipedia, scientific literature, shared drives) found no clean counterexamples. Every system that resists accretion does so through coordination (explicit, substrate-embedded, or environmental). The framework makes testable predictions: (a) where accretion will concentrate (at coordination gaps), (b) what interventions will reduce it (gates at compositional boundaries), (c) that removing coordination will introduce accretion. It does NOT predict accretion form, rate, or threshold — these are substrate-specific. This is an Ostrom-scale diagnostic framework — structural conditions empirically derived from one system and stress-tested against 15+ — not a quantitative physical law. The name "knowledge accretion" is shorthand for the substrate-independent dynamics; the framing is institutional analysis, not natural science.
 
@@ -543,6 +544,7 @@ kb reflect --type stale
 - `.kb/models/knowledge-accretion/probes/2026-03-10-probe-blog-post-uncontaminated-claim-review.md` — Publication claim audit: 8 validation assumptions, 4 novelty assumptions, 12 overclaimed language instances across 3 blog drafts. Publications still use language the model has already corrected internally.
 - `.kb/models/knowledge-accretion/probes/2026-03-11-probe-empty-model-stub-creation-vectors.md` — Model stub creation vector analysis: 3 creation paths identified (kb create model, kb create model --from, agent direct-write). Zero current empty stubs exist (behavioral compliance held). Model-stub pre-commit gate implemented to convert from behavioral to architectural enforcement.
 - `.kb/models/knowledge-accretion/probes/2026-03-11-probe-distribution-channels-solo-dev-cli-tools.md` — Distribution channel analysis for first STR user: r/ClaudeCode (96k), awesome-claude-code (21.6k stars), Show HN as top channels. Active demand confirmed via GitHub Issue #28196. Pain-point framing >> feature-list framing (100:1). Orchestrator space saturated; knowledge methodology space undersaturated.
+- `.kb/models/knowledge-accretion/probes/2026-03-20-probe-behavioral-accretion-runtime-cost-grows-silently.md` — Runtime behavior as 4th confirmed accretion substrate. 5 instances: events.jsonl unbounded parse (153K lines, 0.56s, projected 17s at 1yr), cross-project workspace scan (~895 workspaces), manifest lookup on every status, KB filepath.Walk (1700+ files), daemon compound effect (23+ tasks × growing N). Code didn't change — only the world it operates on grew.
 
 **Related Models:**
 - `.kb/models/harness-engineering/model.md` — Code instance of substrate physics, hard/soft harness taxonomy
