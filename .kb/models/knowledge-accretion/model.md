@@ -139,25 +139,44 @@ Coordination mechanisms come from three sources. Accretion occurs when ALL sourc
 
 ### 3. Gate Deficit
 
-Every knowledge transition is either ungated or advisory-only:
+Knowledge transitions are mostly ungated, with two exceptions discovered via intervention audit (2026-03-20):
 
 | Transition | Status | Gate Mechanism |
 |------------|--------|---------------|
 | Investigation → model | **UNGATED** | No automated model update when investigation contradicts model |
-| Probe → model update | **UNGATED** | Skill template says "merge findings before completion" but no tooling validates. Historically 4 probes had unmerged "contradicts" verdicts (resolved 2026-03-09); pattern recurrence expected without hard gates |
+| Probe → model update | **HARD GATE** | `pkg/verify/probe_model_merge.go` blocks completion when probes with "contradicts" or "extends" verdicts haven't been merged into parent model. `result.Passed = false` on unmerged probes |
+| Model template → commit | **HARD GATE** | `pkg/verify/model_stub_precommit.go` blocks committing model.md files with unfilled template placeholders. Override: `FORCE_MODEL_STUB=1` |
 | Quick entry → decision | **UNGATED** | No dedup checking against existing entries or decisions |
 | Decision → implementation | **UNGATED** (1/56 exception) | Only 1 of 56 decisions has a `kb agreements` check |
 | Investigation prior work | **SOFT** (52% adoption) | Template includes it, 48% of investigations skip it |
 | Knowledge consistency at commit | **UNGATED** | Pre-commit hooks only run on `*.go` files, not `.kb/` files |
 
-**The parallel to code is exact.** The harness-engineering model documented that "every convention without a gate will eventually be violated." The knowledge system proves this claim across every transition:
+**Correction (2026-03-20):** Previous versions of this table claimed "zero hard knowledge gates." The probe-to-model merge gate was implemented but not recorded here. The model-stub gate was acknowledged in invariant #1 but missing from this table. Two hard knowledge gates exist; four transitions remain ungated.
 
-- Probe-to-model merge is a convention → contradicts verdicts historically accumulated before resolution (4 at baseline, resolved 2026-03-09)
+**The parallel to code is directional, not exact.** The harness-engineering model documented that "every convention without a gate will eventually be violated." Most knowledge transitions confirm this:
+
 - Prior Work tables are a convention → 48% of investigations skip them
 - Quick entry uniqueness is a convention → confirmed duplicates exist
 - Decision enforcement is a convention → 1.8% enforcement rate
 
-Code has pre-commit hooks, spawn gates, and completion verification. Knowledge has zero hard gates. The knowledge substrate operates entirely on soft harness, which the harness-engineering model has shown degrades under pressure.
+But probe-to-model merge is now a hard gate (not just a convention), and model-stub validation is a hard gate. These two gates prevent the specific failure modes they target. The remaining four ungated transitions still degrade under pressure.
+
+### 3a. Intervention Effectiveness (2026-03-20 Audit)
+
+**Of 31 interventions proposed or implemented in this model, only 4 (13%) have measurable evidence of reducing their target.** The rest are advisory (no behavioral change from warnings), not implemented, removed (negative ROI), or measurement-only.
+
+**What demonstrably reduced accretion:**
+
+1. **Daemon extraction cascades** (triggered by gate *events*, not gate *blocks*): 12→3 CRITICAL files (75% reduction)
+2. **Model/probe directory system** (structural attractor): orphan rate 94.7%→52.0% in model-era
+3. **Model-stub pre-commit gate** (preventive hard gate): blocks unfilled templates
+4. **Probe-to-model merge gate** (completion hard gate): forces findings into parent models
+
+**Effectiveness hierarchy (empirical):** Structural attractors > signaling mechanisms (event→daemon) > blocking gates (bypassed 100%) > advisory gates (ignored) > metrics-only (awareness without action).
+
+**Gate lifecycle arc (observed pattern):** Every blocking gate followed: designed → measured → found inert or high-FP → downgraded/removed. Health score gate: 1 day. Self-review gate: 1 week (79% FP, 0 TP). Accretion blocking: ~3 weeks (100% bypass). Gates survive only when structurally unbypassable (`go build`, model-stub precommit) or when they trigger automated responses (daemon extraction via events).
+
+**Full scorecard:** See `probes/2026-03-20-probe-intervention-effectiveness-audit.md`
 
 ### 4. Entropy Metrics
 
@@ -454,6 +473,8 @@ The STR community is large and discoverable (probe 2026-03-11). ~100k+ users fit
 **2026-03-18:** Phase transition probe (orch-go-58923). Named the mechanical→epistemic phase transition and identified three instances of false ground truth in the measurement infrastructure. Ground truth adjustment inflates self-reported success by +7.3pp because rework_rate=0.0 (0 reworks / 817 completions) is treated as evidence rather than absent signal. Merge rate is tautological (100% because single-branch, no PR flow). Detector outcome "useful rate" is circular (self-reported completion counted as "useful"). Added Failure Mode 8 (false ground truth), entropy metric #8 (false ground truth detection), and open question #10 (metrics that detect false coherence when the system produces the metrics). Key insight: Phase 1 infrastructure detects broken builds and missing files; Phase 2 failures (false confidence, inflated metrics) are invisible to the same infrastructure.
 
 **2026-03-10:** Blog post uncontaminated claim review (orch-go-2bdvb). Read all three blog drafts (harness engineering, knowledge accretion, coordination demo) as an external reader with no model framing. Found systematic gap between the model's self-assessment (already corrected to "WORKING HYPOTHESIS" / "overclaimed") and the publication language (still claims universality, novelty, and validated theory). 8 validation assumptions, 4 novelty assumptions, 12 overclaimed language instances identified with specific line references and recommended corrections. Key finding: hedging exists but is structurally misplaced (buried at end, not inline with claims). Publication gate assessment: 2 of 3 required artifacts exist (red-team memo + this claim-label pass); claim ledger still needed. Added Publication Readiness section to model.
+
+**2026-03-20:** Intervention effectiveness audit. Systematically audited all 31 interventions proposed in this model against codebase implementation and measurement data. **Contradicted** the Gate Deficit table's "zero hard knowledge gates" claim — probe-to-model merge (`pkg/verify/probe_model_merge.go`) is a blocking completion gate, and model-stub precommit was already acknowledged elsewhere but missing from the table. **Extended** the model with an intervention effectiveness hierarchy: structural attractors > signaling (event→daemon) > blocking gates (100% bypass) > advisory > metrics-only. Only 4 of 31 interventions (13%) have evidence of reducing their target. Updated Gate Deficit table and added Section 3a (Intervention Effectiveness). Documented gate lifecycle arc: designed→measured→found inert/high-FP→downgraded/removed.
 
 **2026-03-20:** Prompt context substrate probe. Extended the substrate generalization table with **prompt context** (CLAUDE.md, skill files, SPAWN_CONTEXT.md) as a confirmed accreting substrate. CLAUDE.md grew 93→753 lines in 91 days (8x), with 62% of commits by agents and 35% by automated drift-sync processes. Found 3 contradictory claims about the default model (line 267: Gemini, line 561: Opus, actual code: Sonnet) — textbook accretion from amnesiac agents updating different sections independently. Only 8.2% of CLAUDE.md content is directive (shapes agent behavior); 91.8% is passive reference consuming ~56,500 tokens/week across all agents. Unique properties vs other substrates: total read amplification (all agents read all content regardless of relevance), signal-to-noise degradation with growth, ratchet behavior after pruning events (two prunings both followed by immediate re-growth), and multiplicative cost (each line × all agents × all sessions). SPAWN_CONTEXT.md doesn't accrete per-file (regenerated fresh) but grows +36% over time because the KB it draws from grows. Worker-base skill (429 lines, injected into all workers) is a secondary accreting substrate with same properties. Total injected context per agent: ~2,400 lines before reading any task code.
 
