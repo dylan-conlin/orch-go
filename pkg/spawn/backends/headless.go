@@ -100,8 +100,9 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 	// Calculate TTL based on session type
 	// Worker sessions: 4 hours (14400 seconds)
 	// Orchestrator sessions: 0 (no expiration)
+	// Explore orchestrators use worker TTL (they run in worker lifecycle)
 	timeTTL := 4 * 60 * 60 // 4 hours in seconds
-	if cfg.IsOrchestrator {
+	if cfg.IsOrchestrator && !cfg.Explore {
 		timeTTL = 0 // Orchestrator sessions persist until manually cleaned
 	}
 

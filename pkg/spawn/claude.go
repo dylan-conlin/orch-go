@@ -150,11 +150,14 @@ func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsD
 // It uses the SPAWN_CONTEXT.md file approach: claude --file SPAWN_CONTEXT.md
 func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 	// 1. Ensure appropriate tmux session exists
+	// Exploration orchestrators go into 'workers-{project}' (worker lifecycle)
 	// Meta-orchestrators and orchestrators go into 'orchestrator' session
 	// Workers go into 'workers-{project}' session
 	var sessionName string
 	var err error
-	if cfg.IsMetaOrchestrator || cfg.IsOrchestrator {
+	if cfg.Explore {
+		sessionName, err = tmux.EnsureWorkersSession(cfg.Project, cfg.ProjectDir)
+	} else if cfg.IsMetaOrchestrator || cfg.IsOrchestrator {
 		sessionName, err = tmux.EnsureOrchestratorSession()
 	} else {
 		sessionName, err = tmux.EnsureWorkersSession(cfg.Project, cfg.ProjectDir)

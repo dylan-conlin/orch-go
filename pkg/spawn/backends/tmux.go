@@ -25,10 +25,13 @@ func (b *TmuxBackend) Spawn(ctx context.Context, req *SpawnRequest) (*Result, er
 	var sessionName string
 	var err error
 
+	// Exploration orchestrators go into 'workers-{project}' (worker lifecycle)
 	// Meta-orchestrators go into 'meta-orchestrator' tmux session
 	// Orchestrator skills go into the 'orchestrator' tmux session
 	// Workers go into 'workers-{project}' session
-	if req.Config.IsMetaOrchestrator {
+	if req.Config.Explore {
+		sessionName, err = tmux.EnsureWorkersSession(req.Config.Project, req.Config.ProjectDir)
+	} else if req.Config.IsMetaOrchestrator {
 		sessionName, err = tmux.EnsureMetaOrchestratorSession()
 	} else if req.Config.IsOrchestrator {
 		sessionName, err = tmux.EnsureOrchestratorSession()

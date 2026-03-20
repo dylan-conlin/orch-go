@@ -94,13 +94,15 @@ func TestSpawnClaudeContextFilePathSelection(t *testing.T) {
 }
 
 // TestSpawnClaudeSessionSelection tests the session selection logic that SpawnClaude uses.
-// This validates that orchestrators go to "orchestrator" session and workers go to "workers-*" session.
+// This validates that orchestrators go to "orchestrator" session, workers go to "workers-*" session,
+// and exploration orchestrators go to "workers-*" session (worker lifecycle).
 // Note: We can't test SpawnClaude directly without tmux, but we can verify the condition logic.
 func TestSpawnClaudeSessionSelection(t *testing.T) {
 	tests := []struct {
 		name                 string
 		isOrchestrator       bool
 		isMetaOrchestrator   bool
+		explore              bool
 		wantOrchestratorSess bool // true = should use orchestrator session, false = workers session
 	}{
 		{
@@ -127,6 +129,12 @@ func TestSpawnClaudeSessionSelection(t *testing.T) {
 			isMetaOrchestrator:   true,
 			wantOrchestratorSess: true,
 		},
+		{
+			name:                 "explore orchestrator should use workers session",
+			isOrchestrator:       true,
+			explore:              true,
+			wantOrchestratorSess: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -134,14 +142,47 @@ func TestSpawnClaudeSessionSelection(t *testing.T) {
 			cfg := &Config{
 				IsOrchestrator:     tt.isOrchestrator,
 				IsMetaOrchestrator: tt.isMetaOrchestrator,
+				Explore:            tt.explore,
 			}
 
-			// This is the same condition used in SpawnClaude at line 18
-			useOrchestratorSession := cfg.IsMetaOrchestrator || cfg.IsOrchestrator
+			// This mirrors the condition used in SpawnClaude
+			var useOrchestratorSession bool
+			if cfg.Explore {
+				useOrchestratorSession = false
+			} else {
+				useOrchestratorSession = cfg.IsMetaOrchestrator || cfg.IsOrchestrator
+			}
 
 			if useOrchestratorSession != tt.wantOrchestratorSess {
-				t.Errorf("session selection: (IsMetaOrchestrator=%v || IsOrchestrator=%v) = %v, want %v",
-					cfg.IsMetaOrchestrator, cfg.IsOrchestrator, useOrchestratorSession, tt.wantOrchestratorSess)
+				t.Errorf("session selection: (Explore=%v, IsMetaOrchestrator=%v, IsOrchestrator=%v) = %v, want %v",
+					cfg.Explore, cfg.IsMetaOrchestrator, cfg.IsOrchestrator, useOrchestratorSession, tt.wantOrchestratorSess)
+			}
+		})
+	}
+}
+
+// TestClaudeContextExploreOverride tests that Explore=true overrides IsOrchestrator
+// to return "worker" context, ensuring explore orchestrators get worker hooks.
+func TestClaudeContextExploreOverride(t *testing.T) {
+	tests := []struct {
+		name           string
+		isOrchestrator bool
+		explore        bool
+		want           string
+	}{
+		{"worker", false, false, "worker"},
+		{"orchestrator", true, false, "orchestrator"},
+		{"explore overrides orchestrator", true, true, "worker"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				IsOrchestrator: tt.isOrchestrator,
+				Explore:        tt.explore,
+			}
+			if got := cfg.ClaudeContext(); got != tt.want {
+				t.Errorf("ClaudeContext() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -174,15 +215,16 @@ func TestMCPConfigJSON(t *testing.T) {
 // TestBuildClaudeLaunchCommand tests command construction with and without MCP.
 func TestBuildClaudeLaunchCommand(t *testing.T) {
 	tests := []struct {
-		name         string
-		contextPath  string
-		claudeCtx    string
-		mcp          string
-		configDir    string
-		beadsDir     string
-		beadsID      string
-		wantContains []string
-		wantExcludes []string
+		name          string
+		contextPath   string
+		claudeCtx     string
+		mcp           string
+		configDir     string
+		beadsDir      string
+		beadsID       string
+		disallowTools string
+		wantContains  []string
+		wantExcludes  []string
 	}{
 		{
 			name:        "no MCP - basic command",
@@ -226,11 +268,12 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			},
 		},
 		{
-			name:        "orchestrator context includes disallowedTools",
-			contextPath: "/tmp/workspace/ORCHESTRATOR_CONTEXT.md",
-			claudeCtx:   "orchestrator",
-			mcp:         "",
-			configDir:   "",
+			name:          "orchestrator context includes disallowedTools",
+			contextPath:   "/tmp/workspace/ORCHESTRATOR_CONTEXT.md",
+			claudeCtx:     "orchestrator",
+			mcp:           "",
+			configDir:     "",
+			disallowTools: "Agent,Edit,Write,NotebookEdit",
 			wantContains: []string{
 				"export CLAUDE_CONTEXT=orchestrator",
 				"ORCHESTRATOR_CONTEXT.md",
@@ -242,11 +285,12 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			},
 		},
 		{
-			name:        "meta-orchestrator context includes disallowedTools",
-			contextPath: "/tmp/workspace/META_ORCHESTRATOR_CONTEXT.md",
-			claudeCtx:   "meta-orchestrator",
-			mcp:         "",
-			configDir:   "",
+			name:          "meta-orchestrator context includes disallowedTools",
+			contextPath:   "/tmp/workspace/META_ORCHESTRATOR_CONTEXT.md",
+			claudeCtx:     "meta-orchestrator",
+			mcp:           "",
+			configDir:     "",
+			disallowTools: "Agent,Edit,Write,NotebookEdit",
 			wantContains: []string{
 				"export CLAUDE_CONTEXT=meta-orchestrator",
 				"--disallowedTools",
@@ -269,11 +313,12 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			},
 		},
 		{
-			name:        "orchestrator with playwright MCP gets both flags",
-			contextPath: "/tmp/workspace/ORCHESTRATOR_CONTEXT.md",
-			claudeCtx:   "orchestrator",
-			mcp:         "playwright",
-			configDir:   "",
+			name:          "orchestrator with playwright MCP gets both flags",
+			contextPath:   "/tmp/workspace/ORCHESTRATOR_CONTEXT.md",
+			claudeCtx:     "orchestrator",
+			mcp:           "playwright",
+			configDir:     "",
+			disallowTools: "Agent,Edit,Write,NotebookEdit",
 			wantContains: []string{
 				"--disallowedTools",
 				"--mcp-config",
@@ -387,7 +432,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp, tt.configDir, tt.beadsDir, tt.beadsID, "", 0, "", "")
+			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp, tt.configDir, tt.beadsDir, tt.beadsID, "", 0, "", "", tt.disallowTools)
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {
@@ -436,7 +481,7 @@ func TestBuildClaudeLaunchCommandMaxTurns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", tt.maxTurns, "", "")
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", tt.maxTurns, "", "", "")
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {
@@ -492,7 +537,7 @@ func TestBuildClaudeLaunchCommandEffort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", tt.effort, 0, "", "")
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", tt.effort, 0, "", "", "")
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {
@@ -546,7 +591,7 @@ func TestBuildClaudeLaunchCommandSystemPromptFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, "", tt.systemPromptFile)
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, "", tt.systemPromptFile, "")
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {
@@ -677,7 +722,7 @@ func TestBuildClaudeLaunchCommandSettings(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, tt.settings, "")
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, tt.settings, "", "")
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {

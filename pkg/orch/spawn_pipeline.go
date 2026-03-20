@@ -278,6 +278,13 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp, browserT
 		reviewTier = spawn.DefaultReviewTier(ctx.SkillName, issueType)
 	}
 
+	// Resolve tool restrictions: orchestrators (including explore orchestrators
+	// running as workers) get Agent,Edit,Write,NotebookEdit disallowed.
+	disallowTools := ""
+	if ctx.IsOrchestrator || ctx.IsMetaOrchestrator {
+		disallowTools = "Agent,Edit,Write,NotebookEdit"
+	}
+
 	return &spawn.Config{
 		Task:               ctx.Task,
 		OrientationFrame:   ctx.OrientationFrame,
@@ -338,6 +345,7 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp, browserT
 		ExploreDepth:       ctx.ExploreDepth,
 		ExploreParentSkill: ctx.ExploreParentSkill,
 		ExploreJudgeModel:  ctx.ExploreJudgeModel,
+		DisallowTools:      disallowTools,
 		ClaimContext:       ctx.ClaimContext,
 	}
 }
