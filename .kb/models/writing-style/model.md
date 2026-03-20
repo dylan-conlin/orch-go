@@ -83,3 +83,4 @@ The model applies its own findings: if behavioral constraints dilute in agent sk
 ## Probes
 
 - 2026-03-20: Knowledge Decay Verification — Model is accurate but inert. All descriptive claims hold (draft still framework-first, tables-heavy, no primer application). Primers remain untested on any piece. Validation status updated from WORKING HYPOTHESIS to INERT HYPOTHESIS.
+- 2026-03-20: Writing Skill Design (architect) — Designed `technical-writer` skill that operationalizes primers as Phase 1 attention context + Phase 3 composition self-audit with quote-based evidence. Composition-level quality is a compositional correctness problem: component gates (grammar) miss composition failures (arc, turn placement). Skill makes model TESTABLE (awaiting first real application). See `.kb/investigations/2026-03-20-inv-design-writing-skill-technical-blog.md`.

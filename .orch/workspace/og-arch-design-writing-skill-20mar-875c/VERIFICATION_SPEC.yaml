@@ -1,0 +1,45 @@
+# Verification Specification
+# Investigation: Design Writing Skill for Technical Blog Posts
+# Issue: orch-go-npm1s
+
+verification_level: V1  # Design review — no code to test
+
+checks:
+  - name: investigation_complete
+    type: artifact_exists
+    path: .kb/investigations/2026-03-20-inv-design-writing-skill-technical-blog.md
+    expected: "Status: Complete, D.E.K.N. filled, 5 findings documented"
+    verified: true
+
+  - name: architect_output_produced
+    type: artifact_exists
+    path: .orch/workspace/og-arch-design-writing-skill-20mar-875c/ARCHITECT_OUTPUT.yaml
+    expected: "Skill structure, testing strategy, implementation issues, design decisions"
+    verified: true
+
+  - name: writing_style_model_updated
+    type: artifact_updated
+    path: .kb/models/writing-style/model.md
+    expected: "Probe reference added for this design investigation"
+    verified: true
+
+  - name: design_questions_answered
+    type: manual
+    expected: |
+      5 design questions from spawn context answered:
+      1. Structure: 4-phase standalone skill (Story Discovery, Draft, Composition Review, Revision)
+      2. Testing: Two-tier (proxy detection patterns + structural artifact validation)
+      3. One vs two skills: One skill (self-review in same session)
+      4. Compositional correctness connection: Writing IS the problem — composition gates needed
+      5. Modifier vs standalone: Standalone (existing skills serve different audiences)
+    verified: true
+
+  - name: implementation_issues_defined
+    type: manual
+    expected: "4 implementation issues in ARCHITECT_OUTPUT.yaml with skill, priority, dependencies"
+    verified: true
+
+manual_steps:
+  - "Orchestrator reviews ARCHITECT_OUTPUT.yaml design decisions for soundness"
+  - "Orchestrator validates that composition self-audit design is practical (not checkbox theater)"
+  - "Orchestrator decides whether to proceed with implementation issues"

@@ -1,0 +1,313 @@
+# ARCHITECT_OUTPUT: Writing Skill for Technical Blog Posts
+# Design investigation: .kb/investigations/2026-03-20-inv-design-writing-skill-technical-blog.md
+
+# --- SKILL STRUCTURE ---
+
+skill:
+  name: technical-writer
+  type: procedure
+  category: worker
+  location: skills/src/worker/technical-writer/.skillc/
+  dependencies:
+    - worker-base
+  token_budget: 6000  # 4 primers + 4 phases + composition audit template
+
+  description: |
+    Compose technical blog posts and publications with story-first structure,
+    earned abstractions, emotional honesty, and the turn in the first third.
+    Enforces composition-level quality through a self-audit artifact with
+    quote-based evidence.
+
+  phases:
+    - name: Story Discovery
+      purpose: |
+        Identify the raw materials before drafting. The 4 writing primers are
+        active as attention context. Writer produces a story map, NOT prose.
+      primer_context: true  # Primers injected here, not elsewhere
+      deliverable: story_map
+      story_map_structure:
+        - turn: "The moment where what you thought was wrong"
+        - experiences: "Concrete events that produced each abstraction"
+        - emotions: "What it felt like at key moments"
+        - abstractions: "Framework elements, with the experience that earned each"
+      exit_criteria: "Story map has at least 1 turn, 2+ experiences, 1+ emotions"
+
+    - name: Draft
+      purpose: |
+        Write the piece following the story map. Natural structure emerges:
+        story -> turn -> insight -> earned framework. Do not reference the
+        primers during drafting — the story map already encodes them.
+      primer_context: false
+      deliverable: draft_md
+      structure_hint: |
+        1. Here's what happened (story, not metrics)
+        2. Here's what I thought was going on (first theory)
+        3. Here's why I was wrong (the turn — first third)
+        4. Here's what I actually learned (earned insight)
+
+    - name: Composition Review
+      purpose: |
+        Self-audit the draft for composition-level quality. Must produce
+        quote-based evidence, not yes/no assertions. If any question reveals
+        a composition failure, revision is REQUIRED.
+      primer_context: false
+      deliverable: composition_audit
+      audit_questions:
+        - id: turn_placement
+          question: "Quote the sentence where the author was wrong or changed their mind. What fraction of the piece precedes it?"
+          failure_condition: "Turn absent OR turn after the first third"
+        - id: abstraction_ordering
+          question: "What is the first framework/abstraction element? Quote the concrete story that precedes it."
+          failure_condition: "Framework appears before any story"
+        - id: table_density
+          question: "How many data tables? For each, quote the experience that earned it."
+          failure_condition: "Any table without a preceding story that motivates it"
+        - id: emotional_honesty
+          question: "Quote one sentence of emotional honesty — what something felt like, not just what happened."
+          failure_condition: "No emotional language present"
+        - id: opening_type
+          question: "Read the first 3 paragraphs. Is this a story, a question, or a taxonomy/framework label?"
+          failure_condition: "Opens with taxonomy or framework label"
+      evidence_format: quote_based  # Requires quoted passages, not yes/no
+
+    - name: Revision
+      purpose: |
+        Address composition failures identified in the audit. Re-run audit
+        on revised draft. If still failing, flag for external review.
+      deliverable: revised_draft_md
+      exit_criteria: "All 5 audit questions pass on revised draft"
+
+  deliverables:
+    - type: blog_post
+      path: ".kb/publications/{slug}.md"
+      required: true
+    - type: composition_audit
+      path: ".kb/publications/{slug}-composition-audit.md"
+      required: true
+    - type: story_map
+      path: workspace  # Lives in workspace, not persisted to .kb/
+      required: true
+
+  verification:
+    requirements: |
+      - [ ] Story map completed before drafting
+      - [ ] Draft follows story-first structure
+      - [ ] Composition audit has quote-based evidence for all 5 questions
+      - [ ] No composition failures remain (or flagged for external review)
+      - [ ] Opening is story/question, not taxonomy
+    test_command: null  # No automated tests — composition is human-validated
+
+# --- TESTING STRATEGY ---
+
+testing:
+  tier_1_proxy_detection:
+    description: |
+      skillc contrastive tests measuring whether the skill shifts output
+      distribution. These are NECESSARY but INSUFFICIENT for composition
+      quality. They detect symptoms (turn language, emotional voice) but
+      not structure (ordering, placement).
+    scenarios:
+      - name: turn-presence
+        description: "Does the skill increase turn/self-correction language?"
+        prompt: |
+          Write a short blog post about discovering that your automated testing
+          suite had been passing for 3 months with a bug that made all tests
+          no-ops. Include what you learned.
+        indicators:
+          - id: turn-language
+            weight: 3
+            detection: "response contains I was wrong|I realized|turned out|I thought|but then|I assumed"
+          - id: emotional-voice
+            weight: 2
+            detection: "response contains felt like|the moment|surprised|scared|frustrated|embarrassed|honest"
+          - id: first-person
+            weight: 1
+            detection: "regex:\\b(I|we|my|our)\\b"
+          - id: no-framework-first
+            weight: 2
+            detection: "response does not contain ## Framework|## Taxonomy|# The Problem:|Related Work"
+        scoring:
+          max: 8
+          pass: 5
+
+      - name: story-before-abstraction
+        description: "Does the skill produce story-first structure vs framework-first?"
+        prompt: |
+          Write a blog post about a system you built that worked perfectly
+          in testing but failed in production because of an assumption about
+          user behavior. The key insight is about the gap between synthetic
+          and real usage patterns.
+        indicators:
+          - id: narrative-opening
+            weight: 3
+            detection: "regex:^(I |We |Last |One |The first|When I|It was|Three)"
+          - id: concrete-before-abstract
+            weight: 2
+            detection: "response contains deploy|ship|push|production|server|crash|error|log"
+          - id: emotional-content
+            weight: 2
+            detection: "response contains felt|moment|realize|discover|surprise|shock|panic"
+          - id: avoids-academic-structure
+            weight: 1
+            detection: "response does not contain Abstract|Introduction|Methodology|Conclusion|Prior Art"
+        scoring:
+          max: 8
+          pass: 5
+
+      - name: composition-audit-produced
+        description: "Does the skill produce a composition self-audit (not just prose)?"
+        prompt: |
+          Write a blog post about why your team's code review process was
+          actually making code quality worse, and what you changed. Include
+          a composition self-audit of your draft.
+        indicators:
+          - id: audit-present
+            weight: 3
+            detection: "response contains composition audit|self-audit|composition review"
+          - id: quote-evidence
+            weight: 3
+            detection: "regex:\"[^\"]{10,}\""
+          - id: turn-identified
+            weight: 1
+            detection: "response contains turn|wrong|realized|changed"
+          - id: revision-awareness
+            weight: 1
+            detection: "response contains revis|rewrite|restructur|moved|reorder"
+        scoring:
+          max: 8
+          pass: 5
+
+  tier_2_artifact_validation:
+    description: |
+      Structural validation of the composition audit deliverable. This is
+      the COMPOSITION-LEVEL gate — it verifies that the audit exists, has
+      quotes, and reports turn placement.
+    checks:
+      - id: audit_exists
+        description: "Composition audit artifact exists as a file"
+        method: glob
+        pattern: ".kb/publications/*-composition-audit.md"
+      - id: audit_has_quotes
+        description: "Audit contains quoted passages (not yes/no)"
+        method: grep
+        pattern: "^>"  # Blockquotes indicate quoted passages
+      - id: turn_position_reported
+        description: "Audit reports turn position as fraction/percentage"
+        method: grep
+        pattern: "first third|[0-9]+%|early|opening"
+      - id: five_questions_answered
+        description: "All 5 audit questions have responses"
+        method: grep
+        pattern: "turn_placement|abstraction_ordering|table_density|emotional_honesty|opening_type"
+
+  tier_3_future:
+    description: |
+      LLM-as-judge for semantic composition evaluation. NOT in v1.
+      Would require new skillc infrastructure (judge mode).
+    capability_needed: "skillc test --judge mode with LLM evaluator"
+    what_it_would_test:
+      - "Is the turn actually in the first third (position-aware)?"
+      - "Does the abstraction genuinely follow from the story (semantic)?"
+      - "Would a reader follow this structure (comprehension)?"
+    recommendation: "Defer until self-audit proves insufficient (checkbox theater detected)"
+
+# --- IMPLEMENTATION ISSUES ---
+
+issues:
+  - title: "Create technical-writer skill skeleton"
+    skill: feature-impl
+    priority: 2
+    description: |
+      Create skills/src/worker/technical-writer/.skillc/ with skill.yaml
+      manifest, intro.md (summary + stance), workflow.md (4 phases with
+      story map and composition audit templates), and SKILL.md.template.
+      Deploy via skillc deploy. Verify skill loads via orch spawn --dry-run.
+    depends_on: []
+
+  - title: "Write 3 contrastive test scenarios for technical-writer"
+    skill: feature-impl
+    priority: 2
+    description: |
+      Create 3 scenarios in technical-writer/.skillc/tests/scenarios-contrastive/:
+      turn-presence, story-before-abstraction, composition-audit-produced.
+      Each with bare + with-skill variants. Run skillc test with N=3 to
+      measure baseline lift. Detection patterns specified in ARCHITECT_OUTPUT.yaml
+      testing.tier_1_proxy_detection.scenarios.
+    depends_on: [0]
+
+  - title: "Apply technical-writer skill to harness engineering rewrite"
+    skill: technical-writer  # This skill itself, once created
+    priority: 3
+    description: |
+      First real validation of the skill. Spawn with the existing harness
+      engineering draft as source material. Produce rewritten draft +
+      composition audit. Compare structure against original (framework-first
+      vs story-first, turn placement, emotional voice). This validates or
+      falsifies the INERT writing-style model.
+    depends_on: [0]
+
+  - title: "Update writing-style model from INERT to TESTABLE"
+    skill: investigation
+    priority: 3
+    description: |
+      After skill is created: update .kb/models/writing-style/model.md
+      validation status from "INERT HYPOTHESIS" to "TESTABLE — skill created,
+      awaiting first real application." Add reference to this investigation
+      and the skill location.
+    depends_on: [0]
+
+# --- DESIGN DECISIONS ---
+
+decisions:
+  - question: "Standalone skill vs shared dependency vs modifier?"
+    answer: standalone
+    reasoning: |
+      Writing primers target external publications (blog posts for HN/technical
+      community). Existing skills produce internal artifacts (probes, investigations)
+      for agent/orchestrator consumption. Injecting publication stance into
+      investigation/architect skills would contaminate internal artifact quality.
+      No existing skill writes publications, so a shared dependency has zero consumers.
+
+  - question: "One skill or two (draft + review)?"
+    answer: one
+    reasoning: |
+      Two skills requires cross-agent context transfer (the draft). That's
+      heavyweight and fragile. Self-review within the same session — like
+      D.E.K.N. for investigations — keeps composition context intact.
+      The composition review is a phase, not a separate skill.
+
+  - question: "How to enforce composition quality?"
+    answer: self-audit with quote-based evidence
+    reasoning: |
+      Structural templates are too rigid (good writing breaks templates).
+      LLM-as-judge requires new infrastructure. Self-audit with quote-based
+      evidence forces the writer to confront composition quality explicitly
+      without new tooling. It's the D.E.K.N. pattern applied to writing:
+      if you can't quote the turn, there is no turn.
+
+  - question: "How to test composition with regex/contains patterns?"
+    answer: two-tier (proxy patterns + structural artifact validation)
+    reasoning: |
+      Proxy detection patterns measure symptoms (turn language present,
+      first-person voice) but not structure (ordering, placement). This is
+      the compositional correctness gap manifesting in the testing domain.
+      Tier 2 (artifact validation) compensates: verify the composition audit
+      exists, has quotes, reports turn placement. LLM-as-judge deferred.
+
+  - question: "What artifact does the skill produce?"
+    answer: blog post + composition audit
+    reasoning: |
+      The blog post is the deliverable. The composition audit is the gate
+      evidence — analogous to VERIFICATION_SPEC.yaml for feature-impl.
+      Both live in .kb/publications/{slug}*. The audit is what makes
+      composition quality verifiable at completion time.
+
+# --- DEFECT CLASS EXPOSURE ---
+
+defect_classes:
+  - class: 5  # Contradictory Authority Signals
+    exposure: "Primers could conflict with skill-specific artifact formats if injected into other skills"
+    mitigation: "Standalone skill prevents contamination. Primers only active in technical-writer."
+  - class: 0  # Scope Expansion
+    exposure: "Skill designed for blog posts. Documentation, READMEs, presentations have different needs."
+    mitigation: "Explicit blog-post scope. Don't pre-build for other formats."
