@@ -284,6 +284,8 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `Check()` validates agent work before closing (governance-protected)
 - Verifies: Phase Complete, deliverables exist, commits present
 - `Update()` closes beads issue with completion reason
+- Pre-commit checks: `accretion_precommit.go`, `model_stub_precommit.go`, `duplication_precommit.go` (power `orch precommit`)
+- `consequence_sensor.go`: validates architect outputs declare how gate effects will be observed
 
 ### pkg/daemon/ + pkg/daemonconfig/ (Daemon)
 
@@ -301,6 +303,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 - Phase timeout detection and escalation
 - Investigation orphan cleanup
 - Friction accumulator for system improvement signals
+- Cycle cache (`cycle_cache.go`): shares `GetActiveAgents()` across periodic tasks to avoid redundant queries
 
 ### pkg/digest/ (KB Artifact Digest)
 
@@ -351,15 +354,16 @@ orch-dashboard logs     # View service logs (overmind echo)
 6. Generates `SPAWN_CONTEXT.md` via `pkg/spawn`
 7. **Default (Claude CLI):** Spawns in tmux window via Claude CLI
 8. **Non-Anthropic models:** Creates headless session via OpenCode HTTP API
-9. **With --inline:** Runs in current terminal (blocking)
-10. **With --explore:** Decomposes into parallel subproblems via exploration orchestrator (investigation/architect only)
-11. Returns immediately (unless --inline)
+9. **With --explore:** Decomposes into parallel subproblems via exploration orchestrator (investigation/architect only)
+10. Returns immediately
+
+Note: `--inline` is available on `orch work`, not `orch spawn`.
 
 ## Commands
 
 ### Agent Lifecycle
 
-- `spawn <skill> "task"` - Create agent with skill context
+- `spawn <skill> "task"` - Create agent with skill context (key flags: `--backend`, `--account`, `--effort`, `--max-turns`, `--verify-level`, `--explore`)
 - `status` - List active agents
 - `send <session-id> "message"` - Q&A on existing session
 - `complete <agent-id>` - Verify and close agent work
@@ -381,13 +385,15 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `serve status` - Check serve health
 - `orient` - Session start orientation with throughput baseline
 - `debrief [focus]` - Generate session debrief with auto-populated sections
-- `history` - Show agent history
+- `history` - Show agent history (skill usage analytics, `--days N`, `--json`)
 - `retries` - Show issues with retry patterns (failed attempts)
 - `patterns` - Surface behavioral patterns for orchestrator awareness
 - `patterns suppress <index>` - Suppress a specific pattern
 - `stats` - Show aggregate statistics (spawn/completion rates, gate effectiveness, skill metrics)
 - `stats --days N` - Stats over N days (default 7)
 - `stats --snapshot` - Record gate accuracy baseline
+- `stats --json` - Machine-readable output
+- `stats --verbose` - Show additional metrics (includes N-value behavioral accretion tracking)
 - `health` - Health check infrastructure status
 - `logs server/daemon` - View server or daemon logs
 - `transcript format <input-file>` - Format agent transcript
@@ -428,7 +434,8 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `kb clusters` - Show tension clusters — cross-model claim convergence points
 - `kb autolink` - Auto-link orphaned investigations to models/threads/decisions
 - `kb autolink --apply` - Apply auto-links (dry-run by default)
-- `kb gate publish/model/scan-claims` - KB publication and model gates
+- `kb scan-claims` - Scan and validate KB model claims
+- `kb gate publish/model` - KB publication and model gates
 - `kb challenge create/validate/packet` - KB challenge protocol
 
 ### Account & Model
@@ -445,7 +452,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 
 ### Automation
 
-- `work <issue-id>` - Spawn from beads issue with skill inference
+- `work <issue-id>` - Spawn from beads issue with skill inference (`--inline` for blocking TUI)
 - `daemon run` - Run autonomous processing (OODA cycle) in foreground
 - `daemon run --replace` - Stop existing daemon first, then start (graceful takeover)
 - `daemon run --group <name>` - Scope daemon to projects in a group (from groups.yaml)
@@ -456,7 +463,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `daemon preview` - Show what would be spawned
 - `daemon reflect` - Trigger daemon reflection
 - `daemon resume` - Resume daemon
-- `daemon clean-stale` - Clean stale daemon state
+- `daemon clean-stale` - Clean stale daemon state (`--close` to actually close issues)
 - `daemon install/uninstall` - Manage launchd daemon service
 
 ### Learning System
@@ -588,8 +595,8 @@ orch spawn --model flash investigation "explore X"
 # Spawn in tmux window (opt-in for visual monitoring)
 orch spawn --tmux investigation "explore X"
 
-# Run inline with TUI (blocking)
-orch spawn --inline investigation "explore X"
+# Run inline with TUI (blocking) — use `orch work`, not `orch spawn`
+orch work proj-123 --inline
 
 # Dry run — show spawn plan without executing
 orch spawn --dry-run feature-impl "implement X" --issue proj-123
@@ -659,7 +666,8 @@ Agent lifecycle events are logged to `~/.orch/events.jsonl` for stats aggregatio
 | `daemon.recovery` | daemon periodic | Stuck agent recovery |
 | `daemon.orphan_detection` | daemon periodic | Orphaned agent detection |
 | `daemon.phase_timeout` | daemon periodic | Phase timeout detection and escalation |
-| `daemon.question_detection` | daemon periodic | Question detected in agent output |
+| `daemon.question_detection` | daemon periodic | Question detection polling errors |
+| `daemon.question_detected` | daemon periodic | Question actually found in agent output |
 | `daemon.agreement_check` | daemon periodic | Cross-validation of daemon decisions |
 | `daemon.beads_health` | daemon periodic | Beads health monitoring with circuit breaker |
 | `daemon.friction_accumulation` | daemon periodic | System improvement signal accumulation |
@@ -703,6 +711,7 @@ Agent lifecycle events are logged to `~/.orch/events.jsonl` for stats aggregatio
 | `trigger.outcome` | daemon | Per-detector false positive tracking (issue closed without action) |
 | `command.invoked` | measurement commands | Tracks which diagnostic commands are used and by whom (human/orchestrator/worker) |
 | `artifact.drift` | artifact sync | Documentation drift detected (files changed since last sync) |
+| `gap.gate.bypassed` | spawn pipeline | KB gap gate bypassed via `--skip-gap-gate` |
 
 **Enrichment fields:** `verification.failed`, `agent.completed`, `verification.bypassed`, and `verification.auto_skipped` events include a `verification_level` field (V0-V3) tracking what "verified" means at completion.
 
