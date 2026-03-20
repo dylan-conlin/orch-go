@@ -13,8 +13,9 @@
 # Plan: Harness Health Improvement
 
 **Date:** 2026-03-10
-**Status:** Active
+**Status:** Complete (closed 2026-03-19)
 **Owner:** Dylan
+**Closure Reason:** Health score framing superseded by measurement-honesty model. The "raise score to 65" objective optimized for a metric whose validity was questioned — the measurement-honesty model reframed governance metrics around honest signal rather than score targets. Calibrating thresholds to hit a number is the opposite of honest measurement.
 
 **Extracted-From:** `orch health` analysis + `.kb/models/harness-engineering/probes/2026-03-08-probe-30-day-accretion-trajectory-gate-effectiveness.md`
 

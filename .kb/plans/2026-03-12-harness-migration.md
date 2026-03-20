@@ -13,8 +13,9 @@
 # Plan: Harness Migration
 
 **Date:** 2026-03-12
-**Status:** Active
+**Status:** Complete (closed 2026-03-19)
 **Owner:** Dylan
+**Closure Reason:** Standalone CLI not on critical path. The original bug was a single relative-path issue in harness init — a one-line fix, not a multi-phase migration. Full standalone extraction adds maintenance burden without proportional value given current usage patterns.
 
 **Extracted-From:** orch-go-q69uj (migration inventory), orch-go-sb13k (architect design)
 
