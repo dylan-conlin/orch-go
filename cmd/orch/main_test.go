@@ -152,8 +152,8 @@ func TestCompleteCrossProjectErrorMessage(t *testing.T) {
 	if !strings.Contains(errMsg, "--workdir") {
 		t.Errorf("Expected error to suggest '--workdir' option, got: %v", err)
 	}
-	if !strings.Contains(errMsg, "orch complete") {
-		t.Errorf("Expected error to include 'orch complete' command, got: %v", err)
+	if !strings.Contains(errMsg, "orch complete") || !strings.Contains(errMsg, "kb-cli-xyz123") {
+		t.Errorf("Expected error to include 'orch complete' command with beads ID, got: %v", err)
 	}
 }
 

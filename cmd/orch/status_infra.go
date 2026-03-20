@@ -306,3 +306,24 @@ func findIssueInAlternateProjects(beadsID, prefix, excludeDir string) string {
 	}
 	return ""
 }
+
+// findIssueAcrossAllProjects searches ALL registered projects for a beads issue,
+// regardless of prefix match. This handles cross-project issues where the beads ID
+// prefix doesn't match the hosting project (e.g., orch-go-zrd created in
+// scs-special-projects via cross-project spawn).
+// Returns the project directory containing the issue, or empty string if not found.
+func findIssueAcrossAllProjects(beadsID, excludeDir string) string {
+	for _, project := range getKBProjectsWithNames() {
+		if project.Path == excludeDir {
+			continue
+		}
+		beadsPath := filepath.Join(project.Path, ".beads")
+		if info, err := os.Stat(beadsPath); err != nil || !info.IsDir() {
+			continue
+		}
+		if _, err := verify.GetIssue(beadsID, project.Path); err == nil {
+			return project.Path
+		}
+	}
+	return ""
+}

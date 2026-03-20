@@ -297,6 +297,15 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 		verifyLevel = ReadVerifyLevelFromWorkspace(workspacePath)
 	}
 
+	// Pre-fetch comments using the correct projectDir for cross-project support.
+	// Without this, verifyCompletionWithLevelAndComments falls back to GetPhaseStatus
+	// with empty projectDir (CWD), which fails for cross-project beads IDs.
+	if comments == nil && beadsID != "" && projectDir != "" {
+		if fetched, fetchErr := GetComments(beadsID, projectDir); fetchErr == nil {
+			comments = fetched
+		}
+	}
+
 	// First run standard verification (uses comments for phase status + synthesis check)
 	// This handles Phase: Complete gate and SYNTHESIS.md gate (both level-aware)
 	result, err := verifyCompletionWithLevelAndComments(beadsID, workspacePath, tier, verifyLevel, comments)

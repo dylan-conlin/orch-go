@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/beadsutil"
 	"github.com/dylan-conlin/orch-go/pkg/checkpoint"
 	"github.com/dylan-conlin/orch-go/pkg/claims"
 	"github.com/dylan-conlin/orch-go/pkg/dupdetect"
@@ -112,8 +113,11 @@ func resolveCompletionTarget(identifier, workdir string) (CompletionTarget, erro
 			}
 		}
 
-		// Resolve short beads ID to full ID
-		resolvedID, err := resolveShortBeadsID(identifier)
+		// Resolve short beads ID to full ID.
+		// For full-length IDs (containing hyphens), use simple pass-through
+		// to avoid failing on cross-project IDs that don't exist in CWD's beads.
+		// Existence is verified later at verify.GetIssue with cross-project fallbacks.
+		resolvedID, err := beadsutil.ResolveShortIDSimple(identifier)
 		if err != nil {
 			return target, fmt.Errorf("failed to resolve beads ID: %w", err)
 		}
@@ -229,15 +233,39 @@ func resolveCompletionTarget(identifier, workdir string) (CompletionTarget, erro
 			}
 		}
 		if err != nil {
+			// Fallback: try WorkProjectDir from workspace manifest. This handles
+			// cross-project issues where the beads ID prefix doesn't match the
+			// project that actually hosts the issue (e.g., orch-go-zrd created
+			// in scs-special-projects via cross-project spawn).
+			if target.WorkProjectDir != "" && target.WorkProjectDir != target.BeadsProjectDir {
+				if testIssue, testErr := verify.GetIssue(target.BeadsID, target.WorkProjectDir); testErr == nil {
+					target.BeadsProjectDir = target.WorkProjectDir
+					fmt.Printf("Found issue in work project: %s\n", filepath.Base(target.WorkProjectDir))
+					issue = testIssue
+					err = nil
+				}
+			}
+		}
+		if err != nil {
+			// Last resort: search all known projects regardless of prefix.
+			if altDir := findIssueAcrossAllProjects(target.BeadsID, target.BeadsProjectDir); altDir != "" {
+				target.BeadsProjectDir = altDir
+				fmt.Printf("Found issue in project: %s (broad search)\n", filepath.Base(altDir))
+				issue, err = verify.GetIssue(target.BeadsID, target.BeadsProjectDir)
+			}
+		}
+		if err != nil {
 			projectName := filepath.Base(target.BeadsProjectDir)
 			issuePrefix := strings.Split(target.BeadsID, "-")[0]
 			if len(strings.Split(target.BeadsID, "-")) > 1 {
 				issuePrefix = strings.Join(strings.Split(target.BeadsID, "-")[:len(strings.Split(target.BeadsID, "-"))-1], "-")
 			}
+			hint := fmt.Sprintf("\n\nHint: Issue '%s' not found in '%s' or any registered project.", target.BeadsID, projectName)
 			if issuePrefix != projectName {
-				return target, fmt.Errorf("failed to get beads issue %s: %w\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: orch complete %s --workdir ~/path/to/%s", target.BeadsID, err, issuePrefix, projectName, target.BeadsID, issuePrefix)
+				hint += fmt.Sprintf("\nThe ID prefix suggests project '%s'.", issuePrefix)
 			}
-			return target, fmt.Errorf("failed to get beads issue: %w", err)
+			hint += fmt.Sprintf("\nTry: orch complete %s --workdir ~/path/to/<project>", target.BeadsID)
+			return target, fmt.Errorf("failed to get beads issue %s: %w%s", target.BeadsID, err, hint)
 		}
 		target.Issue = issue
 		target.IsClosed = issue.Status == "closed"
