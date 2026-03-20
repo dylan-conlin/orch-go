@@ -116,7 +116,7 @@ func handleHarnessReport(w http.ResponseWriter, r *http.Request) {
 
 	// Parse events
 	eventsPath := getEventsPath()
-	events, err := parseEvents(eventsPath)
+	events, err := parseEvents(eventsPath, eventsSince(days))
 	if err != nil {
 		resp := buildEmptyHarnessResponse(days)
 		w.Header().Set("Content-Type", "application/json")

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -168,8 +169,8 @@ func emitDaemonSnapshot(logger *events.Logger, projectDir string) bool {
 	return true
 }
 
-// parseEventsForSnapshot reads events.jsonl and returns all events.
-// This is a lightweight parser that only extracts type and timestamp.
+// parseEventsForSnapshot reads recent events.jsonl to find accretion snapshots.
+// Only reads the last 30 days since snapshots are emitted weekly.
 func parseEventsForSnapshot(path string) []events.Event {
 	f, err := os.Open(path)
 	if err != nil {
@@ -177,8 +178,14 @@ func parseEventsForSnapshot(path string) []events.Event {
 	}
 	defer f.Close()
 
+	var reader io.Reader = f
+	since := time.Now().Unix() - 30*86400
+	if sr, ok := seekToTimestamp(f, since); ok {
+		reader = sr
+	}
+
 	var result []events.Event
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 
 	for scanner.Scan() {

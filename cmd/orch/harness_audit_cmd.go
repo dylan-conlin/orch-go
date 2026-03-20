@@ -88,7 +88,7 @@ type GateAnomaly struct {
 
 func runHarnessAudit() error {
 	eventsPath := getEventsPath()
-	events, err := parseEvents(eventsPath)
+	events, err := parseEvents(eventsPath, eventsSince(harnessAuditDays))
 	if err != nil {
 		// No events — show empty report
 		result := buildGateAudit(nil, harnessAuditDays)

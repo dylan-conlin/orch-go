@@ -104,7 +104,7 @@ type GateEffSkillEntry struct {
 
 func runGateEffectiveness() error {
 	eventsPath := getEventsPath()
-	events, err := parseEvents(eventsPath)
+	events, err := parseEvents(eventsPath, eventsSince(gateEffDays))
 	if err != nil {
 		events = nil
 	}

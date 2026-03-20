@@ -100,7 +100,7 @@ func aggregateAccountStats(events []StatsEvent, days int) AccountStatsReport {
 
 func runAccountStats(days int) error {
 	path := getEventsPath()
-	events, err := parseEvents(path)
+	events, err := parseEvents(path, eventsSince(days))
 	if err != nil {
 		return err
 	}

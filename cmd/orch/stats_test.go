@@ -274,6 +274,98 @@ func TestParseEventsFileNotFound(t *testing.T) {
 	}
 }
 
+func TestParseEventsWithSince(t *testing.T) {
+	tmpDir := t.TempDir()
+	eventsPath := filepath.Join(tmpDir, "events.jsonl")
+
+	now := time.Now().Unix()
+	// Create 200 events spanning 100 days — enough to exceed 4KB and trigger seeking
+	var lines []string
+	for i := 0; i < 200; i++ {
+		ts := now - int64(200-i)*43200 // every 12 hours
+		lines = append(lines, fmt.Sprintf(
+			`{"type":"session.spawned","session_id":"ses_%d","timestamp":%d,"data":{"skill":"feature-impl","beads_id":"test-%d","extra":"padding-to-increase-line-size-above-threshold"}}`,
+			i, ts, i))
+	}
+
+	content := ""
+	for _, line := range lines {
+		content += line + "\n"
+	}
+	if err := os.WriteFile(eventsPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write: %v", err)
+	}
+
+	// Read all (no since) — should get all 200 events
+	allEvents, err := parseEvents(eventsPath)
+	if err != nil {
+		t.Fatalf("parseEvents (all) failed: %v", err)
+	}
+	if len(allEvents) != 200 {
+		t.Errorf("expected 200 events (all), got %d", len(allEvents))
+	}
+
+	// Read with since = 7 days ago — should get fewer events than total
+	since7d := now - 7*86400
+	recent, err := parseEvents(eventsPath, since7d)
+	if err != nil {
+		t.Fatalf("parseEvents (since) failed: %v", err)
+	}
+
+	// Must include at least the 14 events from the last 7 days (2 per day)
+	if len(recent) < 14 {
+		t.Errorf("expected at least 14 recent events, got %d", len(recent))
+	}
+
+	// Must be fewer than all events (seeking should skip old ones)
+	if len(recent) >= len(allEvents) {
+		t.Errorf("since-filtered events (%d) should be fewer than total (%d)", len(recent), len(allEvents))
+	}
+}
+
+func TestSeekToTimestamp_SmallFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "small.jsonl")
+	// File smaller than 4KB — seeking should be skipped
+	os.WriteFile(path, []byte(`{"type":"test","timestamp":1000}`+"\n"), 0644)
+
+	f, _ := os.Open(path)
+	defer f.Close()
+
+	_, ok := seekToTimestamp(f, 500)
+	if ok {
+		t.Error("expected seekToTimestamp to skip for small files")
+	}
+}
+
+func TestReadFirstLastTimestamp(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "events.jsonl")
+
+	now := time.Now().Unix()
+	content := ""
+	for i := 0; i < 100; i++ {
+		ts := now - int64(100-i)*3600
+		content += fmt.Sprintf(`{"type":"test","timestamp":%d}`, ts) + "\n"
+	}
+	os.WriteFile(path, []byte(content), 0644)
+
+	f, _ := os.Open(path)
+	defer f.Close()
+
+	stat, _ := f.Stat()
+
+	firstTS := readFirstTimestamp(f)
+	if firstTS != now-100*3600 {
+		t.Errorf("first timestamp: got %d, want %d", firstTS, now-100*3600)
+	}
+
+	lastTS := readLastTimestamp(f, stat.Size())
+	if lastTS != now-3600 {
+		t.Errorf("last timestamp: got %d, want %d", lastTS, now-3600)
+	}
+}
+
 // Helper function to convert int64 to string
 func itoa(n int64) string {
 	return fmt.Sprintf("%d", n)

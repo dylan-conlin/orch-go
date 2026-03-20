@@ -42,7 +42,7 @@ func init() {
 
 func runHarnessReport() error {
 	eventsPath := getEventsPath()
-	events, err := parseEvents(eventsPath)
+	events, err := parseEvents(eventsPath, eventsSince(harnessReportDays))
 	if err != nil {
 		// No events — show empty report
 		resp := buildEmptyHarnessResponse(harnessReportDays)
