@@ -3,6 +3,8 @@ package spawn
 import (
 	"strings"
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 )
 
 func TestGenerateGovernanceContext(t *testing.T) {
@@ -14,12 +16,12 @@ func TestGenerateGovernanceContext(t *testing.T) {
 	}
 
 	// Should list all protected paths
-	for _, p := range GovernanceProtectedPaths {
+	for _, p := range gates.GovernanceProtectedPaths {
 		if !strings.Contains(ctx, p.Pattern) {
 			t.Errorf("missing protected path: %s", p.Pattern)
 		}
-		if !strings.Contains(ctx, p.Description) {
-			t.Errorf("missing description for: %s", p.Pattern)
+		if !strings.Contains(ctx, p.Reason) {
+			t.Errorf("missing reason for: %s", p.Pattern)
 		}
 	}
 
@@ -38,7 +40,7 @@ func TestGenerateGovernanceContext_NoTrack(t *testing.T) {
 	}
 
 	// Should still list protected paths
-	if !strings.Contains(ctx, "pkg/spawn/gates/*") {
+	if !strings.Contains(ctx, "pkg/spawn/gates/") {
 		t.Error("missing protected paths in noTrack governance context")
 	}
 
@@ -66,10 +68,10 @@ func TestGovernanceContextInSpawnTemplate(t *testing.T) {
 	}
 
 	// Should list key protected paths
-	if !strings.Contains(content, "pkg/spawn/gates/*") {
-		t.Error("missing pkg/spawn/gates/* in governance context")
+	if !strings.Contains(content, "pkg/spawn/gates/") {
+		t.Error("missing pkg/spawn/gates/ in governance context")
 	}
-	if !strings.Contains(content, "pkg/verify/*_precommit.go") {
-		t.Error("missing pkg/verify/*_precommit.go in governance context")
+	if !strings.Contains(content, "_precommit.go") {
+		t.Error("missing _precommit.go in governance context")
 	}
 }

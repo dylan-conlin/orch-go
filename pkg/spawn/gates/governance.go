@@ -1,4 +1,4 @@
-package orch
+package gates
 
 import (
 	"fmt"
@@ -21,11 +21,11 @@ type GovernanceResult struct {
 	Warning      string                    // Formatted warning message
 }
 
-// governanceProtectedPaths defines paths that are protected by governance hooks.
+// GovernanceProtectedPaths defines paths that are protected by governance hooks.
 // These mirror the patterns in ~/.orch/hooks/gate-governance-file-protection.py.
 // Workers targeting these files will be blocked by hooks at edit time — detecting
 // them at spawn time prevents wasted worker sessions.
-var governanceProtectedPaths = []GovernanceProtectedPath{
+var GovernanceProtectedPaths = []GovernanceProtectedPath{
 	{Pattern: "pkg/spawn/gates/", Reason: "spawn gate infrastructure", RedirectHint: "Put non-gate spawn logic in pkg/spawn/*.go or pipeline logic in pkg/orch/*.go"},
 	{Pattern: "_precommit.go", Reason: "pre-commit verification gates", RedirectHint: "Put verification logic in other pkg/verify/*.go files (e.g. check.go or a new file)"},
 	{Pattern: "pkg/verify/accretion.go", Reason: "completion accretion gate", RedirectHint: "Put verification logic in other pkg/verify/*.go files (e.g. check.go or a new file)"},
@@ -36,11 +36,6 @@ var governanceProtectedPaths = []GovernanceProtectedPath{
 	{Pattern: "governance_checksum", Reason: "governance checksum manifest", RedirectHint: "Escalate to orchestrator — checksum manifest is auto-generated"},
 }
 
-// GovernanceProtectedPaths returns the list of governance-protected path patterns.
-func GovernanceProtectedPaths() []GovernanceProtectedPath {
-	return governanceProtectedPaths
-}
-
 // CheckGovernance scans a task description for references to governance-protected file paths.
 // Returns nil if no governance paths are detected. This is a warning-only check — it does
 // not block spawning.
@@ -49,7 +44,7 @@ func CheckGovernance(task string, skillName string, daemonDriven bool) *Governan
 
 	var matched []GovernanceProtectedPath
 	seen := map[string]bool{}
-	for _, p := range governanceProtectedPaths {
+	for _, p := range GovernanceProtectedPaths {
 		patternLower := strings.ToLower(p.Pattern)
 		if strings.Contains(taskLower, patternLower) && !seen[p.Pattern] {
 			matched = append(matched, p)

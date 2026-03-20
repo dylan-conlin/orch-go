@@ -3,34 +3,9 @@ package spawn
 import (
 	"fmt"
 	"strings"
+
+	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 )
-
-// GovernanceProtectedPath describes a path protected by governance hooks.
-type GovernanceProtectedPath struct {
-	// Pattern is the human-readable glob-like pattern (e.g., "pkg/spawn/gates/*")
-	Pattern string
-	// Description explains what the path contains
-	Description string
-	// RedirectHint tells agents where to put code instead
-	RedirectHint string
-}
-
-// GovernanceProtectedPaths lists all paths protected by the governance file
-// protection hook (gate-governance-file-protection.py). Workers cannot modify
-// these files — edits are denied by PreToolUse hooks.
-//
-// This list MUST stay in sync with GOVERNANCE_PATTERNS in
-// ~/.orch/hooks/gate-governance-file-protection.py
-var GovernanceProtectedPaths = []GovernanceProtectedPath{
-	{Pattern: "pkg/spawn/gates/*", Description: "spawn gate logic", RedirectHint: "Put non-gate spawn logic in pkg/spawn/*.go or pipeline logic in pkg/orch/*.go"},
-	{Pattern: "pkg/verify/*_precommit.go", Description: "pre-commit verification gates", RedirectHint: "Put verification logic in other pkg/verify/*.go files (e.g. check.go or a new file)"},
-	{Pattern: "pkg/verify/accretion.go", Description: "completion accretion gate", RedirectHint: "Put verification logic in other pkg/verify/*.go files (e.g. check.go or a new file)"},
-	{Pattern: "cmd/orch/*_lint_test.go", Description: "structural lint tests", RedirectHint: "For non-governance tests, use cmd/orch/*_test.go (without _lint_ suffix)"},
-	{Pattern: "cmd/orch/governance_checksum_test.go", Description: "governance checksum test", RedirectHint: "Escalate to orchestrator — auto-generated"},
-	{Pattern: "cmd/orch/testdata/governance_checksums.json", Description: "governance checksum manifest", RedirectHint: "Escalate to orchestrator — auto-generated"},
-	{Pattern: "scripts/pre-commit*", Description: "pre-commit gate scripts", RedirectHint: "Escalate to orchestrator — direct session only"},
-	{Pattern: "~/.orch/hooks/*.py", Description: "deny hooks", RedirectHint: "Escalate to orchestrator — direct session only"},
-}
 
 // GenerateGovernanceContext produces a markdown section listing governance-protected
 // paths for injection into SPAWN_CONTEXT.md. This tells agents what they cannot
@@ -42,8 +17,8 @@ func GenerateGovernanceContext(noTrack bool) string {
 	b.WriteString("The following paths are protected by governance hooks. **Edits to these files will be denied.**\n")
 	b.WriteString("If your task requires changes to any of these, escalate immediately.\n\n")
 
-	for _, p := range GovernanceProtectedPaths {
-		fmt.Fprintf(&b, "- `%s` — %s\n", p.Pattern, p.Description)
+	for _, p := range gates.GovernanceProtectedPaths {
+		fmt.Fprintf(&b, "- `%s` — %s\n", p.Pattern, p.Reason)
 		if p.RedirectHint != "" {
 			fmt.Fprintf(&b, "  - **Instead:** %s\n", p.RedirectHint)
 		}

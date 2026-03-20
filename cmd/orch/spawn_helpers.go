@@ -211,7 +211,7 @@ func addUsageInfoToEventData(eventData map[string]interface{}, usageInfo *spawn.
 // buildConcurrencyCheck returns a ConcurrencyCheck function that queries
 // BeadsActiveCount and user-configured MaxAgents. Returns nil if user config
 // can't be loaded (fail-open: spawn proceeds without capacity check).
-func buildConcurrencyCheck() orch.ConcurrencyCheck {
+func buildConcurrencyCheck() gates.ConcurrencyCheck {
 	cfg, err := userconfig.Load()
 	if err != nil {
 		return nil

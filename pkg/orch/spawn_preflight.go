@@ -7,15 +7,11 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 )
 
-// ConcurrencyCheck returns (activeCount, maxAgents) for capacity validation.
-// Nil means no concurrency check is available (skip the gate).
-type ConcurrencyCheck func() (activeCount int, maxAgents int)
-
 // RunPreFlightChecks performs all pre-spawn validation checks.
 // Concurrency gate reinstated for manual spawns (scs-sp-8dm: manual + daemon
 // spawns in same window exceeded capacity, causing agent stalls).
 // Hotspot gate is advisory-only (never blocks) — daemon extraction cascades handle structural health.
-func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage bool, overrideReason string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error), openQuestionCheckFunc gates.OpenQuestionChecker, concurrencyCheck ...ConcurrencyCheck) (*gates.HotspotResult, *gates.AgreementsResult, *gates.OpenQuestionResult, error) {
+func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage bool, overrideReason string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error), openQuestionCheckFunc gates.OpenQuestionChecker, concurrencyCheck ...gates.ConcurrencyCheck) (*gates.HotspotResult, *gates.AgreementsResult, *gates.OpenQuestionResult, error) {
 	if err := gates.CheckTriageBypass(input.DaemonDriven, bypassTriage, input.SkillName, input.Task); err != nil {
 		logGateDecision("triage", "block", input.SkillName, input.IssueID, "manual spawn without --bypass-triage", nil)
 		return nil, nil, nil, err
@@ -40,7 +36,7 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage bool
 			fmt.Sprintf("%d/%d agents active", activeCount, maxAgents), nil)
 	}
 
-	govResult := CheckGovernance(input.Task, input.SkillName, input.DaemonDriven)
+	govResult := gates.CheckGovernance(input.Task, input.SkillName, input.DaemonDriven)
 	if govResult != nil {
 		var matchedPatterns []string
 		for _, p := range govResult.MatchedPaths {

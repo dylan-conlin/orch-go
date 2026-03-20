@@ -1,17 +1,16 @@
-package orch
+package gates
 
 import (
 	"testing"
 )
 
-func TestGovernanceProtectedPaths(t *testing.T) {
-	paths := GovernanceProtectedPaths()
-	if len(paths) == 0 {
+func TestGovernanceProtectedPathsList(t *testing.T) {
+	if len(GovernanceProtectedPaths) == 0 {
 		t.Fatal("expected non-empty governance protected paths")
 	}
 
 	found := map[string]bool{}
-	for _, p := range paths {
+	for _, p := range GovernanceProtectedPaths {
 		found[p.Pattern] = true
 	}
 	for _, expected := range []string{"pkg/spawn/gates/", "_precommit.go", "pkg/verify/accretion.go"} {
