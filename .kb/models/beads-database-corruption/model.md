@@ -7,6 +7,7 @@
 **Probes:**
 - 2026-03-18: Knowledge decay verification — all 6 fix claims confirmed against current beads codebase, model accurate and current
 - 2026-03-19: Model drift fix — removed stale `.beads/daemon.log` reference (file no longer exists since daemon doesn't run with JSONL-only default)
+- 2026-03-19: Model drift fix — updated stale investigation references (3 deleted during archive cleanup) and removed backup directory references (cleaned up)
 
 ---
 
@@ -203,10 +204,10 @@ The `TRUNCATE` checkpoint:
 
 ## Recovery
 
-### Immediate Recovery (Current Corruption)
+### Immediate Recovery (If Corruption Occurs)
 
 ```bash
-# 1. Stop any daemon attempts
+# 1. Stop any daemon attempts (if running with --sqlite)
 pkill -f "bd daemon"
 
 # 2. Remove corrupted files
@@ -221,7 +222,7 @@ bd doctor
 bd list | head -5
 ```
 
-**Why this works:** `issues.jsonl` is append-only authoritative source. Database is derived/cached state that can always be rebuilt.
+**Why this works:** `issues.jsonl` is append-only authoritative source. Database is derived/cached state that can always be rebuilt. With JSONL-only default, corruption is unlikely — this procedure is mainly historical reference.
 
 ### Prevention (Stop Future Corruption)
 
@@ -303,28 +304,22 @@ Add to `orch doctor`:
 
 ## References
 
-**Investigations:**
-- `.kb/investigations/archived/2026-01-21-inv-investigate-beads-sqlite-database-corruption.md` - Root cause (sandbox chmod)
-- `.kb/investigations/2026-01-21-inv-fix-beads-sqlite-database-corruption.md` - Recovery procedure
-- `.kb/investigations/archived/2026-01-21-urgent-beads-sqlite-corruption.md` - Incident tracking
+**Investigations (archived — deleted during cleanup, findings synthesized into this model):**
+- Root cause investigation (sandbox chmod) — Jan 21 2026
+- Recovery procedure investigation — Jan 21 2026
+- Incident tracking — Jan 21 2026
 
 **Source Code:**
-- `~/Documents/personal/beads/internal/storage/sqlite/store.go:206-217` - Close() checkpoint logic
+- `~/Documents/personal/beads/internal/storage/sqlite/store.go:208` - Close() checkpoint logic
 - `~/Documents/personal/beads/cmd/bd/main.go` - CLI entry point, daemon auto-start
 
 **Related Models:**
 - `.kb/models/beads-integration-architecture/model.md` - RPC vs direct mode, client design
 
-**Backups:**
-- `.beads/backup-corrupted-2026-01-21/` - First corruption backup
-- `.beads/backup-corrupted-2026-01-21-1444/` - Second corruption backup
-- `.beads/backup-corrupted-2026-01-22/` - Third corruption backup (mislabeled)
-
 **Primary Evidence (Verify These):**
-- `~/Documents/personal/beads/internal/storage/sqlite/store.go:206-217` - WAL checkpoint implementation showing TRUNCATE mode
+- `~/Documents/personal/beads/internal/storage/sqlite/store.go:208` - WAL checkpoint implementation showing TRUNCATE mode
 - `~/Documents/personal/beads/cmd/bd/main.go` - Daemon auto-start logic
 - `~/Documents/personal/beads/internal/storage/sqlite/` - SQLite storage implementation with WAL mode
-- `.beads/daemon.log` - Historical (file no longer exists — daemon doesn't run with JSONL-only default, which is the expected healthy state)
 
 ## Auto-Linked Investigations
 
