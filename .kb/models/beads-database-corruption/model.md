@@ -1,11 +1,12 @@
 # Model: Beads SQLite Database Corruption
 
 **Domain:** Beads / SQLite / Data Integrity
-**Last Updated:** 2026-03-18
+**Last Updated:** 2026-03-19
 **Synthesized From:** 3 investigations (Jan 21-22), 3+ corruption incidents (Jan 21-22), daemon logs showing 57+ restart cycles, Feb 2026 architecture review
 
 **Probes:**
 - 2026-03-18: Knowledge decay verification — all 6 fix claims confirmed against current beads codebase, model accurate and current
+- 2026-03-19: Model drift fix — removed stale `.beads/daemon.log` reference (file no longer exists since daemon doesn't run with JSONL-only default)
 
 ---
 
@@ -284,8 +285,9 @@ ls -la .beads/beads.db* 2>/dev/null
 # beads.db-wal  0 bytes
 # beads.db-shm  32KB
 
-# Check daemon restart frequency
-grep "Daemon started" .beads/daemon.log | tail -20
+# Check daemon restart frequency (daemon.log only exists if daemon is running;
+# with JSONL-only default, daemon.log is typically absent — that's healthy)
+grep "Daemon started" .beads/daemon.log 2>/dev/null | tail -20
 # If multiple starts within minutes = rapid-cycle problem
 ```
 
@@ -322,7 +324,7 @@ Add to `orch doctor`:
 - `~/Documents/personal/beads/internal/storage/sqlite/store.go:206-217` - WAL checkpoint implementation showing TRUNCATE mode
 - `~/Documents/personal/beads/cmd/bd/main.go` - Daemon auto-start logic
 - `~/Documents/personal/beads/internal/storage/sqlite/` - SQLite storage implementation with WAL mode
-- `.beads/daemon.log` - Historical daemon restart logs showing rapid cycles
+- `.beads/daemon.log` - Historical (file no longer exists — daemon doesn't run with JSONL-only default, which is the expected healthy state)
 
 ## Auto-Linked Investigations
 
