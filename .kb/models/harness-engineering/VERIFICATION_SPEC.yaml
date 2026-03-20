@@ -1,0 +1,19 @@
+verification:
+  type: artifact-review
+  commands_run:
+    - "Read model.md (full, 535 lines)"
+    - "Read all 6 existing claims.yaml files for cross-reference"
+  checks:
+    - description: "All 8 critical invariants from model.md represented"
+      result: "PASS — HE-01 through HE-08 map to invariants 1-8"
+    - description: "Core mechanisms covered"
+      result: "PASS — HE-09 (three-type mapping), HE-10 (signaling vs blocking), HE-11 (calibration spiral), HE-12 (compliance vs coordination), HE-13 (attractors + gates)"
+    - description: "Cross-model tensions with all 7 existing claims.yaml models"
+      result: "PASS — tensions reference AE (6 claims), MH (4 claims), SCT (4 claims), ATE (4 claims), DAO (4 claims), CI (3 claims)"
+    - description: "HE- prefix on all claim IDs"
+      result: "PASS — HE-01 through HE-13"
+    - description: "Trimmed schema (10 required fields)"
+      result: "PASS — id, text, type, scope, confidence, priority, evidence, last_validated, domain_tags, falsifies_if, tensions, model_md_ref"
+    - description: "Priority distribution favors core (foundational model)"
+      result: "PASS — 13/13 claims are core priority"
+  manual_steps: []

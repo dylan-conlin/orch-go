@@ -1,0 +1,412 @@
+model: harness-engineering
+version: 1
+last_audit: "2026-03-19"
+
+claims:
+  - id: HE-01
+    text: "Hard harness (deterministic, mechanically enforced) matters more than soft harness (probabilistic, context-dependent) because agents under pressure drift from soft instructions"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "265 contrastive trials: behavioral constraints dilute at 5+, inert at 10+ co-resident items"
+        date: "2026-03-06"
+        verdict: confirms
+      - source: "daemon.go grew 667→1559 lines while >1500 convention existed in CLAUDE.md — soft harness violated under task pressure"
+        date: "2026-03-07"
+        verdict: confirms
+      - source: "Orchestrator skill had 87 behavioral constraints; ~83 were non-functional (Mar 2 probe)"
+        date: "2026-03-02"
+        verdict: confirms
+    last_validated: "2026-03-07"
+    domain_tags: ["hard-harness", "soft-harness", "enforcement", "drift", "pressure"]
+    falsifies_if: "Soft harness (skill text, CLAUDE.md conventions) reliably prevents violations at scale (>90% compliance, N>50 agents) without infrastructure backing"
+    tensions:
+      - claim: AE-01
+        model: architectural-enforcement
+        type: confirms
+        note: "AE-01 is the concrete mechanism — HE-01 is the general principle that subsumes it"
+      - claim: SCT-02
+        model: skill-content-transfer
+        type: confirms
+        note: "Behavioral dilution at 5+ is the empirical evidence for why soft harness fails"
+      - claim: ATE-01
+        model: agent-trust-enforcement
+        type: confirms
+        note: "Convention-layer bypass with shell access is a specific instance of soft harness failure"
+      - claim: ATE-11
+        model: agent-trust-enforcement
+        type: confirms
+        note: "Infrastructure-backed > assurance-backed is the trust-enforcement corollary"
+    model_md_ref: "## Core Mechanism #1, ## Critical Invariants #1"
+
+  - id: HE-02
+    text: "Every convention without a gate will eventually be violated — a convention in CLAUDE.md without infrastructure enforcement is a suggestion with a half-life proportional to context window pressure"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "daemon.go grew past stated 1500-line CLAUDE.md convention — only spawn hotspot gate produced actual enforcement"
+        date: "2026-03-07"
+        verdict: confirms
+      - source: "System prompt signal advantage (17:1) structurally drowns skill-level behavioral constraints"
+        date: "2026-02-24"
+        verdict: confirms
+      - source: "Volume overwhelms vigilance: 45+ commits/day, no human can verify convention compliance"
+        date: "2026-03-07"
+        verdict: confirms
+    last_validated: "2026-03-07"
+    domain_tags: ["conventions", "gates", "erosion", "CLAUDE.md", "enforcement"]
+    falsifies_if: "A CLAUDE.md convention without infrastructure enforcement that holds across 100+ agent sessions and 60+ days without violation"
+    tensions:
+      - claim: AE-06
+        model: architectural-enforcement
+        type: confirms
+        note: "Behavioral constraint dilution is the mechanism by which conventions erode"
+      - claim: CI-03
+        model: context-injection
+        type: confirms
+        note: "Pressure over compensation — fix templates/hooks, not manual intervention — same principle"
+    model_md_ref: "## Critical Invariants #2, ## Why This Fails #1"
+
+  - id: HE-03
+    text: "Agent failure is harness failure — useful heuristic, not universal truth. Asking 'what's missing from the harness?' before 'what's wrong with the agent?' is productive, but stated universally this is unfalsifiable"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "5th workspace scanner = missing pkg/workspace/, not agent laziness — 6 cross-cutting concerns reimplemented across 4-9 files (~2,100 duplicated lines)"
+        date: "2026-03-07"
+        verdict: confirms
+      - source: "OpenAI Codex team arrived at same framing independently: agent failure = harness bug"
+        date: "2026-03-07"
+        verdict: confirms
+      - source: "Qualification: some failures ARE agent-level (model limitations, context window issues) — unfalsifiable if every bad outcome is reclassified as harness bug"
+        date: "2026-03-08"
+        verdict: extends
+    last_validated: "2026-03-08"
+    domain_tags: ["agent-failure", "harness-failure", "heuristic", "architecture", "OpenAI"]
+    falsifies_if: "A system with comprehensive harness coverage where >50% of agent failures are genuinely agent-level (not addressable by harness changes), measured over 200+ sessions"
+    tensions:
+      - claim: DAO-08
+        model: daemon-autonomous-operation
+        type: confirms
+        note: "Extraction gate as signaling — daemon addresses harness gaps rather than blaming agents"
+    model_md_ref: "## Critical Invariants #3, ## Core Mechanism #1"
+
+  - id: HE-04
+    text: "Extraction without routing is a pump — moving code out of a file without creating an attractor (destination package) results in re-accretion. The gravitational center must be relocated, not just temporarily emptied"
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "daemon.go regrew +892 lines past pre-extraction baseline in 60 days from 30 correct commits"
+        date: "2026-03-07"
+        verdict: confirms
+      - source: "spawn_cmd.go shrank -1,755 after pkg/spawn/backends/ created (attractor), then regrew +483 in 3 weeks without blocking gate"
+        date: "2026-03-08"
+        verdict: confirms
+      - source: "spawn_cmd.go back to 542 lines after pre-commit gate + daemon extraction — attractors WITH gates CAN hold (Mar 17, 1-week data)"
+        date: "2026-03-17"
+        verdict: confirms
+    last_validated: "2026-03-17"
+    domain_tags: ["extraction", "attractors", "gates", "re-accretion", "routing"]
+    falsifies_if: "Code extraction without creating a structural attractor that holds for 30+ days without re-accretion (N>3 extraction events)"
+    tensions:
+      - claim: AE-08
+        model: architectural-enforcement
+        type: confirms
+        note: "Gates as signaling infrastructure trigger the extraction cascades that create attractors"
+      - claim: DAO-08
+        model: daemon-autonomous-operation
+        type: confirms
+        note: "Daemon extraction gate is the signaling mechanism that triggers attractor creation"
+    model_md_ref: "## Critical Invariants #4, ## Core Mechanism #2"
+
+  - id: HE-05
+    text: "Prevention > Detection > Rejection — each enforcement layer further from authoring has higher cost. Pre-commit gate (prevention) < spawn gate (early detection) < completion gate (late detection + wasted work)"
+    type: invariant
+    scope: universal
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Completion gates fire after full agent session (wasted tokens). Pre-commit gates fire before work begins."
+        date: "2026-03-07"
+        verdict: confirms
+      - source: "Dupdetect at completion cost 111s per run + full agent session already spent. Pre-commit accretion gate costs <1s."
+        date: "2026-03-11"
+        verdict: confirms
+    last_validated: "2026-03-11"
+    domain_tags: ["prevention", "detection", "rejection", "cost", "gates", "lifecycle"]
+    falsifies_if: "Late-stage rejection (completion gates) produces better outcomes per unit cost than early prevention (pre-commit gates) measured across 100+ agent sessions"
+    tensions:
+      - claim: ATE-04
+        model: agent-trust-enforcement
+        type: confirms
+        note: "Pre-spawn validation prevents wasted sessions — same prevention > detection principle"
+      - claim: DAO-02
+        model: daemon-autonomous-operation
+        type: confirms
+        note: "Spawn prerequisites as fail-fast gates are the daemon's application of prevention > detection"
+    model_md_ref: "## Critical Invariants #5"
+
+  - id: HE-06
+    text: "Mutable hard harness is soft harness with extra steps — all current defenses (spawn gates, verify gates, hooks, architecture lint) are source code agents can modify"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Three entropy spirals (1,625 lost commits) occurred with mutable infrastructure"
+        date: "2026-02-12"
+        verdict: confirms
+      - source: "Mitigation partial: compiled binary provides temporal buffer, chflags uchg on hook files, but circuit breaker currently disabled"
+        date: "2026-03-08"
+        verdict: confirms
+    last_validated: "2026-03-08"
+    domain_tags: ["mutability", "control-plane", "entropy-spiral", "immutability", "infrastructure"]
+    falsifies_if: "Mutable enforcement infrastructure that agents never modify despite having write access — measured over 60+ days with 30+ concurrent agents"
+    tensions:
+      - claim: ATE-02
+        model: agent-trust-enforcement
+        type: relates
+        note: "OS-level enforcement (chflags uchg) is the solution to mutable hard harness — true immutability requires infrastructure unreachable by agents"
+      - claim: AE-09
+        model: architectural-enforcement
+        type: extends
+        note: "Displacement from deny hooks is what happens when agents encounter mutable-but-enforced constraints"
+    model_md_ref: "## Critical Invariants #6, ## Why This Fails #4"
+
+  - id: HE-07
+    text: "Enforcement without measurement is theological; enforcement with measurement is empirical — every harness layer must be a pair of enforcement surface + measurement surface"
+    type: invariant
+    scope: universal
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Dupdetect: deterministic gate, but 111s invisible cost — no timing telemetry. O(n^2) was architectural."
+        date: "2026-03-11"
+        verdict: confirms
+      - source: "Accretion delta: 4.7% coverage (path filter bug) — 95% of completions silently skipped"
+        date: "2026-03-11"
+        verdict: confirms
+      - source: "52% of agent.completed events lacked skill/outcome fields — survivorship bias architecture"
+        date: "2026-03-11"
+        verdict: confirms
+      - source: "Spawn gates: 0 gate_decision events emitted — denominator for gate accuracy was unrecorded"
+        date: "2026-03-11"
+        verdict: confirms
+    last_validated: "2026-03-11"
+    domain_tags: ["measurement", "enforcement", "paired-surfaces", "theological", "empirical"]
+    falsifies_if: "An enforcement layer that operators correctly evaluate without any measurement surface — no false confidence, accurate mental model of gate effectiveness (N>30 sessions)"
+    tensions:
+      - claim: MH-01
+        model: measurement-honesty
+        type: confirms
+        note: "A metric that cannot go red is the measurement-side corollary — HE-07 is the enforcement-side premise"
+      - claim: MH-04
+        model: measurement-honesty
+        type: confirms
+        note: "Precision measured before operational — same principle applied to enforcement layers"
+      - claim: MH-07
+        model: measurement-honesty
+        type: confirms
+        note: "Two-gap independence (action without consequence) is a specific instance of enforcement without measurement"
+      - claim: AE-08
+        model: architectural-enforcement
+        type: extends
+        note: "Gates as signaling infrastructure only discoverable because measurement revealed 0 quality difference"
+    model_md_ref: "## Critical Invariants #7, ## Core Mechanism #5, ## Why This Fails #7"
+
+  - id: HE-08
+    text: "Stronger models may need more coordination gates, not fewer — compliance simplifies with model capability but coordination grows as agents get faster and more confident"
+    type: generalization
+    scope: bounded
+    confidence: unconfirmed
+    priority: core
+    evidence:
+      - source: "Observed: faster agents (Opus) produced more code per session, accelerating accretion. daemon.go +892 lines from 30 individually-correct commits."
+        date: "2026-03-07"
+        verdict: extends
+      - source: "Opus stall rate ~4% vs non-Anthropic 67-87% — compliance improves with capability, but coordination problem unchanged"
+        date: "2026-03-17"
+        verdict: extends
+      - source: "Not experimentally controlled — plausible claim from one system, no experiment isolating model capability as the variable"
+        date: "2026-03-08"
+        verdict: extends
+    last_validated: "2026-03-08"
+    domain_tags: ["coordination", "compliance", "model-capability", "trajectory", "scaling"]
+    falsifies_if: "Stronger models produce less accretion per agent-session than weaker models on the same codebase (controlled experiment, N>50 sessions per model)"
+    tensions:
+      - claim: DAO-13
+        model: daemon-autonomous-operation
+        type: relates
+        note: "Non-Anthropic model stalls are compliance failures — the coordination concern is orthogonal"
+    model_md_ref: "## Critical Invariants #8, ## Core Mechanism #8"
+
+  - id: HE-09
+    text: "Skill content maps to harness types: knowledge → context (resilient), stance → attractors (attention primers), behavioral → constraints/gates (unreliable as prose). Putting constraint-type content in context-type containers is a design error."
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "265 contrastive trials: knowledge +5 lift, stance +2 to +7 on cross-source, behavioral at bare parity at 10+"
+        date: "2026-03-06"
+        verdict: confirms
+      - source: "Package structure as persistent stance: pkg/spawn/backends/ caused agents to route spawn code there without instruction"
+        date: "2026-03-07"
+        verdict: confirms
+    last_validated: "2026-03-06"
+    domain_tags: ["skills", "knowledge", "stance", "behavioral", "content-types", "harness-mapping"]
+    falsifies_if: "Behavioral prohibitions in skill documents produce reliable compliance (>80%, N>20) without infrastructure enforcement"
+    tensions:
+      - claim: SCT-01
+        model: skill-content-transfer
+        type: confirms
+        note: "SCT-01 discovered the three types — HE-09 maps them to the harness taxonomy"
+      - claim: SCT-04
+        model: skill-content-transfer
+        type: confirms
+        note: "Stance as attention primer maps to attractors — architecture primes attention like stance primes perception"
+      - claim: SCT-05
+        model: skill-content-transfer
+        type: confirms
+        note: "Hook-enforced behaviors NOT in skill text — because behavioral content belongs in gates, not context"
+      - claim: CI-01
+        model: context-injection
+        type: relates
+        note: "SPAWN_CONTEXT is the delivery mechanism for knowledge and stance content — not for behavioral enforcement"
+    model_md_ref: "## Core Mechanism #3"
+
+  - id: HE-10
+    text: "Gates work through signaling (making structural problems visible, triggering extraction cascades) not through blocking (directly preventing bad outcomes) — no measurable quality difference between enforced and bypassed cohorts"
+    type: mechanism
+    scope: local
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Mar 17 gate effectiveness: 529 spawns, enforced 81.1% vs bypassed 74.2% completion — delta within noise"
+        date: "2026-03-17"
+        verdict: confirms
+      - source: "Pre-commit gate: 55 decisions, 2 blocks, both bypassed in <16s (100% bypass rate). But event emission triggered extraction cascades → hotspot count 12→3 (75% reduction)"
+        date: "2026-03-17"
+        verdict: confirms
+      - source: "All accretion gates reclassified from blocking to advisory (decision: 2026-03-17)"
+        date: "2026-03-17"
+        verdict: confirms
+    last_validated: "2026-03-17"
+    domain_tags: ["gates", "signaling", "blocking", "extraction", "cascade", "hotspot"]
+    falsifies_if: "Gate blocking (not just signaling) produces measurably higher individual agent quality than bypass cohort (>10pp difference, N>100)"
+    tensions:
+      - claim: AE-08
+        model: architectural-enforcement
+        type: confirms
+        note: "AE-08 is the same finding at the architectural-enforcement level — HE-10 frames it as a harness-engineering principle"
+      - claim: DAO-08
+        model: daemon-autonomous-operation
+        type: confirms
+        note: "Daemon extraction gate is the concrete implementation of signaling-over-blocking"
+      - claim: MH-02
+        model: measurement-honesty
+        type: extends
+        note: "Absent blocking signal is not absent governance — signaling works through different mechanisms than blocking"
+    model_md_ref: "## Core Mechanism #2 (gate mechanism update Mar 17), ## Why This Fails #2"
+
+  - id: HE-11
+    text: "Gate calibration death spiral: gate too strict → high false positive rate → --force reflex → gate becomes noise → no enforcement. Fix is precision, not volume."
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Original hotspot gate blocked ALL non-architect spawns — build fixes, investigations, low-risk work all blocked"
+        date: "2026-02-26"
+        verdict: confirms
+      - source: "Fix: tiered enforcement (warning at 800, hard gate at 1500) with skill-based exemptions"
+        date: "2026-02-26"
+        verdict: confirms
+      - source: "Health score gate: formula calibrated to pass existing state — 89% of 37→73 improvement was recalibration. Gate removed entirely."
+        date: "2026-03-10"
+        verdict: confirms
+    last_validated: "2026-03-10"
+    domain_tags: ["gates", "calibration", "false-positive", "force-bypass", "precision"]
+    falsifies_if: "A strict gate (>50% false positive rate) that maintains agent compliance without triggering --force bypass reflex (N>50 gate firings)"
+    tensions:
+      - claim: AE-02
+        model: architectural-enforcement
+        type: confirms
+        note: "Gates must be passable by the gated party — exemptions prevent the death spiral"
+      - claim: AE-03
+        model: architectural-enforcement
+        type: confirms
+        note: "Escape hatches with accountability are the structured alternative to the --force reflex"
+      - claim: MH-06
+        model: measurement-honesty
+        type: extends
+        note: "Delete before fixing applies to gates too — removing a false-confidence gate is safer than recalibrating it"
+    model_md_ref: "## Why This Fails #2, ## Why This Fails #6"
+
+  - id: HE-12
+    text: "Compliance failure (agent doesn't follow instructions) and coordination failure (agents each follow instructions correctly but collectively produce problems) are a useful lens but not a clean partition — most real failures are hybrid"
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "daemon.go +892 lines from 30 correct commits is pure coordination failure — each commit passed review"
+        date: "2026-03-07"
+        verdict: confirms
+      - source: "MAST taxonomy (Cemri et al.): FC1 ~44% system design, FC2 ~32% inter-agent, FC3 ~24% verification — maps to compliance/coordination/verification"
+        date: "2026-03-08"
+        verdict: confirms
+      - source: "OpenAI Codex arrived at same insight: agent failure = harness bug (environment design, not agent improvement)"
+        date: "2026-03-07"
+        verdict: confirms
+    last_validated: "2026-03-08"
+    domain_tags: ["compliance", "coordination", "failure-modes", "lens", "MAST"]
+    falsifies_if: "A system where compliance gates alone (without coordination gates) prevent accretion and structural degradation over 60+ days with 30+ agents"
+    tensions:
+      - claim: DAO-10
+        model: daemon-autonomous-operation
+        type: extends
+        note: "Triage workflow separates judgment from execution — a coordination mechanism, not compliance"
+      - claim: ATE-09
+        model: agent-trust-enforcement
+        type: extends
+        note: "Trust hierarchy predicts bypass order — a compliance concern that HE-12 frames as one half of the dual failure model"
+    model_md_ref: "## Core Mechanism #8, ## Critical Invariants #8"
+
+  - id: HE-13
+    text: "Both attractors AND gates are required for sustainable code organization — gates without attractors leave agents with nowhere to go, attractors without gates are optional paths agents ignore"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "pkg/daemon/ existed (896 lines) but features still landed in cmd/orch/daemon.go — attractor without gate"
+        date: "2026-03-07"
+        verdict: confirms
+      - source: "Pre-commit warns status_cmd.go too large, but no pkg/display/ or pkg/workspace/ for extracted code — gate without attractor"
+        date: "2026-03-07"
+        verdict: confirms
+      - source: "spawn_cmd.go held at 542 lines with both attractor (pkg/spawn/backends/) AND gate (pre-commit + daemon extraction) — Mar 17"
+        date: "2026-03-17"
+        verdict: confirms
+    last_validated: "2026-03-17"
+    domain_tags: ["attractors", "gates", "code-organization", "extraction", "routing"]
+    falsifies_if: "Structural attractors alone (without gates) sustain code organization for 30+ days across 30+ agent sessions — no re-accretion"
+    tensions:
+      - claim: AE-09
+        model: architectural-enforcement
+        type: extends
+        note: "Enforcement without guidance (deny hooks without redirect) is gates-without-attractors — produces displacement"
+      - claim: CI-04
+        model: context-injection
+        type: relates
+        note: "Absence of scoped auto-surfacing is an attractor gap — knowledge exists but isn't routed to point of relevance"
+    model_md_ref: "## Core Mechanism #2, ## Why This Fails #3, ## Constraints: Why Both Attractors and Gates?"
