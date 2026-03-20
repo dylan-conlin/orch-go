@@ -4,7 +4,20 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/group"
 )
+
+// skipAllOpts returns initOptions that skip all external dependencies (beads, kb, claude, tmuxinator, group).
+func skipAllOpts() initOptions {
+	return initOptions{
+		SkipBeads:      true,
+		SkipKB:         true,
+		SkipClaudeMD:   true,
+		SkipTmuxinator: true,
+		SkipGroup:      true,
+	}
+}
 
 func TestInitProject(t *testing.T) {
 	// Create a temporary directory for testing
@@ -14,15 +27,13 @@ func TestInitProject(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Test basic initialization
-	// Args: projectDir, force, skipBeads, skipKB, skipClaudeMD, skipTmuxinator, beadsPrefix, projectType
 	t.Run("creates all directories", func(t *testing.T) {
 		testDir := filepath.Join(tmpDir, "test1")
 		if err := os.MkdirAll(testDir, 0755); err != nil {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, true, true, "", "") // skip beads, kb, claudemd, tmuxinator
+		result, err := initProject(testDir, skipAllOpts())
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -53,13 +64,13 @@ func TestInitProject(t *testing.T) {
 		}
 
 		// First init
-		_, err := initProject(testDir, false, true, true, true, true, "", "")
+		_, err := initProject(testDir, skipAllOpts())
 		if err != nil {
 			t.Fatalf("first initProject failed: %v", err)
 		}
 
 		// Second init
-		result, err := initProject(testDir, false, true, true, true, true, "", "")
+		result, err := initProject(testDir, skipAllOpts())
 		if err != nil {
 			t.Fatalf("second initProject failed: %v", err)
 		}
@@ -80,13 +91,15 @@ func TestInitProject(t *testing.T) {
 		}
 
 		// First init
-		_, err := initProject(testDir, false, true, true, true, true, "", "")
+		_, err := initProject(testDir, skipAllOpts())
 		if err != nil {
 			t.Fatalf("first initProject failed: %v", err)
 		}
 
 		// Second init with force
-		result, err := initProject(testDir, true, true, true, true, true, "", "")
+		opts := skipAllOpts()
+		opts.Force = true
+		result, err := initProject(testDir, opts)
 		if err != nil {
 			t.Fatalf("force initProject failed: %v", err)
 		}
@@ -103,7 +116,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, true, true, "", "")
+		result, err := initProject(testDir, skipAllOpts())
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -119,7 +132,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, true, true, "", "")
+		result, err := initProject(testDir, skipAllOpts())
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -135,7 +148,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		_, err := initProject(testDir, false, true, true, true, true, "", "")
+		_, err := initProject(testDir, skipAllOpts())
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -161,7 +174,9 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create cmd dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, false, true, "", "")
+		opts := skipAllOpts()
+		opts.SkipClaudeMD = false
+		result, err := initProject(testDir, opts)
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -193,7 +208,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, true, true, "", "")
+		result, err := initProject(testDir, skipAllOpts())
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -215,7 +230,10 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, false, true, "", "svelte-app")
+		opts := skipAllOpts()
+		opts.SkipClaudeMD = false
+		opts.ProjectType = "svelte-app"
+		result, err := initProject(testDir, opts)
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -239,7 +257,9 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, true, false, "", "")
+		opts := skipAllOpts()
+		opts.SkipTmuxinator = false
+		result, err := initProject(testDir, opts)
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -265,7 +285,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, true, true, "", "")
+		result, err := initProject(testDir, skipAllOpts())
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -394,7 +414,7 @@ func TestInitCreatesProjectConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Run init (skip beads, kb, claude, tmuxinator to focus on config)
-	result, err := initProject(tmpDir, false, true, true, true, true, "", "")
+	result, err := initProject(tmpDir, skipAllOpts())
 	if err != nil {
 		t.Fatalf("initProject failed: %v", err)
 	}
@@ -433,7 +453,7 @@ func TestInitProjectConfigWithAllocatedPorts(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Run init
-	result, err := initProject(tmpDir, false, true, true, true, true, "", "")
+	result, err := initProject(tmpDir, skipAllOpts())
 	if err != nil {
 		t.Fatalf("initProject failed: %v", err)
 	}
@@ -461,4 +481,165 @@ func TestInitProjectConfigWithAllocatedPorts(t *testing.T) {
 	if !containsSubstring(content, "api:") {
 		t.Error("config should contain api port declaration")
 	}
+}
+
+func TestInitGroupRegistration(t *testing.T) {
+	t.Run("explicit group registers in groups.yaml", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		testDir := filepath.Join(tmpDir, "my-project")
+		os.MkdirAll(testDir, 0755)
+
+		groupsPath := filepath.Join(tmpDir, "groups.yaml")
+		opts := skipAllOpts()
+		opts.SkipGroup = false
+		opts.GroupName = "personal"
+		opts.GroupConfigPath = groupsPath
+
+		result, err := initProject(testDir, opts)
+		if err != nil {
+			t.Fatalf("initProject failed: %v", err)
+		}
+
+		if !result.GroupRegistered {
+			t.Error("expected GroupRegistered to be true")
+		}
+		if result.GroupName != "personal" {
+			t.Errorf("expected GroupName 'personal', got %q", result.GroupName)
+		}
+
+		// Verify groups.yaml was created
+		cfg, err := group.LoadFromFile(groupsPath)
+		if err != nil {
+			t.Fatalf("LoadFromFile() error = %v", err)
+		}
+		g := cfg.Groups["personal"]
+		if len(g.Projects) != 1 || g.Projects[0] != "my-project" {
+			t.Errorf("expected [my-project], got %v", g.Projects)
+		}
+	})
+
+	t.Run("idempotent group registration", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		testDir := filepath.Join(tmpDir, "my-project")
+		os.MkdirAll(testDir, 0755)
+
+		groupsPath := filepath.Join(tmpDir, "groups.yaml")
+		opts := skipAllOpts()
+		opts.SkipGroup = false
+		opts.GroupName = "personal"
+		opts.GroupConfigPath = groupsPath
+
+		// First init
+		result1, err := initProject(testDir, opts)
+		if err != nil {
+			t.Fatalf("first initProject failed: %v", err)
+		}
+		if !result1.GroupRegistered {
+			t.Error("expected GroupRegistered on first run")
+		}
+
+		// Second init
+		result2, err := initProject(testDir, opts)
+		if err != nil {
+			t.Fatalf("second initProject failed: %v", err)
+		}
+		if result2.GroupRegistered {
+			t.Error("expected GroupRegistered=false on second run (idempotent)")
+		}
+		if !result2.GroupExisted {
+			t.Error("expected GroupExisted=true on second run")
+		}
+
+		// Verify no duplicate
+		cfg, err := group.LoadFromFile(groupsPath)
+		if err != nil {
+			t.Fatalf("LoadFromFile() error = %v", err)
+		}
+		g := cfg.Groups["personal"]
+		if len(g.Projects) != 1 {
+			t.Errorf("expected 1 project (no duplicate), got %d: %v", len(g.Projects), g.Projects)
+		}
+	})
+
+	t.Run("adds to existing groups.yaml", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		testDir := filepath.Join(tmpDir, "new-project")
+		os.MkdirAll(testDir, 0755)
+
+		// Pre-create groups.yaml with existing group
+		groupsPath := filepath.Join(tmpDir, "groups.yaml")
+		content := `groups:
+  personal:
+    account: personal
+    projects:
+      - orch-go
+      - beads
+`
+		os.WriteFile(groupsPath, []byte(content), 0644)
+
+		opts := skipAllOpts()
+		opts.SkipGroup = false
+		opts.GroupName = "personal"
+		opts.GroupConfigPath = groupsPath
+
+		result, err := initProject(testDir, opts)
+		if err != nil {
+			t.Fatalf("initProject failed: %v", err)
+		}
+		if !result.GroupRegistered {
+			t.Error("expected GroupRegistered to be true")
+		}
+
+		// Verify all 3 projects are in the group
+		cfg, err := group.LoadFromFile(groupsPath)
+		if err != nil {
+			t.Fatalf("LoadFromFile() error = %v", err)
+		}
+		g := cfg.Groups["personal"]
+		if len(g.Projects) != 3 {
+			t.Errorf("expected 3 projects, got %d: %v", len(g.Projects), g.Projects)
+		}
+		if g.Account != "personal" {
+			t.Errorf("expected account preserved as 'personal', got %q", g.Account)
+		}
+	})
+
+	t.Run("skip group sets flag", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		testDir := filepath.Join(tmpDir, "my-project")
+		os.MkdirAll(testDir, 0755)
+
+		result, err := initProject(testDir, skipAllOpts())
+		if err != nil {
+			t.Fatalf("initProject failed: %v", err)
+		}
+
+		if !result.GroupSkipped {
+			t.Error("expected GroupSkipped to be true")
+		}
+	})
+
+	t.Run("no group detected without --group gives warning", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		testDir := filepath.Join(tmpDir, "orphan-project")
+		os.MkdirAll(testDir, 0755)
+
+		// Use a nonexistent groups.yaml path so auto-detect fails
+		opts := skipAllOpts()
+		opts.SkipGroup = false
+		opts.GroupConfigPath = filepath.Join(tmpDir, "nonexistent", "groups.yaml")
+
+		result, err := initProject(testDir, opts)
+		if err != nil {
+			t.Fatalf("initProject failed: %v", err)
+		}
+
+		// Should have a group error (no auto-detect, no explicit group)
+		if result.GroupError == nil {
+			t.Error("expected GroupError when no group could be detected")
+		}
+		if result.GroupRegistered {
+			t.Error("expected GroupRegistered=false when no group detected")
+		}
+	})
 }

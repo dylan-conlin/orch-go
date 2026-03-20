@@ -2,12 +2,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 
 	"github.com/dylan-conlin/orch-go/pkg/claudemd"
+	"github.com/dylan-conlin/orch-go/pkg/group"
 	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/spf13/cobra"
@@ -20,8 +22,10 @@ var (
 	initSkipKB         bool   // Skip kb initialization
 	initSkipClaudeMD   bool   // Skip CLAUDE.md generation
 	initSkipTmuxinator bool   // Skip tmuxinator config generation
+	initSkipGroup      bool   // Skip group registration
 	initBeadsPrefix    string // Custom prefix for beads issues
 	initProjectType    string // Project type for CLAUDE.md template
+	initGroup          string // Explicit group name for daemon registration
 )
 
 var initCmd = &cobra.Command{
@@ -36,6 +40,7 @@ Creates:
   - .beads/              Issue tracking (via 'bd init')
   - CLAUDE.md            Project context for Claude agents
   - tmuxinator config    Workers session configuration (~/.tmuxinator/workers-{project}.yml)
+  - groups.yaml entry    Register with daemon for cross-project polling
 
 This command is idempotent - it can be run multiple times safely.
 Use --force to recreate directories even if they exist.
@@ -46,9 +51,17 @@ Project types for CLAUDE.md:
   - python-cli  Python CLI (auto-detected via pyproject.toml)
   - minimal     Minimal template (default fallback)
 
+Group registration:
+  By default, orch init registers the project in ~/.kb/groups.yaml so the
+  daemon can discover and poll it for cross-project spawning. The group is
+  auto-detected by checking which existing group has members in the same
+  parent directory. Use --group to override, or --skip-group to skip.
+
 Examples:
-  orch-go init                       # Initialize with defaults (auto-detect type)
+  orch-go init                       # Initialize with defaults (auto-detect type and group)
   orch-go init --type go-cli         # Use go-cli template
+  orch-go init --group personal      # Register in specific group
+  orch-go init --skip-group          # Skip daemon registration
   orch-go init --skip-beads          # Skip beads initialization
   orch-go init --skip-kb             # Skip kb initialization
   orch-go init --skip-claude         # Skip CLAUDE.md generation
@@ -66,8 +79,10 @@ func init() {
 	initCmd.Flags().BoolVar(&initSkipKB, "skip-kb", false, "Skip kb initialization")
 	initCmd.Flags().BoolVar(&initSkipClaudeMD, "skip-claude", false, "Skip CLAUDE.md generation")
 	initCmd.Flags().BoolVar(&initSkipTmuxinator, "skip-tmuxinator", false, "Skip tmuxinator config generation")
+	initCmd.Flags().BoolVar(&initSkipGroup, "skip-group", false, "Skip daemon group registration")
 	initCmd.Flags().StringVar(&initBeadsPrefix, "beads-prefix", "", "Custom prefix for beads issues (default: directory name)")
 	initCmd.Flags().StringVar(&initProjectType, "type", "", "Project type for CLAUDE.md (go-cli, svelte-app, python-cli, minimal)")
+	initCmd.Flags().StringVar(&initGroup, "group", "", "Group name for daemon registration (auto-detected if omitted)")
 }
 
 // InitResult captures the result of initialization.
@@ -95,6 +110,11 @@ type InitResult struct {
 	TmuxinatorSkipped bool
 	TmuxinatorError   error
 	TmuxinatorPath    string
+	GroupRegistered   bool
+	GroupExisted      bool
+	GroupSkipped      bool
+	GroupError        error
+	GroupName         string
 }
 
 // runInit initializes orch scaffolding in the current directory.
@@ -104,7 +124,19 @@ func runInit() error {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	result, err := initProject(projectDir, initForce, initSkipBeads, initSkipKB, initSkipClaudeMD, initSkipTmuxinator, initBeadsPrefix, initProjectType)
+	opts := initOptions{
+		Force:          initForce,
+		SkipBeads:      initSkipBeads,
+		SkipKB:         initSkipKB,
+		SkipClaudeMD:   initSkipClaudeMD,
+		SkipTmuxinator: initSkipTmuxinator,
+		SkipGroup:      initSkipGroup,
+		BeadsPrefix:    initBeadsPrefix,
+		ProjectType:    initProjectType,
+		GroupName:      initGroup,
+	}
+
+	result, err := initProject(projectDir, opts)
 	if err != nil {
 		return err
 	}
@@ -114,9 +146,24 @@ func runInit() error {
 	return nil
 }
 
+// initOptions holds all options for project initialization.
+type initOptions struct {
+	Force          bool
+	SkipBeads      bool
+	SkipKB         bool
+	SkipClaudeMD   bool
+	SkipTmuxinator bool
+	SkipGroup      bool
+	BeadsPrefix    string
+	ProjectType    string
+	GroupName      string
+	// GroupConfigPath overrides the groups.yaml path (for testing).
+	GroupConfigPath string
+}
+
 // initProject performs the actual initialization work.
 // This is separated from runInit to make testing easier.
-func initProject(projectDir string, force, skipBeads, skipKB, skipClaudeMD, skipTmuxinator bool, beadsPrefix, projectType string) (*InitResult, error) {
+func initProject(projectDir string, opts initOptions) (*InitResult, error) {
 	projectName := filepath.Base(projectDir)
 
 	result := &InitResult{
@@ -132,7 +179,7 @@ func initProject(projectDir string, force, skipBeads, skipKB, skipClaudeMD, skip
 
 	// Create directories
 	for _, dir := range dirs {
-		created, err := ensureDir(dir, force)
+		created, err := ensureDir(dir, opts.Force)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create %s: %w", dir, err)
 		}
@@ -155,11 +202,11 @@ func initProject(projectDir string, force, skipBeads, skipKB, skipClaudeMD, skip
 	}
 
 	// Initialize kb unless skipped
-	if skipKB {
+	if opts.SkipKB {
 		result.KBSkipped = true
 	} else {
 		kbDir := filepath.Join(projectDir, ".kb")
-		if _, err := os.Stat(kbDir); os.IsNotExist(err) || force {
+		if _, err := os.Stat(kbDir); os.IsNotExist(err) || opts.Force {
 			if err := initKB(projectDir); err != nil {
 				result.KBError = err
 				fmt.Fprintf(os.Stderr, "Warning: kb initialization failed: %v\n", err)
@@ -172,12 +219,12 @@ func initProject(projectDir string, force, skipBeads, skipKB, skipClaudeMD, skip
 	}
 
 	// Initialize beads unless skipped
-	if skipBeads {
+	if opts.SkipBeads {
 		result.BeadsSkipped = true
 	} else {
 		beadsDir := filepath.Join(projectDir, ".beads")
-		if _, err := os.Stat(beadsDir); os.IsNotExist(err) || force {
-			if err := initBeads(projectDir, beadsPrefix); err != nil {
+		if _, err := os.Stat(beadsDir); os.IsNotExist(err) || opts.Force {
+			if err := initBeads(projectDir, opts.BeadsPrefix); err != nil {
 				result.BeadsError = err
 				fmt.Fprintf(os.Stderr, "Warning: beads initialization failed: %v\n", err)
 			} else {
@@ -197,17 +244,17 @@ func initProject(projectDir string, force, skipBeads, skipKB, skipClaudeMD, skip
 	}
 
 	// Generate CLAUDE.md unless skipped
-	if skipClaudeMD {
+	if opts.SkipClaudeMD {
 		result.ClaudeMDSkipped = true
 	} else {
 		claudePath := filepath.Join(projectDir, "CLAUDE.md")
-		if _, err := os.Stat(claudePath); err == nil && !force {
+		if _, err := os.Stat(claudePath); err == nil && !opts.Force {
 			result.ClaudeMDExisted = true
 		} else {
 			// Determine project type
 			var pType claudemd.ProjectType
-			if projectType != "" {
-				pType = claudemd.ProjectType(projectType)
+			if opts.ProjectType != "" {
+				pType = claudemd.ProjectType(opts.ProjectType)
 			} else {
 				pType = claudemd.DetectProjectType(projectDir)
 			}
@@ -232,7 +279,7 @@ func initProject(projectDir string, force, skipBeads, skipKB, skipClaudeMD, skip
 	}
 
 	// Generate tmuxinator config unless skipped
-	if skipTmuxinator {
+	if opts.SkipTmuxinator {
 		result.TmuxinatorSkipped = true
 	} else {
 		// Check if config already exists
@@ -257,7 +304,79 @@ func initProject(projectDir string, force, skipBeads, skipKB, skipClaudeMD, skip
 		}
 	}
 
+	// Register project in groups.yaml for daemon discovery
+	if opts.SkipGroup {
+		result.GroupSkipped = true
+	} else {
+		registerProjectInGroup(projectDir, projectName, opts, result)
+	}
+
 	return result, nil
+}
+
+// registerProjectInGroup registers the project in groups.yaml for daemon polling.
+// Auto-detects the group based on directory proximity to existing group members,
+// or uses the explicit --group flag.
+func registerProjectInGroup(projectDir, projectName string, opts initOptions, result *InitResult) {
+	configPath := opts.GroupConfigPath
+	if configPath == "" {
+		configPath = group.DefaultConfigPath()
+	}
+
+	groupName := opts.GroupName
+
+	// Auto-detect group if not specified
+	if groupName == "" {
+		memberPaths := listKBProjectPaths()
+		groupName = group.AutoDetectGroup(projectDir, memberPaths)
+	}
+
+	if groupName == "" {
+		// No group could be detected and none was specified
+		result.GroupError = fmt.Errorf("no group detected (use --group to specify)")
+		fmt.Fprintf(os.Stderr, "Warning: could not auto-detect daemon group for %s\n", projectName)
+		fmt.Fprintf(os.Stderr, "  Hint: use --group <name> to register with a daemon group\n")
+		return
+	}
+
+	added, err := group.RegisterProject(configPath, projectName, groupName)
+	if err != nil {
+		result.GroupError = err
+		fmt.Fprintf(os.Stderr, "Warning: failed to register in groups.yaml: %v\n", err)
+		return
+	}
+
+	result.GroupName = groupName
+	if added {
+		result.GroupRegistered = true
+	} else {
+		result.GroupExisted = true
+	}
+}
+
+// listKBProjectPaths queries kb projects list and returns a name->path map.
+// Returns empty map if kb is not available.
+func listKBProjectPaths() map[string]string {
+	cmd := exec.Command("kb", "projects", "list", "--json")
+	output, err := cmd.Output()
+	if err != nil {
+		return map[string]string{}
+	}
+
+	type kbProj struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+	}
+	var projects []kbProj
+	if err := json.Unmarshal(output, &projects); err != nil {
+		return map[string]string{}
+	}
+
+	m := make(map[string]string, len(projects))
+	for _, p := range projects {
+		m[p.Name] = p.Path
+	}
+	return m
 }
 
 // allocatePorts allocates web and API ports for a project.
@@ -405,6 +524,17 @@ func printInitResult(result *InitResult) {
 		fmt.Println("\nTmuxinator config generation skipped (--skip-tmuxinator)")
 	} else if result.TmuxinatorError != nil {
 		fmt.Printf("\nTmuxinator config generation failed: %v\n", result.TmuxinatorError)
+	}
+
+	// Group registration status
+	if result.GroupRegistered {
+		fmt.Printf("\nRegistered in daemon group %q (groups.yaml)\n", result.GroupName)
+	} else if result.GroupExisted {
+		fmt.Printf("\nAlready registered in daemon group %q\n", result.GroupName)
+	} else if result.GroupSkipped {
+		fmt.Println("\nGroup registration skipped (--skip-group)")
+	} else if result.GroupError != nil {
+		fmt.Printf("\nGroup registration: %v\n", result.GroupError)
 	}
 
 	fmt.Println("\nNext steps:")
