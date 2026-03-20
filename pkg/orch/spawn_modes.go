@@ -485,6 +485,7 @@ func runSpawnClaude(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 		"window":              result.Window,
 		"window_id":           result.WindowID,
 		"spawn_mode":          "claude",
+		"model":               cfg.Model,
 		"no_track":            cfg.NoTrack,
 		"skip_artifact_check": cfg.SkipArtifactCheck,
 	}
