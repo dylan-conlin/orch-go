@@ -1,12 +1,25 @@
-verification:
-  automated:
-    - command: "go test -count=1 ./pkg/claims/"
-      expectation: "all tests pass including 14 new architect output tests"
-      result: PASS
-    - command: "go build ./..."
-      expectation: "clean build, no errors"
-      result: PASS
-  manual: []
-  files_changed:
-    - pkg/claims/architect_output.go (new — ARCHITECT_OUTPUT.yaml parser with DAG validation, ~100 lines)
-    - pkg/claims/architect_output_test.go (new — 14 test cases covering valid parse, validation errors, DAG cycles)
+task: Design knowledge graph visualization for dashboard
+issue: orch-go-ziu4q
+type: design
+date: 2026-03-19
+
+deliverables:
+  - path: .kb/investigations/2026-03-19-design-knowledge-graph-visualization.md
+    description: Architecture design for Claims tab with three views
+    verified: true
+
+design_decisions:
+  - decision: Single /api/claims/graph endpoint returning all data
+    rationale: Data is small (<10KB), splitting adds complexity for no benefit
+  - decision: D3 force for graph views, pure HTML/CSS for heatmap
+    rationale: D3 handles force layout; heatmap is a simple grid
+  - decision: Separate /claims route instead of Knowledge Tree tab
+    rationale: Keeps D3 loaded only when needed, avoids bloating existing page
+  - decision: No SSE for claims data
+    rationale: Claims change via git commits (2-3x/day), poll sufficient
+
+migration_status:
+  designed: Claims tab with 3 views + /api/claims/graph endpoint
+  implemented: none
+  deployed: none
+  remaining: Full implementation (5 phases in design doc)
