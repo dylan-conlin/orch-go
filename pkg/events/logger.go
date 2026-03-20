@@ -717,6 +717,7 @@ type AccretionDeltaData struct {
 	BeadsID      string      `json:"beads_id,omitempty"`
 	Workspace    string      `json:"workspace,omitempty"`
 	Skill        string      `json:"skill,omitempty"`
+	Model        string      `json:"model,omitempty"`
 	FileDeltas   []FileDelta `json:"file_deltas"`
 	TotalFiles   int         `json:"total_files"`
 	TotalAdded   int         `json:"total_added"`
@@ -743,6 +744,9 @@ func (l *Logger) LogAccretionDelta(data AccretionDeltaData) error {
 	}
 	if data.Skill != "" {
 		eventData["skill"] = data.Skill
+	}
+	if data.Model != "" {
+		eventData["model"] = data.Model
 	}
 
 	return l.Log(Event{

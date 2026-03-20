@@ -327,6 +327,11 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 		accretionData.BeadsID = target.BeadsID
 		accretionData.Workspace = target.AgentName
 		accretionData.Skill = outcome.SkillName
+		// Populate model from agent manifest for model-comparative analysis (HE-08)
+		if target.WorkspacePath != "" {
+			m := spawn.ReadAgentManifestWithFallback(target.WorkspacePath)
+			accretionData.Model = m.Model
+		}
 
 		if err := logger.LogAccretionDelta(*accretionData); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to log accretion delta: %v\n", err)

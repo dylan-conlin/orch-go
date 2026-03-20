@@ -44,18 +44,33 @@ Feature-impl agents produce the most accretion. Architect sessions produce the h
 ### 5. What would make this testable
 
 To run the controlled experiment (N>50 per model):
-1. **Populate model field** in `session.spawned` and `accretion.delta` events — requires wiring `spawnModel` through to event emission in spawn pipeline
-2. **Run comparable tasks on different models** — same skill, same codebase, different model strengths
+1. **~~Populate model field~~ DONE** in `session.spawned` and `accretion.delta` events — model field added to `AccretionDeltaData` struct and wired from agent manifest at completion time (orch-go-2jtbe, 2026-03-20)
+2. **Run comparable tasks on different models** — same skill, same codebase, different model strengths. The coordination demo (`experiments/coordination-demo/`) now measures accretion per trial via `measure-accretion.sh`.
 3. **Measure both completion rate AND accretion** — the claim is about system-level coordination, not per-session behavior
 
 The falsification criterion as stated ("less accretion per agent-session") may be the wrong metric. If stronger models produce slightly more accretion per session but 25x more sessions, the per-session metric would miss the coordination problem entirely.
 
+### 6. Coordination demo accretion data (N=160, haiku-only)
+
+Initial accretion measurement from redesign experiment (all haiku, 4 conditions x 2 tasks x 10 trials x 2 agents):
+
+| Condition | N | Avg Added | Avg Removed | Avg Net |
+|---|---|---|---|---|
+| no-coord | 40 | 112 | 0 | 112 |
+| placement | 40 | 98 | 0 | 98 |
+| context-share | 40 | 100 | 0 | 100 |
+| messaging | 40 | 104 | 0 | 104 |
+
+Coordination conditions (placement, context-share, messaging) show 7-13% less accretion than no-coord baseline. To test the HE-08 claim, the same experiment must be re-run with `--model opus` and compared.
+
 ## Assessment
 
-**Claim status:** Remains **unconfirmed** — indirect evidence is consistent with the claim but no controlled experiment exists.
+**Claim status:** Remains **unconfirmed** — instrumentation gap now closed, controlled experiment infrastructure ready.
 
 **Falsification criterion assessment:** The stated criterion ("less accretion per agent-session") may be poorly specified. The claim is about coordination pressure at the system level, not per-session accretion. A better falsification would be: "Total system accretion rate (lines/week) does NOT increase when switching from weaker to stronger models, holding task volume constant."
 
-**Instrumentation gap identified:** Model identity is not tracked in events. This is a prerequisite for any model-comparative analysis.
+**Instrumentation gap:** CLOSED. Model field now populated in both `session.spawned` (all backends) and `accretion.delta` events. Future spawns will have queryable model identity.
 
-- [x] **Neither confirms nor contradicts** — data insufficient to test. Identifies instrumentation gap (model field unpopulated) as prerequisite for future testing.
+**Next step:** Run coordination demo with `--model opus` to produce haiku-vs-opus accretion comparison (N>50 per model).
+
+- [x] **Neither confirms nor contradicts** — instrumentation gap closed, experiment infrastructure ready but controlled comparison not yet run.

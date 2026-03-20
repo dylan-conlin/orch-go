@@ -1466,3 +1466,78 @@ func TestLogGateDecision_AccretionPrecommit(t *testing.T) {
 		t.Error("data.skill should be omitted when empty")
 	}
 }
+
+func TestLogAccretionDelta_IncludesModelField(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogAccretionDelta(AccretionDeltaData{
+		BeadsID:    "test-123",
+		Workspace:  "test-workspace",
+		Skill:      "feature-impl",
+		Model:      "claude-opus-4-5-20251101",
+		FileDeltas: []FileDelta{{Path: "main.go", LinesAdded: 10, LinesRemoved: 2, NetDelta: 8, TotalLines: 100}},
+		TotalFiles: 1,
+		TotalAdded: 10,
+		NetDelta:   8,
+	})
+	if err != nil {
+		t.Fatalf("LogAccretionDelta failed: %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("failed to read log: %v", err)
+	}
+
+	var event struct {
+		Type string                 `json:"type"`
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("failed to parse event: %v", err)
+	}
+
+	if event.Type != "accretion.delta" {
+		t.Errorf("type = %q, want accretion.delta", event.Type)
+	}
+	if event.Data["model"] != "claude-opus-4-5-20251101" {
+		t.Errorf("data.model = %v, want claude-opus-4-5-20251101", event.Data["model"])
+	}
+	if event.Data["skill"] != "feature-impl" {
+		t.Errorf("data.skill = %v, want feature-impl", event.Data["skill"])
+	}
+}
+
+func TestLogAccretionDelta_OmitsModelWhenEmpty(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogAccretionDelta(AccretionDeltaData{
+		BeadsID:    "test-456",
+		TotalFiles: 1,
+		TotalAdded: 5,
+		NetDelta:   5,
+	})
+	if err != nil {
+		t.Fatalf("LogAccretionDelta failed: %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("failed to read log: %v", err)
+	}
+
+	var event struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("failed to parse event: %v", err)
+	}
+
+	if _, ok := event.Data["model"]; ok {
+		t.Error("data.model should be omitted when empty")
+	}
+}

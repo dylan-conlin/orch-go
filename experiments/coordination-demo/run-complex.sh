@@ -77,6 +77,7 @@ run_agent() {
     # Capture git state
     cd "$worktree_dir"
     git diff --stat HEAD > "$trial_dir/diff_stat.txt" 2>/dev/null || true
+    git diff --numstat HEAD > "$trial_dir/numstat.txt" 2>/dev/null || true
     git diff HEAD > "$trial_dir/full_diff.txt" 2>/dev/null || true
     git log --oneline "$BASELINE_COMMIT"..HEAD > "$trial_dir/commits.txt" 2>/dev/null || true
     git status --short > "$trial_dir/git_status.txt" 2>/dev/null || true
@@ -108,6 +109,11 @@ done
 echo ""
 echo "=== Scoring ==="
 bash "$SCRIPT_DIR/score-complex.sh" "$RESULTS_DIR"
+
+# Measure accretion
+echo ""
+echo "=== Accretion ==="
+bash "$SCRIPT_DIR/measure-accretion.sh" "$RESULTS_DIR"
 
 echo ""
 echo "=== Done ==="

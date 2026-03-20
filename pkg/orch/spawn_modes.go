@@ -121,6 +121,7 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 		"workspace":           cfg.WorkspaceName,
 		"beads_id":            beadsID,
 		"spawn_mode":          "inline",
+		"model":               cfg.Model,
 		"no_track":            cfg.NoTrack,
 		"skip_artifact_check": cfg.SkipArtifactCheck,
 	}

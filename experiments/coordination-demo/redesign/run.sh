@@ -215,6 +215,7 @@ run_agent() {
     # Capture results (exclude .beads/ side-effects)
     cd "$worktree"
     git diff --stat "$BASELINE_COMMIT"..HEAD -- ':!.beads/' > "$result_dir/diff_stat.txt" 2>/dev/null || true
+    git diff --numstat "$BASELINE_COMMIT"..HEAD -- ':!.beads/' > "$result_dir/numstat.txt" 2>/dev/null || true
     git diff "$BASELINE_COMMIT"..HEAD -- ':!.beads/' > "$result_dir/full_diff.txt" 2>/dev/null || true
     git log --oneline "$BASELINE_COMMIT"..HEAD > "$result_dir/commits.txt" 2>/dev/null || true
     git status --short > "$result_dir/git_status.txt" 2>/dev/null || true
@@ -377,6 +378,11 @@ bash "$SCRIPT_DIR/score.sh" "$RESULTS_DIR"
 echo ""
 echo "=== Analysis ==="
 bash "$SCRIPT_DIR/analyze.sh" "$RESULTS_DIR"
+
+# Measure accretion
+echo ""
+echo "=== Accretion ==="
+bash "$SCRIPT_DIR/../measure-accretion.sh" "$RESULTS_DIR"
 
 echo ""
 echo "=== Complete ==="
