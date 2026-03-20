@@ -213,6 +213,7 @@ For each unnavigable fork, classify:
 - All navigable forks have recommendations (not "it depends")
 - Each recommendation cites substrate
 - Unnavigable forks surfaced as blocking questions (Phase 3)
+- If recommending gates/hooks: each has a consequence sensor (see reference/templates-and-formats.md)
 
 **Output:** All navigable forks resolved. Report via `bd comments add <beads-id> "Phase: Synthesis - [N] forks navigated, recommend [summary]"`.
 

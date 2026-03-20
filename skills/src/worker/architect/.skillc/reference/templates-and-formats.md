@@ -82,6 +82,30 @@
 - **Cons:** [Why not recommended given context]
 - **When to choose:** [Conditions where this makes sense]
 
+### Enforcement Mechanisms (Required when recommending gates/hooks)
+
+When your recommendation includes any gate, hook, or enforcement mechanism, add an
+Enforcement Mechanisms table. Every mechanism must declare its consequence sensor —
+how the effect will be observed. If no sensor exists, write "none — open loop" to
+make the gap explicit at design time.
+
+```markdown
+### Enforcement Mechanisms
+
+| Mechanism | Type | Consequence Sensor |
+|-----------|------|--------------------|
+| Duplication spawn gate | gate | events.jsonl spawn.gate_decision — fire rate and FP rate via orch stats |
+| Accretion pre-commit hook | hook | none — open loop |
+| Build verification gate | gate | events.jsonl verification.failed — tracked in completion pipeline |
+```
+
+**Why:** Enforcement without measurement is theological (harness-engineering model, invariant 7).
+Gates that fire without observable consequences degrade silently. Making the sensor gap
+explicit at design time creates a prioritized backlog of missing measurement surfaces.
+
+**Completion gate:** `consequence_sensor` — blocks if gates/hooks are recommended without
+an Enforcement Mechanisms table containing a Consequence Sensor column.
+
 ## Decision Gate Guidance (if promoting to decision)
 
 **Add blocks: frontmatter when:**

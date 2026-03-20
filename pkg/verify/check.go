@@ -388,6 +388,23 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 		}
 	}
 
+	// Consequence sensor gate (V1+)
+	// Ensures architect investigations that recommend gates/hooks include
+	// an Enforcement Mechanisms table with Consequence Sensor column.
+	// Open loops are surfaced as warnings, not errors.
+	if !isOrch && ShouldRunGate(verifyLevel, GateConsequenceSensor) {
+		result.GatesRun = append(result.GatesRun, GateConsequenceSensor)
+		sensorResult := CheckConsequenceSensors(projectDir, result.Skill)
+		if sensorResult != nil {
+			if !sensorResult.Passed {
+				result.Passed = false
+				result.Errors = append(result.Errors, sensorResult.Errors...)
+				result.GatesFailed = append(result.GatesFailed, GateConsequenceSensor)
+			}
+			result.Warnings = append(result.Warnings, sensorResult.Warnings...)
+		}
+	}
+
 	// --- V2 gates: Evidence ---
 
 	// Test evidence gate (V2+)

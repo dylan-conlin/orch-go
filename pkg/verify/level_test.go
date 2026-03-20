@@ -26,6 +26,7 @@ func TestGatesForLevel_V1(t *testing.T) {
 		GateArchitecturalChoices: true,
 		GateProbeModelMerge:      true,
 		GateArchitectHandoff:     true,
+		GateConsequenceSensor:    true,
 		GateArtifact:             true,
 	}
 	assertGateSet(t, "V1", gates, expected)
@@ -42,6 +43,7 @@ func TestGatesForLevel_V2(t *testing.T) {
 		GateArchitecturalChoices: true,
 		GateProbeModelMerge:      true,
 		GateArchitectHandoff:     true,
+		GateConsequenceSensor:    true,
 		GateArtifact:             true,
 		GateTestEvidence:         true,
 		GateGitDiff:              true,
@@ -63,6 +65,7 @@ func TestGatesForLevel_V3(t *testing.T) {
 		GateArchitecturalChoices: true,
 		GateProbeModelMerge:      true,
 		GateArchitectHandoff:     true,
+		GateConsequenceSensor:    true,
 		GateArtifact:             true,
 		GateTestEvidence:         true,
 		GateGitDiff:              true,
