@@ -24,6 +24,7 @@ Before creating your investigation file, review prior work from SPAWN_CONTEXT.
    - Pick the most relevant model from the injected models section
    - Create: `.kb/models/{model-name}/probes/{date}-{slug}.md`
    - Use `.orch/templates/PROBE.md`
+   - **Extract claim ID** from beads issue (label `claim:{id}` or description). Include `claim: XX-NN` and `verdict: confirms|contradicts|extends` in probe frontmatter.
    - Fill all required sections: Question, What I Tested, What I Observed, Model Impact
 3. **If markers not found -> Investigation Mode**
    - Acknowledge prior work: SPAWN_CONTEXT -> "Related Investigations"

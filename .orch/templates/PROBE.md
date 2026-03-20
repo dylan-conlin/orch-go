@@ -3,6 +3,8 @@
 **Model:** {model-name}
 **Date:** {date}
 **Status:** Active
+**claim:** {claim-id}
+**verdict:** {confirms|contradicts|extends}
 
 ---
 

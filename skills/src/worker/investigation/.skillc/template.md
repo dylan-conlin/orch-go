@@ -6,6 +6,11 @@ Choose template based on SPAWN_CONTEXT mode detection.
 
 Use `.orch/templates/PROBE.md`. Write to `.kb/models/{model-name}/probes/{date}-{slug}.md`.
 
+Required frontmatter:
+
+- **claim:** `XX-NN` — the claim ID being probed (e.g., `AE-08`, `KA-03`). Extract from the beads issue label `claim:{id}` or description `Claim: ...`. **Without this, the completion pipeline cannot close the loop.**
+- **verdict:** `confirms` | `contradicts` | `extends` — your evidence-based conclusion about the claim.
+
 Required sections:
 
 - **Question**
