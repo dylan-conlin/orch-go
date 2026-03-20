@@ -403,18 +403,19 @@ func runStatus(serverURL string) error {
 	// Get session metrics for drift detection
 	sessionMetrics := getSessionMetrics()
 
-	// Get review queue count (completions awaiting human review)
+	// Get review queue count from already-fetched tracked agents.
+	// Agents with Phase: Complete and open beads issues are ready for review.
+	// This replaces the expensive getCompletionsForReview() call which scanned
+	// 1000+ workspace directories across all projects (~15s).
 	var reviewQueue *ReviewQueueStatus
-	if completions, err := getCompletionsForReview(); err == nil {
-		readyCount := 0
-		for _, c := range completions {
-			if !c.IsStale {
-				readyCount++
-			}
+	reviewReady := 0
+	for _, agent := range agents {
+		if agent.IsCompleted {
+			reviewReady++
 		}
-		if readyCount > 0 {
-			reviewQueue = &ReviewQueueStatus{Ready: readyCount}
-		}
+	}
+	if reviewReady > 0 {
+		reviewQueue = &ReviewQueueStatus{Ready: reviewReady}
 	}
 
 	// Build output
