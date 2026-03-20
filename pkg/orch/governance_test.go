@@ -14,7 +14,7 @@ func TestGovernanceProtectedPaths(t *testing.T) {
 	for _, p := range paths {
 		found[p.Pattern] = true
 	}
-	for _, expected := range []string{"pkg/spawn/gates/", "pkg/verify/"} {
+	for _, expected := range []string{"pkg/spawn/gates/", "_precommit.go", "pkg/verify/accretion.go"} {
 		if !found[expected] {
 			t.Errorf("expected protected path %q not found", expected)
 		}
@@ -41,18 +41,32 @@ func TestCheckGovernance_MatchesGatesPath(t *testing.T) {
 	}
 }
 
-func TestCheckGovernance_MatchesVerifyPath(t *testing.T) {
-	result := CheckGovernance("modify pkg/verify/check.go to update verification", "feature-impl", false)
+func TestCheckGovernance_MatchesVerifyPrecommit(t *testing.T) {
+	result := CheckGovernance("modify pkg/verify/accretion_precommit.go", "feature-impl", false)
 	if result == nil {
-		t.Fatal("expected governance warning for task mentioning verify path")
+		t.Fatal("expected governance warning for task mentioning precommit file")
 	}
 	if len(result.MatchedPaths) == 0 {
 		t.Error("expected at least one matched path")
 	}
 }
 
+func TestCheckGovernance_MatchesVerifyAccretion(t *testing.T) {
+	result := CheckGovernance("modify pkg/verify/accretion.go to change gate", "feature-impl", false)
+	if result == nil {
+		t.Fatal("expected governance warning for task mentioning accretion.go")
+	}
+}
+
+func TestCheckGovernance_NoMatchUnprotectedVerify(t *testing.T) {
+	result := CheckGovernance("modify pkg/verify/check.go to update verification", "feature-impl", false)
+	if result != nil {
+		t.Errorf("expected no governance warning for unprotected pkg/verify/check.go, got %+v", result)
+	}
+}
+
 func TestCheckGovernance_MatchesMultiplePaths(t *testing.T) {
-	result := CheckGovernance("update pkg/spawn/gates/triage.go and pkg/verify/update.go", "feature-impl", false)
+	result := CheckGovernance("update pkg/spawn/gates/triage.go and pkg/verify/accretion.go", "feature-impl", false)
 	if result == nil {
 		t.Fatal("expected governance warning")
 	}

@@ -82,7 +82,7 @@ func TestLogDaemonGateDecision_GovernanceWarn(t *testing.T) {
 		Skill:       "feature-impl",
 		BeadsID:     "orch-go-gov01",
 		Reason:      "task references governance-protected paths",
-		TargetFiles: []string{"pkg/spawn/gates/", "pkg/verify/"},
+		TargetFiles: []string{"pkg/spawn/gates/", "_precommit.go", "pkg/verify/accretion.go"},
 	})
 
 	data, err := os.ReadFile(logPath)
@@ -102,7 +102,7 @@ func TestLogDaemonGateDecision_GovernanceWarn(t *testing.T) {
 		t.Errorf("decision = %q, want %q", event.Data["decision"], "warn")
 	}
 	targetFiles, ok := event.Data["target_files"].([]interface{})
-	if !ok || len(targetFiles) != 2 {
-		t.Errorf("target_files should have 2 entries, got %v", event.Data["target_files"])
+	if !ok || len(targetFiles) != 3 {
+		t.Errorf("target_files should have 3 entries, got %v", event.Data["target_files"])
 	}
 }

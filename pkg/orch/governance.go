@@ -27,7 +27,8 @@ type GovernanceResult struct {
 // them at spawn time prevents wasted worker sessions.
 var governanceProtectedPaths = []GovernanceProtectedPath{
 	{Pattern: "pkg/spawn/gates/", Reason: "spawn gate infrastructure", RedirectHint: "Put non-gate spawn logic in pkg/spawn/*.go or pipeline logic in pkg/orch/*.go"},
-	{Pattern: "pkg/verify/", Reason: "verification gate infrastructure", RedirectHint: "Only precommit.go and accretion.go are protected. Other pkg/verify/*.go files (e.g. check.go) are editable"},
+	{Pattern: "_precommit.go", Reason: "pre-commit verification gates", RedirectHint: "Put verification logic in other pkg/verify/*.go files (e.g. check.go or a new file)"},
+	{Pattern: "pkg/verify/accretion.go", Reason: "completion accretion gate", RedirectHint: "Put verification logic in other pkg/verify/*.go files (e.g. check.go or a new file)"},
 	{Pattern: ".orch/hooks/", Reason: "governance hooks", RedirectHint: "Escalate to orchestrator — hooks can only be modified in direct sessions"},
 	{Pattern: "scripts/pre-commit", Reason: "pre-commit gate scripts", RedirectHint: "Escalate to orchestrator — pre-commit scripts can only be modified in direct sessions"},
 	{Pattern: "skills/src/shared/worker-base", Reason: "worker base skill (shared protocols)", RedirectHint: "Escalate to orchestrator — worker-base skill can only be modified in direct sessions"},
