@@ -1,19 +1,12 @@
 verification:
   automated:
-    - command: "go build ./cmd/orch/"
+    - command: "go test -count=1 ./pkg/claims/"
+      expectation: "all tests pass including 14 new architect output tests"
+      result: PASS
+    - command: "go build ./..."
       expectation: "clean build, no errors"
-      result: PASS
-    - command: "go test ./pkg/daemon/ -count=1"
-      expectation: "all tests pass including new tension cluster tests"
-      result: PASS
-    - command: "go test -v -run '^TestTensionClusterScanDefaultConfig$' github.com/dylan-conlin/orch-go/pkg/daemon"
-      expectation: "default config test passes (enabled=true, interval=24h, threshold=3)"
       result: PASS
   manual: []
   files_changed:
-    - pkg/daemon/tension_cluster.go (new — periodic task logic)
-    - pkg/daemon/tension_cluster_test.go (new — tests)
-    - pkg/daemon/scheduler.go (add TaskTensionClusterScan constant + registration)
-    - pkg/daemon/daemon.go (add TensionClusterService field to Daemon struct)
-    - pkg/daemonconfig/config.go (add 3 config fields + defaults)
-    - cmd/orch/daemon_periodic.go (add handler + snapshot field)
+    - pkg/claims/architect_output.go (new — ARCHITECT_OUTPUT.yaml parser with DAG validation, ~100 lines)
+    - pkg/claims/architect_output_test.go (new — 14 test cases covering valid parse, validation errors, DAG cycles)
