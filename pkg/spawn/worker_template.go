@@ -36,6 +36,9 @@ Do NOT re-investigate or redesign — implement according to these specification
 {{.ArchitectDesign}}
 
 {{end}}
+{{if .ClaimContext}}
+{{.ClaimContext}}
+{{end}}
 {{if .Tier}}
 SPAWN TIER: {{.Tier}}
 {{if eq .Tier "light"}}
@@ -470,4 +473,5 @@ type contextData struct {
 	ExploreParentSkill    string   // Original skill (investigation/architect)
 	ExploreJudgeModel     string   // Model override for judge agent (cross-model experiment)
 	GovernanceContext     string   // Governance-protected paths section for pre-planning awareness
+	ClaimContext          string   // Formatted claim probe context (claim text, falsifies_if, evidence)
 }

@@ -444,6 +444,14 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	resolvedAccountName := resolved.Settings.Account.Value
 	resolvedAccountConfigDir := account.GetConfigDir(resolvedAccountName)
 
+	// Detect claim context from beads labels (claim:XX-NN → inject claim details)
+	var claimContext string
+	if claimID := spawn.ExtractClaimIDFromLabels(beadsLabels); claimID != "" {
+		if cc := spawn.LookupClaimContext(claimID, projectDir); cc != nil {
+			claimContext = spawn.FormatClaimContext(cc)
+		}
+	}
+
 	ctx := &orch.SpawnContext{
 		Task:               task,
 		OrientationFrame:   spawnOrientationFrame,
@@ -489,6 +497,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		ExploreDepth:       spawnExploreDepth,
 		ExploreParentSkill: exploreParentSkill,
 		ExploreJudgeModel:  spawnExploreJudgeModel,
+		ClaimContext:       claimContext,
 	}
 
 	// 11. Build spawn config

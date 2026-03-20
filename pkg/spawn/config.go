@@ -357,6 +357,11 @@ type Config struct {
 	// When empty, the judge uses the same model as workers. When set, the judge
 	// uses a different model to catch blind spots (e.g., "sonnet" when workers use "opus").
 	ExploreJudgeModel string
+
+	// ClaimContext is the formatted claim probe context section for SPAWN_CONTEXT.md.
+	// Populated when the beads issue has a "claim:XX-NN" label, providing the probe agent
+	// with claim text, falsification condition, and existing evidence.
+	ClaimContext string
 }
 
 // UsageInfo contains account usage data at spawn time.
