@@ -144,6 +144,9 @@ func runOrient() error {
 	// 12. Config drift check
 	data.ConfigDrift = collectConfigDrift()
 
+	// 14. Explore candidates (aggregated from 6 signals)
+	data.ExploreCandidates = collectExploreCandidates(projectDir, modelsDir, now)
+
 	// 13. Session resume handoff
 	data.SessionResume = collectSessionResume()
 

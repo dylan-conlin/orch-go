@@ -131,6 +131,16 @@ type OrientationData struct {
 	ConfigDrift        []ConfigDriftItem  `json:"config_drift,omitempty"`
 	SessionResume      *SessionResume     `json:"session_resume,omitempty"`
 	DivergenceAlerts   []DivergenceAlert  `json:"divergence_alerts,omitempty"`
+	ExploreCandidates  []ExploreCandidate `json:"explore_candidates,omitempty"`
+}
+
+// ExploreCandidate is a recommendation for `orch spawn --explore investigation "..."`.
+// Each candidate aggregates one or more signals into a concrete explore question.
+type ExploreCandidate struct {
+	Question string  `json:"question"`           // The explore question to spawn
+	Signal   string  `json:"signal"`             // Source signal type
+	Score    float64 `json:"score"`              // Urgency score (higher = more urgent)
+	Reason   string  `json:"reason"`             // Why this is worth exploring
 }
 
 // ComputeThroughput aggregates events within the given day window.
@@ -240,6 +250,9 @@ func FormatOrientation(data *OrientationData) string {
 
 	// Focus section
 	formatFocus(&b, data.FocusGoal)
+
+	// Explore candidates (before reflection — actionable)
+	formatExploreCandidates(&b, data.ExploreCandidates)
 
 	// Reflection suggestions (last — informational, not urgent)
 	formatReflectSummary(&b, data.ReflectSummary)
@@ -497,6 +510,18 @@ func formatSessionResume(b *strings.Builder, r *SessionResume) {
 	// Indent each line of the handoff content
 	for _, line := range strings.Split(strings.TrimSpace(r.Content), "\n") {
 		b.WriteString(fmt.Sprintf("   %s\n", line))
+	}
+	b.WriteString("\n")
+}
+
+func formatExploreCandidates(b *strings.Builder, candidates []ExploreCandidate) {
+	if len(candidates) == 0 {
+		return
+	}
+	b.WriteString("Explore candidates:\n")
+	for _, c := range candidates {
+		b.WriteString(fmt.Sprintf("   [%s] %s\n", c.Signal, c.Question))
+		b.WriteString(fmt.Sprintf("     %s\n", c.Reason))
 	}
 	b.WriteString("\n")
 }
