@@ -1,0 +1,124 @@
+claims:
+  - id: SG-01
+    text: "Smithy generates real parametric 3D models (not meshes) from text prompts, with semantically named parameters and STEP/STL export"
+    confidence: 0.9
+    priority: 1
+    created: 2026-03-20
+    last_validated: 2026-03-20
+    evidence:
+      - type: observation
+        source: ".kb/investigations/2026-03-20-eval-sendcutsend-ai-part-builder.md"
+        detail: "4 test parts generated with named parameters (base width, flange height, Pem hole), STEP export confirmed"
+    domain_tags: [cad, geometry, parametric]
+    falsifies_if: "Smithy outputs are mesh-only (STL without parametric editing) or parameters are not semantically named"
+    tensions: []
+
+  - id: SG-02
+    text: "The SCS↔Smithy integration is a one-way handoff: Smithy generates geometry → STEP file → SCS quoting pipeline, with no DFM feedback flowing back to Smithy"
+    confidence: 0.85
+    priority: 1
+    created: 2026-03-20
+    last_validated: 2026-03-20
+    evidence:
+      - type: observation
+        source: ".kb/investigations/2026-03-20-eval-sendcutsend-ai-part-builder.md"
+        detail: "iframe embedding, one-way gate ('Model cannot be edited after continuing'), zero DFM warnings during generation"
+    domain_tags: [integration, dfm, scs]
+    falsifies_if: "Evidence of real-time DFM API calls between Smithy and SCS during the generation phase, or the one-way gate is removed"
+    tensions:
+      - model: harness-engineering
+        claim: CCG-DFM
+        type: confirms
+        detail: "SCS AI Part Builder is a production example of the compositional correctness gap"
+
+  - id: SG-03
+    text: "Smithy has 0% recall on hardware+bend conflict detection (DFM compositional correctness gap)"
+    confidence: 0.8
+    priority: 1
+    created: 2026-03-20
+    last_validated: 2026-03-20
+    evidence:
+      - type: observation
+        source: ".kb/investigations/2026-03-20-eval-sendcutsend-ai-part-builder.md"
+        detail: "Test 3: PEM nuts near bend line generated with zero warnings. Geometry valid, manufacturing infeasible."
+    domain_tags: [dfm, validation, compositional-correctness]
+    falsifies_if: "Smithy generates DFM warnings for hardware-near-bend conflicts, or SCS provides real-time DFM feedback during generation"
+    tensions:
+      - model: harness-engineering
+        claim: CCG-DFM
+        type: confirms
+        detail: "0% DFM recall is worse than SCS DFM spike's 46.2% — AI Part Builder regresses from existing tools"
+
+  - id: SG-04
+    text: "Smithy's refinement loop ('What do you want to change?') may not reliably modify geometry — parameter panel unchanged after refinement prompt in Test 1"
+    confidence: 0.5
+    priority: 2
+    created: 2026-03-20
+    last_validated: 2026-03-20
+    evidence:
+      - type: observation
+        source: ".kb/investigations/2026-03-20-eval-sendcutsend-ai-part-builder.md"
+        detail: "Test 1: 'make the holes larger, 8mm diameter' accepted but parameter panel didn't update"
+    domain_tags: [refinement, ux, reliability]
+    falsifies_if: "Systematic testing shows refinement works >80% of the time, or the Test 1 observation was a UI rendering bug"
+    tensions: []
+
+  - id: SG-05
+    text: "Smithy understands sheet metal domain vocabulary (PEM nuts, flanges, bends, mounting holes) and maps them to correct geometry"
+    confidence: 0.85
+    priority: 2
+    created: 2026-03-20
+    last_validated: 2026-03-20
+    evidence:
+      - type: observation
+        source: ".kb/investigations/2026-03-20-eval-sendcutsend-ai-part-builder.md"
+        detail: "PEM nuts → Pem hole parameter, flanges → flange height, 90° bends → L/U channel geometry, 6mm diameter → 3mm radius"
+    domain_tags: [domain-vocabulary, sheet-metal, nlp]
+    falsifies_if: "Prompts with sheet metal terms generate incorrect geometry types (e.g., PEM nuts mapped to through-holes instead of press-fit geometry)"
+    tensions: []
+
+  - id: SG-06
+    text: "Closing the Smithy→SCS DFM gap requires one of: (1) Smithy internalizes DFM rules, (2) real-time DFM API at boundary, or (3) removal of one-way gate. None exist today."
+    confidence: 0.7
+    priority: 1
+    created: 2026-03-20
+    last_validated: 2026-03-20
+    evidence:
+      - type: analysis
+        source: ".kb/investigations/2026-03-20-eval-sendcutsend-ai-part-builder.md"
+        detail: "Architecture analysis of iframe embedding and one-way handoff"
+    domain_tags: [architecture, dfm, integration]
+    falsifies_if: "Smithy or SCS ships DFM-aware generation (real-time constraint feedback during the text-to-CAD loop)"
+    tensions:
+      - model: harness-engineering
+        claim: CCG-DFM
+        type: extends
+        detail: "Identifies three architectural solutions to compositional correctness gap in commercial DFM"
+
+  - id: SG-07
+    text: "Smithy silently fills underspecified requirements with defaults rather than asking clarifying questions"
+    confidence: 0.75
+    priority: 3
+    created: 2026-03-20
+    last_validated: 2026-03-20
+    evidence:
+      - type: observation
+        source: ".kb/investigations/2026-03-20-eval-sendcutsend-ai-part-builder.md"
+        detail: "Test 4: 'electronics enclosure' generated box without asking about PCB size, connectors, IP rating, ventilation"
+    domain_tags: [ux, clarification, defaults]
+    falsifies_if: "Smithy asks clarifying questions for ambiguous prompts in a majority of cases"
+    tensions: []
+
+  - id: SG-08
+    text: "Smithy does not expose bend parameters (bend radius, K-factor, bend deduction) — these are critical for sheet metal DFM and vary by material/thickness"
+    confidence: 0.8
+    priority: 2
+    created: 2026-03-20
+    last_validated: 2026-03-20
+    evidence:
+      - type: observation
+        source: ".kb/investigations/2026-03-20-eval-sendcutsend-ai-part-builder.md"
+        detail: "Tests 2-4: bent parts generated with visible bends but no bend radius/K-factor/deduction parameters in panel"
+    domain_tags: [bend-parameters, sheet-metal, dfm]
+    falsifies_if: "Smithy exposes bend parameters in the parameter panel, or bend parameters are set after the one-way gate in the SCS pipeline"
+    tensions: []
