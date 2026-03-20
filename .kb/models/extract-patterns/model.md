@@ -1,7 +1,7 @@
 # Model: Code Extraction Patterns
 
 **Domain:** Architecture / Refactoring / Context Management
-**Last Updated:** 2026-03-06
+**Last Updated:** 2026-03-19
 **Synthesized From:** 13 investigations (Jan 3-8, 2026) into Go (main.go, serve.go) and Svelte component extraction
 
 ---
@@ -97,6 +97,12 @@ Smaller, cohesive files are more resilient to **Session Amnesia**. A new agent c
 - Applied extraction to `agent-detail-panel.svelte`.
 - Proved that tab-based component splitting reduces Svelte file size while maintaining reactivity.
 
+### Feb 18, 2026: `serve_agents.go` extraction validates domain handler pattern
+- `serve_agents.go` (1713 lines) extracted into 7 domain-specific files: `serve_agents_handlers.go` (732), `serve_agents_discovery.go` (324), `serve_agents_activity.go` (224), `serve_agents_status.go` (264), `serve_agents_gap.go` (120), `serve_agents_cache_handler.go` (36), `serve_agents_types.go` (59)
+- Largest satellite (handlers, 732 lines) still above ideal 200-400 range but well below original monolith
+- Confirms Phase 3 (Handler extraction) pattern from the Extraction Hierarchy
+- `serve_agents.go` itself deleted — the file that was originally evidence of extraction FROM `serve.go` became evidence of extraction being a recursive need
+
 ### Feb 19, 2026: `pkg/orch/extraction.go` hotspot analysis
 - At 2011 lines (2.5x gate), 9 cohesive extraction domains identified
 - 22 commits/28 days with fix-on-fix pattern confirmed degradation signal
@@ -144,7 +150,7 @@ Smaller, cohesive files are more resilient to **Session Amnesia**. A new agent c
 
 **Primary Evidence (Verify These):**
 - `cmd/orch/shared.go` - Shared utilities extraction (extracted first to break cross-dependencies)
-- `cmd/orch/serve_agents.go` - Domain handler showing extraction from monolithic serve.go
+- `cmd/orch/serve_agents_*.go` - Domain handler family (7 files) extracted from monolithic `serve_agents.go` (itself extracted from `serve.go`); `serve_agents.go` deleted Feb 2026
 - `cmd/orch/serve_agents_cache.go` - Sub-domain infrastructure extraction
 - `cmd/orch/main.go` - Package main showing multiple file split within same package
 - `web/src/lib/components/agent-detail/` - Svelte tab component extraction pattern
