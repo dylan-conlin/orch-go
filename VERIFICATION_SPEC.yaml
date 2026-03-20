@@ -1,34 +1,31 @@
-task: Move account capacity check from orch status to daemon periodic task
-beads_id: orch-go-59vrq
-tier: light
-
 verification:
-  tests:
-    - command: "go test ./pkg/account/ -run 'TestWriteAndRead|TestReadCapacityFileCache_Missing|TestWriteCapacityFileCache_Creates|TestWriteCapacityFileCache_NilCapacity' -v"
-      expectation: "All 4 file cache tests pass"
-    - command: "go test ./pkg/daemon/ -run 'TestRunPeriodicCapacityPoll' -v"
-      expectation: "All 4 capacity poll periodic task tests pass (NotDue, Success, Error, MarksRun)"
-    - command: "go test ./pkg/account/ ./pkg/daemon/ ./pkg/daemonconfig/ -count=1"
-      expectation: "All tests pass in affected packages"
-    - command: "go build ./..."
-      expectation: "Clean build with no errors"
+  task: "Decompose CLAUDE.md from 753 to ~250 lines"
+  beads_id: orch-go-9iedb
 
-  behavioral:
-    - description: "orch status reads from ~/.orch/capacity-cache.json when available (cache hit)"
-      verification: "Code review: getAccountUsage() tries ReadCapacityFileCache first, falls back to live API"
-    - description: "daemon periodic task polls capacity and writes cache file"
-      verification: "RunPeriodicCapacityPoll calls ListAccountsWithCapacity and WriteCapacityFileCache"
-    - description: "daemon poll interval is 5 minutes (matches existing in-process cache TTL)"
-      verification: "DefaultConfig sets CapacityPollInterval to 5 * time.Minute"
+  assertions:
+    - name: "CLAUDE.md line count reduced"
+      check: "wc -l CLAUDE.md"
+      expected: "~175 lines (was 753)"
+      status: passed
 
-files_changed:
-  new:
-    - pkg/account/capacity_file_cache.go
-    - pkg/account/capacity_file_cache_test.go
-    - pkg/daemon/capacity_poll.go
-    - pkg/daemon/capacity_poll_test.go
-  modified:
-    - pkg/daemon/scheduler.go
-    - pkg/daemonconfig/config.go
-    - cmd/orch/daemon_periodic.go
-    - cmd/orch/status_cmd.go
+    - name: "Architecture overview extracted"
+      check: "test -f .kb/guides/architecture-overview.md"
+      expected: "File exists with system diagram, dir trees, spawn backends"
+      status: passed
+
+    - name: "Key packages extracted"
+      check: "test -f .kb/guides/key-packages.md"
+      expected: "File exists with package descriptions"
+      status: passed
+
+    - name: "Event tracking extracted"
+      check: "test -f .kb/guides/event-tracking.md"
+      expected: "File exists with event type table and beads close hook"
+      status: passed
+
+    - name: "Essential sections preserved"
+      check: "grep -c sections in CLAUDE.md"
+      expected: "Gotchas, Tab-Indented, OpenCode Fork, KB Structure, Accretion all present"
+      status: passed
+
+  manual_steps: []
