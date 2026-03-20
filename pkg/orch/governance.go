@@ -10,8 +10,9 @@ import (
 // Workers targeting these paths will be blocked mid-execution by hooks, so we detect
 // them at spawn time and warn before the worker starts.
 type GovernanceProtectedPath struct {
-	Pattern string // Path substring to match (case-insensitive)
-	Reason  string // Why this path is protected
+	Pattern      string // Path substring to match (case-insensitive)
+	Reason       string // Why this path is protected
+	RedirectHint string // Where agents should put code instead
 }
 
 // GovernanceResult contains the result of a governance file check.
@@ -25,13 +26,13 @@ type GovernanceResult struct {
 // Workers targeting these files will be blocked by hooks at edit time — detecting
 // them at spawn time prevents wasted worker sessions.
 var governanceProtectedPaths = []GovernanceProtectedPath{
-	{Pattern: "pkg/spawn/gates/", Reason: "spawn gate infrastructure"},
-	{Pattern: "pkg/verify/", Reason: "verification gate infrastructure"},
-	{Pattern: ".orch/hooks/", Reason: "governance hooks"},
-	{Pattern: "scripts/pre-commit", Reason: "pre-commit gate scripts"},
-	{Pattern: "skills/src/shared/worker-base", Reason: "worker base skill (shared protocols)"},
-	{Pattern: "_lint_test.go", Reason: "structural lint tests"},
-	{Pattern: "governance_checksum", Reason: "governance checksum manifest"},
+	{Pattern: "pkg/spawn/gates/", Reason: "spawn gate infrastructure", RedirectHint: "Put non-gate spawn logic in pkg/spawn/*.go or pipeline logic in pkg/orch/*.go"},
+	{Pattern: "pkg/verify/", Reason: "verification gate infrastructure", RedirectHint: "Only precommit.go and accretion.go are protected. Other pkg/verify/*.go files (e.g. check.go) are editable"},
+	{Pattern: ".orch/hooks/", Reason: "governance hooks", RedirectHint: "Escalate to orchestrator — hooks can only be modified in direct sessions"},
+	{Pattern: "scripts/pre-commit", Reason: "pre-commit gate scripts", RedirectHint: "Escalate to orchestrator — pre-commit scripts can only be modified in direct sessions"},
+	{Pattern: "skills/src/shared/worker-base", Reason: "worker base skill (shared protocols)", RedirectHint: "Escalate to orchestrator — worker-base skill can only be modified in direct sessions"},
+	{Pattern: "_lint_test.go", Reason: "structural lint tests", RedirectHint: "For non-governance tests, use cmd/orch/*_test.go (without _lint_ suffix)"},
+	{Pattern: "governance_checksum", Reason: "governance checksum manifest", RedirectHint: "Escalate to orchestrator — checksum manifest is auto-generated"},
 }
 
 // GovernanceProtectedPaths returns the list of governance-protected path patterns.
@@ -79,6 +80,9 @@ func formatGovernanceWarning(matched []GovernanceProtectedPath, skillName string
 	b.WriteString("   Task references paths protected by governance hooks:\n")
 	for _, p := range matched {
 		fmt.Fprintf(&b, "     • %s (%s)\n", p.Pattern, p.Reason)
+		if p.RedirectHint != "" {
+			fmt.Fprintf(&b, "       → %s\n", p.RedirectHint)
+		}
 	}
 	b.WriteString("\n")
 	b.WriteString("   Workers editing these files will be BLOCKED by hooks at runtime.\n")

@@ -11,6 +11,8 @@ type GovernanceProtectedPath struct {
 	Pattern string
 	// Description explains what the path contains
 	Description string
+	// RedirectHint tells agents where to put code instead
+	RedirectHint string
 }
 
 // GovernanceProtectedPaths lists all paths protected by the governance file
@@ -20,14 +22,14 @@ type GovernanceProtectedPath struct {
 // This list MUST stay in sync with GOVERNANCE_PATTERNS in
 // ~/.orch/hooks/gate-governance-file-protection.py
 var GovernanceProtectedPaths = []GovernanceProtectedPath{
-	{Pattern: "pkg/spawn/gates/*", Description: "spawn gate logic"},
-	{Pattern: "pkg/verify/*_precommit.go", Description: "pre-commit verification gates"},
-	{Pattern: "pkg/verify/accretion.go", Description: "completion accretion gate"},
-	{Pattern: "cmd/orch/*_lint_test.go", Description: "structural lint tests"},
-	{Pattern: "cmd/orch/governance_checksum_test.go", Description: "governance checksum test"},
-	{Pattern: "cmd/orch/testdata/governance_checksums.json", Description: "governance checksum manifest"},
-	{Pattern: "scripts/pre-commit*", Description: "pre-commit gate scripts"},
-	{Pattern: "~/.orch/hooks/*.py", Description: "deny hooks"},
+	{Pattern: "pkg/spawn/gates/*", Description: "spawn gate logic", RedirectHint: "Put non-gate spawn logic in pkg/spawn/*.go or pipeline logic in pkg/orch/*.go"},
+	{Pattern: "pkg/verify/*_precommit.go", Description: "pre-commit verification gates", RedirectHint: "Put verification logic in other pkg/verify/*.go files (e.g. check.go or a new file)"},
+	{Pattern: "pkg/verify/accretion.go", Description: "completion accretion gate", RedirectHint: "Put verification logic in other pkg/verify/*.go files (e.g. check.go or a new file)"},
+	{Pattern: "cmd/orch/*_lint_test.go", Description: "structural lint tests", RedirectHint: "For non-governance tests, use cmd/orch/*_test.go (without _lint_ suffix)"},
+	{Pattern: "cmd/orch/governance_checksum_test.go", Description: "governance checksum test", RedirectHint: "Escalate to orchestrator — auto-generated"},
+	{Pattern: "cmd/orch/testdata/governance_checksums.json", Description: "governance checksum manifest", RedirectHint: "Escalate to orchestrator — auto-generated"},
+	{Pattern: "scripts/pre-commit*", Description: "pre-commit gate scripts", RedirectHint: "Escalate to orchestrator — direct session only"},
+	{Pattern: "~/.orch/hooks/*.py", Description: "deny hooks", RedirectHint: "Escalate to orchestrator — direct session only"},
 }
 
 // GenerateGovernanceContext produces a markdown section listing governance-protected
@@ -42,6 +44,9 @@ func GenerateGovernanceContext(noTrack bool) string {
 
 	for _, p := range GovernanceProtectedPaths {
 		fmt.Fprintf(&b, "- `%s` — %s\n", p.Pattern, p.Description)
+		if p.RedirectHint != "" {
+			fmt.Fprintf(&b, "  - **Instead:** %s\n", p.RedirectHint)
+		}
 	}
 
 	if noTrack {
