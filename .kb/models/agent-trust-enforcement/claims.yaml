@@ -129,18 +129,21 @@ claims:
     model_md_ref: "## Testable Claims C7"
 
   - id: ATE-08
-    text: "Credential exfiltration (bypass class 4) is irreducible — no structural enforcement prevents an agent with file read access from using credentials"
+    text: "Credential risk (bypass class 4) is partially reducible — network isolation prevents use against non-allowed services, but credentials remain usable against allowed services and exfiltrable via allowed channels"
     type: invariant
-    scope: universal
-    confidence: unconfirmed
+    scope: bounded
+    confidence: partially_confirmed
     priority: supporting
     evidence:
       - source: "Inferred from bypass taxonomy — no test has attempted credential isolation"
         date: "2026-03-19"
         verdict: extends
-    last_validated: ""
-    domain_tags: ["trust", "credentials", "exfiltration", "irreducible"]
-    falsifies_if: "A mechanism that prevents credential use without removing credential access from the agent's filesystem"
+      - source: "Probe 2026-03-20: srt allowedDomains blocks credential use against non-allowed services at L1. 2/4 scenarios structurally preventable, 2/4 convention-only."
+        date: "2026-03-20"
+        verdict: refines
+    last_validated: "2026-03-20"
+    domain_tags: ["trust", "credentials", "exfiltration", "partially-reducible", "network-isolation"]
+    falsifies_if: "A mechanism that prevents credential use against services the agent has legitimate network access to, without removing the credential from the filesystem"
     tensions: []
     model_md_ref: "## Testable Claims C8"
 
