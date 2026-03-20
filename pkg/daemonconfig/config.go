@@ -333,6 +333,18 @@ type Config struct {
 	// ClaimProbeGenerationInterval is how often to check for probe-eligible claims.
 	// Default is 2 hours.
 	ClaimProbeGenerationInterval time.Duration
+
+	// TensionClusterScanEnabled controls whether the daemon scans for tension clusters
+	// across KB models and creates architect issues for clusters meeting the threshold.
+	TensionClusterScanEnabled bool
+
+	// TensionClusterScanInterval is how often to scan for tension clusters.
+	// Default is 24 hours.
+	TensionClusterScanInterval time.Duration
+
+	// TensionClusterThreshold is the minimum number of claims required for a cluster
+	// to trigger an architect issue. Default is 3.
+	TensionClusterThreshold int
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -412,6 +424,9 @@ func DefaultConfig() Config {
 		LightweightCleanupInterval:               30 * time.Minute, // Check every 30 minutes
 		LightweightCleanupTimeout:                2 * time.Hour,    // 2h before auto-closing
 		ClaimProbeGenerationEnabled:              true,
-		ClaimProbeGenerationInterval:             2 * time.Hour, // Every 2 hours
+		ClaimProbeGenerationInterval:             2 * time.Hour,  // Every 2 hours
+		TensionClusterScanEnabled:               true,
+		TensionClusterScanInterval:              24 * time.Hour, // Daily
+		TensionClusterThreshold:                 3,              // 3+ claims from 2+ models
 	}
 }

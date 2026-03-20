@@ -218,6 +218,9 @@ type Daemon struct {
 
 	// ClaimProbeService generates probe issues for stale/unconfirmed claims.
 	ClaimProbeService ClaimProbeService
+
+	// TensionClusterService creates architect issues for tension clusters.
+	TensionClusterService TensionClusterService
 }
 
 // New creates a new Daemon instance with default configuration.

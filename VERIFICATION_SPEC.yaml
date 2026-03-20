@@ -1,26 +1,19 @@
 verification:
-  commands_run:
-    - "go build ./pkg/discovery/ ./pkg/notify/ ./cmd/orch/"
-    - "go test ./pkg/discovery/ -count=1"
-    - "go test ./pkg/notify/ -count=1"
-    - "go test ./cmd/orch/ -run 'JoinWithReasonCodes|NeverStarted|AgentUnresponsive' -count=1"
-  expectations:
-    - "Agents spawned >10 min ago with no phase comment are marked dead/never_started"
-    - "Agents in 5-10 min window with live tmux still show active/tmux_window_alive"
-    - "Agents with phase comments are unaffected regardless of spawn time"
-    - "IsNeverStarted flag is set in dashboard API response"
-    - "Never-started agents bypass time filter in dashboard (needsAttention)"
-    - "Desktop notification fires for unresponsive agents in daemon phase timeout"
-    - "AgentUnresponsive notification respects enabled/disabled setting"
-  manual_verification:
-    - "Deploy via 'make install' and observe dashboard with a stalled agent"
-    - "Verify desktop notification appears when daemon detects unresponsive agent"
+  automated:
+    - command: "go build ./cmd/orch/"
+      expectation: "clean build, no errors"
+      result: PASS
+    - command: "go test ./pkg/daemon/ -count=1"
+      expectation: "all tests pass including new tension cluster tests"
+      result: PASS
+    - command: "go test -v -run '^TestTensionClusterScanDefaultConfig$' github.com/dylan-conlin/orch-go/pkg/daemon"
+      expectation: "default config test passes (enabled=true, interval=24h, threshold=3)"
+      result: PASS
+  manual: []
   files_changed:
-    - pkg/discovery/discovery.go
-    - pkg/discovery/discovery_test.go
-    - pkg/notify/notify.go
-    - pkg/notify/notify_test.go
-    - cmd/orch/serve_agents_types.go
-    - cmd/orch/serve_agents_handlers.go
-    - cmd/orch/daemon_periodic.go
-    - cmd/orch/query_tracked_test.go
+    - pkg/daemon/tension_cluster.go (new — periodic task logic)
+    - pkg/daemon/tension_cluster_test.go (new — tests)
+    - pkg/daemon/scheduler.go (add TaskTensionClusterScan constant + registration)
+    - pkg/daemon/daemon.go (add TensionClusterService field to Daemon struct)
+    - pkg/daemonconfig/config.go (add 3 config fields + defaults)
+    - cmd/orch/daemon_periodic.go (add handler + snapshot field)

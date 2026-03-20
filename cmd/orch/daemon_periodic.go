@@ -35,6 +35,7 @@ type periodicTasksResult struct {
 	PlanStalenessSnapshot        *daemon.PlanStalenessSnapshot
 	TriggerSnapshot              *daemon.TriggerSnapshot
 	InvestigationOrphanSnapshot  *daemon.InvestigationOrphanSnapshot
+	TensionClusterSnapshot       *daemon.TensionClusterSnapshot
 }
 
 // runPeriodicTasks runs all periodic maintenance tasks and handles their output.
@@ -227,6 +228,15 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 	// Claim probe generation (create investigation issues for stale/unconfirmed claims)
 	if r := d.RunPeriodicClaimProbeGeneration(); r != nil {
 		handleClaimProbeResult(r, timestamp, verbose)
+	}
+
+	// Tension cluster scan (create architect issues for cross-model tension clusters)
+	if r := d.RunPeriodicTensionClusterScan(); r != nil {
+		handleTensionClusterResult(r, timestamp, verbose, logger)
+		if r.Error == nil {
+			snapshot := r.Snapshot()
+			result.TensionClusterSnapshot = &snapshot
+		}
 	}
 
 	return result
@@ -786,6 +796,26 @@ func handleClaimProbeResult(r *daemon.ClaimProbeResult, timestamp string, verbos
 		fmt.Printf("[%s] Claim probe: %s\n", timestamp, r.Message)
 	} else if verbose {
 		fmt.Printf("[%s] Claim probe: %s\n", timestamp, r.Message)
+	}
+}
+
+func handleTensionClusterResult(r *daemon.TensionClusterResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Tension cluster scan error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.tension_cluster", map[string]interface{}{
+			"clusters": 0,
+			"error":    r.Error.Error(),
+			"message":  r.Message,
+		})
+	} else if r.IssueCreated != "" {
+		fmt.Printf("[%s] Tension cluster: %s\n", timestamp, r.Message)
+		logDaemonEvent(logger, "daemon.tension_cluster", map[string]interface{}{
+			"clusters":      r.ClusterCount,
+			"issue_created": r.IssueCreated,
+			"message":       r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] Tension cluster: %s\n", timestamp, r.Message)
 	}
 }
 
