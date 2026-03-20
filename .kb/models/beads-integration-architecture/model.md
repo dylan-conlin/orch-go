@@ -1,16 +1,16 @@
 # Model: Beads Integration Architecture
 
 **Domain:** Beads Integration / Issue Tracking / RPC Client
-**Last Updated:** 2026-03-06
-**Synthesized From:** 28 investigations + beads-integration.md guide (synthesized from 17 investigations, Dec 2025 - Jan 2026) on RPC client design, CLI fallback, auto-tracking protocol, performance optimization. Updated 2026-03-06 via 6 probe merges (see References).
+**Last Updated:** 2026-03-19
+**Synthesized From:** 28 investigations + beads-integration.md guide (synthesized from 17 investigations, Dec 2025 - Jan 2026) on RPC client design, CLI fallback, auto-tracking protocol, performance optimization. Updated 2026-03-06 via 6 probe merges (see References). Updated 2026-03-19 via model-drift audit (file structure, exec.Command inventory, deleted references).
 
 ---
 
 ## Summary (30 seconds)
 
-Beads integration uses **RPC-first with CLI fallback** pattern: try JSON-over-Unix-socket RPC client (fast, no process spawn), fall back to CLI subprocess if daemon unavailable. The integration operates at **three points in agent lifecycle**: spawn (create issue), work (report phase via comments), complete (close with reason). **Auto-tracking** creates issues automatically unless `--no-track` flag set. The `pkg/beads` package provides a `BeadsClient` interface with two implementations: `Client` (RPC daemon) and `CLIClient` (bd CLI subprocess). The RPC client provides 10x performance improvement over CLI (single RPC call vs subprocess spawn + JSON parse).
+Beads integration uses **RPC-first with CLI fallback** pattern: try JSON-over-Unix-socket RPC client (fast, no process spawn), fall back to CLI subprocess if daemon unavailable. The integration operates at **three points in agent lifecycle**: spawn (create issue), work (report phase via comments), complete (close with reason). **Auto-tracking** creates issues automatically unless `--no-track` flag set. The `pkg/beads` package provides a `BeadsClient` interface with three implementations: `Client` (RPC daemon), `CLIClient` (bd CLI subprocess), and `MockClient` (testing). The RPC client provides 10x performance improvement over CLI (single RPC call vs subprocess spawn + JSON parse).
 
-**Important:** Beads is a maintained fork (not upstream) with 43+ local commits. The `pkg/beads` "no direct exec.Command" constraint is aspirational — 11 direct calls exist across 7 files. Beads updates are unconditional (no CAS), creating TOCTOU races in concurrent daemon scenarios.
+**Important:** Beads is a maintained fork (not upstream) with 43+ local commits. The `pkg/beads` "no direct exec.Command" constraint is aspirational — 12 direct calls exist across 8 files. Beads updates are unconditional (no CAS), creating TOCTOU races in concurrent daemon scenarios.
 
 ---
 
@@ -18,14 +18,15 @@ Beads integration uses **RPC-first with CLI fallback** pattern: try JSON-over-Un
 
 ### RPC-First with CLI Fallback
 
-**Architecture:** `pkg/beads` exposes a `BeadsClient` interface (`interface.go`) with two implementations:
-- `Client` (`client.go`) — JSON-over-Unix-socket RPC to the beads daemon
+**Architecture:** `pkg/beads` exposes a `BeadsClient` interface (`interface.go`) with three implementations:
+- `Client` (`client.go` + `client_operations.go`) — JSON-over-Unix-socket RPC to the beads daemon
 - `CLIClient` (`cli_client.go`) — shells out to `bd` CLI commands
+- `MockClient` (`mock_client.go`) — configurable mock for testing
 
-**RPC Client:**
+**RPC Client (split across 3 files):**
 
 ```go
-// pkg/beads/client.go
+// pkg/beads/client.go (306 lines) — connection, execute, reconnect logic
 
 type Client struct {
     mu            sync.Mutex
@@ -40,19 +41,25 @@ type Client struct {
 // Socket is per-project at .beads/bd.sock (NOT global ~/.beads/daemon.sock)
 func FindSocketPath(dir string) (string, error) {
     // Walks up directory tree looking for .beads/bd.sock
-    // If dir empty, uses DefaultDir or current working directory
+    // If dir empty, uses current working directory
 }
 
-func NewClient(socketPath string, opts ...ClientOption) *Client {
+func NewClient(socketPath string, opts ...Option) *Client {
     // Options: WithTimeout, WithCwd, WithAutoReconnect
-    // Uses functional options pattern (not ...Option)
 }
 
-func (c *Client) Show(id string) (*Issue, error) {
-    // JSON request/response protocol over Unix socket
-    resp, err := c.execute(OpShow, ShowArgs{ID: id})
-    // Handles both array and single-object response formats
-}
+// pkg/beads/client_operations.go (327 lines) — RPC operation methods
+func (c *Client) Show(id string) (*Issue, error) { ... }
+func (c *Client) Ready(args *ReadyArgs) ([]Issue, error) { ... }
+func (c *Client) List(args *ListArgs) ([]Issue, error) { ... }
+// ... all BeadsClient interface methods
+
+// pkg/beads/client_fallback.go (507 lines) — Fallback* functions + BdPath resolution
+var BdPath string  // Resolved at startup via ResolveBdPath()
+func ResolveBdPath() (string, error) { ... }
+func FallbackReady(...) { ... }
+func FallbackShow(...) { ... }
+// ... standalone fallback functions for callers not using the interface
 ```
 
 **CLI Client:**
@@ -71,7 +78,7 @@ func NewCLIClient(opts ...CLIOption) *CLIClient {
 }
 ```
 
-**Standalone Fallback functions** also exist in `client.go` (e.g., `FallbackReady()`, `FallbackShow()`, `FallbackClose()`) for callers that don't use the interface pattern. Note: `pkg/beads/fallback.go` does not exist — these functions live in `client.go` (lines 710-1226).
+**Standalone Fallback functions** live in `client_fallback.go` (507 lines) for callers that don't use the interface pattern. This file also contains `BdPath` resolution logic (`ResolveBdPath()`) for environments with minimal PATH (e.g., launchd).
 
 **Performance difference:**
 
@@ -82,7 +89,7 @@ func NewCLIClient(opts ...CLIOption) *CLIClient {
 
 **Dashboard impact:** Before RPC client (Dec 2025), dashboard made 100+ CLI calls per status refresh = 5-10s load time. After RPC (Dec 26), same calls take 200-500ms.
 
-**Source:** `pkg/beads/client.go`, `pkg/beads/cli_client.go`, `pkg/beads/interface.go`
+**Source:** `pkg/beads/client.go`, `pkg/beads/client_operations.go`, `pkg/beads/client_fallback.go`, `pkg/beads/cli_client.go`, `pkg/beads/interface.go`, `pkg/beads/mock_client.go`
 
 ### Three Integration Points
 
@@ -137,20 +144,21 @@ Dashboard shows blue "completed" badge
 **Opt-out:** `--no-track` flag skips issue creation.
 
 ```go
-// cmd/orch/spawn_cmd.go calls pkg/orch/extraction.go
+// cmd/orch/spawn_cmd.go calls pkg/orch/spawn_beads.go
 
 // SetupBeadsTracking handles issue creation/reuse based on flags
 func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string,
     isOrchestrator, isMetaOrchestrator bool, serverURL string,
     noTrack bool, workspaceName string,
-    createBeadsFn func(string, string, string) (string, error)) (string, error) {
-    // If --issue flag provided, use existing issue
-    // If --no-track, return empty beadsID
+    createBeadsFn func(string, string, string, string) (string, error),
+    projectDir string) (string, error) {
+    // If --issue flag provided, use existing issue (validates not closed/in-progress)
+    // If --no-track, creates lightweight issue (deprecation warning shown)
     // Otherwise, auto-create via CreateBeadsIssue()
 }
 
 // CreateBeadsIssue creates a new beads issue for spawn tracking
-func CreateBeadsIssue(projectName, skillName, task string) (string, error) {
+func CreateBeadsIssue(projectName, skillName, task, dir string) (string, error) {
     // Uses beads RPC client or CLI fallback to create issue
     // Returns issue ID like "orch-go-abc1"
 }
@@ -168,7 +176,7 @@ func CreateBeadsIssue(projectName, skillName, task string) (string, error) {
 
 **Dedup behavior (fail-closed):** When `synthesisIssueExists()` calls `bd list --json` and receives malformed JSON, it returns `exists=true` (blocking creation) rather than allowing duplicates. Error handling prefers false positives (skip creation) over false negatives (create duplicate). Confirmed via probe 2026-02-08.
 
-**Source:** `pkg/orch/extraction.go` (`SetupBeadsTracking`, `CreateBeadsIssue`), `cmd/orch/spawn_cmd.go` (flag wiring)
+**Source:** `pkg/orch/spawn_beads.go` (`SetupBeadsTracking`, `CreateBeadsIssue`), `cmd/orch/spawn_cmd.go` (flag wiring)
 
 ### Beads ID Format
 
@@ -228,18 +236,21 @@ output, _ := cmd.Output()
 issues := parseJSON(output)
 ```
 
-**Reality check (probe 2026-02-20):** 11 direct `exec.Command("bd")` calls exist outside `pkg/beads` in production code:
-- `pkg/daemon/issue_adapter.go` (3 calls) — fallback functions
-- `pkg/daemon/extraction.go` (2 calls) — `bd create` and `bd dep add`
-- `pkg/verify/beads_api.go` (2 calls) — `bd comments` and `bd label add`
+**Reality check (updated 2026-03-19):** 12 direct `exec.Command("bd")` calls exist outside `pkg/beads` in production code:
 - `pkg/focus/guidance.go` (1 call) — `bd ready --json`
+- `pkg/daemon/friction_accumulator.go` (2 calls) — `bd list --status=closed --json`, `bd comments list`
 - `cmd/orch/init.go` (1 call) — `bd init`
+- `cmd/orch/doctor_health.go` (1 call) — health check via bd
 - `cmd/orch/reconcile.go` (1 call) — various bd commands
-- `cmd/orch/status_cmd.go` (1 call) — `bd config get issue_prefix`
+- `cmd/orch/status_infra.go` (1 call) — `bd config get issue_prefix`
+- `cmd/orch/debrief_cmd.go` (3 calls) — `bd list --status=in_progress`, `bd ready`
+- `cmd/orch/orient_cmd.go` (2 calls) — `bd ready`, `bd list --status=in_progress`
 
-The "no direct exec.Command" constraint is aspirational, not enforced. 5 of these could be migrated to `pkg/beads` methods.
+**Note:** Previous violations in `pkg/daemon/issue_adapter.go`, `pkg/daemon/extraction.go`, and `pkg/verify/beads_api.go` have been cleaned up (0 direct calls remaining). New violations were introduced in `friction_accumulator.go`, `debrief_cmd.go`, `orient_cmd.go`, and `doctor_health.go`.
 
-**Source:** `pkg/beads/client.go`, `pkg/beads/cli_client.go`
+The "no direct exec.Command" constraint is aspirational, not enforced.
+
+**Source:** `pkg/beads/client.go`, `pkg/beads/client_operations.go`, `pkg/beads/cli_client.go`
 
 ### Status Update Atomicity (No CAS)
 
@@ -260,15 +271,11 @@ query := fmt.Sprintf("UPDATE issues SET %s WHERE id = ?", strings.Join(setClause
 
 **Source:** Probe 2026-03-01, beads `internal/rpc/server_issues_epics.go:475`, `queries.go:892`
 
-### bd sync Wrapper (bd-sync-safe.sh)
+### bd sync Wrapper (REMOVED)
 
-An operational resilience layer wraps `bd sync` at the script level in `scripts/bd-sync-safe.sh`:
+**Status:** `scripts/bd-sync-safe.sh` has been deleted. The hash-mismatch recovery and post-sync readiness validation it provided are no longer available as a standalone wrapper. These issues may have been addressed in the beads fork directly, or the JSONL-only mode may have made them less relevant.
 
-**Hash-mismatch recovery:** When `bd sync` enters the JSONL-differs import path and exceeds a configurable timeout (`BD_SYNC_SAFE_TIMEOUT_SECONDS`), the wrapper automatically runs explicit `--import-only` then retries sync. Removes the manual kill/retry loop. Confirmed via probe 2026-02-09.
-
-**Post-sync readiness validation:** After a successful sync, the wrapper runs a lightweight direct read check (`bd show <id>`) and self-heals with a final import-only pass if stale DB errors persist. In 20 consecutive test runs, zero stale-read failures occurred after successful wrapper sync. Confirmed via probe 2026-02-09.
-
-**Source:** `scripts/bd-sync-safe.sh`
+**Historical context:** The wrapper handled hash-mismatch recovery with bounded timeout + automatic import-only retry, and post-sync readiness validation. See probes 2026-02-09 for details.
 
 ---
 
@@ -472,13 +479,24 @@ output, _ := cmd.Output()
 
 **Investigations:** 3 investigations on code duplication, performance regressions, testing difficulties.
 
-**Key insight:** Scattered `exec.Command("bd")` calls create maintenance burden, prevent optimization, make testing hard. (Note: 11 direct calls remain in production code.)
+**Key insight:** Scattered `exec.Command("bd")` calls create maintenance burden, prevent optimization, make testing hard. (Note: 12 direct calls remain in production code as of 2026-03-19, though the specific files have shifted — old violations in issue_adapter.go/extraction.go/beads_api.go were cleaned up, new ones appeared in debrief_cmd.go/orient_cmd.go/friction_accumulator.go.)
 
 ### Phase 6: BeadsClient Interface (Feb 2026)
 
 **What changed:** Introduced `BeadsClient` interface with `Client` (RPC) and `CLIClient` (CLI) implementations. Added `MockClient` for testing. Socket path changed from global `~/.beads/daemon.sock` to per-project `.beads/bd.sock` with directory walk-up discovery.
 
 **Key insight:** Interface abstraction enables clean dependency injection and testability without sacrificing the RPC-first performance pattern.
+
+### Phase 7: Client File Extraction (Mar 2026)
+
+**What changed:** `client.go` (formerly ~1200+ lines) split into three files:
+- `client.go` (306 lines) — connection, execute, reconnect
+- `client_operations.go` (327 lines) — RPC operation methods
+- `client_fallback.go` (507 lines) — Fallback* functions, BdPath resolution, ClientVersion
+
+Beads tracking logic moved from `pkg/orch/extraction.go` to `pkg/orch/spawn_beads.go`. `scripts/bd-sync-safe.sh` removed.
+
+**Key insight:** Extraction follows the codebase's accretion boundary pattern (files >1500 lines should be split). The split preserves the same public API while making each file focused on a single concern.
 
 ---
 
@@ -502,23 +520,27 @@ output, _ := cmd.Output()
 - `.kb/models/completion-verification/model.md` - How completion closes beads issues
 
 **Source code:**
-- `pkg/beads/client.go` - RPC client + standalone Fallback* functions (lines 710-1226)
+- `pkg/beads/client.go` - RPC client connection, execute, reconnect logic (306 lines)
+- `pkg/beads/client_operations.go` - RPC operation methods (Ready, Show, List, etc.) (327 lines)
+- `pkg/beads/client_fallback.go` - Standalone Fallback* functions + BdPath resolution (507 lines)
 - `pkg/beads/cli_client.go` - CLIClient implementation (bd CLI subprocess)
 - `pkg/beads/interface.go` - BeadsClient interface definition
+- `pkg/beads/mock_client.go` - MockClient for testing (434 lines)
 - `pkg/beads/types.go` - Issue, Comment, Stats types and RPC protocol types
-- `pkg/orch/extraction.go` - SetupBeadsTracking and CreateBeadsIssue
-- `cmd/orch/spawn_cmd.go` - Spawn command with --no-track, --issue flags (renamed from spawn.go)
-- `scripts/bd-sync-safe.sh` - Sync wrapper with timeout/retry/readiness validation
+- `pkg/orch/spawn_beads.go` - SetupBeadsTracking and CreateBeadsIssue
+- `cmd/orch/spawn_cmd.go` - Spawn command with --no-track, --issue flags
 
-**Primary Evidence (Verified):**
+**Primary Evidence (Verified 2026-03-19):**
 - `pkg/beads/client.go` - RPC client with JSON-over-socket protocol (NewClient, FindSocketPath, execute)
+- `pkg/beads/client_operations.go` - BeadsClient interface method implementations
+- `pkg/beads/client_fallback.go` - Fallback functions + BdPath resolution for launchd environments
 - `pkg/beads/cli_client.go` - CLIClient struct implementing BeadsClient via bd CLI
 - `pkg/beads/interface.go` - BeadsClient interface (Ready, Show, List, Create, AddComment, CloseIssue, etc.)
-- `.beads/bd.sock` - Per-project Unix socket for RPC communication (when daemon running)
+- `.beads/bd.sock` - Per-project Unix socket for RPC communication (ephemeral, only exists when daemon running)
 - `cmd/orch/spawn_cmd.go` - Auto-tracking implementation with --no-track opt-out
 - `.beads/issues.jsonl` - Authoritative issue storage showing beads ID format
 
-**Note on stale file references:** `pkg/beads/fallback.go`, `pkg/beads/lifecycle.go`, `pkg/beads/id.go`, `pkg/spawn/tracking.go`, and `cmd/orch/spawn.go` do not exist. Fallback functions are in `client.go`; spawn tracking is in `spawn_cmd.go`.
+**Note on deleted files:** `pkg/beads/fallback.go` (never existed — functions are in `client_fallback.go`), `pkg/beads/id.go` (deleted), `pkg/beads/lifecycle.go` (never existed), `pkg/spawn/tracking.go` (never existed), `cmd/orch/spawn.go` (renamed to `spawn_cmd.go`), `pkg/orch/extraction.go` (replaced by `spawn_beads.go`), `scripts/bd-sync-safe.sh` (deleted).
 
 ### Merged Probes
 

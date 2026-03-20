@@ -1,0 +1,29 @@
+verification:
+  type: model-drift-update
+  model: beads-integration-architecture
+
+  changes_made:
+    - section: Summary
+      change: "Updated exec.Command count (11→12), added MockClient as third implementation"
+    - section: Core Mechanism / RPC-First with CLI Fallback
+      change: "Updated architecture to reflect client.go split into 3 files (client.go, client_operations.go, client_fallback.go), added MockClient"
+    - section: Auto-Tracking Protocol
+      change: "Updated source from pkg/orch/extraction.go to pkg/orch/spawn_beads.go, updated function signatures"
+    - section: RPC vs CLI Decision Tree
+      change: "Updated exec.Command inventory from 11/7files to 12/8files with new file locations"
+    - section: bd sync Wrapper
+      change: "Marked as REMOVED (scripts/bd-sync-safe.sh deleted)"
+    - section: Evolution
+      change: "Added Phase 7 documenting client file extraction (Mar 2026)"
+    - section: References
+      change: "Updated all source code paths, primary evidence list, and deleted files note"
+
+  verification_commands:
+    - command: "ls pkg/beads/"
+      expectation: "Shows client.go, client_operations.go, client_fallback.go, cli_client.go, interface.go, mock_client.go, types.go"
+    - command: "grep -r 'exec.Command(\"bd\"' --include='*.go' -l | grep -v worktrees | grep -v _test.go"
+      expectation: "8 files with direct bd calls"
+    - command: "ls pkg/orch/spawn_beads.go"
+      expectation: "File exists (replaced extraction.go)"
+    - command: "ls scripts/bd-sync-safe.sh 2>&1"
+      expectation: "No such file"
