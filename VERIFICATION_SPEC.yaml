@@ -1,19 +1,34 @@
-task: Artifact sync - update drifted documentation
-issue: orch-go-9q3ts
-type: docs
-date: 2026-03-20
+task: Move account capacity check from orch status to daemon periodic task
+beads_id: orch-go-59vrq
+tier: light
 
-deliverables:
-  - path: CLAUDE.md
-    description: Updated Commands, Event Types, Key Packages, and Architecture sections
-    verified: true
+verification:
+  tests:
+    - command: "go test ./pkg/account/ -run 'TestWriteAndRead|TestReadCapacityFileCache_Missing|TestWriteCapacityFileCache_Creates|TestWriteCapacityFileCache_NilCapacity' -v"
+      expectation: "All 4 file cache tests pass"
+    - command: "go test ./pkg/daemon/ -run 'TestRunPeriodicCapacityPoll' -v"
+      expectation: "All 4 capacity poll periodic task tests pass (NotDue, Success, Error, MarksRun)"
+    - command: "go test ./pkg/account/ ./pkg/daemon/ ./pkg/daemonconfig/ -count=1"
+      expectation: "All tests pass in affected packages"
+    - command: "go build ./..."
+      expectation: "Clean build with no errors"
 
-changes:
-  - section: Commands (Planning & Knowledge)
-    added: "kb audit decisions, kb clusters"
-  - section: Event Types
-    added: "22 daemon periodic events, spawn.verification_bypassed"
-  - section: Key Packages
-    added: "pkg/claims/ section"
-  - section: Architecture (pkg/ listing)
-    added: "claims/ package"
+  behavioral:
+    - description: "orch status reads from ~/.orch/capacity-cache.json when available (cache hit)"
+      verification: "Code review: getAccountUsage() tries ReadCapacityFileCache first, falls back to live API"
+    - description: "daemon periodic task polls capacity and writes cache file"
+      verification: "RunPeriodicCapacityPoll calls ListAccountsWithCapacity and WriteCapacityFileCache"
+    - description: "daemon poll interval is 5 minutes (matches existing in-process cache TTL)"
+      verification: "DefaultConfig sets CapacityPollInterval to 5 * time.Minute"
+
+files_changed:
+  new:
+    - pkg/account/capacity_file_cache.go
+    - pkg/account/capacity_file_cache_test.go
+    - pkg/daemon/capacity_poll.go
+    - pkg/daemon/capacity_poll_test.go
+  modified:
+    - pkg/daemon/scheduler.go
+    - pkg/daemonconfig/config.go
+    - cmd/orch/daemon_periodic.go
+    - cmd/orch/status_cmd.go

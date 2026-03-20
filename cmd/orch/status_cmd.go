@@ -532,7 +532,8 @@ func getPhaseAndTask(beadsID string) (phase, task string) {
 	return phase, task
 }
 
-// getAccountUsage fetches usage info for all configured accounts.
+// getAccountUsage reads cached capacity data written by the daemon's periodic capacity poll.
+// Falls back to a live API call if no cache exists (daemon not running).
 func getAccountUsage() []AccountUsage {
 	var result []AccountUsage
 
@@ -550,6 +551,27 @@ func getAccountUsage() []AccountUsage {
 		}
 	}
 
+	// Try reading from daemon's cached capacity file first (fast path)
+	cachePath := account.DefaultCapacityFileCachePath()
+	if cache, err := account.ReadCapacityFileCache(cachePath); err == nil {
+		for _, awc := range cache.Accounts {
+			au := AccountUsage{
+				Name:     awc.Name,
+				Email:    awc.Email,
+				IsActive: awc.Email != "" && awc.Email == activeEmail,
+			}
+			if awc.Capacity != nil && awc.Capacity.Error == "" {
+				au.UsedPercent = awc.Capacity.SevenDayUsed
+				if awc.Capacity.SevenDayResets != nil {
+					au.ResetTime = timeUntilReset(awc.Capacity.SevenDayResets)
+				}
+			}
+			result = append(result, au)
+		}
+		return result
+	}
+
+	// Fallback: live API call (daemon not running or cache missing)
 	accounts, err := account.ListAccountsWithCapacity()
 	if err != nil {
 		return result

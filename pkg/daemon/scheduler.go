@@ -29,6 +29,7 @@ const (
 	TaskLightweightCleanup             = "lightweight_cleanup"
 	TaskClaimProbeGeneration           = "claim_probe_generation"
 	TaskTensionClusterScan             = "tension_cluster_scan"
+	TaskCapacityPoll                   = "capacity_poll"
 )
 
 // periodicTask holds the scheduling state for a single periodic task.
@@ -148,6 +149,7 @@ func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s.Register(TaskLightweightCleanup, cfg.LightweightCleanupEnabled, cfg.LightweightCleanupInterval)
 	s.Register(TaskClaimProbeGeneration, cfg.ClaimProbeGenerationEnabled, cfg.ClaimProbeGenerationInterval)
 	s.Register(TaskTensionClusterScan, cfg.TensionClusterScanEnabled, cfg.TensionClusterScanInterval)
+	s.Register(TaskCapacityPoll, cfg.CapacityPollEnabled, cfg.CapacityPollInterval)
 	return s
 }
 

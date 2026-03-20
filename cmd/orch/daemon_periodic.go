@@ -230,6 +230,11 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 		handleClaimProbeResult(r, timestamp, verbose)
 	}
 
+	// Account capacity poll (write cache for orch status)
+	if r := d.RunPeriodicCapacityPoll(); r != nil {
+		handleCapacityPollResult(r, timestamp, verbose, logger)
+	}
+
 	// Tension cluster scan (create architect issues for cross-model tension clusters)
 	if r := d.RunPeriodicTensionClusterScan(); r != nil {
 		handleTensionClusterResult(r, timestamp, verbose, logger)
@@ -816,6 +821,14 @@ func handleTensionClusterResult(r *daemon.TensionClusterResult, timestamp string
 		})
 	} else if verbose {
 		fmt.Printf("[%s] Tension cluster: %s\n", timestamp, r.Message)
+	}
+}
+
+func handleCapacityPollResult(r *daemon.CapacityPollResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Capacity poll error: %v\n", timestamp, r.Error)
+	} else if verbose {
+		fmt.Printf("[%s] Capacity poll: %s (%d accounts)\n", timestamp, r.Message, r.AccountCount)
 	}
 }
 

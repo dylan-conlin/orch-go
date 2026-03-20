@@ -345,6 +345,13 @@ type Config struct {
 	// TensionClusterThreshold is the minimum number of claims required for a cluster
 	// to trigger an architect issue. Default is 3.
 	TensionClusterThreshold int
+
+	// CapacityPollEnabled controls whether the daemon periodically polls account capacity
+	// and writes the result to ~/.orch/capacity-cache.json for orch status to read.
+	CapacityPollEnabled bool
+
+	// CapacityPollInterval is how often to poll account capacity from the Anthropic API.
+	CapacityPollInterval time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -428,5 +435,7 @@ func DefaultConfig() Config {
 		TensionClusterScanEnabled:               true,
 		TensionClusterScanInterval:              24 * time.Hour, // Daily
 		TensionClusterThreshold:                 3,              // 3+ claims from 2+ models
+		CapacityPollEnabled:                     true,
+		CapacityPollInterval:                    5 * time.Minute, // Poll every 5 minutes
 	}
 }
