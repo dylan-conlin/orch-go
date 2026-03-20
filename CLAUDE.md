@@ -112,6 +112,7 @@ pkg/
 ├── group/               # Project group resolution (groups.yaml)
 ├── orch/                # Spawn pipeline, completion, governance, backend routing
 ├── graph/               # Dependency graph utilities
+├── claims/              # Machine-readable claim tracking for KB models (claims.yaml, tension clusters)
 └── display/             # Terminal display helpers
 ```
 
@@ -333,6 +334,13 @@ orch-dashboard logs     # View service logs (overmind echo)
 - Plan types for multi-phase coordination
 - Beads status overlay integration
 
+### pkg/claims/ (Claim Tracking)
+
+- Machine-readable claim index (`claims.yaml`) for KB models
+- Tension-cluster detection (cross-model claim convergence)
+- Claim lifecycle states (hypothesis → tested → confirmed/refuted)
+- Drives daemon probe generation and orient surfacing
+
 ## Spawn Flow
 
 1. `orch spawn SKILL "task"` invokes spawn command
@@ -416,6 +424,8 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `kb create model <name>` - Create a new KB model
 - `kb audit provenance` - Scan evidence quality annotations
 - `kb audit models` - Flag oversized models (>30KB) needing synthesis/pruning
+- `kb audit decisions` - Audit decisions for structural anchoring (gates, hooks, tests, file existence)
+- `kb clusters` - Show tension clusters — cross-model claim convergence points
 - `kb autolink` - Auto-link orphaned investigations to models/threads/decisions
 - `kb autolink --apply` - Apply auto-links (dry-run by default)
 - `kb gate publish/model/scan-claims` - KB publication and model gates
@@ -636,6 +646,7 @@ Agent lifecycle events are logged to `~/.orch/events.jsonl` for stats aggregatio
 | `spawn.gate_decision` | spawn gates | Gate evaluation result |
 | `spawn.hotspot_bypassed` | spawn pipeline | Hotspot gate bypassed (legacy, gates now advisory) |
 | `spawn.triage_bypassed` | `--bypass-triage` | Triage gate bypassed |
+| `spawn.verification_bypassed` | spawn pipeline | Verification gate bypassed during spawn |
 | `spawn.infrastructure_detected` | spawn pipeline | Infrastructure work detected |
 | `spawn.skill_inferred` | `orch work` | Skill inferred for issue |
 | `daemon.spawn` | daemon | Daemon spawn decision |
@@ -643,6 +654,27 @@ Agent lifecycle events are logged to `~/.orch/events.jsonl` for stats aggregatio
 | `daemon.complete` | daemon | Daemon auto-completion |
 | `daemon.completion_error` | daemon | Daemon completion error |
 | `daemon.architect_escalation` | daemon | Hotspot routing to architect |
+| `daemon.cleanup` | daemon periodic | Agent cleanup (completed/abandoned) |
+| `daemon.recovery` | daemon periodic | Stuck agent recovery |
+| `daemon.orphan_detection` | daemon periodic | Orphaned agent detection |
+| `daemon.phase_timeout` | daemon periodic | Phase timeout detection and escalation |
+| `daemon.question_detection` | daemon periodic | Question detected in agent output |
+| `daemon.agreement_check` | daemon periodic | Cross-validation of daemon decisions |
+| `daemon.beads_health` | daemon periodic | Beads health monitoring with circuit breaker |
+| `daemon.friction_accumulation` | daemon periodic | System improvement signal accumulation |
+| `daemon.artifact_sync` | daemon periodic | Documentation drift detection |
+| `daemon.registry_refresh` | daemon periodic | Agent registry refresh |
+| `daemon.synthesis_auto_create` | daemon periodic | Auto-synthesis artifact generation |
+| `daemon.learning_refresh` | daemon periodic | Learning store refresh from events |
+| `daemon.plan_staleness` | daemon periodic | Plan staleness notification |
+| `daemon.proactive_extraction` | daemon periodic | Knowledge extraction from completed work |
+| `daemon.trigger_scan` | daemon periodic | Phase 2 trigger detector scan |
+| `daemon.trigger_expiry` | daemon periodic | Expired trigger cleanup |
+| `daemon.verification_failed_escalation` | daemon periodic | Failed verification retry |
+| `daemon.investigation_orphan` | daemon periodic | Investigation orphan cleanup |
+| `daemon.lightweight_cleanup` | daemon periodic | Lightweight workspace cleanup |
+| `daemon.digest` | daemon periodic | KB artifact digest generation |
+| `daemon.tension_cluster` | daemon periodic | Tension-cluster backlog generation |
 | `decision.made` | daemon | Decision with classification tier |
 | `accretion.delta` | completion | File growth/shrinkage during session |
 | `accretion.snapshot` | periodic | Directory-level line counts |

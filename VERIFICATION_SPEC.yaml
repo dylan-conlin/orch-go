@@ -1,25 +1,19 @@
-task: Design knowledge graph visualization for dashboard
-issue: orch-go-ziu4q
-type: design
-date: 2026-03-19
+task: Artifact sync - update drifted documentation
+issue: orch-go-9q3ts
+type: docs
+date: 2026-03-20
 
 deliverables:
-  - path: .kb/investigations/2026-03-19-design-knowledge-graph-visualization.md
-    description: Architecture design for Claims tab with three views
+  - path: CLAUDE.md
+    description: Updated Commands, Event Types, Key Packages, and Architecture sections
     verified: true
 
-design_decisions:
-  - decision: Single /api/claims/graph endpoint returning all data
-    rationale: Data is small (<10KB), splitting adds complexity for no benefit
-  - decision: D3 force for graph views, pure HTML/CSS for heatmap
-    rationale: D3 handles force layout; heatmap is a simple grid
-  - decision: Separate /claims route instead of Knowledge Tree tab
-    rationale: Keeps D3 loaded only when needed, avoids bloating existing page
-  - decision: No SSE for claims data
-    rationale: Claims change via git commits (2-3x/day), poll sufficient
-
-migration_status:
-  designed: Claims tab with 3 views + /api/claims/graph endpoint
-  implemented: none
-  deployed: none
-  remaining: Full implementation (5 phases in design doc)
+changes:
+  - section: Commands (Planning & Knowledge)
+    added: "kb audit decisions, kb clusters"
+  - section: Event Types
+    added: "22 daemon periodic events, spawn.verification_bypassed"
+  - section: Key Packages
+    added: "pkg/claims/ section"
+  - section: Architecture (pkg/ listing)
+    added: "claims/ package"
