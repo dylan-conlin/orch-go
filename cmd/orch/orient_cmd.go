@@ -335,6 +335,12 @@ func extractRecentSpawnKeywords(now time.Time) []string {
 		return nil
 	}
 
+	return spawnKeywordsFromEvents(evts, now)
+}
+
+// spawnKeywordsFromEvents extracts domain-relevant keywords from spawn events
+// within the last 7 days. Extracts skill names and significant task words.
+func spawnKeywordsFromEvents(evts []orient.Event, now time.Time) []string {
 	cutoff := now.Add(-7 * 24 * time.Hour).Unix()
 	keywordSet := make(map[string]bool)
 
@@ -348,13 +354,16 @@ func extractRecentSpawnKeywords(now time.Time) []string {
 		if e.Data == nil {
 			continue
 		}
-		// Extract skill and task keywords from spawn events
+		// Extract skill name as keyword
 		if skill, ok := e.Data["skill"].(string); ok && skill != "" {
 			keywordSet[skill] = true
 		}
+		// Extract significant words from task description
 		if task, ok := e.Data["task"].(string); ok {
 			for _, word := range strings.Fields(strings.ToLower(task)) {
-				if len(word) > 3 { // skip short words
+				// Strip surrounding punctuation (commas, periods, parens)
+				word = strings.Trim(word, ".,;:!?()[]{}\"'")
+				if len(word) > 3 && !isStopWord(word) {
 					keywordSet[word] = true
 				}
 			}
@@ -366,6 +375,22 @@ func extractRecentSpawnKeywords(now time.Time) []string {
 		keywords = append(keywords, kw)
 	}
 	return keywords
+}
+
+// spawnKeywordStopWords are common English words that add noise to keyword matching.
+var spawnKeywordStopWords = map[string]bool{
+	"that": true, "this": true, "with": true, "from": true, "when": true,
+	"have": true, "been": true, "will": true, "should": true, "would": true,
+	"could": true, "into": true, "also": true, "each": true, "then": true,
+	"than": true, "them": true, "they": true, "their": true, "there": true,
+	"were": true, "what": true, "which": true, "where": true, "does": true,
+	"about": true, "after": true, "before": true, "between": true,
+	"only": true, "other": true, "some": true, "such": true, "more": true,
+	"most": true, "very": true, "just": true, "over": true,
+}
+
+func isStopWord(word string) bool {
+	return spawnKeywordStopWords[word]
 }
 
 // collectPreviousSession finds and parses the most recent session debrief.

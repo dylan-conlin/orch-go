@@ -1,8 +1,11 @@
 package main
 
 import (
+	"sort"
 	"testing"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/orient"
 )
 
 func TestParseBdReadyForOrient(t *testing.T) {
@@ -255,5 +258,240 @@ func TestComputeReflectAge_MicrosecondFormat(t *testing.T) {
 	age := computeReflectAge(ts)
 	if age != "3h ago" {
 		t.Errorf("expected '3h ago', got %q", age)
+	}
+}
+
+func TestSpawnKeywordsFromEvents(t *testing.T) {
+	now := time.Date(2026, 3, 19, 12, 0, 0, 0, time.UTC)
+	recentTS := now.Add(-1 * time.Hour).Unix()
+	oldTS := now.Add(-8 * 24 * time.Hour).Unix() // 8 days ago, outside 7-day window
+
+	events := []orient.Event{
+		{
+			Type:      "session.spawned",
+			Timestamp: recentTS,
+			Data: map[string]interface{}{
+				"skill": "investigation",
+				"task":  "Investigate spawn gate enforcement for hotspot files",
+			},
+		},
+		{
+			Type:      "session.spawned",
+			Timestamp: recentTS,
+			Data: map[string]interface{}{
+				"skill": "feature-impl",
+				"task":  "Add claim protocol guidance to investigation skill",
+			},
+		},
+	}
+
+	keywords := spawnKeywordsFromEvents(events, now)
+	kwSet := make(map[string]bool)
+	for _, kw := range keywords {
+		kwSet[kw] = true
+	}
+
+	// Skill names should be present
+	if !kwSet["investigation"] {
+		t.Error("missing keyword 'investigation' (skill name)")
+	}
+	if !kwSet["feature-impl"] {
+		t.Error("missing keyword 'feature-impl' (skill name)")
+	}
+
+	// Domain-relevant task words should be present
+	for _, expected := range []string{"spawn", "gate", "enforcement", "hotspot", "claim", "protocol", "guidance"} {
+		if !kwSet[expected] {
+			t.Errorf("missing keyword %q from task text", expected)
+		}
+	}
+
+	// Short words (<=3 chars) should be filtered
+	for _, excluded := range []string{"for", "add"} {
+		if kwSet[excluded] {
+			t.Errorf("should not contain short word %q", excluded)
+		}
+	}
+
+	// Stop words should be filtered
+	if kwSet["from"] {
+		t.Error("should not contain stop word 'from'")
+	}
+
+	// Old events should be excluded
+	oldEvents := []orient.Event{
+		{
+			Type:      "session.spawned",
+			Timestamp: oldTS,
+			Data: map[string]interface{}{
+				"skill": "architect",
+				"task":  "Design new architecture",
+			},
+		},
+	}
+	oldKW := spawnKeywordsFromEvents(oldEvents, now)
+	if len(oldKW) != 0 {
+		t.Errorf("expected 0 keywords from old events, got %d: %v", len(oldKW), oldKW)
+	}
+}
+
+func TestSpawnKeywordsFromEvents_EmptyEvents(t *testing.T) {
+	now := time.Now()
+	keywords := spawnKeywordsFromEvents(nil, now)
+	if len(keywords) != 0 {
+		t.Errorf("expected 0 keywords from nil events, got %d", len(keywords))
+	}
+}
+
+func TestSpawnKeywordsFromEvents_NonSpawnEventsIgnored(t *testing.T) {
+	now := time.Date(2026, 3, 19, 12, 0, 0, 0, time.UTC)
+	recentTS := now.Add(-1 * time.Hour).Unix()
+
+	events := []orient.Event{
+		{
+			Type:      "agent.completed",
+			Timestamp: recentTS,
+			Data: map[string]interface{}{
+				"skill": "investigation",
+				"task":  "Something completed",
+			},
+		},
+		{
+			Type:      "session.started",
+			Timestamp: recentTS,
+			Data:      map[string]interface{}{"goal": "test session"},
+		},
+	}
+
+	keywords := spawnKeywordsFromEvents(events, now)
+	if len(keywords) != 0 {
+		t.Errorf("expected 0 keywords from non-spawn events, got %d: %v", len(keywords), keywords)
+	}
+}
+
+func TestSpawnKeywordsFromEvents_NilDataSkipped(t *testing.T) {
+	now := time.Date(2026, 3, 19, 12, 0, 0, 0, time.UTC)
+	recentTS := now.Add(-1 * time.Hour).Unix()
+
+	events := []orient.Event{
+		{Type: "session.spawned", Timestamp: recentTS, Data: nil},
+	}
+
+	keywords := spawnKeywordsFromEvents(events, now)
+	if len(keywords) != 0 {
+		t.Errorf("expected 0 keywords from event with nil data, got %d", len(keywords))
+	}
+}
+
+func TestSpawnKeywordsFromEvents_PunctuationStripped(t *testing.T) {
+	now := time.Date(2026, 3, 19, 12, 0, 0, 0, time.UTC)
+	recentTS := now.Add(-1 * time.Hour).Unix()
+
+	events := []orient.Event{
+		{
+			Type:      "session.spawned",
+			Timestamp: recentTS,
+			Data: map[string]interface{}{
+				"skill": "feature-impl",
+				"task":  "Check events.jsonl, verify gates (enforcement), and hooks.",
+			},
+		},
+	}
+
+	keywords := spawnKeywordsFromEvents(events, now)
+	kwSet := make(map[string]bool)
+	for _, kw := range keywords {
+		kwSet[kw] = true
+	}
+
+	// "gates" from "gates," should have comma stripped
+	if !kwSet["gates"] {
+		t.Error("missing 'gates' - comma not stripped")
+	}
+	// "hooks" from "hooks." should have period stripped
+	if !kwSet["hooks"] {
+		t.Error("missing 'hooks' - trailing period not stripped")
+	}
+	// "enforcement" from "(enforcement)," should have parens+comma stripped
+	if !kwSet["enforcement"] {
+		t.Error("missing 'enforcement' - parens not stripped")
+	}
+}
+
+func TestSpawnKeywordsOverlapWithDomainTags(t *testing.T) {
+	// Verify that realistic spawn events produce keywords
+	// that overlap with claim domain_tags from claims.yaml files.
+	now := time.Date(2026, 3, 19, 12, 0, 0, 0, time.UTC)
+	recentTS := now.Add(-2 * time.Hour).Unix()
+
+	events := []orient.Event{
+		{
+			Type:      "session.spawned",
+			Timestamp: recentTS,
+			Data: map[string]interface{}{
+				"skill": "investigation",
+				"task":  "Investigate spawn gate enforcement for hotspot accretion",
+			},
+		},
+		{
+			Type:      "session.spawned",
+			Timestamp: recentTS,
+			Data: map[string]interface{}{
+				"skill": "architect",
+				"task":  "Design hook enforcement for skill deployment",
+			},
+		},
+	}
+
+	keywords := spawnKeywordsFromEvents(events, now)
+
+	// Known domain_tags from claims.yaml files in this project
+	domainTags := map[string]string{
+		"gates":         "AE-01",
+		"enforcement":   "AE-01",
+		"hooks":         "AE-01",
+		"architect":     "AE-02",
+		"investigation": "AE-02",
+		"hotspot":       "AE-07",
+		"accretion":     "AE-07",
+	}
+
+	kwSet := make(map[string]bool)
+	for _, kw := range keywords {
+		kwSet[kw] = true
+	}
+
+	var overlaps []string
+	for tag, claimID := range domainTags {
+		if kwSet[tag] {
+			overlaps = append(overlaps, tag+" ("+claimID+")")
+		}
+	}
+	sort.Strings(overlaps)
+
+	if len(overlaps) == 0 {
+		t.Errorf("no keyword/domain_tag overlaps found; keywords=%v", keywords)
+	}
+
+	// Expect these specific overlaps from the test data
+	for _, tag := range []string{"enforcement", "hotspot", "accretion", "architect", "investigation"} {
+		if !kwSet[tag] {
+			t.Errorf("expected keyword %q to overlap with domain_tags, not found in %v", tag, keywords)
+		}
+	}
+}
+
+func TestIsStopWord(t *testing.T) {
+	if !isStopWord("that") {
+		t.Error("'that' should be a stop word")
+	}
+	if !isStopWord("from") {
+		t.Error("'from' should be a stop word")
+	}
+	if isStopWord("gates") {
+		t.Error("'gates' should not be a stop word")
+	}
+	if isStopWord("enforcement") {
+		t.Error("'enforcement' should not be a stop word")
 	}
 }
