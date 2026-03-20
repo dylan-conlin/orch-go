@@ -21,7 +21,7 @@ type GovernanceProtectedPath struct {
 // ~/.orch/hooks/gate-governance-file-protection.py
 var GovernanceProtectedPaths = []GovernanceProtectedPath{
 	{Pattern: "pkg/spawn/gates/*", Description: "spawn gate logic"},
-	{Pattern: "pkg/verify/precommit.go", Description: "pre-commit verification gate"},
+	{Pattern: "pkg/verify/*_precommit.go", Description: "pre-commit verification gates"},
 	{Pattern: "pkg/verify/accretion.go", Description: "completion accretion gate"},
 	{Pattern: "cmd/orch/*_lint_test.go", Description: "structural lint tests"},
 	{Pattern: "cmd/orch/governance_checksum_test.go", Description: "governance checksum test"},

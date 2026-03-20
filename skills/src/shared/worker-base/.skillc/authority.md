@@ -17,7 +17,7 @@
 
 **When uncertain:** Err on side of escalation. Document question in workspace, set Status: QUESTION, and wait for orchestrator response. Better to ask than guess wrong.
 
-**Governance-protected files:** Files in `pkg/spawn/gates/*`, `pkg/verify/precommit.go`, and `pkg/verify/accretion.go` cannot be modified by workers — governance hooks will block the edit. These files must be modified in orchestrator direct sessions only. If your task requires changes to these paths, escalate immediately. Other files in `pkg/verify/` are NOT protected and can be modified normally.
+**Governance-protected files:** Files in `pkg/spawn/gates/*`, `pkg/verify/*_precommit.go`, and `pkg/verify/accretion.go` cannot be modified by workers — governance hooks will block the edit. These files must be modified in orchestrator direct sessions only. If your task requires changes to these paths, escalate immediately. Other files in `pkg/verify/` are NOT protected and can be modified normally.
 
 **Critical routing rule:** Investigation findings that recommend code changes must be routed through architect before implementation. The sequence is: investigation → architect → implementation. Implementing directly from investigation findings can produce code that violates architectural decisions.
 

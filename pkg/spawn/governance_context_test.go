@@ -69,7 +69,7 @@ func TestGovernanceContextInSpawnTemplate(t *testing.T) {
 	if !strings.Contains(content, "pkg/spawn/gates/*") {
 		t.Error("missing pkg/spawn/gates/* in governance context")
 	}
-	if !strings.Contains(content, "pkg/verify/precommit.go") {
-		t.Error("missing pkg/verify/precommit.go in governance context")
+	if !strings.Contains(content, "pkg/verify/*_precommit.go") {
+		t.Error("missing pkg/verify/*_precommit.go in governance context")
 	}
 }

@@ -518,7 +518,7 @@ A useful way to think about agent failures, though in practice most failures are
 - `cmd/orch/spawn_cmd.go` — shrank -840 lines after `pkg/spawn/backends/` (attractor evidence)
 - `pkg/spawn/gates/hotspot.go` — Spawn gate with `--architect-ref` verification
 - `pkg/verify/accretion.go` — Completion accretion gate (800/1500 thresholds, ±50 delta)
-- `pkg/verify/precommit.go` — Pre-commit growth gate (Layer 0)
+- `pkg/verify/*_precommit.go` — Pre-commit growth gates (Layer 0): accretion, duplication, model-stub
 - `cmd/orch/architecture_lint_test.go` — Structural tests (Layer 1, partial)
 
 ## Probes
