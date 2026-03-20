@@ -32,7 +32,10 @@ claims:
       - source: "Architect agents must read hotspot files to design decomposition — blocking defeats purpose"
         date: "2026-02-14"
         verdict: confirms
-    last_validated: "2026-02-14"
+      - source: "Probe: two passability mechanisms confirmed — skill exemption (hotspot gate) + operation scoping (governance hook blocks Edit/Write, permits Read). Investigation og-inv-design-analysis-hard-19mar-2503 read governance-protected files to analyze displacement."
+        date: "2026-03-19"
+        verdict: confirms
+    last_validated: "2026-03-19"
     domain_tags: ["gates", "exemptions", "architect", "investigation"]
     falsifies_if: "Knowledge-producing agents can complete their work without reading files they would be gated from"
     tensions: []
