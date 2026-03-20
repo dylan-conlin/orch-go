@@ -319,13 +319,19 @@ Completed agent activity remains viewable via hybrid persistent layer:
 
 **Existing bugs found through this analysis:** Blocked agents invisible on dashboard (serve_agents_discovery.go filters missing "blocked"); spawn-follow-up recommendations silently dropped (synthesis_parser.go regex); `beads.DefaultDir` not defer-restored in complete_pipeline.go; private key tracked in source control.
 
-### 7. Rework Path Gap
+### 7. Human Negative-Feedback Channel Structural Disuse
 
-**What happens:** When escalation is `EscalationBlock` or `EscalationFailed`, `orch complete` refuses to close — but the only options are `--force` to override or manual intervention (spawning a new agent). There is no automated rework path.
+**What happens:** `orch rework` exists (cmd/orch/rework_cmd.go, 356 lines) and `agent.reworked` events are defined — but in 1,102+ completions, there have been **0 reworks** and only **11 abandons** (all operational, none quality-based). The human feedback channel is structurally unused.
 
-**Implication:** The orchestrator must manually read SYNTHESIS.md, craft a new spawn with rework instructions, and lose the connection between the original and rework attempt. Rework count is not tracked, no `agent.reworked` event exists, beads history doesn't show the rework relationship.
+**Root cause — friction asymmetry:** Rework requires 3 mandatory inputs (beads-id, feedback text, `--bypass-triage`) plus 5 blocking preconditions (closed issue, archived workspace, worker skill only, preflight checks, full context gathering). Compare to `orch work <issue-id>` (re-spawn): 1 input, 0 preconditions. Rational actors always re-spawn rather than rework.
 
-**Missing:** An `EscalationRework` level that reopens the issue, spawns a new agent with prior SYNTHESIS.md as context, and tracks the rework lineage.
+**Root cause — vocabulary gap:** No "reject" verb exists. `orch abandon` is oriented around stuck/crashed agents (kills tmux, exports transcript, generates FAILURE_REPORT.md), not quality rejection. `orch review` suggests `orch complete` — there is no reject action in the review UX.
+
+**Root cause — auto-completion bypass:** Daemon auto-completes 37% of agents (406/1,102) via `orch complete --force`, which bypasses all interactive gates. These completions enter the learning loop indistinguishable from human-verified work.
+
+**Implication:** The learning loop has no negative signal. Skill success rates show 100% because the only path for expressing "bad work" (rework/abandon) is 8x harder than the path for expressing "work done" (complete/auto-complete). Gate effectiveness metrics are inflated — "pass" means mechanical gate passed, not work was good.
+
+**Source:** Probe `probes/2026-03-20-probe-human-feedback-channel-structural-disuse.md`
 
 ---
 
@@ -523,6 +529,10 @@ Empirically confirmed that `feature-impl` spawned with V2 + TierLight creates co
 - `pkg/verify/accretion.go` — Accretion gate with pre-existing bloat detection and net-negative bypass
 - `cmd/orch/hotspot.go` — Bloat scanner with 13-directory exclusion list; `skipBloatDirs`, `buildOutputPrefixes`
 - `cmd/orch/hotspot_coupling.go` — Coupling-cluster analysis (4th hotspot type, 389 lines, standalone file)
+
+## Probes
+
+- 2026-03-20: Human Feedback Channel Structural Disuse — 0 reworks, 11 operational abandons in 1,102 completions. Friction asymmetry (rework=8 steps, complete=0 steps) creates false ground truth. §7 updated.
 
 ## Auto-Linked Investigations
 
