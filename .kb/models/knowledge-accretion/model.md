@@ -43,7 +43,7 @@ Conditions 1-3 are context-setters (common in most modern systems). Condition 4 
 
 **Note:** A previous version of this model included a formula (`accretion_risk = f(amnesia_level × compositional_complexity / coordination_strength)`). This was removed — none of the variables have units or measured values. It was a formula-shaped sentence, not a measurement.
 
-**Observed in:** Code (daemon.go +892 lines from 30 correct commits), knowledge artifacts (85.5% orphan rate), runtime behavior (O(n) operations where N grew silently from correct usage — 5 instances measured 2026-03-20). Whether the pattern holds in other contexts is unknown — no external validation exists.
+**Observed in:** Code (daemon.go +892 lines from 30 correct commits), knowledge artifacts (85.5% orphan rate), runtime behavior (O(n) operations where N grew silently from correct usage — 5 instances measured 2026-03-20), governance infrastructure itself (35% of codebase is accretion management, growing faster than core — 18%→23% in March 2026, confirming KA-10). Whether the pattern holds in other contexts is unknown — no external validation exists.
 
 ---
 

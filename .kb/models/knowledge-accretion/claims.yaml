@@ -192,7 +192,7 @@ claims:
     confidence: confirmed
     priority: supporting
     created: "2026-03-10"
-    last_validated: "2026-03-10"
+    last_validated: "2026-03-20"
     evidence:
       - source: "Wikipedia bots conflict with each other unpredictably (PLOS ONE research)"
         date: "2026-03-10"
@@ -202,6 +202,9 @@ claims:
         verdict: confirms
       - source: "Scientific peer review creates publication bias"
         date: "2026-03-10"
+        verdict: confirms
+      - source: "orch-go self-measurement: 35% of 138K non-test Go lines (48,187 lines) are governance/measurement/KB management. Daemon 85% governance periodic tasks (22/26). Governance file share accelerated 18%→23% in March 2026, growing faster than core."
+        date: "2026-03-20"
         verdict: confirms
     domain_tags: ["meta-coordination", "second-order", "anti-accretion", "pathology"]
     falsifies_if: "An anti-accretion mechanism that operates long-term (>1 year) without producing any second-order pathologies or requiring meta-coordination"
