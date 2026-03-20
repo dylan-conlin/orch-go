@@ -8,11 +8,20 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
+)
+
+// planStalenessNotified tracks the last notification time per plan slug.
+// Plans are only re-notified after planNotifyCooldown has elapsed.
+var (
+	planStalenessNotified   = make(map[string]time.Time)
+	planStalenessNotifiedMu sync.Mutex
+	planNotifyCooldown      = 24 * time.Hour
 )
 
 // periodicTasksResult holds outputs from periodic tasks needed downstream.
@@ -557,12 +566,16 @@ func handlePlanStalenessResult(r *daemon.PlanStalenessResult, timestamp string, 
 			fmt.Printf("[%s]   %s: %s (%s)\n", timestamp, sp.Slug, sp.Reason, sp.StalenessType)
 		}
 
-		// Send desktop notification for stale plans
-		notifier := notify.Default()
-		for _, sp := range r.StalePlans {
-			if err := notifier.Send("Plan Stale: "+sp.Title, sp.Reason); err != nil {
+		// Send batched desktop notification for stale plans (deduped with 24h cooldown)
+		newStaleSlugs := filterNewStalePlans(r.StalePlans)
+		if len(newStaleSlugs) > 0 {
+			notifier := notify.Default()
+			title := fmt.Sprintf("%d stale plans need attention", len(newStaleSlugs))
+			message := strings.Join(newStaleSlugs, ", ")
+			if err := notifier.Send(title, message); err != nil {
 				fmt.Fprintf(os.Stderr, "[%s] Failed to send plan staleness notification: %v\n", timestamp, err)
 			}
+			markPlansNotified(newStaleSlugs)
 		}
 
 		slugs := make([]string, 0, len(r.StalePlans))
@@ -773,6 +786,40 @@ func handleClaimProbeResult(r *daemon.ClaimProbeResult, timestamp string, verbos
 		fmt.Printf("[%s] Claim probe: %s\n", timestamp, r.Message)
 	} else if verbose {
 		fmt.Printf("[%s] Claim probe: %s\n", timestamp, r.Message)
+	}
+}
+
+// filterNewStalePlans returns slugs of stale plans that haven't been notified within the cooldown period.
+func filterNewStalePlans(stalePlans []daemon.StalePlan) []string {
+	planStalenessNotifiedMu.Lock()
+	defer planStalenessNotifiedMu.Unlock()
+
+	now := time.Now()
+	var newSlugs []string
+	seen := make(map[string]bool) // dedup within a single result (plan can appear multiple times for different staleness types)
+	for _, sp := range stalePlans {
+		if seen[sp.Slug] {
+			continue
+		}
+		seen[sp.Slug] = true
+		if lastNotified, ok := planStalenessNotified[sp.Slug]; ok {
+			if now.Sub(lastNotified) < planNotifyCooldown {
+				continue
+			}
+		}
+		newSlugs = append(newSlugs, sp.Slug)
+	}
+	return newSlugs
+}
+
+// markPlansNotified records the current time as the last notification time for the given plan slugs.
+func markPlansNotified(slugs []string) {
+	planStalenessNotifiedMu.Lock()
+	defer planStalenessNotifiedMu.Unlock()
+
+	now := time.Now()
+	for _, slug := range slugs {
+		planStalenessNotified[slug] = now
 	}
 }
 
