@@ -474,3 +474,102 @@ func TestPreview_RejectsRecentlySpawnedIssues(t *testing.T) {
 		t.Errorf("Preview() issue ID = %q, want 'proj-2'", result.Issue.ID)
 	}
 }
+
+// Regression test for orch-go-84loq: Preview must defer test-like issues when
+// implementation siblings are pending, matching the ShouldDeferTestIssue check
+// in Decide() (ooda.go). Without this, daemon preview shows test issues as
+// spawnable but the daemon loop skips them.
+func TestPreview_DefersTestIssueWithImplSiblings(t *testing.T) {
+	d := &Daemon{
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Write tests for auth module", Priority: 0, IssueType: "task", Status: "open"},
+				{ID: "proj-2", Title: "Implement auth module", Priority: 1, IssueType: "feature", Status: "open"},
+			}, nil
+		}},
+	}
+
+	result, err := d.Preview()
+	if err != nil {
+		t.Fatalf("Preview() unexpected error: %v", err)
+	}
+
+	// The test issue should be deferred (rejected), not selected
+	if result.Issue != nil && result.Issue.ID == "proj-1" {
+		t.Error("Preview() selected test issue that should be deferred (impl sibling pending)")
+	}
+
+	// The implementation issue should be selected
+	if result.Issue == nil {
+		t.Fatal("Preview() expected spawnable issue proj-2, got nil")
+	}
+	if result.Issue.ID != "proj-2" {
+		t.Errorf("Preview() issue ID = %q, want 'proj-2'", result.Issue.ID)
+	}
+
+	// The test issue should appear in rejected issues with deferral reason
+	found := false
+	for _, r := range result.RejectedIssues {
+		if r.Issue.ID == "proj-1" {
+			found = true
+			if !strings.Contains(r.Reason, "test issue deferred") {
+				t.Errorf("rejection reason = %q, want to contain 'test issue deferred'", r.Reason)
+			}
+		}
+	}
+	if !found {
+		t.Error("Preview() should include deferred test issue in rejected issues")
+	}
+}
+
+func TestPreview_NoDefferWhenAllSiblingsComplete(t *testing.T) {
+	d := &Daemon{
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Write tests for auth module", Priority: 0, IssueType: "task", Status: "open"},
+				{ID: "proj-2", Title: "Implement auth module", Priority: 1, IssueType: "feature", Status: "closed"},
+			}, nil
+		}},
+	}
+
+	result, err := d.Preview()
+	if err != nil {
+		t.Fatalf("Preview() unexpected error: %v", err)
+	}
+
+	// When all impl siblings are closed, test issue should be spawnable
+	if result.Issue == nil {
+		t.Fatal("Preview() expected spawnable test issue, got nil")
+	}
+	if result.Issue.ID != "proj-1" {
+		t.Errorf("Preview() issue ID = %q, want 'proj-1' (impl sibling closed)", result.Issue.ID)
+	}
+}
+
+func TestPreview_ShowsVerificationPaused(t *testing.T) {
+	tracker := NewVerificationTracker(2)
+	tracker.RecordCompletion("test-1")
+	tracker.RecordCompletion("test-2")
+	// Tracker should now be paused (2/2)
+
+	d := &Daemon{
+		VerificationTracker: tracker,
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Issue", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		}},
+	}
+
+	result, err := d.Preview()
+	if err != nil {
+		t.Fatalf("Preview() unexpected error: %v", err)
+	}
+
+	if !result.VerificationPaused {
+		t.Error("Preview() should report verification paused")
+	}
+	if result.VerificationStatus == "" {
+		t.Error("Preview() should set verification status message")
+	}
+}

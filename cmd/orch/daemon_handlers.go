@@ -34,13 +34,11 @@ func runDaemonDryRun() error {
 	}
 
 	// Show verification status in dry-run output
-	if d.VerificationTracker != nil {
+	if result.VerificationPaused {
+		fmt.Printf("[DRY-RUN] Verification pause: %s\n", result.VerificationStatus)
+	} else if d.VerificationTracker != nil {
 		verifyStatus := d.VerificationTracker.Status()
-		if d.VerificationTracker.IsPaused() {
-			breakdown := verificationBreakdown()
-			fmt.Printf("[DRY-RUN] Verification pause: %d unverified completions, threshold is %d%s\n",
-				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
-		} else if verifyStatus.IsEnabled() {
+		if verifyStatus.IsEnabled() {
 			fmt.Printf("[DRY-RUN] Verification check: %d/%d unverified completions\n",
 				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
 		}
@@ -178,6 +176,11 @@ func runDaemonPreview() error {
 	result, err := d.Preview()
 	if err != nil {
 		return fmt.Errorf("preview error: %w", err)
+	}
+
+	// Show verification status (matches runDaemonDryRun behavior)
+	if result.VerificationPaused {
+		fmt.Printf("Verification pause: %s\n\n", result.VerificationStatus)
 	}
 
 	// Get current directory for context

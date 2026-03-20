@@ -22,6 +22,8 @@ type PreviewResult struct {
 	Message            string
 	RateLimited        bool             // True if rate limit would prevent spawning
 	RateStatus         string           // Rate limit status message (e.g., "5/20 spawns in last hour")
+	VerificationPaused bool             // True if verification pause would prevent spawning
+	VerificationStatus string           // Verification pause status message
 	HotspotWarnings       []HotspotWarning       // Warnings about hotspot areas this issue may touch
 	ChannelHealthWarnings []ChannelHealthWarning // Skills with rework=0 + high completions (silent channel)
 	RejectedIssues        []RejectedIssue        // Issues that were rejected with reasons
@@ -63,6 +65,14 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 		}
 	}
 
+	// Check verification pause status (matches CheckPreSpawnGates gate 1)
+	if d.VerificationTracker != nil && d.VerificationTracker.IsPaused() {
+		status := d.VerificationTracker.Status()
+		result.VerificationPaused = true
+		result.VerificationStatus = fmt.Sprintf("Paused for human verification (%d/%d auto-completions). Resume with: orch daemon resume",
+			status.CompletionsSinceVerification, status.Threshold)
+	}
+
 	// Get all issues and categorize them
 	issues, err := d.resolveIssueQuerier().ListReadyIssues()
 	if err != nil {
@@ -85,6 +95,16 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 
 	var spawnable *Issue
 	for _, issue := range issues {
+		// Coordination: defer test issues when implementation siblings are pending.
+		// Matches the ShouldDeferTestIssue check in Decide() (ooda.go).
+		if shouldDefer, reason := ShouldDeferTestIssue(issue, issues); shouldDefer {
+			result.RejectedIssues = append(result.RejectedIssues, RejectedIssue{
+				Issue:  issue,
+				Reason: reason,
+			})
+			continue
+		}
+
 		// Use CheckIssueCompliance — the same filter as the poll loop.
 		// This ensures Preview accurately reflects what the daemon will spawn.
 		filter := d.CheckIssueCompliance(issue, nil, epicChildIDs)
