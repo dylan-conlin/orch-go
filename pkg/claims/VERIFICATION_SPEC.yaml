@@ -1,0 +1,11 @@
+test_command: "go test -count=1 ./pkg/claims/ -run TestFindClusters"
+expectations:
+  - 9 tests pass covering: empty input, below threshold, meets threshold, single model filtered, multiple clusters, domain tags, score weighting, custom threshold, sort order
+  - FindClusters returns []TensionCluster sorted by score descending
+  - Hub-based clustering groups tensions by shared target claim
+  - Threshold enforced (default 3+ claims from 2+ models)
+  - Score formula: contradicts*3 + extends*2 + confirms*1 + (distinct_models-1)*2
+files_created:
+  - pkg/claims/cluster.go
+  - pkg/claims/cluster_test.go
+manual_steps: none

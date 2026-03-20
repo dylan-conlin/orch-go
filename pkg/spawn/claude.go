@@ -67,7 +67,9 @@ func MCPConfigJSON(preset string) (string, bool) {
 // - When settings is set, adds --settings flag for worker hook isolation
 // - When systemPromptFile is set, adds --append-system-prompt with file content
 //   via command substitution and --disable-slash-commands to prevent auto-discovery
-func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsDir, beadsID, effort string, maxTurns int, settings, systemPromptFile string) string {
+// - When disallowTools is set, adds --disallowedTools flag (decoupled from claudeContext
+//   so exploration orchestrators can run as workers while retaining tool restrictions)
+func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsDir, beadsID, effort string, maxTurns int, settings, systemPromptFile, disallowTools string) string {
 	// Account isolation prefix: when configDir is set and non-default,
 	// unset the OAuth token and set CLAUDE_CONFIG_DIR so the Claude CLI
 	// uses the correct account's config directory.
@@ -99,10 +101,12 @@ func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsD
 		}
 	}
 
-	// Orchestrator tool restrictions: remove worker-level tools that orchestrators should not use
+	// Tool restrictions: passed explicitly via disallowTools parameter.
+	// Decoupled from CLAUDE_CONTEXT so explore orchestrators (CLAUDE_CONTEXT=worker)
+	// can still have orchestrator-level tool restrictions.
 	disallowFlag := ""
-	if claudeContext == "orchestrator" || claudeContext == "meta-orchestrator" {
-		disallowFlag = " --disallowedTools 'Agent,Edit,Write,NotebookEdit'"
+	if disallowTools != "" {
+		disallowFlag = fmt.Sprintf(" --disallowedTools '%s'", disallowTools)
 	}
 
 	// Beads ID prefix: when beadsID is set, export ORCH_BEADS_ID so Stop hooks
@@ -171,7 +175,7 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 	// 4. Launch claude using the context file
 	contextPath := cfg.ContextFilePath()
 
-	launchCmd := BuildClaudeLaunchCommand(contextPath, cfg.ClaudeContext(), cfg.MCP, cfg.AccountConfigDir, cfg.BeadsDir, cfg.BeadsID, cfg.Effort, cfg.MaxTurns, cfg.Settings, cfg.SystemPromptFile)
+	launchCmd := BuildClaudeLaunchCommand(contextPath, cfg.ClaudeContext(), cfg.MCP, cfg.AccountConfigDir, cfg.BeadsDir, cfg.BeadsID, cfg.Effort, cfg.MaxTurns, cfg.Settings, cfg.SystemPromptFile, cfg.DisallowTools)
 
 	if err := tmux.SendKeys(windowTarget, launchCmd); err != nil {
 		return nil, fmt.Errorf("failed to send launch command: %w", err)
