@@ -394,7 +394,7 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 	// Open loops are surfaced as warnings, not errors.
 	if !isOrch && ShouldRunGate(verifyLevel, GateConsequenceSensor) {
 		result.GatesRun = append(result.GatesRun, GateConsequenceSensor)
-		sensorResult := CheckConsequenceSensors(projectDir, result.Skill)
+		sensorResult := CheckConsequenceSensors(workspacePath, projectDir, result.Skill)
 		if sensorResult != nil {
 			if !sensorResult.Passed {
 				result.Passed = false

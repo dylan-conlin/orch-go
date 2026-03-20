@@ -17,6 +17,7 @@ type SkipConfig struct {
 	ArchitecturalChoices bool
 	ProbeModelMerge      bool
 	ArchitectHandoff     bool
+	ConsequenceSensor    bool
 	Artifact             bool
 	Reason               string // Required reason for skips
 }
@@ -26,7 +27,7 @@ func (c SkipConfig) HasAnySkip() bool {
 	return c.TestEvidence || c.Visual || c.GitDiff || c.Synthesis ||
 		c.Build || c.DecisionPatch || c.PhaseComplete || c.HandoffContent ||
 		c.ExplainBack || c.Accretion || c.ArchitecturalChoices ||
-		c.ProbeModelMerge || c.ArchitectHandoff || c.Artifact
+		c.ProbeModelMerge || c.ArchitectHandoff || c.ConsequenceSensor || c.Artifact
 }
 
 // SkippedGates returns a list of gate names that are being skipped.
@@ -71,6 +72,9 @@ func (c SkipConfig) SkippedGates() []string {
 	if c.ArchitectHandoff {
 		gates = append(gates, GateArchitectHandoff)
 	}
+	if c.ConsequenceSensor {
+		gates = append(gates, GateConsequenceSensor)
+	}
 	if c.Artifact {
 		gates = append(gates, GateArtifact)
 	}
@@ -106,6 +110,8 @@ func (c SkipConfig) ShouldSkipGate(gate string) bool {
 		return c.ProbeModelMerge
 	case GateArchitectHandoff:
 		return c.ArchitectHandoff
+	case GateConsequenceSensor:
+		return c.ConsequenceSensor
 	case GateArtifact:
 		return c.Artifact
 	default:

@@ -43,6 +43,7 @@ var (
 	completeSkipArchitecturalChoices bool
 	completeSkipProbeModelMerge     bool
 	completeSkipArchitectHandoff    bool
+	completeSkipConsequenceSensor   bool
 	completeSkipArtifact            bool
 	completeSkipReason              string // Required for all --skip-* flags (min 10 chars)
 
@@ -110,6 +111,7 @@ Use --skip-{gate} with --skip-reason to bypass specific gates:
   --skip-handoff-content  Skip handoff content validation (orchestrator only)
   --skip-explain-back     Skip explain-back verification gate
   --skip-accretion        Skip accretion (file size growth) gate
+  --skip-consequence-sensor Skip consequence sensor gate (architect only)
 
 Each --skip-* flag requires --skip-reason with a minimum of 10 characters
 explaining why the gate is being bypassed. Bypasses are logged for audit.
@@ -176,6 +178,7 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeSkipArchitecturalChoices, "skip-architectural-choices", false, "Skip architectural choices verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipProbeModelMerge, "skip-probe-model-merge", false, "Skip probe-to-model merge gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipArchitectHandoff, "skip-architect-handoff", false, "Skip architect handoff (recommendation) gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipConsequenceSensor, "skip-consequence-sensor", false, "Skip consequence sensor gate for architect investigations (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipArtifact, "skip-artifact", false, "Skip COMPLETION.yaml artifact validation gate (requires --skip-reason)")
 	completeCmd.Flags().StringVar(&completeSkipReason, "skip-reason", "", "Reason for skip (required for all --skip-* flags, min 10 chars)")
 
@@ -205,6 +208,7 @@ func getSkipConfig() verify.SkipConfig {
 		ArchitecturalChoices: completeSkipArchitecturalChoices,
 		ProbeModelMerge:      completeSkipProbeModelMerge,
 		ArchitectHandoff:     completeSkipArchitectHandoff,
+		ConsequenceSensor:    completeSkipConsequenceSensor,
 		Artifact:             completeSkipArtifact,
 		Reason:               completeSkipReason,
 	}
