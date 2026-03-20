@@ -216,7 +216,7 @@ This model describes the general loop, catalogs known instances, and identifies 
 
 - **With Accretion-Gravity** (`kb/.principlec/src/foundational/accretion-gravity.md`): Instance 4 of this pattern. Describes the physics of signal accumulation in code.
 
-- **With Gate Over Remind** (`kb/.principlec/src/foundational/gate-over-remind.md`): Constrains Stage 1 (capture) — if capture isn't gated, the loop starves.
+- **With Gate Over Remind** (`kb/.principlec/src/foundational/gate-over-remind.md`): Constrains Stage 1 (capture) — if capture isn't gated, the loop starves. **Boundary discovered (2026-03-20):** Gates operating at a different abstraction level than functional requirements create a coverage gap. Geometric gates (manifold, polygon count, build plate) cannot catch functional errors (LED path connectivity). Visual inspection (PNG preview + human/LLM review) is the signal capture mechanism for this gap class.
 
 - **With Named Agreements** (`.kb/investigations/2026-02-26-inv-design-cross-project-drift-detection.md`): The design response from Instance 1. First systemic design driven by explicit defect-class clustering.
 
@@ -227,6 +227,7 @@ This model describes the general loop, catalogs known instances, and identifies 
 | Date | Change | Trigger |
 |------|--------|---------|
 | 2026-02-26 | Created | Interactive session exploring defect-class metadata → reflection loop meta-pattern. Discovered pattern was operating unnamed across 4+ systems. |
+| 2026-03-20 | Extended: Gate Coverage Gap | Probe from LED magnetic letters project. "Gate Over Remind" has a boundary: gates that validate geometric properties miss functional correctness. A design that passes all 4 gate layers (parameter, geometry, printability, intent) can still be non-functional (disconnected LED channels). Visual inspection (PNG preview) captures signals that automated gates cannot. |
 
 ---
 
