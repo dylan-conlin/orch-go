@@ -533,6 +533,7 @@ Empirically confirmed that `feature-impl` spawned with V2 + TierLight creates co
 ## Probes
 
 - 2026-03-20: Human Feedback Channel Structural Disuse — 0 reworks, 11 operational abandons in 1,102 completions. Friction asymmetry (rework=8 steps, complete=0 steps) creates false ground truth. §7 updated.
+- 2026-03-20: Daemon-Driven Random Quality Audit Design — 3-layer structural pipeline: daemon periodic audit selection (weighted toward auto-completed work), spawned audit agent for intent/test/quality review, verdict-to-reject pipeline feeding `agent.rejected` events into learning loop. Key gap found: `learning.go` missing `RejectedCount` field and `agent.rejected` handler — learning loop structurally blind to rejections even after `orch reject` ships. See `.kb/investigations/2026-03-20-inv-design-daemon-driven-random-quality-audit.md`.
 
 ## Auto-Linked Investigations
 
