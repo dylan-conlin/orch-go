@@ -16,6 +16,8 @@ type ArtifactSyncResult struct {
 	IssueID       string
 	Deduped       bool
 	AgentSpawned  bool
+	OverBudget    bool
+	CLAUDEMDLines int
 	Message       string
 	Error         error
 }
@@ -30,6 +32,12 @@ type ArtifactSyncService interface {
 	CreateIssue(report *artifactsync.DriftReport) (string, error)
 	// SpawnSyncAgent spawns an artifact-sync agent to fix drift.
 	SpawnSyncAgent(report *artifactsync.DriftReport) error
+	// SpawnBudgetAwareSyncAgent spawns a sync agent with instructions to trim
+	// lowest-relevance content before adding new content (used when CLAUDE.md
+	// exceeds its line budget).
+	SpawnBudgetAwareSyncAgent(report *artifactsync.DriftReport, currentLines, budget int) error
+	// CLAUDEMDLineCount returns the current line count of CLAUDE.md in the project.
+	CLAUDEMDLineCount(projectDir string) (int, error)
 }
 
 // ShouldRunArtifactSync returns true if periodic artifact sync should run.
@@ -40,6 +48,8 @@ func (d *Daemon) ShouldRunArtifactSync() bool {
 // RunPeriodicArtifactSync runs artifact drift analysis if due.
 // Creates beads issues for drifted artifacts (with dedup) and optionally
 // auto-spawns a sync agent when drift exceeds the configured threshold.
+// When CLAUDE.md exceeds the configured line budget, the sync agent is
+// instructed to remove lowest-relevance content before adding new content.
 // Returns the result if analysis was run, or nil if it wasn't due.
 func (d *Daemon) RunPeriodicArtifactSync() *ArtifactSyncResult {
 	if !d.ShouldRunArtifactSync() {
@@ -98,14 +108,34 @@ func (d *Daemon) RunPeriodicArtifactSync() *ArtifactSyncResult {
 	}
 	result.IssueID = issueID
 
+	// Check CLAUDE.md line budget before spawning
+	budget := d.Config.ArtifactSyncCLAUDEMDLineBudget
+	if budget <= 0 {
+		budget = 300 // fallback default
+	}
+	if lineCount, err := svc.CLAUDEMDLineCount(projectDir); err == nil {
+		result.CLAUDEMDLines = lineCount
+		result.OverBudget = lineCount > budget
+	}
+
 	// Auto-spawn sync agent if enabled and entries exceed threshold
 	if d.Config.ArtifactSyncAutoSpawn && result.EntriesCount >= d.Config.ArtifactSyncAutoSpawnThreshold {
-		if err := svc.SpawnSyncAgent(result.Report); err != nil {
-			result.Message = fmt.Sprintf("Artifact sync: created issue %s, but spawn failed: %v", issueID, err)
+		var spawnErr error
+		if result.OverBudget {
+			spawnErr = svc.SpawnBudgetAwareSyncAgent(result.Report, result.CLAUDEMDLines, budget)
+		} else {
+			spawnErr = svc.SpawnSyncAgent(result.Report)
+		}
+		if spawnErr != nil {
+			result.Message = fmt.Sprintf("Artifact sync: created issue %s, but spawn failed: %v", issueID, spawnErr)
 			// Don't return error — issue was created successfully
 		} else {
 			result.AgentSpawned = true
-			result.Message = fmt.Sprintf("Artifact sync: created issue %s, spawned sync agent (%d entries)", issueID, result.EntriesCount)
+			if result.OverBudget {
+				result.Message = fmt.Sprintf("Artifact sync: created issue %s, spawned budget-aware sync agent (%d entries, CLAUDE.md %d/%d lines)", issueID, result.EntriesCount, result.CLAUDEMDLines, budget)
+			} else {
+				result.Message = fmt.Sprintf("Artifact sync: created issue %s, spawned sync agent (%d entries)", issueID, result.EntriesCount)
+			}
 		}
 	} else {
 		result.Message = fmt.Sprintf("Artifact sync: created issue %s (%d entries, %d events)", issueID, result.EntriesCount, result.EventsCount)

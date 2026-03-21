@@ -2,9 +2,11 @@
 package daemon
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/artifactsync"
@@ -115,6 +117,31 @@ func (s *defaultArtifactSyncService) SpawnSyncAgent(report *artifactsync.DriftRe
 	return nil
 }
 
+func (s *defaultArtifactSyncService) SpawnBudgetAwareSyncAgent(report *artifactsync.DriftReport, currentLines, budget int) error {
+	task := buildBudgetAwareSyncTask(report, currentLines, budget)
+	cmd := exec.Command("orch", "spawn", "--bypass-triage", "--light", "artifact-sync", task)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to spawn budget-aware artifact-sync agent: %w: %s", err, string(output))
+	}
+	return nil
+}
+
+func (s *defaultArtifactSyncService) CLAUDEMDLineCount(projectDir string) (int, error) {
+	if projectDir == "" {
+		var err error
+		projectDir, err = os.Getwd()
+		if err != nil {
+			return 0, fmt.Errorf("failed to get working directory: %w", err)
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(projectDir, "CLAUDE.md"))
+	if err != nil {
+		return 0, fmt.Errorf("failed to read CLAUDE.md: %w", err)
+	}
+	return bytes.Count(data, []byte("\n")) + 1, nil
+}
+
 func formatArtifactSyncDescription(report *artifactsync.DriftReport) string {
 	var b strings.Builder
 	b.WriteString("Artifact drift detected. The following artifacts may need updating:\n\n")
@@ -157,6 +184,44 @@ func buildArtifactSyncTask(report *artifactsync.DriftReport) string {
 		}
 		lines = append(lines, line)
 	}
+
+	return strings.Join(lines, "\n")
+}
+
+func buildBudgetAwareSyncTask(report *artifactsync.DriftReport, currentLines, budget int) string {
+	var lines []string
+	lines = append(lines, fmt.Sprintf("CLAUDE.md LINE BUDGET EXCEEDED: %d lines (budget: %d). Before adding new content, you MUST remove lowest-relevance content to bring the file under budget.", currentLines, budget))
+	lines = append(lines, "")
+	lines = append(lines, "Steps:")
+	lines = append(lines, "1. Read CLAUDE.md and identify sections with lowest relevance to agent behavior")
+	lines = append(lines, "2. Remove or condense those sections until line count is under the budget")
+	lines = append(lines, "3. Then update the following drifted artifacts:")
+	lines = append(lines, "")
+
+	for _, entry := range report.Entries {
+		label := entry.ArtifactPath
+		if entry.SectionName != "" {
+			label = fmt.Sprintf("%s:%s", entry.ArtifactPath, entry.SectionName)
+		}
+
+		var commitRanges []string
+		seen := make(map[string]bool)
+		for _, ev := range entry.Events {
+			if ev.CommitRange != "" && !seen[ev.CommitRange] {
+				seen[ev.CommitRange] = true
+				commitRanges = append(commitRanges, ev.CommitRange)
+			}
+		}
+
+		line := fmt.Sprintf("- %s (triggers: %s)", label, strings.Join(entry.Triggers, ", "))
+		if len(commitRanges) > 0 {
+			line += fmt.Sprintf(" [commits: %s]", strings.Join(commitRanges, ", "))
+		}
+		lines = append(lines, line)
+	}
+
+	lines = append(lines, "")
+	lines = append(lines, fmt.Sprintf("4. Verify final line count is under %d lines", budget))
 
 	return strings.Join(lines, "\n")
 }

@@ -1,42 +1,31 @@
+command: artifact-sync CLAUDE.md line budget
+beads_id: orch-go-52dk8
+tier: light
+
 verification:
-  description: "Wire accretion.delta events to daemon response, replacing proactive extraction periodic scan"
-  beads_id: orch-go-ek7bk
-  tier: light
+  build:
+    command: go build ./cmd/orch/
+    result: PASS
 
-  automated_checks:
-    - name: "Daemon package builds"
-      command: "go build ./pkg/daemon/"
-      result: "PASS"
+  unit_tests:
+    command: go test -v -count=1 ./pkg/daemon/ 2>&1 | grep -E 'ArtifactSync|BudgetAware'
+    result: "PASS (12 tests: 8 existing + 4 new)"
 
-    - name: "cmd/orch builds"
-      command: "go build ./cmd/orch/"
-      result: "PASS"
-
-    - name: "Accretion response unit tests (10 tests)"
-      command: "go test -count=1 ./pkg/daemon/ -run TestRunPeriodicAccretionResponse"
-      result: "PASS"
-
-    - name: "Daemon periodic integration tests"
-      command: "go test -count=1 ./cmd/orch/ -run TestRunPeriodicTasks"
-      result: "PASS"
-
-    - name: "Daemonconfig tests"
-      command: "go test -count=1 ./pkg/daemonconfig/"
-      result: "PASS"
-
-  design_match:
-    source: .kb/investigations/2026-03-20-inv-design-accretion-response-layer-wire.md
-    mechanism: "Mechanism 2: accretion.delta daemon wiring"
-    threshold: ">200 net lines across >=3 completions"
-    replaces: RunPeriodicProactiveExtraction (periodic file scan)
-    consolidation: "Event-driven detection reacts to actual agent-caused growth instead of scanning all files"
+  new_tests:
+    - TestDaemon_RunPeriodicArtifactSync_OverBudget_SpawnsBudgetAwareAgent
+    - TestDaemon_RunPeriodicArtifactSync_UnderBudget_SpawnsNormalAgent
+    - TestBuildBudgetAwareSyncTask_ContainsBudgetInstructions
+    - TestDaemon_RunPeriodicArtifactSync_LineCountError_FallsBackToNormalSpawn
 
 files_changed:
-  - pkg/daemon/accretion_response.go          # NEW: core logic + production service
-  - pkg/daemon/accretion_response_test.go      # NEW: 10 unit tests
-  - pkg/daemon/daemon.go                       # AccretionResponse field added
-  - pkg/daemon/scheduler.go                    # TaskAccretionResponse constant + registration
-  - pkg/daemonconfig/config.go                 # AccretionResponse config fields + defaults
-  - cmd/orch/daemon_loop.go                    # Wire AccretionResponseService
-  - cmd/orch/daemon_periodic.go                # Call + handler function
-  - cmd/orch/daemon_periodic_test.go           # Disable in test config
+  - pkg/daemon/artifact_sync.go           # Added OverBudget/CLAUDEMDLines fields, budget check in RunPeriodicArtifactSync, new interface methods
+  - pkg/daemon/artifact_sync_default.go   # Implemented SpawnBudgetAwareSyncAgent, CLAUDEMDLineCount, buildBudgetAwareSyncTask
+  - pkg/daemon/artifact_sync_test.go      # 4 new tests for budget behavior
+  - pkg/daemon/mock_test.go               # Added mock methods for new interface
+  - pkg/daemonconfig/config.go            # Added ArtifactSyncCLAUDEMDLineBudget (default 300)
+  - cmd/orch/daemon_periodic.go           # Added over_budget/claude_md_lines to event logging
+
+design_match:
+  source: .kb/investigations/2026-03-20-inv-design-accretion-response-layer-wire.md
+  mechanism: "Mechanism 3: CLAUDE.md Decomposition + Artifact-Sync Budget"
+  behavior: "Before spawning sync agent, check CLAUDE.md line count against budget. Over budget → instruct agent to trim lowest-relevance content first."

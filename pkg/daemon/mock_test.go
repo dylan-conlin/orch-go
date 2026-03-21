@@ -209,10 +209,12 @@ func (m *mockAgreementCheckService) HasOpenIssue(agreementID string) (bool, erro
 
 // mockArtifactSyncService implements ArtifactSyncService for tests.
 type mockArtifactSyncService struct {
-	AnalyzeFunc        func(projectDir string) (*ArtifactSyncResult, error)
-	HasOpenIssueFunc   func() (bool, error)
-	CreateIssueFunc    func(report *artifactsync.DriftReport) (string, error)
-	SpawnSyncAgentFunc func(report *artifactsync.DriftReport) error
+	AnalyzeFunc                 func(projectDir string) (*ArtifactSyncResult, error)
+	HasOpenIssueFunc            func() (bool, error)
+	CreateIssueFunc             func(report *artifactsync.DriftReport) (string, error)
+	SpawnSyncAgentFunc          func(report *artifactsync.DriftReport) error
+	SpawnBudgetAwareSyncAgentFunc func(report *artifactsync.DriftReport, currentLines, budget int) error
+	CLAUDEMDLineCountFunc       func(projectDir string) (int, error)
 }
 
 func (m *mockArtifactSyncService) Analyze(projectDir string) (*ArtifactSyncResult, error) {
@@ -241,6 +243,20 @@ func (m *mockArtifactSyncService) SpawnSyncAgent(report *artifactsync.DriftRepor
 		return m.SpawnSyncAgentFunc(report)
 	}
 	return nil
+}
+
+func (m *mockArtifactSyncService) SpawnBudgetAwareSyncAgent(report *artifactsync.DriftReport, currentLines, budget int) error {
+	if m.SpawnBudgetAwareSyncAgentFunc != nil {
+		return m.SpawnBudgetAwareSyncAgentFunc(report, currentLines, budget)
+	}
+	return nil
+}
+
+func (m *mockArtifactSyncService) CLAUDEMDLineCount(projectDir string) (int, error) {
+	if m.CLAUDEMDLineCountFunc != nil {
+		return m.CLAUDEMDLineCountFunc(projectDir)
+	}
+	return 0, nil
 }
 
 // mockSessionCleaner implements SessionCleaner for tests.
