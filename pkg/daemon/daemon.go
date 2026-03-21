@@ -108,6 +108,16 @@ type Daemon struct {
 	// instead of just labeling the issue for orchestrator review.
 	AutoCompleter AutoCompleter
 
+	// Rejector calls orch reject on audit FAIL verdicts.
+	// When set, the daemon processes AUDIT_VERDICT.md from completed audit agents
+	// and rejects the original issue on FAIL with high/medium confidence.
+	Rejector Rejector
+
+	// AuditLabeler adds/removes audit labels on beads issues.
+	// Used for low-confidence FAIL (add audit:needs-review) and
+	// PASS (remove audit:deep-review) verdicts.
+	AuditLabeler AuditLabeler
+
 	// Spawner spawns agent work.
 	Spawner Spawner
 	// Completions finds completed agents.
@@ -236,6 +246,10 @@ type Daemon struct {
 	// CapacityPoll polls account capacity and writes to file cache.
 	// When nil, uses the default implementation that calls ListAccountsWithCapacity.
 	CapacityPoll CapacityPollService
+
+	// AuditSelect handles random quality audit issue selection.
+	// When nil, uses the default implementation that queries beads and events.
+	AuditSelect AuditSelectService
 }
 
 // New creates a new Daemon instance with default configuration.

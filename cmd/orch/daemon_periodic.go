@@ -246,6 +246,11 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 		handleCapacityPollResult(r, timestamp, verbose, logger)
 	}
 
+	// Random quality audit selection (weighted toward auto-completed work)
+	if r := d.RunPeriodicAuditSelect(); r != nil {
+		handleAuditSelectResult(r, timestamp, verbose, logger)
+	}
+
 	// Tension cluster scan (create architect issues for cross-model tension clusters)
 	if r := d.RunPeriodicTensionClusterScan(); r != nil {
 		handleTensionClusterResult(r, timestamp, verbose, logger)
@@ -864,6 +869,26 @@ func handleCapacityPollResult(r *daemon.CapacityPollResult, timestamp string, ve
 		fmt.Fprintf(os.Stderr, "[%s] Capacity poll error: %v\n", timestamp, r.Error)
 	} else if verbose {
 		fmt.Printf("[%s] Capacity poll: %s (%d accounts)\n", timestamp, r.Message, r.AccountCount)
+	}
+}
+
+func handleAuditSelectResult(r *daemon.AuditSelectResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Audit select error: %v\n", timestamp, r.Error)
+	} else if len(r.Selected) > 0 {
+		ids := make([]string, len(r.Selected))
+		for i, s := range r.Selected {
+			ids[i] = s.ID
+		}
+		fmt.Printf("[%s] Audit select: %s (%s)\n", timestamp, r.Message, strings.Join(ids, ", "))
+		if logger != nil {
+			logDaemonEvent(logger, "daemon.audit_select", map[string]interface{}{
+				"selected_count": len(r.Selected),
+				"selected_ids":   ids,
+			})
+		}
+	} else if verbose {
+		fmt.Printf("[%s] Audit select: %s\n", timestamp, r.Message)
 	}
 }
 

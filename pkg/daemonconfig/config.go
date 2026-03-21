@@ -366,6 +366,21 @@ type Config struct {
 
 	// CapacityPollInterval is how often to poll account capacity from the Anthropic API.
 	CapacityPollInterval time.Duration
+
+	// AuditSelectEnabled controls whether the daemon periodically selects
+	// random completed issues for quality audit (deep review).
+	AuditSelectEnabled bool
+
+	// AuditSelectInterval is how often to run audit selection (default: 168h / 7 days).
+	AuditSelectInterval time.Duration
+
+	// AuditSelectCount is the number of issues to select per audit cycle (default: 2).
+	AuditSelectCount int
+
+	// AuditAutoCompleteWeight is the fraction of selections drawn from the
+	// auto-completed pool (0.0–1.0). The remainder comes from all completions.
+	// Default: 0.6 (60% auto-completed, 40% any completion).
+	AuditAutoCompleteWeight float64
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -454,5 +469,9 @@ func DefaultConfig() Config {
 		TensionClusterThreshold:                 3,              // 3+ claims from 2+ models
 		CapacityPollEnabled:                     true,
 		CapacityPollInterval:                    5 * time.Minute, // Poll every 5 minutes
+		AuditSelectEnabled:                      true,
+		AuditSelectInterval:                     168 * time.Hour, // Weekly
+		AuditSelectCount:                        2,               // 2 issues per cycle
+		AuditAutoCompleteWeight:                 0.6,             // 60% from auto-completed pool
 	}
 }

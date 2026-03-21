@@ -1,31 +1,25 @@
-command: artifact-sync CLAUDE.md line budget
-beads_id: orch-go-52dk8
+task: "Probe HE-08: Stronger models may need more coordination gates"
+beads_id: orch-go-lw6ai
 tier: light
 
 verification:
-  build:
-    command: go build ./cmd/orch/
-    result: PASS
+  probe_updated:
+    file: .kb/models/harness-engineering/probes/2026-03-20-probe-stronger-models-accretion-rate-by-model.md
+    changes: "Added effect size analysis (Cohen's d), task complexity interaction, instrumentation gap correction, per-trial variance analysis"
 
-  unit_tests:
-    command: go test -v -count=1 ./pkg/daemon/ 2>&1 | grep -E 'ArtifactSync|BudgetAware'
-    result: "PASS (12 tests: 8 existing + 4 new)"
+  model_updated:
+    file: .kb/models/harness-engineering/model.md
+    changes: "Updated invariant #8 with instrumentation status, coordination demo evidence, and effect sizes. Updated probe evidence line."
 
-  new_tests:
-    - TestDaemon_RunPeriodicArtifactSync_OverBudget_SpawnsBudgetAwareAgent
-    - TestDaemon_RunPeriodicArtifactSync_UnderBudget_SpawnsNormalAgent
-    - TestBuildBudgetAwareSyncTask_ContainsBudgetInstructions
-    - TestDaemon_RunPeriodicArtifactSync_LineCountError_FallsBackToNormalSpawn
-
-files_changed:
-  - pkg/daemon/artifact_sync.go           # Added OverBudget/CLAUDEMDLines fields, budget check in RunPeriodicArtifactSync, new interface methods
-  - pkg/daemon/artifact_sync_default.go   # Implemented SpawnBudgetAwareSyncAgent, CLAUDEMDLineCount, buildBudgetAwareSyncTask
-  - pkg/daemon/artifact_sync_test.go      # 4 new tests for budget behavior
-  - pkg/daemon/mock_test.go               # Added mock methods for new interface
-  - pkg/daemonconfig/config.go            # Added ArtifactSyncCLAUDEMDLineBudget (default 300)
-  - cmd/orch/daemon_periodic.go           # Added over_budget/claude_md_lines to event logging
-
-design_match:
-  source: .kb/investigations/2026-03-20-inv-design-accretion-response-layer-wire.md
-  mechanism: "Mechanism 3: CLAUDE.md Decomposition + Artifact-Sync Budget"
-  behavior: "Before spawning sync agent, check CLAUDE.md line count against budget. Over budget → instruct agent to trim lowest-relevance content first."
+findings:
+  claim_status: "unconfirmed"
+  evidence_direction: "directionally consistent with claim"
+  key_findings:
+    - "Coordination demo (N=160, haiku): coordination gates reduce accretion 8-12% (Cohen d 0.17-0.29)"
+    - "Placement (file routing) most effective at -12.2%"
+    - "Effect larger on complex tasks (-14.2%) than simple (-8.3%)"
+    - "System-level accretion scales ~5x with stronger model completion rates"
+    - "Instrumentation gap partially remains: accretion.delta lacks line-count fields"
+  blockers:
+    - "Fix accretion.delta event emission to include code_added/code_net"
+    - "Run coordination demo with --model opus for cross-model comparison"

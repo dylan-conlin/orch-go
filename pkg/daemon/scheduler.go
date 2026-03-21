@@ -31,6 +31,7 @@ const (
 	TaskClaimProbeGeneration           = "claim_probe_generation"
 	TaskTensionClusterScan             = "tension_cluster_scan"
 	TaskCapacityPoll                   = "capacity_poll"
+	TaskAuditSelect                    = "audit_select"
 )
 
 // periodicTask holds the scheduling state for a single periodic task.
@@ -152,6 +153,7 @@ func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s.Register(TaskClaimProbeGeneration, cfg.ClaimProbeGenerationEnabled, cfg.ClaimProbeGenerationInterval)
 	s.Register(TaskTensionClusterScan, cfg.TensionClusterScanEnabled, cfg.TensionClusterScanInterval)
 	s.Register(TaskCapacityPoll, cfg.CapacityPollEnabled, cfg.CapacityPollInterval)
+	s.Register(TaskAuditSelect, cfg.AuditSelectEnabled, cfg.AuditSelectInterval)
 	return s
 }
 
