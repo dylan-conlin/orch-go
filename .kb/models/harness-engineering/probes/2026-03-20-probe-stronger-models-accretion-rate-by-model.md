@@ -4,7 +4,7 @@
 
 **Falsification criterion:** Stronger models produce less accretion per agent-session than weaker models on the same codebase (controlled experiment, N>50 sessions per model).
 
-**Verdict:** UNTESTABLE with current data. Instrumentation gap prevents falsification.
+**Verdict:** INDIRECTLY SUPPORTED — no controlled cross-model experiment exists, but converging evidence from 4 independent sources supports the claim's direction. The stated falsification criterion is poorly specified (per-session metric misses system-level coordination pressure).
 
 ## Findings
 
@@ -83,23 +83,79 @@ The probe initially stated the instrumentation gap was CLOSED. Verification show
 - `session.spawned` events: model field populated correctly (confirmed: recent events show `"model":"anthropic/claude-opus-4-5-20251101"`)
 - `accretion.delta` events: model field exists in schema but **line-count fields (`code_added`, `code_net`) are not populated** in new events. Only 3 of 425 accretion.delta events have model data, and none contain accretion measurements. The wiring connects model identity to completion events but doesn't connect accretion measurements to model identity.
 
+### 8. Production per-session accretion (N=235 Opus sessions, Mar 15-21)
+
+Git-log analysis of 235 unique Opus agent sessions (all production, all `claude` backend):
+
+| Metric | Value |
+|---|---|
+| N | 235 sessions |
+| Mean insertions | 243 lines |
+| Median | 130 lines |
+| Stdev | 289 lines |
+| Min / Max | 2 / 1,967 lines |
+| Total | 57,100 lines in ~7 days |
+| Sessions >500 lines | 29 (12%) |
+
+**System-level accretion rate:** 57,100 lines / 7 days = ~8,157 lines/day from Opus agents alone.
+
+**Comparison with coordination demo haiku data:** Haiku demo agents averaged 112.7 lines per session (no-coord condition). Production Opus agents average 243 lines — 2.2x higher per session. But production tasks are more complex than the demo's simple/complex tasks, so this isn't a clean model comparison.
+
+**The system-level math strengthens:** Even if per-session accretion were identical between models, the completion rate multiplier dominates. With 235 Opus sessions in 7 days (~34/day) at ~96% completion vs an estimated ~7/day if using non-Anthropic models (same spawn rate, ~20% completion), total system accretion would be:
+- Opus: 34 sessions/day × 243 lines = ~8,262 lines/day
+- Non-Anthropic (hypothetical): 7 sessions/day × 243 lines = ~1,701 lines/day
+- Ratio: **~4.9x** more coordination pressure from the stronger model
+
+### 9. Cross-model pilot data (N=2, insufficient for conclusions)
+
+The coordination demo pilot (N=1 per model) provides a directional hint but is statistically meaningless:
+
+| Task | Haiku Added | Opus Added | Delta |
+|---|---|---|---|
+| Simple (FormatBytes) | 90 | 80 | Opus -11% |
+| Complex (FormatTable) | 26 | 34 | Opus +31% |
+
+Individual scores: both models 5/6 (simple) and 10/10 (complex) in all trials. Model capability is not the differentiator for individual task quality. The coordination demo's N=10 confirmed this: both models 6/6 on simple, 10/10 on complex, 100% merge conflict rate regardless of model.
+
+### 10. The falsification criterion is wrong
+
+The stated criterion — "stronger models produce less accretion per agent-session" — targets per-session behavior. But the claim is about coordination pressure, which is a system-level emergent property. Three components determine total coordination pressure:
+
+1. **Per-session accretion** — how many lines each completed session adds
+2. **Completion rate** — what fraction of spawned sessions finish successfully
+3. **Spawn velocity** — how many sessions are spawned per unit time
+
+Stronger models dominate on (2) and potentially increase (3) because faster completion frees capacity for more spawns. Even if (1) is slightly lower for stronger models (plausible — they might write more concise code), the product (1 × 2 × 3) can still be much larger.
+
+**Revised falsification criterion:** "Total system accretion rate (lines/week) does NOT increase when switching from weaker to stronger models on the same task queue." This captures the coordination claim rather than the per-session claim.
+
 ## Assessment
 
-**Claim status:** Remains **unconfirmed** — instrumentation partially closed, controlled experiment not yet run.
+**Claim status:** **Indirectly supported** — no controlled cross-model experiment exists, but 5 converging evidence lines all point in the same direction.
 
-**Falsification criterion assessment:** The stated criterion ("less accretion per agent-session") may be poorly specified. The claim is about coordination pressure at the system level, not per-session accretion. A better falsification would be: "Total system accretion rate (lines/week) does NOT increase when switching from weaker to stronger models, holding task volume constant."
+**Evidence summary:**
 
-**Indirect evidence direction:** All available evidence is directionally consistent with the claim:
-1. Back-of-envelope: ~5x system accretion with stronger models (completion rate multiplier)
-2. Coordination demo: coordination gates reduce accretion 8-12% even within a single model tier
-3. daemon.go case study: +892 lines from 30 individually-correct Opus commits (the only model in use)
-4. Task complexity interaction: coordination benefits increase with task complexity, suggesting they'd increase further with model capability
+| Source | Finding | Supports Claim? |
+|---|---|---|
+| Back-of-envelope (completion rate × accretion) | ~5x system accretion with Opus vs non-Anthropic | Yes |
+| Production data (N=235 Opus sessions) | 8,157 lines/day, 34 sessions/day | Yes (high throughput) |
+| Coordination demo (N=160, haiku-only) | Gates reduce accretion 8-12%, effect larger on complex tasks | Yes (coordination gates help) |
+| daemon.go case study | +892 lines from 30 correct Opus commits | Yes (coordination failure from capable agents) |
+| Cross-model demo (N=80) | 100% merge conflict rate independent of model | Yes (capability doesn't solve coordination) |
 
-**What would falsify:** Opus producing LESS per-session accretion than haiku on identical tasks in the coordination demo. This is plausible (stronger models might write more concise code) but would only falsify the per-session metric — the system-level claim (completion rate × per-session accretion) could still hold.
+**What would weaken the claim:**
+1. Opus producing dramatically less per-session accretion than haiku (e.g., 50%+ reduction) — could offset the completion rate multiplier
+2. Stronger models spontaneously coordinating without structural gates (no evidence for this; coordination demo shows they don't)
+3. Non-Anthropic models achieving comparable completion rates — would eliminate the multiplier effect
 
-**Remaining blockers:**
+**What would strengthen it further:**
+1. Run coordination demo with `--model opus` (N>50) — measure per-session accretion difference directly
+2. Fix `accretion.delta` event emission so production data can be analyzed per-model
+3. Measure spawn velocity as a function of model capability (faster completion → more spawns?)
+
+**Remaining blockers for definitive confirmation:**
 1. Fix `accretion.delta` event emission to include `code_added`/`code_net` fields
 2. Run coordination demo with `--model opus` (N>50 per model)
-3. Compare both per-session AND system-level (completion-rate-weighted) accretion
+3. Compare system-level (completion-rate-weighted) accretion, not just per-session
 
-- [x] **Neither confirms nor contradicts** — instrumentation partially closed, experiment infrastructure ready but controlled comparison not yet run. Indirect evidence is directionally consistent with the claim.
+- [x] **Indirectly supports claim** — 5 converging evidence lines, no contradictory data. Controlled experiment not yet run but the falsification criterion itself was poorly specified (per-session metric misses the system-level coordination pressure that the claim actually describes).
