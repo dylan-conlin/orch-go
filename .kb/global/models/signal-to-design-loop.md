@@ -216,7 +216,7 @@ This model describes the general loop, catalogs known instances, and identifies 
 
 - **With Accretion-Gravity** (`kb/.principlec/src/foundational/accretion-gravity.md`): Instance 4 of this pattern. Describes the physics of signal accumulation in code.
 
-- **With Gate Over Remind** (`kb/.principlec/src/foundational/gate-over-remind.md`): Constrains Stage 1 (capture) — if capture isn't gated, the loop starves. **Boundary discovered (2026-03-20):** Gates operating at a different abstraction level than functional requirements create a coverage gap. Geometric gates (manifold, polygon count, build plate) cannot catch functional errors (LED path connectivity). Visual inspection (PNG preview + human/LLM review) is the signal capture mechanism for this gap class.
+- **With Gate Over Remind** (`kb/.principlec/src/foundational/gate-over-remind.md`): Constrains Stage 1 (capture) — if capture isn't gated, the loop starves. **Boundary discovered (2026-03-20):** Gates operating at a different abstraction level than functional requirements create a coverage gap. Geometric gates (manifold, polygon count, build plate) cannot catch functional errors (LED path connectivity). Visual inspection (PNG preview + human/LLM review) is the signal capture mechanism for this gap class. **Extended (2026-03-20):** The principle holds across abstraction levels when the gate is multimodal. A vision gate (multi-angle renders + LLM analysis with structured functional checklists) bridges the geometric-to-functional gap. This is a new gate category: **judgment gates with visual evidence**, distinct from Layer 4's judgment gates with code evidence. Designed calibration protocol establishes precision/recall before enabling blocking mode.
 
 - **With Named Agreements** (`.kb/investigations/2026-02-26-inv-design-cross-project-drift-detection.md`): The design response from Instance 1. First systemic design driven by explicit defect-class clustering.
 
@@ -228,6 +228,7 @@ This model describes the general loop, catalogs known instances, and identifies 
 |------|--------|---------|
 | 2026-02-26 | Created | Interactive session exploring defect-class metadata → reflection loop meta-pattern. Discovered pattern was operating unnamed across 4+ systems. |
 | 2026-03-20 | Extended: Gate Coverage Gap | Probe from LED magnetic letters project. "Gate Over Remind" has a boundary: gates that validate geometric properties miss functional correctness. A design that passes all 4 gate layers (parameter, geometry, printability, intent) can still be non-functional (disconnected LED channels). Visual inspection (PNG preview) captures signals that automated gates cannot. |
+| 2026-03-20 | Extended: Layer 5 Vision Gate Design | Second probe from LED magnetic letters. Designed multimodal vision gate (multi-angle renders + structured checklists) to close the coverage gap. Key finding: "Gate Over Remind" extends across abstraction levels when the gate is multimodal. Calibration protocol required before blocking mode. |
 
 ---
 
