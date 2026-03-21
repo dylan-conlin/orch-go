@@ -150,7 +150,12 @@ type Daemon struct {
 
 	// ProactiveExtraction provides periodic scanning for files approaching the
 	// critical 1500-line threshold. Creates architect issues at 1200 lines.
+	// DEPRECATED: Replaced by AccretionResponse for event-driven detection.
 	ProactiveExtraction ProactiveExtractionService
+
+	// AccretionResponse reacts to accretion.delta events by creating architect
+	// extraction issues when files grow rapidly across multiple completions.
+	AccretionResponse AccretionResponseService
 
 	// TriggerScan provides periodic pattern detection that creates beads issues
 	// for recurring bugs, orphaned investigations, stale threads, etc.

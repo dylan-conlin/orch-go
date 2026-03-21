@@ -1,41 +1,42 @@
-command: orch reject
-beads_id: orch-go-c51kt
-tier: light
-
 verification:
-  build:
-    command: go build ./cmd/orch/
-    result: PASS
+  description: "Wire accretion.delta events to daemon response, replacing proactive extraction periodic scan"
+  beads_id: orch-go-ek7bk
+  tier: light
 
-  unit_tests:
-    command: go test -v -count=1 -run "^TestLogAgentRejected" ./pkg/events/
-    result: "PASS (2 tests: TestLogAgentRejected, TestLogAgentRejected_OmitsEmptyOptionals)"
+  automated_checks:
+    - name: "Daemon package builds"
+      command: "go build ./pkg/daemon/"
+      result: "PASS"
 
-  cmd_tests:
-    command: go test -v -count=1 -run "^TestRejectCmd" ./cmd/orch/
-    note: Tests pass category validation and flag defaults. Full integration tests blocked by pre-existing daemon build error (CLAUDEMDLineCount missing).
+    - name: "cmd/orch builds"
+      command: "go build ./cmd/orch/"
+      result: "PASS"
 
-  manual_verification:
-    - "orch reject <closed-beads-id> 'reason' — requires a closed issue to test end-to-end"
+    - name: "Accretion response unit tests (10 tests)"
+      command: "go test -count=1 ./pkg/daemon/ -run TestRunPeriodicAccretionResponse"
+      result: "PASS"
+
+    - name: "Daemon periodic integration tests"
+      command: "go test -count=1 ./cmd/orch/ -run TestRunPeriodicTasks"
+      result: "PASS"
+
+    - name: "Daemonconfig tests"
+      command: "go test -count=1 ./pkg/daemonconfig/"
+      result: "PASS"
+
+  design_match:
+    source: .kb/investigations/2026-03-20-inv-design-accretion-response-layer-wire.md
+    mechanism: "Mechanism 2: accretion.delta daemon wiring"
+    threshold: ">200 net lines across >=3 completions"
+    replaces: RunPeriodicProactiveExtraction (periodic file scan)
+    consolidation: "Event-driven detection reacts to actual agent-caused growth instead of scanning all files"
 
 files_changed:
-  - cmd/orch/reject_cmd.go          # New command (~150 lines)
-  - cmd/orch/reject_cmd_test.go     # Unit tests for category validation and flags
-  - cmd/orch/main.go                # Register rejectCmd
-  - pkg/events/logger.go            # EventTypeAgentRejected + AgentRejectedData + LogAgentRejected
-  - pkg/events/logger_test.go       # Tests for LogAgentRejected (event shape, optional field omission)
-
-design_match:
-  source: .kb/investigations/2026-03-20-inv-design-accretion-response-layer-wire.md
-  mechanism: "Mechanism 1: orch reject"
-  args: "<beads-id> <reason> (both mandatory)"
-  flags: "--category [quality|scope|approach|stale] (default quality), --workdir"
-  actions:
-    - Validate beads ID exists and is closed
-    - Check for existing rejected label (dedup)
-    - Reopen issue via bd reopen
-    - Add rejection comment with category
-    - Emit agent.rejected event
-    - Tag issue with rejected and triage:ready labels
-  friction: 1-step (matching orch complete)
-  no_bypass_triage: true
+  - pkg/daemon/accretion_response.go          # NEW: core logic + production service
+  - pkg/daemon/accretion_response_test.go      # NEW: 10 unit tests
+  - pkg/daemon/daemon.go                       # AccretionResponse field added
+  - pkg/daemon/scheduler.go                    # TaskAccretionResponse constant + registration
+  - pkg/daemonconfig/config.go                 # AccretionResponse config fields + defaults
+  - cmd/orch/daemon_loop.go                    # Wire AccretionResponseService
+  - cmd/orch/daemon_periodic.go                # Call + handler function
+  - cmd/orch/daemon_periodic_test.go           # Disable in test config

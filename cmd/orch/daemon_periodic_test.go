@@ -107,6 +107,7 @@ func disableAllPeriodicTasks() daemon.Config {
 	config.LearningRefreshEnabled = false
 	config.PlanStalenessEnabled = false
 	config.ProactiveExtractionEnabled = false
+	config.AccretionResponseEnabled = false
 	config.TriggerScanEnabled = false
 	config.TriggerExpiryEnabled = false
 	config.DigestEnabled = false

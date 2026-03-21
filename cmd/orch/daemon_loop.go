@@ -139,8 +139,11 @@ func daemonSetup() (*daemonLoopState, error) {
 	// Wire beads health service (reuses collectHealthSnapshot from doctor_health.go)
 	d.BeadsHealth = daemon.NewDefaultBeadsHealthService(collectHealthSnapshot, getHealthStore())
 
-	// Wire proactive extraction service (creates architect issues at 1200 lines)
+	// Wire proactive extraction service (DEPRECATED — replaced by accretion response)
 	d.ProactiveExtraction = daemon.NewDefaultProactiveExtractionService()
+
+	// Wire accretion response service (event-driven extraction issue creation)
+	d.AccretionResponse = daemon.NewDefaultAccretionResponseService()
 
 	// Wire trigger scan service and detectors (pattern-based issue creation)
 	d.TriggerScan = daemon.NewDefaultTriggerScanService()

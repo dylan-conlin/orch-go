@@ -195,6 +195,11 @@ type Config struct {
 	// needed to auto-spawn a sync agent. Default is 3.
 	ArtifactSyncAutoSpawnThreshold int
 
+	// ArtifactSyncCLAUDEMDLineBudget is the maximum number of lines CLAUDE.md should
+	// contain. When over budget, sync agents are instructed to remove lowest-relevance
+	// content before adding new content. Default is 300.
+	ArtifactSyncCLAUDEMDLineBudget int
+
 	// RegistryRefreshEnabled controls whether the daemon periodically refreshes
 	// its project registry. When enabled, new projects added to kb or groups.yaml
 	// are picked up without requiring a daemon restart.
@@ -249,6 +254,15 @@ type Config struct {
 	// ProactiveExtractionInterval is how often to scan for files approaching critical size.
 	// Default is 6 hours.
 	ProactiveExtractionInterval time.Duration
+
+	// AccretionResponseEnabled controls whether event-driven accretion response is enabled.
+	// When enabled, the daemon reads accretion.delta events and creates architect issues
+	// for files that grew >200 net lines across >=3 completions. Replaces ProactiveExtraction.
+	AccretionResponseEnabled bool
+
+	// AccretionResponseInterval is how often to check accretion.delta events.
+	// Default is 1 hour.
+	AccretionResponseInterval time.Duration
 
 	// TriggerScanEnabled controls whether periodic pattern detection trigger scanning is enabled.
 	// When enabled, the daemon runs pattern detectors that surface recurring bugs,
@@ -402,6 +416,7 @@ func DefaultConfig() Config {
 		ArtifactSyncInterval:           24 * time.Hour, // Daily cadence
 		ArtifactSyncAutoSpawn:          false,          // Issues only by default
 		ArtifactSyncAutoSpawnThreshold: 3,              // 3+ entries triggers auto-spawn
+		ArtifactSyncCLAUDEMDLineBudget: 300,            // CLAUDE.md line budget
 		RegistryRefreshEnabled:         true,
 		RegistryRefreshInterval:        5 * time.Minute, // Refresh every 5 minutes
 		SynthesisAutoCreateEnabled:     true,
@@ -411,8 +426,10 @@ func DefaultConfig() Config {
 		LearningRefreshInterval:        time.Hour, // Hourly learning refresh + compliance auto-adjust
 		PlanStalenessEnabled:           true,
 		PlanStalenessInterval:          30 * time.Minute, // Check every 30 minutes
-		ProactiveExtractionEnabled:     true,
-		ProactiveExtractionInterval:    6 * time.Hour, // Every 6 hours
+		ProactiveExtractionEnabled:     false,                // DEPRECATED: replaced by AccretionResponse
+		ProactiveExtractionInterval:    6 * time.Hour,
+		AccretionResponseEnabled:       true,
+		AccretionResponseInterval:      time.Hour, // Hourly event-driven accretion check
 		TriggerScanEnabled:             true,
 		TriggerScanInterval:            time.Hour, // Hourly trigger scan
 		TriggerBudgetMax:               10,        // Max 10 open trigger issues

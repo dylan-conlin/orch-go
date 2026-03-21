@@ -21,6 +21,7 @@ const (
 	TaskLearningRefresh      = "learning_refresh"
 	TaskPlanStaleness        = "plan_staleness"
 	TaskProactiveExtraction  = "proactive_extraction"
+	TaskAccretionResponse    = "accretion_response"
 	TaskTriggerScan          = "trigger_scan"
 	TaskTriggerExpiry        = "trigger_expiry"
 	TaskDigest               = "digest"
@@ -141,6 +142,7 @@ func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s.Register(TaskLearningRefresh, cfg.LearningRefreshEnabled, cfg.LearningRefreshInterval)
 	s.Register(TaskPlanStaleness, cfg.PlanStalenessEnabled, cfg.PlanStalenessInterval)
 	s.Register(TaskProactiveExtraction, cfg.ProactiveExtractionEnabled, cfg.ProactiveExtractionInterval)
+	s.Register(TaskAccretionResponse, cfg.AccretionResponseEnabled, cfg.AccretionResponseInterval)
 	s.Register(TaskTriggerScan, cfg.TriggerScanEnabled, cfg.TriggerScanInterval)
 	s.Register(TaskTriggerExpiry, cfg.TriggerExpiryEnabled, cfg.TriggerExpiryInterval)
 	s.Register(TaskDigest, cfg.DigestEnabled, cfg.DigestInterval)

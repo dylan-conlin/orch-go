@@ -188,9 +188,14 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 		}
 	}
 
-	// Proactive extraction (1200-line threshold architect issue creation)
+	// Proactive extraction (DEPRECATED — replaced by accretion response)
 	if r := d.RunPeriodicProactiveExtraction(); r != nil {
 		handleProactiveExtractionResult(r, timestamp, verbose, logger)
+	}
+
+	// Accretion response (event-driven extraction issue creation)
+	if r := d.RunPeriodicAccretionResponse(); r != nil {
+		handleAccretionResponseResult(r, timestamp, verbose, logger)
 	}
 
 	// Trigger scan (pattern detectors create issues for recurring problems)
@@ -494,13 +499,15 @@ func handleArtifactSyncResult(r *daemon.ArtifactSyncResult, timestamp string, ve
 	} else if r.DriftDetected {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)
 		logDaemonEvent(logger, "daemon.artifact_sync", map[string]interface{}{
-			"drift_detected": true,
-			"entries":        r.EntriesCount,
-			"events":         r.EventsCount,
-			"issue_id":       r.IssueID,
-			"deduped":        r.Deduped,
-			"agent_spawned":  r.AgentSpawned,
-			"message":        r.Message,
+			"drift_detected":  true,
+			"entries":         r.EntriesCount,
+			"events":          r.EventsCount,
+			"issue_id":        r.IssueID,
+			"deduped":         r.Deduped,
+			"agent_spawned":   r.AgentSpawned,
+			"over_budget":     r.OverBudget,
+			"claude_md_lines": r.CLAUDEMDLines,
+			"message":         r.Message,
 		})
 	} else if verbose {
 		fmt.Printf("[%s] Artifact sync: %s\n", timestamp, r.Message)
@@ -631,6 +638,28 @@ func handleProactiveExtractionResult(r *daemon.ProactiveExtractionResult, timest
 			"scanned":          r.Scanned,
 			"created_issues":   r.CreatedIssues,
 			"message":          r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+	}
+}
+
+func handleAccretionResponseResult(r *daemon.AccretionResponseResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Accretion response error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.accretion_response", map[string]interface{}{
+			"created": 0,
+			"error":   r.Error.Error(),
+			"message": r.Message,
+		})
+	} else if r.Created > 0 {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		logDaemonEvent(logger, "daemon.accretion_response", map[string]interface{}{
+			"created":        r.Created,
+			"skipped":        r.Skipped,
+			"files_analyzed": r.FilesAnalyzed,
+			"created_issues": r.CreatedIssues,
+			"message":        r.Message,
 		})
 	} else if verbose {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)
