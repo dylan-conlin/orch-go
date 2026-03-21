@@ -78,6 +78,8 @@ const (
 	// EventTypeCommandInvoked logs when a measurement/diagnostic command is run,
 	// with caller context (human, daemon, orchestrator, worker) to track actual usage.
 	EventTypeCommandInvoked = "command.invoked"
+	// EventTypeAgentRejected logs when an orchestrator rejects agent work quality.
+	EventTypeAgentRejected = "agent.rejected"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -420,6 +422,37 @@ func (l *Logger) LogAgentAbandoned(data AgentAbandonedData) error {
 
 	return l.Log(Event{
 		Type:      EventTypeAgentAbandonedTelemetry,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// AgentRejectedData contains the data for an agent.rejected event.
+type AgentRejectedData struct {
+	BeadsID       string `json:"beads_id"`
+	Reason        string `json:"reason"`
+	Category      string `json:"category"`                // quality, scope, approach, stale
+	OriginalSkill string `json:"original_skill,omitempty"` // Skill from the rejected work
+	OriginalModel string `json:"original_model,omitempty"` // Model from the rejected work
+}
+
+// LogAgentRejected logs a quality rejection event for negative feedback signal.
+func (l *Logger) LogAgentRejected(data AgentRejectedData) error {
+	eventData := map[string]interface{}{
+		"beads_id": data.BeadsID,
+		"reason":   data.Reason,
+		"category": data.Category,
+	}
+	if data.OriginalSkill != "" {
+		eventData["original_skill"] = data.OriginalSkill
+	}
+	if data.OriginalModel != "" {
+		eventData["original_model"] = data.OriginalModel
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeAgentRejected,
 		SessionID: data.BeadsID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,

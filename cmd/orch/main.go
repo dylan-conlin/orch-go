@@ -65,6 +65,7 @@ func init() {
 	rootCmd.AddCommand(driftCmd)
 	rootCmd.AddCommand(nextCmd)
 	rootCmd.AddCommand(reviewCmd)
+	rootCmd.AddCommand(rejectCmd)
 	rootCmd.AddCommand(reworkCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(portCmd)

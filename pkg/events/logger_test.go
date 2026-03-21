@@ -1541,3 +1541,80 @@ func TestLogAccretionDelta_OmitsModelWhenEmpty(t *testing.T) {
 		t.Error("data.model should be omitted when empty")
 	}
 }
+
+func TestLogAgentRejected(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogAgentRejected(AgentRejectedData{
+		BeadsID:       "orch-go-test1",
+		Reason:        "Tests missing edge cases",
+		Category:      "quality",
+		OriginalSkill: "feature-impl",
+		OriginalModel: "claude-opus-4-5-20251101",
+	})
+	if err != nil {
+		t.Fatalf("LogAgentRejected() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	raw := string(data)
+
+	if !strings.Contains(raw, "agent.rejected") {
+		t.Error("Expected event type agent.rejected")
+	}
+	if !strings.Contains(raw, "orch-go-test1") {
+		t.Error("Expected beads_id in event")
+	}
+	if !strings.Contains(raw, "quality") {
+		t.Error("Expected category in event")
+	}
+	if !strings.Contains(raw, "feature-impl") {
+		t.Error("Expected original_skill in event")
+	}
+
+	var event Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to parse event: %v", err)
+	}
+	if event.Type != EventTypeAgentRejected {
+		t.Errorf("Expected type %q, got %q", EventTypeAgentRejected, event.Type)
+	}
+}
+
+func TestLogAgentRejected_OmitsEmptyOptionals(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogAgentRejected(AgentRejectedData{
+		BeadsID:  "orch-go-test2",
+		Reason:   "Bad approach",
+		Category: "approach",
+	})
+	if err != nil {
+		t.Fatalf("LogAgentRejected() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	var event Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to parse event: %v", err)
+	}
+
+	if _, ok := event.Data["original_skill"]; ok {
+		t.Error("original_skill should be omitted when empty")
+	}
+	if _, ok := event.Data["original_model"]; ok {
+		t.Error("original_model should be omitted when empty")
+	}
+}

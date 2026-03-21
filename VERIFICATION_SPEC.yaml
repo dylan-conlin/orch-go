@@ -1,31 +1,41 @@
+command: orch reject
+beads_id: orch-go-c51kt
+tier: light
+
 verification:
-  task: "Decompose CLAUDE.md from 753 to ~250 lines"
-  beads_id: orch-go-9iedb
+  build:
+    command: go build ./cmd/orch/
+    result: PASS
 
-  assertions:
-    - name: "CLAUDE.md line count reduced"
-      check: "wc -l CLAUDE.md"
-      expected: "~175 lines (was 753)"
-      status: passed
+  unit_tests:
+    command: go test -v -count=1 -run "^TestLogAgentRejected" ./pkg/events/
+    result: "PASS (2 tests: TestLogAgentRejected, TestLogAgentRejected_OmitsEmptyOptionals)"
 
-    - name: "Architecture overview extracted"
-      check: "test -f .kb/guides/architecture-overview.md"
-      expected: "File exists with system diagram, dir trees, spawn backends"
-      status: passed
+  cmd_tests:
+    command: go test -v -count=1 -run "^TestRejectCmd" ./cmd/orch/
+    note: Tests pass category validation and flag defaults. Full integration tests blocked by pre-existing daemon build error (CLAUDEMDLineCount missing).
 
-    - name: "Key packages extracted"
-      check: "test -f .kb/guides/key-packages.md"
-      expected: "File exists with package descriptions"
-      status: passed
+  manual_verification:
+    - "orch reject <closed-beads-id> 'reason' — requires a closed issue to test end-to-end"
 
-    - name: "Event tracking extracted"
-      check: "test -f .kb/guides/event-tracking.md"
-      expected: "File exists with event type table and beads close hook"
-      status: passed
+files_changed:
+  - cmd/orch/reject_cmd.go          # New command (~150 lines)
+  - cmd/orch/reject_cmd_test.go     # Unit tests for category validation and flags
+  - cmd/orch/main.go                # Register rejectCmd
+  - pkg/events/logger.go            # EventTypeAgentRejected + AgentRejectedData + LogAgentRejected
+  - pkg/events/logger_test.go       # Tests for LogAgentRejected (event shape, optional field omission)
 
-    - name: "Essential sections preserved"
-      check: "grep -c sections in CLAUDE.md"
-      expected: "Gotchas, Tab-Indented, OpenCode Fork, KB Structure, Accretion all present"
-      status: passed
-
-  manual_steps: []
+design_match:
+  source: .kb/investigations/2026-03-20-inv-design-accretion-response-layer-wire.md
+  mechanism: "Mechanism 1: orch reject"
+  args: "<beads-id> <reason> (both mandatory)"
+  flags: "--category [quality|scope|approach|stale] (default quality), --workdir"
+  actions:
+    - Validate beads ID exists and is closed
+    - Check for existing rejected label (dedup)
+    - Reopen issue via bd reopen
+    - Add rejection comment with category
+    - Emit agent.rejected event
+    - Tag issue with rejected and triage:ready labels
+  friction: 1-step (matching orch complete)
+  no_bypass_triage: true
