@@ -24,7 +24,7 @@ func TestThroughputFromEvents(t *testing.T) {
 		{Type: "agent.abandoned", Timestamp: now.Unix()},
 	}
 
-	tp := ComputeThroughput(events, now, 1)
+	tp := ComputeThroughput(events, now, 1, "")
 
 	if tp.Spawns != 3 {
 		t.Errorf("expected 3 spawns, got %d", tp.Spawns)
@@ -56,7 +56,7 @@ func TestThroughputFromEvents_DurationSeconds(t *testing.T) {
 		}},
 	}
 
-	tp := ComputeThroughput(events, now, 1)
+	tp := ComputeThroughput(events, now, 1, "")
 
 	if tp.Spawns != 2 {
 		t.Errorf("expected 2 spawns, got %d", tp.Spawns)
@@ -70,7 +70,7 @@ func TestThroughputFromEvents_DurationSeconds(t *testing.T) {
 }
 
 func TestThroughputFromEvents_Empty(t *testing.T) {
-	tp := ComputeThroughput(nil, time.Now(), 1)
+	tp := ComputeThroughput(nil, time.Now(), 1, "")
 	if tp.Spawns != 0 || tp.Completions != 0 || tp.Abandonments != 0 {
 		t.Errorf("expected all zeros for empty events")
 	}
@@ -85,7 +85,7 @@ func TestThroughputFromEvents_FiltersByDays(t *testing.T) {
 		{Type: "session.spawned", Timestamp: now.Unix()},
 	}
 
-	tp := ComputeThroughput(events, now, 1)
+	tp := ComputeThroughput(events, now, 1, "")
 	if tp.Spawns != 1 {
 		t.Errorf("expected 1 spawn in 1-day window, got %d", tp.Spawns)
 	}
@@ -94,18 +94,109 @@ func TestThroughputFromEvents_FiltersByDays(t *testing.T) {
 	}
 
 	// 3-day window includes event exactly at boundary (cutoff uses strict less-than)
-	tp3 := ComputeThroughput(events, now, 3)
+	tp3 := ComputeThroughput(events, now, 3, "")
 	if tp3.Spawns != 2 {
 		t.Errorf("expected 2 spawns in 3-day window (72h event is at boundary, included), got %d", tp3.Spawns)
 	}
 
 	// 2-day window should exclude 72h-old event
-	tp2 := ComputeThroughput(events, now, 2)
+	tp2 := ComputeThroughput(events, now, 2, "")
 	if tp2.Spawns != 1 {
 		t.Errorf("expected 1 spawn in 2-day window, got %d", tp2.Spawns)
 	}
 	if tp2.Days != 2 {
 		t.Errorf("expected Days=2, got %d", tp2.Days)
+	}
+}
+
+func TestThroughputFromEvents_ProjectFilter(t *testing.T) {
+	now := time.Now()
+	ts := now.Add(-6 * time.Hour).Unix()
+
+	events := []Event{
+		{Type: "session.spawned", Timestamp: ts, Data: map[string]interface{}{"beads_id": "orch-go-abc1"}},
+		{Type: "session.spawned", Timestamp: ts, Data: map[string]interface{}{"beads_id": "pw-1234"}},
+		{Type: "session.spawned", Timestamp: ts, Data: map[string]interface{}{"beads_id": "scrape-99"}},
+		{Type: "agent.completed", Timestamp: ts, Data: map[string]interface{}{
+			"beads_id":         "orch-go-abc1",
+			"duration_seconds": 1200.0,
+		}},
+		{Type: "agent.completed", Timestamp: ts, Data: map[string]interface{}{
+			"beads_id":         "pw-1234",
+			"duration_seconds": 600.0,
+		}},
+		{Type: "agent.abandoned", Timestamp: ts, Data: map[string]interface{}{"beads_id": "pw-5678"}},
+	}
+
+	// No filter — all events counted
+	all := ComputeThroughput(events, now, 1, "")
+	if all.Spawns != 3 {
+		t.Errorf("unfiltered: expected 3 spawns, got %d", all.Spawns)
+	}
+	if all.Completions != 2 {
+		t.Errorf("unfiltered: expected 2 completions, got %d", all.Completions)
+	}
+	if all.Abandonments != 1 {
+		t.Errorf("unfiltered: expected 1 abandonment, got %d", all.Abandonments)
+	}
+
+	// Filter to orch-go
+	og := ComputeThroughput(events, now, 1, "orch-go")
+	if og.Spawns != 1 {
+		t.Errorf("orch-go: expected 1 spawn, got %d", og.Spawns)
+	}
+	if og.Completions != 1 {
+		t.Errorf("orch-go: expected 1 completion, got %d", og.Completions)
+	}
+	if og.Abandonments != 0 {
+		t.Errorf("orch-go: expected 0 abandonments, got %d", og.Abandonments)
+	}
+	if og.AvgDurationMin != 20 {
+		t.Errorf("orch-go: expected avg duration 20 min, got %d", og.AvgDurationMin)
+	}
+
+	// Filter to pw
+	pw := ComputeThroughput(events, now, 1, "pw")
+	if pw.Spawns != 1 {
+		t.Errorf("pw: expected 1 spawn, got %d", pw.Spawns)
+	}
+	if pw.Completions != 1 {
+		t.Errorf("pw: expected 1 completion, got %d", pw.Completions)
+	}
+	if pw.Abandonments != 1 {
+		t.Errorf("pw: expected 1 abandonment, got %d", pw.Abandonments)
+	}
+
+	// Filter to nonexistent project
+	none := ComputeThroughput(events, now, 1, "nonexistent")
+	if none.Spawns != 0 || none.Completions != 0 || none.Abandonments != 0 {
+		t.Errorf("nonexistent: expected all zeros, got spawns=%d completions=%d abandonments=%d",
+			none.Spawns, none.Completions, none.Abandonments)
+	}
+}
+
+func TestEventMatchesProject_NoData(t *testing.T) {
+	e := Event{Type: "session.spawned", Timestamp: 123}
+	if eventMatchesProject(e, "orch-go") {
+		t.Error("event with nil data should not match")
+	}
+
+	e2 := Event{Type: "session.spawned", Timestamp: 123, Data: map[string]interface{}{}}
+	if eventMatchesProject(e2, "orch-go") {
+		t.Error("event without beads_id should not match")
+	}
+}
+
+func TestEventMatchesProject_PrefixBoundary(t *testing.T) {
+	// Prefix matching uses prefix+"-" to avoid "pw" matching "pwx-123"
+	e := Event{Data: map[string]interface{}{"beads_id": "pwx-123"}}
+	if eventMatchesProject(e, "pw") {
+		t.Error("pw prefix should not match pwx-123")
+	}
+	// Multi-segment prefixes work (e.g., "scs-sp")
+	e2 := Event{Data: map[string]interface{}{"beads_id": "scs-sp-456"}}
+	if !eventMatchesProject(e2, "scs-sp") {
+		t.Error("scs-sp prefix should match scs-sp-456")
 	}
 }
 

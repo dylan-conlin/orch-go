@@ -144,7 +144,9 @@ type ExploreCandidate struct {
 }
 
 // ComputeThroughput aggregates events within the given day window.
-func ComputeThroughput(events []Event, now time.Time, days int) Throughput {
+// If projectPrefix is non-empty, only events whose data.beads_id starts
+// with that prefix are counted (scoping metrics to the current project).
+func ComputeThroughput(events []Event, now time.Time, days int, projectPrefix string) Throughput {
 	cutoff := now.Add(-time.Duration(days) * 24 * time.Hour)
 	cutoffUnix := cutoff.Unix()
 
@@ -155,6 +157,9 @@ func ComputeThroughput(events []Event, now time.Time, days int) Throughput {
 
 	for _, e := range events {
 		if e.Timestamp < cutoffUnix {
+			continue
+		}
+		if projectPrefix != "" && !eventMatchesProject(e, projectPrefix) {
 			continue
 		}
 		switch e.Type {
@@ -186,6 +191,18 @@ func ComputeThroughput(events []Event, now time.Time, days int) Throughput {
 	}
 
 	return tp
+}
+
+// eventMatchesProject checks if an event's beads_id starts with the given project prefix.
+func eventMatchesProject(e Event, prefix string) bool {
+	if e.Data == nil {
+		return false
+	}
+	beadsID, ok := e.Data["beads_id"].(string)
+	if !ok || beadsID == "" {
+		return false
+	}
+	return strings.HasPrefix(beadsID, prefix+"-")
 }
 
 // FormatOrientation renders OrientationData as structured text for orchestrator consumption.

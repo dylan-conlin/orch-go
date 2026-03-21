@@ -183,7 +183,8 @@ func runOrient() error {
 	return nil
 }
 
-// collectThroughput reads events.jsonl and computes throughput metrics.
+// collectThroughput reads events.jsonl and computes throughput metrics,
+// scoped to the current project via .beads/config.yaml issue-prefix.
 func collectThroughput(now time.Time) orient.Throughput {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -196,7 +197,28 @@ func collectThroughput(now time.Time) orient.Throughput {
 		return orient.Throughput{}
 	}
 
-	return orient.ComputeThroughput(events, now, orientDays)
+	prefix := readBeadsPrefix()
+	return orient.ComputeThroughput(events, now, orientDays, prefix)
+}
+
+// readBeadsPrefix reads the issue-prefix from .beads/config.yaml in the working directory.
+// Returns empty string if not found (no filtering will be applied).
+func readBeadsPrefix() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(dir, ".beads", "config.yaml"))
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "issue-prefix:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "issue-prefix:"))
+		}
+	}
+	return ""
 }
 
 // parseOrientEvents reads events.jsonl into orient.Event slice.
@@ -318,16 +340,16 @@ func collectClaimEdges(modelsDir string, now time.Time) string {
 		return ""
 	}
 
-	// Extract active keywords from recent spawn events (last 7 days)
-	activeKeywords := extractRecentSpawnKeywords(now)
+	// Extract active keywords from recent spawn events (last 7 days), scoped to current project
+	activeKeywords := extractRecentSpawnKeywords(now, readBeadsPrefix())
 
 	edges := claims.CollectEdges(files, now, activeKeywords, 5)
 	return claims.FormatEdges(edges)
 }
 
 // extractRecentSpawnKeywords extracts domain-relevant keywords from recent
-// spawn events in events.jsonl (last 7 days).
-func extractRecentSpawnKeywords(now time.Time) []string {
+// spawn events in events.jsonl (last 7 days), scoped to the given project prefix.
+func extractRecentSpawnKeywords(now time.Time, projectPrefix string) []string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil
@@ -338,12 +360,13 @@ func extractRecentSpawnKeywords(now time.Time) []string {
 		return nil
 	}
 
-	return spawnKeywordsFromEvents(evts, now)
+	return spawnKeywordsFromEvents(evts, now, projectPrefix)
 }
 
 // spawnKeywordsFromEvents extracts domain-relevant keywords from spawn events
 // within the last 7 days. Extracts skill names and significant task words.
-func spawnKeywordsFromEvents(evts []orient.Event, now time.Time) []string {
+// If projectPrefix is non-empty, only events matching that project are included.
+func spawnKeywordsFromEvents(evts []orient.Event, now time.Time, projectPrefix string) []string {
 	cutoff := now.Add(-7 * 24 * time.Hour).Unix()
 	keywordSet := make(map[string]bool)
 
@@ -356,6 +379,12 @@ func spawnKeywordsFromEvents(evts []orient.Event, now time.Time) []string {
 		}
 		if e.Data == nil {
 			continue
+		}
+		if projectPrefix != "" {
+			beadsID, _ := e.Data["beads_id"].(string)
+			if !strings.HasPrefix(beadsID, projectPrefix+"-") {
+				continue
+			}
 		}
 		// Extract skill name as keyword
 		if skill, ok := e.Data["skill"].(string); ok && skill != "" {

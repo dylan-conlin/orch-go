@@ -285,7 +285,7 @@ func TestSpawnKeywordsFromEvents(t *testing.T) {
 		},
 	}
 
-	keywords := spawnKeywordsFromEvents(events, now)
+	keywords := spawnKeywordsFromEvents(events, now, "")
 	kwSet := make(map[string]bool)
 	for _, kw := range keywords {
 		kwSet[kw] = true
@@ -329,7 +329,7 @@ func TestSpawnKeywordsFromEvents(t *testing.T) {
 			},
 		},
 	}
-	oldKW := spawnKeywordsFromEvents(oldEvents, now)
+	oldKW := spawnKeywordsFromEvents(oldEvents, now, "")
 	if len(oldKW) != 0 {
 		t.Errorf("expected 0 keywords from old events, got %d: %v", len(oldKW), oldKW)
 	}
@@ -337,7 +337,7 @@ func TestSpawnKeywordsFromEvents(t *testing.T) {
 
 func TestSpawnKeywordsFromEvents_EmptyEvents(t *testing.T) {
 	now := time.Now()
-	keywords := spawnKeywordsFromEvents(nil, now)
+	keywords := spawnKeywordsFromEvents(nil, now, "")
 	if len(keywords) != 0 {
 		t.Errorf("expected 0 keywords from nil events, got %d", len(keywords))
 	}
@@ -363,7 +363,7 @@ func TestSpawnKeywordsFromEvents_NonSpawnEventsIgnored(t *testing.T) {
 		},
 	}
 
-	keywords := spawnKeywordsFromEvents(events, now)
+	keywords := spawnKeywordsFromEvents(events, now, "")
 	if len(keywords) != 0 {
 		t.Errorf("expected 0 keywords from non-spawn events, got %d: %v", len(keywords), keywords)
 	}
@@ -377,7 +377,7 @@ func TestSpawnKeywordsFromEvents_NilDataSkipped(t *testing.T) {
 		{Type: "session.spawned", Timestamp: recentTS, Data: nil},
 	}
 
-	keywords := spawnKeywordsFromEvents(events, now)
+	keywords := spawnKeywordsFromEvents(events, now, "")
 	if len(keywords) != 0 {
 		t.Errorf("expected 0 keywords from event with nil data, got %d", len(keywords))
 	}
@@ -398,7 +398,7 @@ func TestSpawnKeywordsFromEvents_PunctuationStripped(t *testing.T) {
 		},
 	}
 
-	keywords := spawnKeywordsFromEvents(events, now)
+	keywords := spawnKeywordsFromEvents(events, now, "")
 	kwSet := make(map[string]bool)
 	for _, kw := range keywords {
 		kwSet[kw] = true
@@ -443,7 +443,7 @@ func TestSpawnKeywordsOverlapWithDomainTags(t *testing.T) {
 		},
 	}
 
-	keywords := spawnKeywordsFromEvents(events, now)
+	keywords := spawnKeywordsFromEvents(events, now, "")
 
 	// Known domain_tags from claims.yaml files in this project
 	domainTags := map[string]string{
