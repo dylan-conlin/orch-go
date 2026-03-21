@@ -17,6 +17,7 @@ stability: foundational
 
 **Date:** 2026-01-28
 **Status:** Accepted
+**Enforcement:** context-only
 
 **Extracted-From:** `.kb/investigations/2026-01-19-inv-evaluate-encoding-options-question-subtypes.md`
 **Supersedes:** N/A

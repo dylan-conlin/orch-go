@@ -5,6 +5,7 @@ stability: foundational
 
 **Date:** 2025-12-21
 **Status:** Accepted
+**Enforcement:** context-only
 **Author:** og-arch-design-kb-reflect-21dec
 
 ## Context

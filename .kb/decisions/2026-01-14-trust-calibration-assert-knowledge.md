@@ -5,6 +5,7 @@ stability: foundational
 
 **Date:** 2026-01-14
 **Status:** Accepted
+**Enforcement:** convention
 **Deciders:** Dylan
 
 ## Context

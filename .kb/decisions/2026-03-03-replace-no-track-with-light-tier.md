@@ -30,6 +30,7 @@ stability: foundational
 
 **Date:** 2026-03-03
 **Status:** Accepted
+**Enforcement:** convention
 **Deciders:** Dylan (via orchestrator), architect agent (orch-go-owuk)
 **Context Issues:** orch-go-owuk (architect), orch-go-7tyx (promotion)
 **Source Investigation:** `.kb/investigations/2026-03-03-design-no-track-flag-removal-restriction-decision.md`

@@ -5,6 +5,7 @@ stability: foundational
 
 **Date:** 2026-02-26
 **Status:** Accepted
+**Enforcement:** context-only
 **Deciders:** Dylan (via orchestrator), probe evidence
 **Context Issues:** orch-go-1185, orch-go-1186
 **Extends:** `.kb/decisions/2026-02-18-two-lane-agent-discovery.md` (Amendment: Claude-Backend Liveness Gap)

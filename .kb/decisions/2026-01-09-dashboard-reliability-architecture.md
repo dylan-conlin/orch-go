@@ -2,6 +2,7 @@
 
 **Date:** 2026-01-09
 **Status:** Partially Implemented (reviewed 2026-03-12) — Principles still valid. `orch doctor --fix` exists. `orch-dashboard` script replaced the proposed `orch deploy`. Self-healing daemon (orch doctor --daemon) and cache invalidation not implemented. Dev environment uses overmind (see dev-vs-prod-architecture decision).
+**Enforcement:** context-only
 **Context:** Chronic dashboard instability requiring constant manual restarts
 
 ## Problem

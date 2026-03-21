@@ -2,6 +2,7 @@
 
 **Date:** 2026-01-12
 **Status:** Accepted
+**Enforcement:** convention
 **Context:** Strategic orchestrator shift revealed synthesis had no home
 
 ## Decision

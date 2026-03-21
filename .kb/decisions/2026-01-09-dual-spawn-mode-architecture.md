@@ -2,6 +2,7 @@
 
 **Date:** 2026-01-09
 **Status:** Superseded (partially)
+**Enforcement:** context-only
 **Superseded by:** Anthropic OAuth ban (Feb 19, 2026) inverted the primary/secondary roles. Claude CLI is now the primary backend (was "escape hatch"); OpenCode API is the multi-model path (was "primary"). The dual-mode architecture remains, but the framing of which is primary has flipped. See CLAUDE.md "Spawn Backends" section.
 **Context:** Cost and rate limit constraints with Gemini API
 

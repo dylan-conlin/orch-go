@@ -4,6 +4,7 @@ stability: foundational
 # Decision: Project Group Model for orch-go
 
 **Status:** Accepted
+**Enforcement:** context-only
 **Date:** 2026-02-25
 **Affects:** spawn kb context, daemon polling, account routing, dashboard filtering
 **Investigation:** `.kb/investigations/2026-02-25-design-project-group-model.md`

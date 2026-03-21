@@ -1,6 +1,7 @@
 # Decision: Minimal Artifact Taxonomy for Amnesia-Resilient Orchestration
 
 **Status:** Accepted
+**Enforcement:** context-only
 **Date:** 2025-12-21
 **Deciders:** Architect synthesis agent
 **Context:** Synthesized from orch-go-4kwt epic (6 investigations on workspace lifecycle, knowledge promotion, session boundaries, beads-kb-workspace relationships, multi-agent synthesis, failure mode artifacts)

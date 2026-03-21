@@ -8,6 +8,7 @@
 
 **Date:** 2026-01-16
 **Status:** Superseded
+**Enforcement:** context-only
 **Context:** Daemon architecture for multi-project orchestration
 
 ## Problem

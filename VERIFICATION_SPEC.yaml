@@ -1,26 +1,26 @@
-task: "Extract seekToTimestamp into pkg/events/ for reuse, apply to utilization.go"
-beads_id: orch-go-mg7s1
+task: "Decision lifecycle gate: classify at birth, budget cap, auto-archive stale"
+beads_id: orch-go-tkr3y
 tier: light
 
 verification:
   commands:
-    - name: "SeekToTimestamp unit tests"
-      command: "go test ./pkg/events/ -run TestSeekToTimestamp -count=1 -v"
-      expect: "3 PASS, 0 FAIL"
-    - name: "Utilization tests"
-      command: "go test ./pkg/daemon/ -run TestParseUtilization -count=1 -v"
-      expect: "PASS"
-    - name: "Stats seek test"
-      command: "go test ./cmd/orch/ -run TestSeekToTimestamp -count=1 -v"
-      expect: "1 PASS"
-    - name: "Full build"
-      command: "go build ./..."
+    - name: "Decision enforcement gate tests"
+      command: "go test -v -count=1 -run 'Enforcement' ./pkg/verify/ 2>&1 | cat"
+      expect: "8 PASS, 0 FAIL"
+    - name: "Decisions lifecycle package tests"
+      command: "go test -v -count=1 ./pkg/decisions/"
+      expect: "9 PASS, 0 FAIL"
+    - name: "Decisions CLI tests"
+      command: "go test -v -count=1 -run 'Decisions' ./cmd/orch/"
+      expect: "2 PASS"
+    - name: "Binary compiles"
+      command: "go build ./cmd/orch/"
       expect: "clean compile"
 
   manual_checks:
-    - "SeekToTimestamp exported from pkg/events/seek.go with readFirstTimestamp/readLastTimestamp helpers"
-    - "Local seekToTimestamp/readFirstTimestamp/readLastTimestamp removed from cmd/orch/stats_cmd.go"
-    - "cmd/orch/daemon_snapshot.go calls events.SeekToTimestamp"
-    - "pkg/daemon/utilization.go uses events.SeekToTimestamp with days-based cutoff"
-    - "pkg/events/learning.go already uses ScanEventsFromPath (rotation infra handles time filtering)"
-    - "cmd/orch/stats_cmd.go parseEvents already migrated to ScanEventsFromPath by concurrent process"
+    - "orch decisions budget shows 62/30 with enforcement type breakdown"
+    - "orch decisions audit shows all decisions classified"
+    - "orch decisions stale finds context-only >30d uncited decisions"
+    - "14 stale/stub decisions archived (9 March 10 stubs + 5 others)"
+    - "All 62 remaining decisions have **Enforcement:** field"
+    - "GateDecisionEnforcement wired into V1 level in pkg/verify/level.go"

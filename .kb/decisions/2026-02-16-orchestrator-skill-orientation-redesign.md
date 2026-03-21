@@ -8,6 +8,7 @@
 
 **Date:** 2026-02-16
 **Status:** Accepted
+**Enforcement:** context-only
 **Context:** Synthesized from investigation analyzing orchestrator skill organizing principle and completion review disconnect
 
 ## Summary

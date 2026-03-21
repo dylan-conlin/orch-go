@@ -397,6 +397,18 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 		}
 	}
 
+	// Decision enforcement gate (V1+)
+	// Ensures architect-produced decisions declare enforcement type (gate/hook/convention/context-only)
+	if !isOrch && ShouldRunGate(verifyLevel, GateDecisionEnforcement) {
+		result.GatesRun = append(result.GatesRun, GateDecisionEnforcement)
+		enforcementResult := VerifyDecisionEnforcement(workspacePath, result.Skill, projectDir)
+		if enforcementResult != nil && !enforcementResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, enforcementResult.Errors...)
+			result.GatesFailed = append(result.GatesFailed, GateDecisionEnforcement)
+		}
+	}
+
 	// Consequence sensor gate (V1+)
 	// Ensures architect investigations that recommend gates/hooks include
 	// an Enforcement Mechanisms table with Consequence Sensor column.

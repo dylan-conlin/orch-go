@@ -2,6 +2,7 @@
 
 **Date:** 2026-02-26
 **Status:** Accepted
+**Enforcement:** context-only
 **Deciders:** Dylan
 **Blocks:** plan mode, claude code plan, feature-impl planning, planning enforcement, EnterPlanMode, ExitPlanMode
 

@@ -2,6 +2,7 @@
 
 **Date:** 2026-01-15
 **Status:** Accepted
+**Enforcement:** context-only
 **Deciders:** Dylan, Meta-orchestrator
 
 ---

@@ -28,6 +28,7 @@ blocks:
 
 **Date:** 2026-03-17
 **Status:** Proposed
+**Enforcement:** gate
 **Deciders:** Dylan (via orchestrator)
 **Evidence Issues:** orch-go-74rhs (accretion gate effectiveness probe), orch-go-00r9c (gate effectiveness query)
 **Source Probe:** `.kb/models/harness-engineering/probes/2026-03-17-probe-pre-commit-accretion-gate-2-week-effectiveness.md`

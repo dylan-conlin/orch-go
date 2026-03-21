@@ -5,6 +5,7 @@ stability: foundational
 
 **Date:** 2026-02-15
 **Status:** Proposed
+**Enforcement:** context-only
 **Context:** `kb reflect` runs manually today. Model staleness detection works at spawn-time (warnings in SPAWN_CONTEXT) but nothing triggers model updates. The remediation path from detection to update is missing. Prior work designed individual pieces (Jan 6 two-tier automation, Feb 14 detect-annotate-queue for models). This decision designs the complete closed loop.
 **Extends:**
 - `.kb/decisions/2026-02-14-model-staleness-detection.md` (adds remediation path)

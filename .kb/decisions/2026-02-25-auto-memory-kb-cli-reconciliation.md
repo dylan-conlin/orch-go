@@ -5,6 +5,7 @@ stability: foundational
 
 **Date:** 2026-02-25
 **Status:** Proposed
+**Enforcement:** context-only
 **Issue:** orch-go-1239
 **Deciders:** Dylan (pending review)
 

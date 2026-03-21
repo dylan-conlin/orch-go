@@ -2,6 +2,7 @@
 
 **Date:** 2026-02-14
 **Status:** Accepted
+**Enforcement:** context-only
 **Context:** The entropy spiral history (1,625 commits lost across three rollbacks) proves that orch-go has never operated in verified mode. From day 1 (Dec 19), velocity was 40-130 commits/day. This decision establishes the founding operating constraint: the system cannot proceed to the next deliverable until Dylan has verified the current one through a two-gate process.
 
 ## The Problem

@@ -2,6 +2,7 @@
 
 **Date:** 2026-01-10
 **Status:** Accepted
+**Enforcement:** context-only
 **Context:** Dashboard Reliability Infrastructure (Epic orch-go-95vz4)
 
 ## Problem

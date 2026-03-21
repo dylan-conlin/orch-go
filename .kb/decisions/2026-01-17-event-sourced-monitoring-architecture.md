@@ -4,6 +4,7 @@ stability: foundational
 # Decision: Event-Sourced Monitoring Architecture
 
 **Status:** Accepted
+**Enforcement:** context-only
 **Date:** 2026-01-17
 **Deciders:** Architect synthesis from 8 investigations
 **Supersedes:** None

@@ -17,6 +17,7 @@ stability: foundational
 
 **Date:** 2025-12-25
 **Status:** Proposed
+**Enforcement:** context-only
 
 ---
 

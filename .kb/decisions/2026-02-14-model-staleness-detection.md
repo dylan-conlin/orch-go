@@ -2,6 +2,7 @@
 
 **Date:** 2026-02-14
 **Status:** Proposed
+**Enforcement:** context-only
 **Context:** Models in `.kb/models/` describe system behavior but drift from code reality as refactoring occurs. 12+ stale file references found across 24 models. No existing mechanism detects model-code drift.
 **Extends:** `.kb/decisions/2026-01-12-models-as-understanding-artifacts.md` (answers Open Question #3: "How do we prevent model drift?")
 

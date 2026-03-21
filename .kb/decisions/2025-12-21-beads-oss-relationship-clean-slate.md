@@ -2,6 +2,7 @@
 
 **Date:** 2025-12-21
 **Status:** Accepted
+**Enforcement:** context-only
 **Deciders:** Dylan
 
 ## Context

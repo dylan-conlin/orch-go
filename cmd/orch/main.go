@@ -82,6 +82,7 @@ func init() {
 	rootCmd.AddCommand(planCmd)
 	rootCmd.AddCommand(threadCmd)
 	rootCmd.AddCommand(settingsCmd)
+	rootCmd.AddCommand(decisionsCmd)
 }
 
 var (

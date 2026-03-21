@@ -2,6 +2,7 @@
 
 **Date:** 2026-02-20
 **Status:** Accepted
+**Enforcement:** gate
 **Deciders:** Dylan
 **Blocks:** verification level, completion gates, verify, orch complete, skip flags, force, V0, V1, V2, V3
 

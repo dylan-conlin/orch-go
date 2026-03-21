@@ -2,6 +2,7 @@
 
 **Date:** 2026-03-13
 **Status:** Accepted
+**Enforcement:** gate
 **Issue:** orch-go-ntkcz
 
 ## Context

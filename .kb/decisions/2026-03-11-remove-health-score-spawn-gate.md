@@ -2,6 +2,7 @@
 
 **Date:** 2026-03-11
 **Status:** Accepted
+**Enforcement:** gate
 
 ## Context
 

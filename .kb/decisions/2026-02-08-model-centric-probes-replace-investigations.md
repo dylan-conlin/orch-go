@@ -2,6 +2,7 @@
 
 **Date:** 2026-02-08
 **Status:** Accepted
+**Enforcement:** convention
 **Context:** Models exist (29 total) but investigations remained the default artifact. 414 investigations vs 29 models — the energy was flowing to the wrong place.
 
 ## Decision

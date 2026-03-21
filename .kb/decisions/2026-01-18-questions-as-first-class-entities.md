@@ -8,6 +8,7 @@
 
 **Date:** 2026-01-18
 **Status:** Accepted
+**Enforcement:** context-only
 **Context:** Synthesized from investigation on questions-based epic gating and artifact lifecycle analysis
 
 ## Summary

@@ -2,6 +2,7 @@
 
 **Date:** 2026-02-07
 **Status:** Accepted
+**Enforcement:** convention
 **Context:** `kb-reflect` handles worker triage mechanics, but orchestrator-level reflection sessions lack a reliable protocol for when to run, what to include, how to prioritize, and how to measure impact.
 
 ## Decision

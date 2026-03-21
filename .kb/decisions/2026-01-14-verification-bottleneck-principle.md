@@ -5,6 +5,7 @@ stability: foundational
 
 **Date:** 2026-01-14
 **Status:** Accepted
+**Enforcement:** context-only
 **Deciders:** Dylan (via 462 lost commits)
 
 ## Context

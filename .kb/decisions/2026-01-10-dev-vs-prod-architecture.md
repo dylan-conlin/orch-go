@@ -5,6 +5,7 @@ stability: foundational
 
 **Date:** 2026-01-10
 **Status:** Accepted
+**Enforcement:** context-only
 **Context:** Mac Development Environment Cleanup
 
 ## Problem

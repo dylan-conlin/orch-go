@@ -2,6 +2,7 @@
 
 **Date:** 2026-02-14
 **Status:** Accepted
+**Enforcement:** context-only
 **Supersedes:** `.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md`
 **Context:** The original decision identified three buckets: Own, Accept, Lobby. The "Lobby" bucket assumed OpenCode was an external dependency requiring upstream issue filing. Discovery that Dylan owns an OpenCode fork (`~/Documents/personal/opencode`) changes "Lobby" to "Build" — these features can be implemented directly.
 

@@ -7,6 +7,7 @@ stability: foundational
 
 **Date:** 2026-01-30
 **Status:** Active
+**Enforcement:** context-only
 **Decision:** Investigation and architect recommendations must be classified by authority level, and architects must produce explicit Question Generation output for unresolved forks.
 
 ## Context

@@ -2,6 +2,7 @@
 
 **Date:** 2026-01-14
 **Status:** Accepted
+**Enforcement:** convention
 **Context:** Principles discussion session
 
 ## Summary

@@ -5,6 +5,7 @@ stability: foundational
 
 **Date:** 2026-01-17
 **Status:** Accepted
+**Enforcement:** gate
 **Context:** Synthesized from 28 investigations on agent completion (Dec 2025 - Jan 2026)
 
 ## Summary

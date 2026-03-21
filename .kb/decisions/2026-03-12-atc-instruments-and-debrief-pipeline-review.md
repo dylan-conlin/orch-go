@@ -2,6 +2,7 @@
 
 **Date:** 2026-03-12
 **Status:** Accepted
+**Enforcement:** context-only
 **Deciders:** Architect review (orch-go-v8u1f)
 **Extends:** `.kb/decisions/2026-02-28-atc-not-conductor-orchestrator-reframe.md`
 **Prior Work:** `.kb/investigations/2026-02-28-inv-atc-lens-feature-audit.md`, `.kb/investigations/2026-03-05-inv-design-orchestrator-synthesis-comprehension.md`, `.kb/plans/2026-03-05-synthesis-as-comprehension.md`

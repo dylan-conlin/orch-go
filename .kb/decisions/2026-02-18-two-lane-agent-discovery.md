@@ -3,6 +3,7 @@
 **Date:** 2026-02-18
 **Amended:** 2026-02-24 (claude-backend liveness gap)
 **Status:** Accepted
+**Enforcement:** context-only
 **Deciders:** Dylan, Architect Agent (og-arch-write-adr-two-18feb-8fab)
 **Context Issue:** orch-go-1081
 **Supersedes:** 

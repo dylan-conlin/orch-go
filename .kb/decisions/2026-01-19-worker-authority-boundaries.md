@@ -12,6 +12,7 @@ blocks:
 
 **Date:** 2026-01-19
 **Status:** Accepted
+**Enforcement:** convention
 **Context:** Defining what workers can do autonomously in the decidability graph model
 
 ## Decision

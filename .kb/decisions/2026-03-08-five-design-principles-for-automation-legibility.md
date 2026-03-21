@@ -2,6 +2,7 @@
 
 **Date:** 2026-03-01
 **Status:** Accepted
+**Enforcement:** convention
 
 ## Context
 

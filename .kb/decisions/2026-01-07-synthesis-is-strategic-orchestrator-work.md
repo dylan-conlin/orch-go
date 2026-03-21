@@ -5,6 +5,7 @@ stability: foundational
 
 **Date:** 2026-01-07
 **Status:** Accepted
+**Enforcement:** convention
 **Context:** Recurring duplicate synthesis issues causing backlog noise
 
 ## Decision

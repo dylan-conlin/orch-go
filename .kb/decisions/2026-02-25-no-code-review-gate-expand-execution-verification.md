@@ -2,6 +2,7 @@
 
 **Date:** 2026-02-25
 **Status:** Proposed
+**Enforcement:** gate
 **Deciders:** Dylan
 **Blocks:** code review, completion pipeline, diff review, agent review, go vet, build gate, review gate
 

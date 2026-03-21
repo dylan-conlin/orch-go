@@ -2,6 +2,7 @@
 
 **Date:** 2026-02-26
 **Status:** Accepted
+**Enforcement:** context-only
 **Context:** Orchestrator behavioral compliance — agents comply with identity but violate action constraints
 
 **Extracted-From:** `.kb/investigations/2026-02-24-design-orchestrator-skill-behavioral-compliance.md`

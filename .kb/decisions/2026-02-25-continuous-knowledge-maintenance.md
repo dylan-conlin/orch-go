@@ -5,6 +5,7 @@ stability: foundational
 
 **Date:** 2026-02-25
 **Status:** Accepted
+**Enforcement:** context-only
 **Context:** Knowledge system reflection session
 
 ## Decision

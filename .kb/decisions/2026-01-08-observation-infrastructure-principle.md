@@ -5,6 +5,7 @@ stability: foundational
 
 **Date:** 2026-01-08
 **Status:** Accepted
+**Enforcement:** context-only
 **Context:** Synthesis of 11 investigations from Jan 8, 2026 revealing systematic visibility gaps
 
 ## Decision

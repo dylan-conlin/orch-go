@@ -5,6 +5,7 @@ stability: foundational
 
 **Date:** 2026-03-05
 **Status:** Accepted
+**Enforcement:** convention
 **Issue:** orch-go-98m6a
 **Supersedes:** None (extends `.kb/models/drift-taxonomy/model.md`)
 

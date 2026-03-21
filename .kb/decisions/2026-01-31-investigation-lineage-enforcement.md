@@ -7,6 +7,7 @@ stability: foundational
 # Decision: Investigation Lineage Enforcement
 
 **Status:** Accepted
+**Enforcement:** context-only
 **Date:** 2026-01-31
 **Deciders:** Dylan + Orchestrator
 **Context:** Case Files design session revealed the real gap wasn't a missing artifact type but unstructured investigation chaining
