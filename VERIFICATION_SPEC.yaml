@@ -1,26 +1,37 @@
-task: "events.jsonl monthly rotation to bound unbounded growth"
-beads_id: orch-go-d4pzp
+task: "Knowledge decay probe — probe-system model"
+beads_id: orch-go-1oow1
 tier: light
 
 verification:
-  commands:
-    - name: "Events package tests (rotation + learning + logging)"
-      command: "go test -count=1 ./pkg/events/"
-      expect: "all pass"
-    - name: "Daemon package tests"
-      command: "go test -count=1 ./pkg/daemon/"
-      expect: "all pass"
-    - name: "Verify package attempts tests"
-      command: "go test -count=1 -run 'TestGetFixAttempt|TestGetAllRetry' ./pkg/verify/"
-      expect: "all pass"
-    - name: "Spawn backends + orch package tests"
-      command: "go test -count=1 ./pkg/spawn/backends/ ./pkg/orch/"
-      expect: "all pass"
-    - name: "Binary compiles"
-      command: "go build ./cmd/orch/"
-      expect: "clean compile"
+  claims_tested:
+    - claim: "Key infrastructure files exist at documented paths"
+      method: "glob for 5 files"
+      result: "All found"
+      verdict: confirmed
 
-  manual_checks:
-    - "After rebuild, new events write to ~/.orch/events-YYYY-MM.jsonl"
-    - "orch stats reads from both legacy events.jsonl and rotated files"
-    - "Daemon learning refresh works correctly with rotated files"
+    - claim: "HasInjectedModels routing wired across spawn pipeline"
+      method: "grep HasInjectedModels in pkg/spawn/"
+      result: "Defined, populated, used in templates"
+      verdict: confirmed
+
+    - claim: "Two verdict formats parsed (structured + checkbox)"
+      method: "read pkg/verify/probe_verdict.go"
+      result: "Both regex patterns present"
+      verdict: confirmed
+
+    - claim: "Probes produce 'weakens' verdicts"
+      method: "grep 'weakens' in probe_verdict.go"
+      result: "No matches — only confirms/contradicts/extends"
+      verdict: contradicted
+
+    - claim: "PROBE.md template has 4 mandatory sections"
+      method: "read .orch/templates/PROBE.md"
+      result: "4 sections confirmed, plus frontmatter fields not in model"
+      verdict: extended
+
+    - claim: "414:29 investigation:model ratio"
+      method: "count .kb/models/ and .kb/investigations/"
+      result: "292:47 — ratio improved from 14.3:1 to 6.2:1"
+      verdict: extended
+
+  manual_checks: none

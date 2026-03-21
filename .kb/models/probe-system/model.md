@@ -1,13 +1,13 @@
 # Model: Probe System
 
 **Created:** 2026-03-20
-**Updated:** 2026-03-20
+**Updated:** 2026-03-20 (probed 2026-03-20)
 **Status:** Active
 **Synthesized from:** 8 investigations (Feb 13 - Mar 11, 2026)
 
 ## Summary
 
-Probes are the knowledge system's falsifiability mechanism. They are lightweight (30-50 line) artifacts that test specific claims in existing models against reality, producing verdicts (confirms, extends, contradicts, weakens). The probe system has three layers: the **methodology** (how probes work epistemically), the **infrastructure** (routing, commit pipeline, verdict parsing), and the **feedback loop** (merge back into parent model).
+Probes are the knowledge system's falsifiability mechanism. They are lightweight (30-50 line) artifacts that test specific claims in existing models against reality, producing verdicts (confirms, extends, contradicts). The probe system has three layers: the **methodology** (how probes work epistemically), the **infrastructure** (routing, commit pipeline, verdict parsing), and the **feedback loop** (merge back into parent model).
 
 The Feb 8, 2026 decision established probes as the default artifact when a model exists for a domain, replacing full investigations for confirmatory work. This shifted the knowledge system from accumulating 300-line investigations (414:29 ratio) to producing focused probes that feed models directly.
 
@@ -30,7 +30,9 @@ Four mandatory sections (from `.orch/templates/PROBE.md`):
 1. **Question** — What model claim are we testing?
 2. **What I Tested** — Commands/code run (actual execution, not code review)
 3. **What I Observed** — Actual output
-4. **Model Impact** — Verdict: confirms/contradicts/extends/weakens which invariant
+4. **Model Impact** — Verdict: confirms/contradicts/extends which invariant
+
+The template also includes frontmatter fields (`claim:`, `verdict:`) for machine-readable metadata.
 
 ### Two Verdict Formats
 
@@ -111,7 +113,7 @@ If `kb context` doesn't find a model for the domain, routing defaults to investi
 
 ## Key Metrics (from Investigations)
 
-- **414 investigations : 29 models** — ratio before probe system (Feb 8)
+- **414 investigations : 29 models** — ratio before probe system (Feb 8). As of Mar 20: 292 investigations : 47 models (ratio improved from 14.3:1 to 6.2:1)
 - **Two verdict formats** — both must be parsed (Feb 13)
 - **48 friction gates** — inventoried across spawn/completion/daemon, only 3 completion gates have healthy ratios
 - **73.4% bypass rate** — from 3 systemic patterns (skill-class blindness, model blindness, blanket override)
@@ -123,6 +125,10 @@ If `kb context` doesn't find a model for the domain, routing defaults to investi
 2. Is the probe file modification time matching reliable across all edge cases?
 3. What's the actual probe-to-model merge compliance rate? (no metrics collected)
 4. Should there be a "probe failed to merge" escalation path beyond the worker-base requirement?
+
+## Probes
+
+- 2026-03-20: Knowledge Decay Verification — "weakens" verdict not implemented (only confirms/contradicts/extends parsed); template has gained frontmatter fields; investigation:model ratio improved from 14.3:1 to 6.2:1
 
 ## Evidence (Synthesized Investigations)
 
