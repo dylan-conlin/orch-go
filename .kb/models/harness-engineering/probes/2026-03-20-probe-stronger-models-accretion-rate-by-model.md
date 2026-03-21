@@ -54,23 +54,52 @@ The falsification criterion as stated ("less accretion per agent-session") may b
 
 Initial accretion measurement from redesign experiment (all haiku, 4 conditions x 2 tasks x 10 trials x 2 agents):
 
-| Condition | N | Avg Added | Avg Removed | Avg Net |
-|---|---|---|---|---|
-| no-coord | 40 | 112 | 0 | 112 |
-| placement | 40 | 98 | 0 | 98 |
-| context-share | 40 | 100 | 0 | 100 |
-| messaging | 40 | 104 | 0 | 104 |
+| Condition | N | Avg Added | Stdev | Median | Avg Duration | Lines/min |
+|---|---|---|---|---|---|---|
+| no-coord | 40 | 112.7 | 52.5 | 86 | 75s | 107.6 |
+| placement | 40 | 99.0 | 41.0 | 84 | 70s | 99.9 |
+| context-share | 40 | 100.5 | 42.8 | 86 | 68s | 98.0 |
+| messaging | 40 | 104.1 | 46.7 | 87 | 87s | 82.0 |
 
-Coordination conditions (placement, context-share, messaging) show 7-13% less accretion than no-coord baseline. To test the HE-08 claim, the same experiment must be re-run with `--model opus` and compared.
+**Effect sizes vs no-coord baseline:**
+
+| Condition | Reduction | Cohen's d | Significance |
+|---|---|---|---|
+| placement | -12.2% | 0.291 | Small effect |
+| context-share | -10.8% | 0.254 | Small effect |
+| messaging | -7.7% | 0.174 | Negligible |
+
+**Task complexity interaction:** Complex tasks show larger coordination benefit (-14.2% for placement) than simple tasks (-8.3%). This is directionally consistent with the claim — coordination gates matter more as tasks grow in scope.
+
+**Per-trial total accretion (both agents combined):** no-coord mean=225.4 (stdev=73.5), placement mean=197.9 (stdev=61.8). Coordination reduces variance as well as mean — suggesting more predictable outcomes.
+
+**Messaging overhead:** Messaging condition adds coordination overhead (+16% duration vs no-coord) while producing the smallest accretion reduction. The coordination cost exceeds the benefit at this scale.
+
+**Limitation:** All haiku. The cross-model comparison (haiku vs opus) has not been run. Haiku is a weaker model — if opus produces MORE accretion per agent with the same coordination conditions, it would support the claim. If less, it would contradict.
+
+### 7. Instrumentation gap partially remains
+
+The probe initially stated the instrumentation gap was CLOSED. Verification shows it's only partially closed:
+- `session.spawned` events: model field populated correctly (confirmed: recent events show `"model":"anthropic/claude-opus-4-5-20251101"`)
+- `accretion.delta` events: model field exists in schema but **line-count fields (`code_added`, `code_net`) are not populated** in new events. Only 3 of 425 accretion.delta events have model data, and none contain accretion measurements. The wiring connects model identity to completion events but doesn't connect accretion measurements to model identity.
 
 ## Assessment
 
-**Claim status:** Remains **unconfirmed** — instrumentation gap now closed, controlled experiment infrastructure ready.
+**Claim status:** Remains **unconfirmed** — instrumentation partially closed, controlled experiment not yet run.
 
 **Falsification criterion assessment:** The stated criterion ("less accretion per agent-session") may be poorly specified. The claim is about coordination pressure at the system level, not per-session accretion. A better falsification would be: "Total system accretion rate (lines/week) does NOT increase when switching from weaker to stronger models, holding task volume constant."
 
-**Instrumentation gap:** CLOSED. Model field now populated in both `session.spawned` (all backends) and `accretion.delta` events. Future spawns will have queryable model identity.
+**Indirect evidence direction:** All available evidence is directionally consistent with the claim:
+1. Back-of-envelope: ~5x system accretion with stronger models (completion rate multiplier)
+2. Coordination demo: coordination gates reduce accretion 8-12% even within a single model tier
+3. daemon.go case study: +892 lines from 30 individually-correct Opus commits (the only model in use)
+4. Task complexity interaction: coordination benefits increase with task complexity, suggesting they'd increase further with model capability
 
-**Next step:** Run coordination demo with `--model opus` to produce haiku-vs-opus accretion comparison (N>50 per model).
+**What would falsify:** Opus producing LESS per-session accretion than haiku on identical tasks in the coordination demo. This is plausible (stronger models might write more concise code) but would only falsify the per-session metric — the system-level claim (completion rate × per-session accretion) could still hold.
 
-- [x] **Neither confirms nor contradicts** — instrumentation gap closed, experiment infrastructure ready but controlled comparison not yet run.
+**Remaining blockers:**
+1. Fix `accretion.delta` event emission to include `code_added`/`code_net` fields
+2. Run coordination demo with `--model opus` (N>50 per model)
+3. Compare both per-session AND system-level (completion-rate-weighted) accretion
+
+- [x] **Neither confirms nor contradicts** — instrumentation partially closed, experiment infrastructure ready but controlled comparison not yet run. Indirect evidence is directionally consistent with the claim.
