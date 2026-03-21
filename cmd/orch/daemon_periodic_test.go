@@ -2,10 +2,8 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -43,25 +41,6 @@ func (c *testSessionCleaner) Cleanup(config daemon.Config) (int, string, error) 
 		return c.cleanupFunc(config)
 	}
 	return 0, "", nil
-}
-
-type testKnowledgeHealthService struct {
-	checkFunc       func() (*daemon.KnowledgeHealthResult, error)
-	createIssueFunc func(result *daemon.KnowledgeHealthResult) error
-}
-
-func (s *testKnowledgeHealthService) Check() (*daemon.KnowledgeHealthResult, error) {
-	if s.checkFunc != nil {
-		return s.checkFunc()
-	}
-	return &daemon.KnowledgeHealthResult{}, nil
-}
-
-func (s *testKnowledgeHealthService) CreateIssue(result *daemon.KnowledgeHealthResult) error {
-	if s.createIssueFunc != nil {
-		return s.createIssueFunc(result)
-	}
-	return nil
 }
 
 type testAgentDiscoverer struct {
@@ -127,41 +106,8 @@ func TestRunPeriodicTasks_NothingDue(t *testing.T) {
 
 	result := runPeriodicTasks(d, "12:00:00", false, logger)
 
-	if result.KnowledgeHealthSnapshot != nil {
-		t.Error("expected nil KnowledgeHealthSnapshot when task is disabled")
-	}
-}
-
-func TestRunPeriodicTasks_ReflectionError(t *testing.T) {
-	config := disableAllPeriodicTasks()
-	config.ReflectEnabled = true
-	config.ReflectInterval = 1 * time.Millisecond
-
-	d := daemon.NewWithConfig(config)
-	d.Reflector = &testReflector{
-		reflectFunc: func(createIssues bool) (*daemon.ReflectResult, error) {
-			return nil, fmt.Errorf("reflect failed")
-		},
-	}
-
-	tmpDir := t.TempDir()
-	logger := events.NewLogger(filepath.Join(tmpDir, "events.jsonl"))
-
-	// Capture stderr
-	oldStderr := os.Stderr
-	r, w, _ := os.Pipe()
-	os.Stderr = w
-
-	runPeriodicTasks(d, "12:00:00", false, logger)
-
-	w.Close()
-	os.Stderr = oldStderr
-	var buf [4096]byte
-	n, _ := r.Read(buf[:])
-	output := string(buf[:n])
-
-	if !strings.Contains(output, "Reflection error") {
-		t.Errorf("expected stderr to contain 'Reflection error', got: %s", output)
+	if result.PhaseTimeoutSnapshot != nil {
+		t.Error("expected nil PhaseTimeoutSnapshot when task is disabled")
 	}
 }
 
@@ -201,37 +147,6 @@ func TestRunPeriodicTasks_CleanupLogsEvent(t *testing.T) {
 	deleted, ok := event.Data["deleted"].(float64)
 	if !ok || int(deleted) != 3 {
 		t.Errorf("expected deleted=3, got %v", event.Data["deleted"])
-	}
-}
-
-func TestRunPeriodicTasks_KnowledgeHealthSnapshot(t *testing.T) {
-	config := disableAllPeriodicTasks()
-	config.KnowledgeHealthEnabled = true
-	config.KnowledgeHealthInterval = 1 * time.Millisecond
-	config.KnowledgeHealthThreshold = 50
-
-	d := daemon.NewWithConfig(config)
-	d.KnowledgeHealth = &testKnowledgeHealthService{
-		checkFunc: func() (*daemon.KnowledgeHealthResult, error) {
-			return &daemon.KnowledgeHealthResult{
-				TotalActive: 25,
-				ByType:      map[string]int{"decision": 10, "constraint": 15},
-				Message:     "Knowledge health: 25 active entries",
-			}, nil
-		},
-	}
-
-	tmpDir := t.TempDir()
-	logger := events.NewLogger(filepath.Join(tmpDir, "events.jsonl"))
-
-	result := runPeriodicTasks(d, "12:00:00", false, logger)
-
-	if result.KnowledgeHealthSnapshot == nil {
-		t.Fatal("expected KnowledgeHealthSnapshot to be set")
-	}
-
-	if result.KnowledgeHealthSnapshot.TotalActive != 25 {
-		t.Errorf("expected TotalActive=25, got %d", result.KnowledgeHealthSnapshot.TotalActive)
 	}
 }
 
@@ -279,121 +194,6 @@ func TestRunPeriodicTasks_RecoveryErrorLogsEvent(t *testing.T) {
 
 	if _, hasError := event.Data["error"]; !hasError {
 		t.Error("expected event to have error field")
-	}
-}
-
-func TestFilterNewStalePlans_FirstNotification(t *testing.T) {
-	planStalenessNotifiedMu.Lock()
-	planStalenessNotified = make(map[string]time.Time)
-	planStalenessNotifiedMu.Unlock()
-
-	stalePlans := []daemon.StalePlan{
-		{Slug: "plan-a", Title: "Plan A", Reason: "stale", StalenessType: daemon.StalenessNoProgress},
-		{Slug: "plan-b", Title: "Plan B", Reason: "stale", StalenessType: daemon.StalenessUnhydrated},
-		{Slug: "plan-c", Title: "Plan C", Reason: "stale", StalenessType: daemon.StalenessAdvancementStall},
-	}
-
-	result := filterNewStalePlans(stalePlans)
-	if len(result) != 3 {
-		t.Fatalf("expected 3 new stale plans, got %d: %v", len(result), result)
-	}
-}
-
-func TestFilterNewStalePlans_CooldownSuppresses(t *testing.T) {
-	planStalenessNotifiedMu.Lock()
-	planStalenessNotified = map[string]time.Time{
-		"plan-a": time.Now().Add(-1 * time.Hour),
-		"plan-b": time.Now().Add(-1 * time.Hour),
-	}
-	planStalenessNotifiedMu.Unlock()
-
-	stalePlans := []daemon.StalePlan{
-		{Slug: "plan-a", Title: "Plan A", Reason: "stale"},
-		{Slug: "plan-b", Title: "Plan B", Reason: "stale"},
-		{Slug: "plan-c", Title: "Plan C", Reason: "stale"},
-	}
-
-	result := filterNewStalePlans(stalePlans)
-	if len(result) != 1 {
-		t.Fatalf("expected 1 new stale plan (plan-c), got %d: %v", len(result), result)
-	}
-	if result[0] != "plan-c" {
-		t.Fatalf("expected plan-c, got %s", result[0])
-	}
-}
-
-func TestFilterNewStalePlans_ExpiredCooldownRenotifies(t *testing.T) {
-	planStalenessNotifiedMu.Lock()
-	planStalenessNotified = map[string]time.Time{
-		"plan-a": time.Now().Add(-25 * time.Hour),
-	}
-	planStalenessNotifiedMu.Unlock()
-
-	stalePlans := []daemon.StalePlan{
-		{Slug: "plan-a", Title: "Plan A", Reason: "stale"},
-	}
-
-	result := filterNewStalePlans(stalePlans)
-	if len(result) != 1 {
-		t.Fatalf("expected 1 plan (cooldown expired), got %d", len(result))
-	}
-}
-
-func TestFilterNewStalePlans_DedupsWithinResult(t *testing.T) {
-	planStalenessNotifiedMu.Lock()
-	planStalenessNotified = make(map[string]time.Time)
-	planStalenessNotifiedMu.Unlock()
-
-	stalePlans := []daemon.StalePlan{
-		{Slug: "plan-a", Title: "Plan A", Reason: "reason1", StalenessType: daemon.StalenessNoProgress},
-		{Slug: "plan-a", Title: "Plan A", Reason: "reason2", StalenessType: daemon.StalenessAdvancementStall},
-	}
-
-	result := filterNewStalePlans(stalePlans)
-	if len(result) != 1 {
-		t.Fatalf("expected 1 deduplicated slug, got %d: %v", len(result), result)
-	}
-}
-
-func TestFilterNewStalePlans_AllSuppressed(t *testing.T) {
-	planStalenessNotifiedMu.Lock()
-	planStalenessNotified = map[string]time.Time{
-		"plan-a": time.Now(),
-		"plan-b": time.Now(),
-	}
-	planStalenessNotifiedMu.Unlock()
-
-	stalePlans := []daemon.StalePlan{
-		{Slug: "plan-a", Title: "Plan A", Reason: "stale"},
-		{Slug: "plan-b", Title: "Plan B", Reason: "stale"},
-	}
-
-	result := filterNewStalePlans(stalePlans)
-	if len(result) != 0 {
-		t.Fatalf("expected 0 new stale plans (all suppressed), got %d: %v", len(result), result)
-	}
-}
-
-func TestMarkPlansNotified(t *testing.T) {
-	planStalenessNotifiedMu.Lock()
-	planStalenessNotified = make(map[string]time.Time)
-	planStalenessNotifiedMu.Unlock()
-
-	before := time.Now()
-	markPlansNotified([]string{"plan-x", "plan-y"})
-	after := time.Now()
-
-	planStalenessNotifiedMu.Lock()
-	defer planStalenessNotifiedMu.Unlock()
-
-	for _, slug := range []string{"plan-x", "plan-y"} {
-		ts, ok := planStalenessNotified[slug]
-		if !ok {
-			t.Fatalf("expected %s to be marked as notified", slug)
-		}
-		if ts.Before(before) || ts.After(after) {
-			t.Fatalf("expected timestamp for %s between %v and %v, got %v", slug, before, after, ts)
-		}
 	}
 }
 

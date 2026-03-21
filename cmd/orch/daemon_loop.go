@@ -737,12 +737,10 @@ func (s *daemonLoopState) writeDaemonStatusFile(readyCount int, periodicResult p
 		Status:               daemon.DetermineStatus(pollTime, s.config.PollInterval, isPaused),
 		Verification:         verificationSnapshot,
 		CompletionFailures:   completionFailureSnapshot,
-		KnowledgeHealth:      periodicResult.KnowledgeHealthSnapshot,
-		PhaseTimeout:         periodicResult.PhaseTimeoutSnapshot,
-		QuestionDetection:    periodicResult.QuestionDetectionSnapshot,
-		AgreementCheck:       periodicResult.AgreementCheckSnapshot,
-		BeadsHealth:          periodicResult.BeadsHealthSnapshot,
-		FrictionAccumulation: periodicResult.FrictionAccumulationSnapshot,
+		PhaseTimeout:      periodicResult.PhaseTimeoutSnapshot,
+		QuestionDetection: periodicResult.QuestionDetectionSnapshot,
+		AgreementCheck:    periodicResult.AgreementCheckSnapshot,
+		BeadsHealth:       periodicResult.BeadsHealthSnapshot,
 	}
 	if err := daemon.WriteStatusFile(status); err != nil && daemonVerbose {
 		s.dlog.Errorf("Warning: failed to write status file: %v\n", err)
