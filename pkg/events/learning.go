@@ -25,6 +25,7 @@ type SkillLearning struct {
 	SuccessRate           float64                `json:"success_rate"`
 	AvgDurationSeconds    int                    `json:"avg_duration_seconds"`
 	MedianDurationSeconds int                    `json:"median_duration_seconds"`
+	RejectedCount         int                    `json:"rejected_count"`
 	ReworkCount           int                    `json:"rework_count"`
 	ReworkRate            float64                `json:"rework_rate"`
 	VerificationFailures  int                    `json:"verification_failures"`
@@ -148,6 +149,15 @@ func computeLearningFiltered(eventsPath string, accept func(Event) bool) (*Learn
 			case "allow":
 				gate.AllowCount++
 			}
+
+		case EventTypeAgentRejected:
+			// agent.rejected uses original_skill, not skill
+			origSkill, _ := event.Data["original_skill"].(string)
+			if origSkill == "" {
+				continue
+			}
+			sl := store.ensureSkill(origSkill)
+			sl.RejectedCount++
 
 		case EventTypeAgentReworked:
 			if skill == "" {

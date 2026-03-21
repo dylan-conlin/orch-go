@@ -457,6 +457,71 @@ func TestComputeLearning_ReworkTracking(t *testing.T) {
 	}
 }
 
+func TestComputeLearning_RejectedTracking(t *testing.T) {
+	dir := t.TempDir()
+
+	evts := []Event{
+		// 3 completions for feature-impl
+		{Type: EventTypeAgentCompleted, Timestamp: 1000, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "success",
+		}},
+		{Type: EventTypeAgentCompleted, Timestamp: 2000, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "success",
+		}},
+		{Type: EventTypeAgentCompleted, Timestamp: 3000, Data: map[string]interface{}{
+			"skill": "feature-impl", "outcome": "success",
+		}},
+		// 2 rejections for feature-impl (uses original_skill)
+		{Type: EventTypeAgentRejected, Timestamp: 4000, Data: map[string]interface{}{
+			"original_skill": "feature-impl", "category": "quality", "reason": "incomplete",
+		}},
+		{Type: EventTypeAgentRejected, Timestamp: 5000, Data: map[string]interface{}{
+			"original_skill": "feature-impl", "category": "scope", "reason": "wrong scope",
+		}},
+		// 1 rejection for investigation
+		{Type: EventTypeAgentRejected, Timestamp: 6000, Data: map[string]interface{}{
+			"original_skill": "investigation", "category": "quality", "reason": "shallow",
+		}},
+	}
+
+	path := writeEvents(t, dir, evts)
+	store, err := ComputeLearning(path)
+	if err != nil {
+		t.Fatalf("ComputeLearning() error = %v", err)
+	}
+
+	fi := store.Skills["feature-impl"]
+	if fi.RejectedCount != 2 {
+		t.Errorf("feature-impl RejectedCount = %d, want 2", fi.RejectedCount)
+	}
+
+	inv := store.Skills["investigation"]
+	if inv.RejectedCount != 1 {
+		t.Errorf("investigation RejectedCount = %d, want 1", inv.RejectedCount)
+	}
+}
+
+func TestComputeLearning_RejectedWithNoSkip(t *testing.T) {
+	dir := t.TempDir()
+
+	// agent.rejected event without original_skill should be skipped
+	evts := []Event{
+		{Type: EventTypeAgentRejected, Timestamp: 1000, Data: map[string]interface{}{
+			"category": "quality", "reason": "bad",
+		}},
+	}
+
+	path := writeEvents(t, dir, evts)
+	store, err := ComputeLearning(path)
+	if err != nil {
+		t.Fatalf("ComputeLearning() error = %v", err)
+	}
+
+	if len(store.Skills) != 0 {
+		t.Errorf("expected no skills for rejected event without original_skill, got %d", len(store.Skills))
+	}
+}
+
 func TestComputeLearning_ReworkWithZeroCompletions(t *testing.T) {
 	dir := t.TempDir()
 
