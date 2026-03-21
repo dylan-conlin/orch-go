@@ -5,9 +5,12 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/events"
 )
 
 // UtilizationMetrics tracks the ratio of daemon-spawned vs manual-spawned agents.
@@ -56,12 +59,13 @@ type UtilizationEvent struct {
 func GetUtilizationMetrics(days int) (*UtilizationMetrics, error) {
 	eventsPath := getEventsPath()
 
-	events, err := parseUtilizationEvents(eventsPath)
+	sinceUnix := time.Now().Unix() - int64(days*86400)
+	parsed, err := parseUtilizationEvents(eventsPath, sinceUnix)
 	if err != nil {
 		return nil, err
 	}
 
-	return computeUtilization(events, days), nil
+	return computeUtilization(parsed, days), nil
 }
 
 // getEventsPath returns the path to events.jsonl.
@@ -74,7 +78,8 @@ func getEventsPath() string {
 }
 
 // parseUtilizationEvents reads events from events.jsonl.
-func parseUtilizationEvents(path string) ([]UtilizationEvent, error) {
+// When sinceUnix > 0, uses time-bounded seek to skip past old events.
+func parseUtilizationEvents(path string, sinceUnix int64) ([]UtilizationEvent, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -85,8 +90,15 @@ func parseUtilizationEvents(path string) ([]UtilizationEvent, error) {
 	}
 	defer file.Close()
 
-	var events []UtilizationEvent
-	scanner := bufio.NewScanner(file)
+	var reader io.Reader = file
+	if sinceUnix > 0 {
+		if sr, ok := events.SeekToTimestamp(file, sinceUnix); ok {
+			reader = sr
+		}
+	}
+
+	var parsed []UtilizationEvent
+	scanner := bufio.NewScanner(reader)
 	// Increase buffer size for potentially long lines
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 1024*1024)
@@ -103,14 +115,14 @@ func parseUtilizationEvents(path string) ([]UtilizationEvent, error) {
 			continue
 		}
 
-		events = append(events, event)
+		parsed = append(parsed, event)
 	}
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
 
-	return events, nil
+	return parsed, nil
 }
 
 // computeUtilization aggregates events into utilization metrics.

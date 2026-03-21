@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/events"
 )
 
 func TestParseEvents(t *testing.T) {
@@ -332,37 +334,9 @@ func TestSeekToTimestamp_SmallFile(t *testing.T) {
 	f, _ := os.Open(path)
 	defer f.Close()
 
-	_, ok := seekToTimestamp(f, 500)
+	_, ok := events.SeekToTimestamp(f, 500)
 	if ok {
-		t.Error("expected seekToTimestamp to skip for small files")
-	}
-}
-
-func TestReadFirstLastTimestamp(t *testing.T) {
-	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "events.jsonl")
-
-	now := time.Now().Unix()
-	content := ""
-	for i := 0; i < 100; i++ {
-		ts := now - int64(100-i)*3600
-		content += fmt.Sprintf(`{"type":"test","timestamp":%d}`, ts) + "\n"
-	}
-	os.WriteFile(path, []byte(content), 0644)
-
-	f, _ := os.Open(path)
-	defer f.Close()
-
-	stat, _ := f.Stat()
-
-	firstTS := readFirstTimestamp(f)
-	if firstTS != now-100*3600 {
-		t.Errorf("first timestamp: got %d, want %d", firstTS, now-100*3600)
-	}
-
-	lastTS := readLastTimestamp(f, stat.Size())
-	if lastTS != now-3600 {
-		t.Errorf("last timestamp: got %d, want %d", lastTS, now-3600)
+		t.Error("expected SeekToTimestamp to skip for small files")
 	}
 }
 

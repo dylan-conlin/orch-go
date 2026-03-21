@@ -1,9 +1,6 @@
 package events
 
 import (
-	"bufio"
-	"encoding/json"
-	"os"
 	"sort"
 	"time"
 )
@@ -42,69 +39,41 @@ type GateStats struct {
 	BlockRate        float64 `json:"block_rate"`
 }
 
-// ComputeLearning reads events.jsonl and aggregates per-skill metrics.
-// Returns an empty store if the file doesn't exist (graceful on first run).
+// ComputeLearning reads rotated event files and aggregates per-skill metrics.
+// Returns an empty store if no event files exist (graceful on first run).
 // Skips corrupt/unparseable lines.
 func ComputeLearning(eventsPath string) (*LearningStore, error) {
-	return computeLearningFiltered(eventsPath, nil)
+	return computeLearningFiltered(eventsPath, time.Time{}, time.Time{})
 }
 
-// ComputeLearningInWindow reads events.jsonl and aggregates per-skill metrics
+// ComputeLearningInWindow reads rotated event files and aggregates per-skill metrics
 // for events within the given time window [after, before).
 // Use zero time for either bound to leave it open-ended.
+// Only opens files that could contain events in the window.
 func ComputeLearningInWindow(eventsPath string, after, before time.Time) (*LearningStore, error) {
-	return computeLearningFiltered(eventsPath, func(e Event) bool {
-		ts := time.Unix(e.Timestamp, 0)
-		if !after.IsZero() && ts.Before(after) {
-			return false
-		}
-		if !before.IsZero() && !ts.Before(before) {
-			return false
-		}
-		return true
-	})
+	return computeLearningFiltered(eventsPath, after, before)
 }
 
-func computeLearningFiltered(eventsPath string, accept func(Event) bool) (*LearningStore, error) {
+func computeLearningFiltered(eventsPath string, after, before time.Time) (*LearningStore, error) {
 	store := &LearningStore{Skills: make(map[string]*SkillLearning)}
-
-	f, err := os.Open(eventsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return store, nil
-		}
-		return nil, err
-	}
-	defer f.Close()
-
-	// Track durations per skill for median calculation
 	durations := make(map[string][]int)
 
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 256*1024), 256*1024) // 256KB line buffer
-	for scanner.Scan() {
-		var event Event
-		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
-			continue // skip corrupt lines
-		}
-
-		if accept != nil && !accept(event) {
-			continue
-		}
-
+	// ScanEventsFromPath handles rotated file discovery, time-bounded reads,
+	// and backward compat with legacy events.jsonl
+	err := ScanEventsFromPath(eventsPath, after, before, func(event Event) {
 		skill, _ := event.Data["skill"].(string)
 
 		switch event.Type {
 		case EventTypeSessionSpawned:
 			if skill == "" {
-				continue
+				return
 			}
 			sl := store.ensureSkill(skill)
 			sl.SpawnCount++
 
 		case EventTypeAgentCompleted:
 			if skill == "" {
-				continue
+				return
 			}
 			sl := store.ensureSkill(skill)
 			sl.TotalCompletions++
@@ -123,19 +92,19 @@ func computeLearningFiltered(eventsPath string, accept func(Event) bool) (*Learn
 
 		case EventTypeAgentAbandonedTelemetry:
 			if skill == "" {
-				continue
+				return
 			}
 			sl := store.ensureSkill(skill)
 			sl.AbandonedCount++
 
 		case EventTypeSpawnGateDecision:
 			if skill == "" {
-				continue
+				return
 			}
 			sl := store.ensureSkill(skill)
 			gateName, _ := event.Data["gate_name"].(string)
 			if gateName == "" {
-				continue
+				return
 			}
 			gate := sl.ensureGate(gateName)
 			gate.TotalEvaluations++
@@ -151,35 +120,37 @@ func computeLearningFiltered(eventsPath string, accept func(Event) bool) (*Learn
 			}
 
 		case EventTypeAgentRejected:
-			// agent.rejected uses original_skill, not skill
 			origSkill, _ := event.Data["original_skill"].(string)
 			if origSkill == "" {
-				continue
+				return
 			}
 			sl := store.ensureSkill(origSkill)
 			sl.RejectedCount++
 
 		case EventTypeAgentReworked:
 			if skill == "" {
-				continue
+				return
 			}
 			sl := store.ensureSkill(skill)
 			sl.ReworkCount++
 
 		case EventTypeVerificationFailed:
 			if skill == "" {
-				continue
+				return
 			}
 			sl := store.ensureSkill(skill)
 			sl.VerificationFailures++
 
 		case EventTypeVerificationBypassed:
 			if skill == "" {
-				continue
+				return
 			}
 			sl := store.ensureSkill(skill)
 			sl.VerificationBypasses++
 		}
+	})
+	if err != nil {
+		return store, nil // graceful: return empty store on error
 	}
 
 	// Compute derived metrics

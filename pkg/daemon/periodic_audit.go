@@ -1,12 +1,9 @@
 package daemon
 
 import (
-	"bufio"
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
 	"math/big"
-	"os"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
@@ -224,34 +221,19 @@ func (s *defaultAuditSelectService) LabelForAudit(issueID string) error {
 	return beads.FallbackAddLabel(issueID, "audit:deep-review", "")
 }
 
-// scanForcedCompletions reads events.jsonl and returns the set of beads IDs
+// scanForcedCompletions reads event files and returns the set of beads IDs
 // that were completed with forced=true (auto-completed by daemon).
 func scanForcedCompletions(eventsPath string) (map[string]bool, error) {
-	f, err := os.Open(eventsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	defer f.Close()
-
 	forced := make(map[string]bool)
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 256*1024), 256*1024)
-	for scanner.Scan() {
-		var event events.Event
-		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
-			continue
-		}
+	err := events.ScanEventsFromPath(eventsPath, time.Time{}, time.Time{}, func(event events.Event) {
 		if event.Type != events.EventTypeAgentCompleted {
-			continue
+			return
 		}
 		isForced, _ := event.Data["forced"].(bool)
 		beadsID, _ := event.Data["beads_id"].(string)
 		if isForced && beadsID != "" {
 			forced[beadsID] = true
 		}
-	}
-	return forced, scanner.Err()
+	})
+	return forced, err
 }

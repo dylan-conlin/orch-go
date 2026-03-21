@@ -1,23 +1,26 @@
-task: "Wire daemon audit verdict processing to orch reject"
-beads_id: orch-go-ie81t
+task: "Extract seekToTimestamp into pkg/events/ for reuse, apply to utilization.go"
+beads_id: orch-go-mg7s1
 tier: light
 
 verification:
   commands:
-    - name: "Audit verdict unit tests"
-      command: "go test ./pkg/daemon/ -run 'TestParseAuditVerdict|TestReadAuditVerdict|TestProcessAuditVerdict' -count=1 -v"
-      expect: "14 PASS, 0 FAIL"
-    - name: "Full daemon test suite (regression)"
-      command: "go test ./pkg/daemon/ -count=1 -timeout 120s"
-      expect: "ok (no regressions)"
-    - name: "Full project build"
+    - name: "SeekToTimestamp unit tests"
+      command: "go test ./pkg/events/ -run TestSeekToTimestamp -count=1 -v"
+      expect: "3 PASS, 0 FAIL"
+    - name: "Utilization tests"
+      command: "go test ./pkg/daemon/ -run TestParseUtilization -count=1 -v"
+      expect: "PASS"
+    - name: "Stats seek test"
+      command: "go test ./cmd/orch/ -run TestSeekToTimestamp -count=1 -v"
+      expect: "1 PASS"
+    - name: "Full build"
       command: "go build ./..."
       expect: "clean compile"
 
   manual_checks:
-    - "AUDIT_VERDICT.md format documented in ParseAuditVerdict godoc"
-    - "Rejector and AuditLabeler interfaces added to Daemon struct"
-    - "processAuditVerdictIfPresent wired into CompletionOnce after successful completion"
-    - "Low-confidence FAIL labels audit:needs-review instead of auto-rejecting"
-    - "PASS removes audit:deep-review label"
-    - "Events audit.failed and audit.passed logged for traceability"
+    - "SeekToTimestamp exported from pkg/events/seek.go with readFirstTimestamp/readLastTimestamp helpers"
+    - "Local seekToTimestamp/readFirstTimestamp/readLastTimestamp removed from cmd/orch/stats_cmd.go"
+    - "cmd/orch/daemon_snapshot.go calls events.SeekToTimestamp"
+    - "pkg/daemon/utilization.go uses events.SeekToTimestamp with days-based cutoff"
+    - "pkg/events/learning.go already uses ScanEventsFromPath (rotation infra handles time filtering)"
+    - "cmd/orch/stats_cmd.go parseEvents already migrated to ScanEventsFromPath by concurrent process"

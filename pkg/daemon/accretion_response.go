@@ -6,10 +6,8 @@
 package daemon
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -151,49 +149,34 @@ func NewDefaultAccretionResponseService() AccretionResponseService {
 
 func (s *defaultAccretionResponseService) ReadRecentAccretionDeltas() ([]events.AccretionDeltaData, error) {
 	eventsPath := events.DefaultLogPath()
-	f, err := os.Open(eventsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to open events file: %w", err)
-	}
-	defer f.Close()
-
-	cutoff := time.Now().Add(-accretionResponseLookbackDays * 24 * time.Hour).Unix()
+	after := time.Now().Add(-accretionResponseLookbackDays * 24 * time.Hour)
 	var deltas []events.AccretionDeltaData
 
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 256*1024), 256*1024)
-	for scanner.Scan() {
-		var event events.Event
-		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
-			continue
-		}
+	err := events.ScanEventsFromPath(eventsPath, after, time.Time{}, func(event events.Event) {
 		if event.Type != events.EventTypeAccretionDelta {
-			continue
-		}
-		if event.Timestamp < cutoff {
-			continue
+			return
 		}
 
 		// Parse file_deltas from event data
 		fdRaw, ok := event.Data["file_deltas"]
 		if !ok {
-			continue
+			return
 		}
 		fdBytes, err := json.Marshal(fdRaw)
 		if err != nil {
-			continue
+			return
 		}
 		var fileDeltas []events.FileDelta
 		if err := json.Unmarshal(fdBytes, &fileDeltas); err != nil {
-			continue
+			return
 		}
 
 		deltas = append(deltas, events.AccretionDeltaData{
 			FileDeltas: fileDeltas,
 		})
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return deltas, nil

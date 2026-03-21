@@ -5,11 +5,11 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/spf13/cobra"
 )
 
@@ -97,180 +97,30 @@ func getEventsPath() string {
 // Callers should pass since = eventsSince(days) to include a correlation buffer
 // for spawn→completion lookups. Use since = 0 to read all events.
 func parseEvents(path string, since ...int64) ([]StatsEvent, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("events.jsonl not found at %s - no events recorded yet", path)
-		}
-		return nil, fmt.Errorf("failed to open events file: %w", err)
-	}
-	defer file.Close()
-
-	var reader io.Reader = file
-
-	// When since is provided and > 0, try to seek past old events
+	var after time.Time
 	if len(since) > 0 && since[0] > 0 {
-		if seekReader, ok := seekToTimestamp(file, since[0]); ok {
-			reader = seekReader
-		}
+		after = time.Unix(since[0], 0)
 	}
 
-	var events []StatsEvent
-	scanner := bufio.NewScanner(reader)
-	// Increase buffer size for potentially long lines
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
-		var event StatsEvent
-		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			// Skip malformed lines
-			continue
-		}
-
-		events = append(events, event)
-	}
-
-	if err := scanner.Err(); err != nil {
+	var result []StatsEvent
+	err := events.ScanEventsFromPath(path, after, time.Time{}, func(e events.Event) {
+		result = append(result, StatsEvent{
+			Type:      e.Type,
+			SessionID: e.SessionID,
+			Timestamp: e.Timestamp,
+			Data:      e.Data,
+		})
+	})
+	if err != nil {
 		return nil, fmt.Errorf("error reading events: %w", err)
 	}
+	if len(result) == 0 {
+		return nil, fmt.Errorf("events.jsonl not found at %s - no events recorded yet", path)
+	}
 
-	return events, nil
+	return result, nil
 }
 
-// seekToTimestamp estimates the byte offset in events.jsonl where events
-// around the target timestamp begin. It reads the first and last timestamps,
-// interpolates a file position, seeks there, and skips to the next complete line.
-// Returns a reader positioned after the seek, or (nil, false) if seeking isn't beneficial.
-func seekToTimestamp(file *os.File, since int64) (io.Reader, bool) {
-	stat, err := file.Stat()
-	if err != nil || stat.Size() < 4096 {
-		return nil, false // too small to bother seeking
-	}
-	fileSize := stat.Size()
-
-	// Read first timestamp
-	firstTS := readFirstTimestamp(file)
-	if firstTS == 0 {
-		file.Seek(0, io.SeekStart)
-		return nil, false
-	}
-
-	// Read last timestamp
-	lastTS := readLastTimestamp(file, fileSize)
-	if lastTS == 0 || lastTS <= firstTS {
-		file.Seek(0, io.SeekStart)
-		return nil, false
-	}
-
-	// If since is before the first event, read everything
-	if since <= firstTS {
-		file.Seek(0, io.SeekStart)
-		return nil, false
-	}
-
-	// Interpolate: what fraction of the file should we skip?
-	totalDuration := float64(lastTS - firstTS)
-	skipDuration := float64(since - firstTS)
-	skipFraction := skipDuration / totalDuration
-
-	// Apply a safety margin — seek to 20% earlier than estimated
-	seekFraction := skipFraction * 0.8
-	if seekFraction <= 0 {
-		file.Seek(0, io.SeekStart)
-		return nil, false
-	}
-
-	seekPos := int64(float64(fileSize) * seekFraction)
-	file.Seek(seekPos, io.SeekStart)
-
-	// Skip the partial line at seek position
-	br := bufio.NewReader(file)
-	_, err = br.ReadBytes('\n')
-	if err != nil {
-		// If we can't find a newline, fall back to start
-		file.Seek(0, io.SeekStart)
-		return nil, false
-	}
-
-	return br, true
-}
-
-// readFirstTimestamp reads the first valid timestamp from the beginning of the file.
-func readFirstTimestamp(file *os.File) int64 {
-	file.Seek(0, io.SeekStart)
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 4096), 1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-		var event struct {
-			Timestamp int64 `json:"timestamp"`
-		}
-		if err := json.Unmarshal([]byte(line), &event); err == nil && event.Timestamp > 0 {
-			return event.Timestamp
-		}
-	}
-	return 0
-}
-
-// readLastTimestamp reads the last valid timestamp from the end of the file.
-func readLastTimestamp(file *os.File, fileSize int64) int64 {
-	// Read the last 4KB to find the last line
-	readSize := int64(4096)
-	if readSize > fileSize {
-		readSize = fileSize
-	}
-	file.Seek(fileSize-readSize, io.SeekStart)
-
-	data := make([]byte, readSize)
-	n, err := io.ReadFull(file, data)
-	if err != nil && err != io.ErrUnexpectedEOF {
-		return 0
-	}
-	data = data[:n]
-
-	// Scan backwards for the last complete line
-	lastNewline := -1
-	for i := len(data) - 1; i >= 0; i-- {
-		if data[i] == '\n' {
-			if lastNewline == -1 {
-				lastNewline = i
-				continue
-			}
-			// Found the start of the last line
-			line := data[i+1 : lastNewline]
-			var event struct {
-				Timestamp int64 `json:"timestamp"`
-			}
-			if err := json.Unmarshal(line, &event); err == nil && event.Timestamp > 0 {
-				return event.Timestamp
-			}
-			break
-		}
-	}
-
-	// Edge case: only one line in the tail chunk
-	if lastNewline >= 0 {
-		line := data[:lastNewline]
-		var event struct {
-			Timestamp int64 `json:"timestamp"`
-		}
-		if err := json.Unmarshal(line, &event); err == nil && event.Timestamp > 0 {
-			return event.Timestamp
-		}
-	}
-
-	return 0
-}
 
 // eventsSince calculates the since timestamp for parseEvents.
 // It uses the requested days plus a correlation buffer to ensure

@@ -119,22 +119,27 @@ func DefaultLogPath() string {
 	return filepath.Join(home, ".orch", "events.jsonl")
 }
 
-// Log appends an event to the JSONL log file.
+// CurrentPath returns the path of the current month's rotated event file.
+func (l *Logger) CurrentPath() string {
+	return RotatedLogPath(l.Path)
+}
+
+// Log appends an event to the rotated JSONL log file (events-YYYY-MM.jsonl).
+// The directory is derived from l.Path (the legacy events.jsonl path).
 func (l *Logger) Log(event Event) error {
-	// Ensure directory exists
-	dir := filepath.Dir(l.Path)
+	// Write to rotated file based on current month
+	target := RotatedLogPath(l.Path)
+	dir := filepath.Dir(target)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create log directory: %w", err)
 	}
 
-	// Open file for appending
-	f, err := os.OpenFile(l.Path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(target, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
 	defer f.Close()
 
-	// Encode and write
 	data, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("failed to marshal event: %w", err)

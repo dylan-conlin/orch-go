@@ -1,13 +1,9 @@
 package main
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
@@ -169,39 +165,17 @@ func emitDaemonSnapshot(logger *events.Logger, projectDir string) bool {
 	return true
 }
 
-// parseEventsForSnapshot reads recent events.jsonl to find accretion snapshots.
+// parseEventsForSnapshot reads recent event files to find accretion snapshots.
 // Only reads the last 30 days since snapshots are emitted weekly.
 func parseEventsForSnapshot(path string) []events.Event {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-
-	var reader io.Reader = f
-	since := time.Now().Unix() - 30*86400
-	if sr, ok := seekToTimestamp(f, since); ok {
-		reader = sr
-	}
-
+	after := time.Now().Add(-30 * 24 * time.Hour)
 	var result []events.Event
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		var e events.Event
-		if err := json.Unmarshal([]byte(line), &e); err != nil {
-			continue
-		}
-		// Only keep snapshot events to save memory
+	events.ScanEventsFromPath(path, after, time.Time{}, func(e events.Event) {
 		if e.Type == events.EventTypeAccretionSnapshot {
 			result = append(result, e)
 		}
-	}
+	})
 
 	return result
 }

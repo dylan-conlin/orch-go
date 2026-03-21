@@ -168,7 +168,7 @@ func TestParseUtilizationEvents(t *testing.T) {
 	f.Close()
 
 	// Parse the file
-	parsed, err := parseUtilizationEvents(eventsPath)
+	parsed, err := parseUtilizationEvents(eventsPath, 0)
 	if err != nil {
 		t.Fatalf("parseUtilizationEvents failed: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestParseUtilizationEvents(t *testing.T) {
 
 func TestParseUtilizationEvents_MissingFile(t *testing.T) {
 	// Non-existent file should return empty slice, not error
-	events, err := parseUtilizationEvents("/nonexistent/events.jsonl")
+	events, err := parseUtilizationEvents("/nonexistent/events.jsonl", 0)
 	if err != nil {
 		t.Errorf("Expected no error for missing file, got: %v", err)
 	}

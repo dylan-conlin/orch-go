@@ -66,7 +66,7 @@ func TestLogEvent_Basic(t *testing.T) {
 	}
 
 	// Verify file was created and contains expected content
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestLogEvent_MultipleEvents(t *testing.T) {
 	}
 
 	// Read and verify each line is valid JSON
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -131,8 +131,8 @@ func TestLogEvent_CreatesDirectory(t *testing.T) {
 		t.Fatalf("Log() error = %v", err)
 	}
 
-	// Verify file exists
-	if _, err := os.Stat(logPath); os.IsNotExist(err) {
+	// Verify rotated file exists in nested directory
+	if _, err := os.Stat(logger.CurrentPath()); os.IsNotExist(err) {
 		t.Error("Log() did not create nested directories")
 	}
 }
@@ -211,7 +211,7 @@ func TestEventTypes_SessionSpawned(t *testing.T) {
 		t.Fatalf("Log() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -236,7 +236,7 @@ func TestEventTypes_SessionCompleted(t *testing.T) {
 		t.Fatalf("Log() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestEventTypes_SessionError(t *testing.T) {
 		t.Fatalf("Log() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -296,7 +296,7 @@ func TestLogSpawn(t *testing.T) {
 		t.Fatalf("LogSpawn() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -323,7 +323,7 @@ func TestLogCompleted(t *testing.T) {
 		t.Fatalf("LogCompleted() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -347,7 +347,7 @@ func TestLogError(t *testing.T) {
 		t.Fatalf("LogError() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -371,7 +371,7 @@ func TestLogStatusChange(t *testing.T) {
 		t.Fatalf("LogStatusChange() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -401,7 +401,7 @@ func TestLogVerificationBypassed(t *testing.T) {
 		t.Fatalf("LogVerificationBypassed() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -446,7 +446,7 @@ func TestLogVerificationBypassed_Minimal(t *testing.T) {
 		t.Fatalf("LogVerificationBypassed() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -554,7 +554,7 @@ func TestLogAgentCompleted_PipelineTiming(t *testing.T) {
 		t.Fatalf("LogAgentCompleted() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -622,7 +622,7 @@ func TestLogDuplicationDetected(t *testing.T) {
 		t.Fatalf("LogDuplicationDetected() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -692,7 +692,7 @@ func TestLogDuplicationDetected_Minimal(t *testing.T) {
 		t.Fatalf("LogDuplicationDetected() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -740,7 +740,7 @@ func TestLogDuplicationSuppressed(t *testing.T) {
 		t.Fatalf("LogDuplicationSuppressed() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -798,7 +798,7 @@ func TestLogDuplicationSuppressed_Minimal(t *testing.T) {
 		t.Fatalf("LogDuplicationSuppressed() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -828,7 +828,7 @@ func TestLogAgentCompleted_NoPipelineTiming(t *testing.T) {
 		t.Fatalf("LogAgentCompleted() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -860,7 +860,7 @@ func TestLogAgentCompleted_VerificationLevel(t *testing.T) {
 		t.Fatalf("LogAgentCompleted() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -886,7 +886,7 @@ func TestLogAgentCompleted_NoVerificationLevel(t *testing.T) {
 		t.Fatalf("LogAgentCompleted() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -914,7 +914,7 @@ func TestLogVerificationFailed_VerificationLevel(t *testing.T) {
 		t.Fatalf("LogVerificationFailed() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -942,7 +942,7 @@ func TestLogVerificationBypassed_VerificationLevel(t *testing.T) {
 		t.Fatalf("LogVerificationBypassed() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -968,7 +968,7 @@ func TestLogArchitectEscalation_Escalated(t *testing.T) {
 		t.Fatalf("LogArchitectEscalation() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -1017,7 +1017,7 @@ func TestLogArchitectEscalation_SkippedWithPriorRef(t *testing.T) {
 		t.Fatalf("LogArchitectEscalation() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -1052,7 +1052,7 @@ func TestLogGateDecision_Block(t *testing.T) {
 		t.Fatalf("LogGateDecision() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -1094,7 +1094,7 @@ func TestLogGateDecision_Bypass(t *testing.T) {
 		t.Fatalf("LogGateDecision() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -1136,7 +1136,7 @@ func TestLogExplorationDecomposed(t *testing.T) {
 		t.Fatalf("LogExplorationDecomposed() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -1178,7 +1178,7 @@ func TestLogExplorationJudged(t *testing.T) {
 		t.Fatalf("LogExplorationJudged() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -1221,7 +1221,7 @@ func TestLogExplorationSynthesized(t *testing.T) {
 		t.Fatalf("LogExplorationSynthesized() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -1258,7 +1258,7 @@ func TestLogExplorationIterated(t *testing.T) {
 		t.Fatalf("LogExplorationIterated() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -1305,7 +1305,7 @@ func TestLogDecisionMade(t *testing.T) {
 		t.Fatalf("LogDecisionMade() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -1367,7 +1367,7 @@ func TestLogDecisionMade_Minimal(t *testing.T) {
 		t.Fatalf("LogDecisionMade() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -1411,7 +1411,7 @@ func TestLogDecisionMade_ComplianceModulation(t *testing.T) {
 		t.Fatalf("LogDecisionMade() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -1448,7 +1448,7 @@ func TestLogGateDecision_AccretionPrecommit(t *testing.T) {
 		t.Fatalf("LogGateDecision() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -1486,7 +1486,7 @@ func TestLogAccretionDelta_IncludesModelField(t *testing.T) {
 		t.Fatalf("LogAccretionDelta failed: %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("failed to read log: %v", err)
 	}
@@ -1525,7 +1525,7 @@ func TestLogAccretionDelta_OmitsModelWhenEmpty(t *testing.T) {
 		t.Fatalf("LogAccretionDelta failed: %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("failed to read log: %v", err)
 	}
@@ -1558,7 +1558,7 @@ func TestLogAgentRejected(t *testing.T) {
 		t.Fatalf("LogAgentRejected() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -1601,7 +1601,7 @@ func TestLogAgentRejected_OmitsEmptyOptionals(t *testing.T) {
 		t.Fatalf("LogAgentRejected() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}

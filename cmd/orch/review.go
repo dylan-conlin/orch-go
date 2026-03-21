@@ -2,15 +2,12 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
-
-	"encoding/json"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -663,49 +660,20 @@ type AutoCompletedInfo struct {
 	ProjectDir string
 }
 
-// getRecentAutoCompletions reads recent auto-completed events from events.jsonl.
+// getRecentAutoCompletions reads recent auto-completed events from event files.
 // Returns events within the given duration (e.g., 24h).
 func getRecentAutoCompletions(since time.Duration) []AutoCompletedInfo {
 	eventsPath := events.DefaultLogPath()
-	file, err := os.Open(eventsPath)
-	if err != nil {
-		return nil
-	}
-	defer file.Close()
-
-	cutoff := time.Now().Add(-since)
+	after := time.Now().Add(-since)
 	var results []AutoCompletedInfo
 
-	scanner := bufio.NewScanner(file)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
-		var event struct {
-			Type      string                 `json:"type"`
-			Timestamp int64                  `json:"timestamp"`
-			Data      map[string]interface{} `json:"data,omitempty"`
-		}
-		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			continue
-		}
-
+	events.ScanEventsFromPath(eventsPath, after, time.Time{}, func(event events.Event) {
 		if event.Type != events.EventTypeAutoCompleted {
-			continue
-		}
-
-		eventTime := time.Unix(event.Timestamp, 0)
-		if eventTime.Before(cutoff) {
-			continue
+			return
 		}
 
 		info := AutoCompletedInfo{
-			Timestamp: eventTime,
+			Timestamp: time.Unix(event.Timestamp, 0),
 		}
 		if v, ok := event.Data["beads_id"].(string); ok {
 			info.BeadsID = v
@@ -724,7 +692,7 @@ func getRecentAutoCompletions(since time.Duration) []AutoCompletedInfo {
 		}
 
 		results = append(results, info)
-	}
+	})
 
 	return results
 }

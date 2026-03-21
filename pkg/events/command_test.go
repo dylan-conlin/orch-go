@@ -22,7 +22,7 @@ func TestLogCommandInvoked(t *testing.T) {
 		t.Fatalf("LogCommandInvoked() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestLogCommandInvoked_NoFlags(t *testing.T) {
 		t.Fatalf("LogCommandInvoked() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
