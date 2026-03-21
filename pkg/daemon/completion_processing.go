@@ -474,6 +474,10 @@ func (d *Daemon) CompletionOnce(config CompletionConfig) (*CompletionLoopResult,
 					fmt.Printf("    Labeled ready-review: %s (escalation=%s)\n", compResult.CloseReason, compResult.Escalation)
 				}
 			}
+
+			// Audit verdict processing: if the completed agent produced
+			// AUDIT_VERDICT.md, process the verdict (reject on FAIL, clean up on PASS).
+			d.processAuditVerdictIfPresent(agent, config, logger)
 		}
 	}
 

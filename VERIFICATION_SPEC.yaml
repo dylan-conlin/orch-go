@@ -1,25 +1,23 @@
-task: "Probe HE-08: Stronger models may need more coordination gates"
-beads_id: orch-go-lw6ai
+task: "Wire daemon audit verdict processing to orch reject"
+beads_id: orch-go-ie81t
 tier: light
 
 verification:
-  probe_updated:
-    file: .kb/models/harness-engineering/probes/2026-03-20-probe-stronger-models-accretion-rate-by-model.md
-    changes: "Added effect size analysis (Cohen's d), task complexity interaction, instrumentation gap correction, per-trial variance analysis"
+  commands:
+    - name: "Audit verdict unit tests"
+      command: "go test ./pkg/daemon/ -run 'TestParseAuditVerdict|TestReadAuditVerdict|TestProcessAuditVerdict' -count=1 -v"
+      expect: "14 PASS, 0 FAIL"
+    - name: "Full daemon test suite (regression)"
+      command: "go test ./pkg/daemon/ -count=1 -timeout 120s"
+      expect: "ok (no regressions)"
+    - name: "Full project build"
+      command: "go build ./..."
+      expect: "clean compile"
 
-  model_updated:
-    file: .kb/models/harness-engineering/model.md
-    changes: "Updated invariant #8 with instrumentation status, coordination demo evidence, and effect sizes. Updated probe evidence line."
-
-findings:
-  claim_status: "unconfirmed"
-  evidence_direction: "directionally consistent with claim"
-  key_findings:
-    - "Coordination demo (N=160, haiku): coordination gates reduce accretion 8-12% (Cohen d 0.17-0.29)"
-    - "Placement (file routing) most effective at -12.2%"
-    - "Effect larger on complex tasks (-14.2%) than simple (-8.3%)"
-    - "System-level accretion scales ~5x with stronger model completion rates"
-    - "Instrumentation gap partially remains: accretion.delta lacks line-count fields"
-  blockers:
-    - "Fix accretion.delta event emission to include code_added/code_net"
-    - "Run coordination demo with --model opus for cross-model comparison"
+  manual_checks:
+    - "AUDIT_VERDICT.md format documented in ParseAuditVerdict godoc"
+    - "Rejector and AuditLabeler interfaces added to Daemon struct"
+    - "processAuditVerdictIfPresent wired into CompletionOnce after successful completion"
+    - "Low-confidence FAIL labels audit:needs-review instead of auto-rejecting"
+    - "PASS removes audit:deep-review label"
+    - "Events audit.failed and audit.passed logged for traceability"
