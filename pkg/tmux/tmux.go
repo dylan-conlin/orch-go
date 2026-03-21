@@ -246,8 +246,20 @@ func SessionExists(sessionName string) bool {
 }
 
 // GetWorkersSessionName derives the per-project workers session name.
+// The project name is sanitized to match tmux's session name normalization:
+// tmux silently replaces dots and colons with underscores, so we do the same
+// upfront to ensure SessionExists checks match the actual created session name.
 func GetWorkersSessionName(projectName string) string {
-	return fmt.Sprintf("workers-%s", projectName)
+	return fmt.Sprintf("workers-%s", sanitizeTmuxSessionName(projectName))
+}
+
+// sanitizeTmuxSessionName replaces characters that tmux normalizes in session names.
+// tmux converts dots (.) and colons (:) to underscores (_) when creating sessions.
+// By pre-normalizing, we ensure the name we pass to `tmux new-session -s` matches
+// what `tmux has-session -t` will find.
+func sanitizeTmuxSessionName(name string) string {
+	r := strings.NewReplacer(".", "_", ":", "_")
+	return r.Replace(name)
 }
 
 // EnsureWorkersSession ensures the workers session exists, creating if needed.

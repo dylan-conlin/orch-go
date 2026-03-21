@@ -30,6 +30,14 @@ func TestGetWorkersSessionName(t *testing.T) {
 		{"orch-go", "workers-orch-go"},
 		{"beads", "workers-beads"},
 		{"price-watch", "workers-price-watch"},
+		// Dot-prefixed directories: tmux normalizes dots to underscores
+		{".doom.d", "workers-_doom_d"},
+		{".config", "workers-_config"},
+		{".emacs.d", "workers-_emacs_d"},
+		// Colons are also normalized by tmux
+		{"project:name", "workers-project_name"},
+		// Mixed dots and colons
+		{".my:project.d", "workers-_my_project_d"},
 	}
 
 	for _, tt := range tests {
@@ -37,6 +45,30 @@ func TestGetWorkersSessionName(t *testing.T) {
 			result := GetWorkersSessionName(tt.project)
 			if result != tt.expected {
 				t.Errorf("GetWorkersSessionName(%q) = %q, want %q", tt.project, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSanitizeTmuxSessionName(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"orch-go", "orch-go"},
+		{".doom.d", "_doom_d"},
+		{".config", "_config"},
+		{"no-special-chars", "no-special-chars"},
+		{"has:colon", "has_colon"},
+		{".dots.and:colons", "_dots_and_colons"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := sanitizeTmuxSessionName(tt.input)
+			if result != tt.expected {
+				t.Errorf("sanitizeTmuxSessionName(%q) = %q, want %q", tt.input, result, tt.expected)
 			}
 		})
 	}
