@@ -22,7 +22,7 @@ func TestLogDaemonGateDecision_WritesEvent(t *testing.T) {
 		Reason:   "Rate limited: 10/10 spawns in the last hour",
 	})
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("failed to read log: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestLogDaemonGateDecision_ConcurrencyBlock(t *testing.T) {
 		Reason:   "At capacity: 5/5 slots occupied",
 	})
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("failed to read log: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestLogDaemonGateDecision_GovernanceWarn(t *testing.T) {
 		TargetFiles: []string{"pkg/spawn/gates/", "_precommit.go", "pkg/verify/accretion.go"},
 	})
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("failed to read log: %v", err)
 	}

@@ -115,7 +115,7 @@ func TestEmitCommandInvoked_WritesEvent(t *testing.T) {
 
 	emitCommandInvoked("harness audit", "--days=7", "--json=true")
 
-	data, err := os.ReadFile(eventsPath)
+	data, err := os.ReadFile(events.RotatedLogPath(eventsPath))
 	if err != nil {
 		t.Fatalf("Failed to read events file: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestEmitCommandInvoked_NoFlags(t *testing.T) {
 
 	emitCommandInvoked("stats")
 
-	data, err := os.ReadFile(eventsPath)
+	data, err := os.ReadFile(events.RotatedLogPath(eventsPath))
 	if err != nil {
 		t.Fatalf("Failed to read events file: %v", err)
 	}

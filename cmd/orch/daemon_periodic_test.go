@@ -184,7 +184,7 @@ func TestRunPeriodicTasks_CleanupLogsEvent(t *testing.T) {
 	runPeriodicTasks(d, "12:00:00", false, logger)
 
 	// Verify event was logged
-	data, err := os.ReadFile(eventsPath)
+	data, err := os.ReadFile(events.RotatedLogPath(eventsPath))
 	if err != nil {
 		t.Fatalf("failed to read events file: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestRunPeriodicTasks_RecoveryErrorLogsEvent(t *testing.T) {
 	os.Stderr = oldStderr
 
 	// Recovery errored — should log an error event
-	data, _ := os.ReadFile(eventsPath)
+	data, _ := os.ReadFile(events.RotatedLogPath(eventsPath))
 	if len(data) == 0 {
 		t.Error("expected error event when recovery fails, got nothing")
 		return
@@ -418,7 +418,7 @@ func TestRunPeriodicTasks_OrphanDetectionLogsEvent(t *testing.T) {
 	runPeriodicTasks(d, "12:00:00", false, logger)
 
 	// Orphan detection ran but found nothing — no event should be logged
-	data, _ := os.ReadFile(eventsPath)
+	data, _ := os.ReadFile(events.RotatedLogPath(eventsPath))
 	if len(data) > 0 {
 		t.Errorf("expected no events when orphan detection finds nothing, got: %s", string(data))
 	}

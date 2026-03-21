@@ -26,7 +26,7 @@ func TestLogDecision(t *testing.T) {
 	}
 
 	// Read and verify the event
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("failed to read log: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestLogDecision_ComplianceModulatesTier(t *testing.T) {
 		t.Fatalf("LogDecision() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("failed to read log: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestLogDecision_MinimalFields(t *testing.T) {
 		t.Fatalf("LogDecision() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("failed to read log: %v", err)
 	}

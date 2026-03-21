@@ -4,13 +4,13 @@
 package verify
 
 import (
-	"bufio"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/events"
 )
 
 // FixAttemptStats tracks how many times an issue has been worked on.
@@ -79,48 +79,28 @@ func GetFixAttemptStats(beadsID string) (*FixAttemptStats, error) {
 	return GetFixAttemptStatsFromPath(beadsID, DefaultEventsPath())
 }
 
-// GetFixAttemptStatsFromPath retrieves attempt statistics from a specific events file.
-// This is useful for testing with a custom events file.
+// GetFixAttemptStatsFromPath retrieves attempt statistics from event files.
 func GetFixAttemptStatsFromPath(beadsID, eventsPath string) (*FixAttemptStats, error) {
 	stats := &FixAttemptStats{
 		BeadsID: beadsID,
 		Skills:  make([]string, 0),
 	}
 
-	// Open events file
-	f, err := os.Open(eventsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// No events file yet - return empty stats
-			return stats, nil
-		}
-		return nil, err
-	}
-	defer f.Close()
-
-	// Track unique skills
 	seenSkills := make(map[string]bool)
 
-	// Scan for relevant events
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
+	err := events.ScanEventsFromPath(eventsPath, time.Time{}, time.Time{}, func(e events.Event) {
+		event := FixAttemptEvent{
+			Type:      e.Type,
+			SessionID: e.SessionID,
+			Timestamp: e.Timestamp,
+			Data:      e.Data,
 		}
 
-		var event FixAttemptEvent
-		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			continue // Skip malformed lines
-		}
-
-		// Check if this event is for our beads ID
 		eventBeadsID := extractBeadsIDFromEvent(event)
 		if eventBeadsID != beadsID {
-			continue
+			return
 		}
 
-		// Update stats based on event type
 		switch event.Type {
 		case "session.spawned":
 			stats.SpawnCount++
@@ -129,25 +109,21 @@ func GetFixAttemptStatsFromPath(beadsID, eventsPath string) (*FixAttemptStats, e
 				seenSkills[skill] = true
 				stats.Skills = append(stats.Skills, skill)
 			}
-
 		case "agent.completed":
 			stats.CompletedCount++
 			stats.LastOutcome = "completed"
-
 		case "agent.abandoned":
 			stats.AbandonedCount++
 			stats.LastOutcome = "abandoned"
 		}
 
-		// Track latest timestamp
 		eventTime := time.Unix(event.Timestamp, 0)
 		if eventTime.After(stats.LastAttemptAt) {
 			stats.LastAttemptAt = eventTime
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
+	})
+	if err != nil {
+		return stats, nil
 	}
 
 	return stats, nil
@@ -159,35 +135,21 @@ func GetAllRetryPatterns() ([]*FixAttemptStats, error) {
 	return GetAllRetryPatternsFromPath(DefaultEventsPath())
 }
 
-// GetAllRetryPatternsFromPath scans events from a specific file.
+// GetAllRetryPatternsFromPath scans event files for retry patterns.
 func GetAllRetryPatternsFromPath(eventsPath string) ([]*FixAttemptStats, error) {
-	// Build stats for all beads IDs
 	statsMap := make(map[string]*FixAttemptStats)
 
-	f, err := os.Open(eventsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil // No events file
-		}
-		return nil, err
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
-		var event FixAttemptEvent
-		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			continue
+	err := events.ScanEventsFromPath(eventsPath, time.Time{}, time.Time{}, func(e events.Event) {
+		event := FixAttemptEvent{
+			Type:      e.Type,
+			SessionID: e.SessionID,
+			Timestamp: e.Timestamp,
+			Data:      e.Data,
 		}
 
 		beadsID := extractBeadsIDFromEvent(event)
 		if beadsID == "" {
-			continue
+			return
 		}
 
 		stats, exists := statsMap[beadsID]
@@ -204,7 +166,6 @@ func GetAllRetryPatternsFromPath(eventsPath string) ([]*FixAttemptStats, error) 
 			stats.SpawnCount++
 			stats.LastOutcome = "spawned"
 			if skill := extractSkillFromEvent(event); skill != "" {
-				// Simple dedup check
 				found := false
 				for _, s := range stats.Skills {
 					if s == skill {
@@ -228,13 +189,11 @@ func GetAllRetryPatternsFromPath(eventsPath string) ([]*FixAttemptStats, error) 
 		if eventTime.After(stats.LastAttemptAt) {
 			stats.LastAttemptAt = eventTime
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	// Filter to only retry patterns and sort by severity
 	result := make([]*FixAttemptStats, 0)
 	for _, stats := range statsMap {
 		if stats.IsRetryPattern() {
@@ -242,7 +201,6 @@ func GetAllRetryPatternsFromPath(eventsPath string) ([]*FixAttemptStats, error) 
 		}
 	}
 
-	// Sort: persistent failures first, then by spawn count
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].IsPersistentFailure() != result[j].IsPersistentFailure() {
 			return result[i].IsPersistentFailure()

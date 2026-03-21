@@ -52,7 +52,7 @@ func TestLogSpawnEventIncludesAccount(t *testing.T) {
 	}
 
 	// Read and verify
-	data, err := os.ReadFile(eventsPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("failed to read events file: %v", err)
 	}

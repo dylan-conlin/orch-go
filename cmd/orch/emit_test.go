@@ -42,7 +42,7 @@ func TestRunEmit_AgentCompleted(t *testing.T) {
 	}
 
 	// Verify file was created and contains the event
-	data, err := os.ReadFile(eventsPath)
+	data, err := os.ReadFile(events.RotatedLogPath(eventsPath))
 	if err != nil {
 		t.Fatalf("failed to read events file: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestRunEmit_AdditionalData(t *testing.T) {
 	}
 
 	// Verify
-	data, err := os.ReadFile(eventsPath)
+	data, err := os.ReadFile(events.RotatedLogPath(eventsPath))
 	if err != nil {
 		t.Fatalf("failed to read events file: %v", err)
 	}

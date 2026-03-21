@@ -224,38 +224,22 @@ func collectDebriefDuration() string {
 	return debrief.FormatDuration(store.Duration())
 }
 
-// loadDebriefEvents reads events.jsonl and filters to today.
+// loadDebriefEvents reads event files and filters to today.
 func loadDebriefEvents(now time.Time) []debrief.SessionEvent {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil
-	}
+	eventsPath := events.DefaultLogPath()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
-	eventsPath := filepath.Join(home, ".orch", "events.jsonl")
-	file, err := os.Open(eventsPath)
-	if err != nil {
-		return nil
-	}
-	defer file.Close()
+	var result []debrief.SessionEvent
+	events.ScanEventsFromPath(eventsPath, startOfDay, time.Time{}, func(e events.Event) {
+		result = append(result, debrief.SessionEvent{
+			Type:      e.Type,
+			SessionID: e.SessionID,
+			Timestamp: e.Timestamp,
+			Data:      e.Data,
+		})
+	})
 
-	var events []debrief.SessionEvent
-	scanner := bufio.NewScanner(file)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-		var event debrief.SessionEvent
-		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			continue
-		}
-		events = append(events, event)
-	}
-
-	return debrief.FilterEventsToday(events, now)
+	return debrief.FilterEventsToday(result, now)
 }
 
 // collectDebriefLearned merges --learned flag, --changed flag, thread entries, and completion reasons from events.

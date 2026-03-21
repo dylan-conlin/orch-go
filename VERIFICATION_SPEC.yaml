@@ -1,26 +1,26 @@
-task: "Decision lifecycle gate: classify at birth, budget cap, auto-archive stale"
-beads_id: orch-go-tkr3y
+task: "events.jsonl monthly rotation to bound unbounded growth"
+beads_id: orch-go-d4pzp
 tier: light
 
 verification:
   commands:
-    - name: "Decision enforcement gate tests"
-      command: "go test -v -count=1 -run 'Enforcement' ./pkg/verify/ 2>&1 | cat"
-      expect: "8 PASS, 0 FAIL"
-    - name: "Decisions lifecycle package tests"
-      command: "go test -v -count=1 ./pkg/decisions/"
-      expect: "9 PASS, 0 FAIL"
-    - name: "Decisions CLI tests"
-      command: "go test -v -count=1 -run 'Decisions' ./cmd/orch/"
-      expect: "2 PASS"
+    - name: "Events package tests (rotation + learning + logging)"
+      command: "go test -count=1 ./pkg/events/"
+      expect: "all pass"
+    - name: "Daemon package tests"
+      command: "go test -count=1 ./pkg/daemon/"
+      expect: "all pass"
+    - name: "Verify package attempts tests"
+      command: "go test -count=1 -run 'TestGetFixAttempt|TestGetAllRetry' ./pkg/verify/"
+      expect: "all pass"
+    - name: "Spawn backends + orch package tests"
+      command: "go test -count=1 ./pkg/spawn/backends/ ./pkg/orch/"
+      expect: "all pass"
     - name: "Binary compiles"
       command: "go build ./cmd/orch/"
       expect: "clean compile"
 
   manual_checks:
-    - "orch decisions budget shows 62/30 with enforcement type breakdown"
-    - "orch decisions audit shows all decisions classified"
-    - "orch decisions stale finds context-only >30d uncited decisions"
-    - "14 stale/stub decisions archived (9 March 10 stubs + 5 others)"
-    - "All 62 remaining decisions have **Enforcement:** field"
-    - "GateDecisionEnforcement wired into V1 level in pkg/verify/level.go"
+    - "After rebuild, new events write to ~/.orch/events-YYYY-MM.jsonl"
+    - "orch stats reads from both legacy events.jsonl and rotated files"
+    - "Daemon learning refresh works correctly with rotated files"

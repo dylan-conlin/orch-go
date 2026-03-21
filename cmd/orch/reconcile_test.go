@@ -120,7 +120,7 @@ func TestEventLoggerWritesToFile(t *testing.T) {
 	}
 
 	// Read back the event file
-	content, err := os.ReadFile(tmpLogPath)
+	content, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read event file: %v", err)
 	}

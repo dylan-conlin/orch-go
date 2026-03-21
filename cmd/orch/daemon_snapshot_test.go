@@ -156,7 +156,7 @@ func TestLogAccretionSnapshot(t *testing.T) {
 	}
 
 	// Read back and verify
-	content, err := os.ReadFile(logPath)
+	content, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("reading events file: %v", err)
 	}

@@ -28,7 +28,7 @@ func TestLogGateDecision_IncludesBeadsID(t *testing.T) {
 		t.Fatalf("LogGateDecision() error = %v", err)
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestHotspotAutoBypassEmitsGateDecision(t *testing.T) {
 		t.Fatal("should not take allow path")
 	}
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestGovernanceGateEmitsWarnEvent(t *testing.T) {
 		TargetFiles: []string{"pkg/spawn/gates/", "_precommit.go", "pkg/verify/accretion.go"},
 	})
 
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logger.CurrentPath())
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestLogGateDecision_AllowDecisions(t *testing.T) {
 				t.Fatalf("LogGateDecision() error = %v", err)
 			}
 
-			data, err := os.ReadFile(logPath)
+			data, err := os.ReadFile(logger.CurrentPath())
 			if err != nil {
 				t.Fatalf("Failed to read log file: %v", err)
 			}
