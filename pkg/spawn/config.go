@@ -366,10 +366,8 @@ type Config struct {
 	// restricting orchestrator-level tools (Agent, Edit, Write, NotebookEdit).
 	DisallowTools string
 
-	// ClaimContext is the formatted claim probe context section for SPAWN_CONTEXT.md.
 	// Populated when the beads issue has a "claim:XX-NN" label, providing the probe agent
 	// with claim text, falsification condition, and existing evidence.
-	ClaimContext string
 }
 
 // UsageInfo contains account usage data at spawn time.

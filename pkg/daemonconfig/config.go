@@ -43,9 +43,7 @@ type Config struct {
 	// investigation actions (Next: items older than 3 days).
 	ReflectOpenEnabled bool
 
-	// When enabled, the daemon will scan staleness events and create model maintenance issues.
 
-	// Default is 4 hours.
 
 	// CleanupEnabled controls whether periodic session cleanup is enabled.
 	// When enabled, the daemon will run session cleanup periodically.
@@ -100,7 +98,6 @@ type Config struct {
 	KnowledgeHealthEnabled bool
 
 	// KnowledgeHealthInterval is how often to run the knowledge health check (0 = disabled).
-	// Default is 2 hours.
 	KnowledgeHealthInterval time.Duration
 
 	// KnowledgeHealthThreshold is the number of active quick entries that triggers
@@ -176,7 +173,6 @@ type Config struct {
 	ArtifactSyncEnabled bool
 
 	// ArtifactSyncInterval is how often to check for artifact drift (0 = disabled).
-	// Default is 24 hours (daily cadence).
 	ArtifactSyncInterval time.Duration
 
 	// ArtifactSyncProjectDir is the project directory containing ARTIFACT_MANIFEST.yaml.
@@ -212,7 +208,6 @@ type Config struct {
 	SynthesisAutoCreateEnabled bool
 
 	// SynthesisAutoCreateInterval is how often to check for synthesis opportunities.
-	// Default is 2 hours. Runs after reflection to use fresh synthesis data.
 	SynthesisAutoCreateInterval time.Duration
 
 	// SynthesisAutoCreateThreshold is the minimum number of investigations in a cluster
@@ -280,7 +275,6 @@ type Config struct {
 	TriggerExpiryEnabled bool
 
 	// TriggerExpiryInterval is how often to check for expired trigger issues.
-	// Default is 24 hours.
 	TriggerExpiryInterval time.Duration
 
 	// TriggerExpiryMaxAge is the maximum age for daemon:trigger issues before
@@ -327,7 +321,6 @@ type Config struct {
 	LightweightCleanupInterval time.Duration
 
 	// LightweightCleanupTimeout is how long a tier:lightweight issue can be in_progress
-	// before being auto-closed. Default is 2 hours.
 	LightweightCleanupTimeout time.Duration
 
 

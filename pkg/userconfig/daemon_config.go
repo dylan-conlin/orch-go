@@ -21,7 +21,6 @@ type DaemonConfig struct {
 	Label string `yaml:"label,omitempty"`
 
 	// Verbose enables verbose logging in the daemon.
-	// Defaults to true if not specified.
 	Verbose *bool `yaml:"verbose,omitempty"`
 
 	// ReflectIssues controls whether the daemon creates issues from kb reflect findings.
@@ -44,13 +43,9 @@ type DaemonConfig struct {
 	// Defaults to 3 if not specified.
 	SpawnDelaySeconds *int `yaml:"spawn_delay_seconds,omitempty"`
 
-	// Defaults to true if not specified.
 
-	// ReflectModelDriftIntervalHours is how often to run model drift reflection (in hours).
-	// Defaults to 4 if not specified.
 
 	// CleanupEnabled controls whether periodic session cleanup is enabled.
-	// Defaults to true if not specified.
 	CleanupEnabled *bool `yaml:"cleanup_enabled,omitempty"`
 
 	// CleanupIntervalHours is how often to run cleanup (in hours).
@@ -62,7 +57,6 @@ type DaemonConfig struct {
 	CleanupAgeDays *int `yaml:"cleanup_age_days,omitempty"`
 
 	// CleanupPreserveOrchestrator if true, skips orchestrator sessions during cleanup.
-	// Defaults to true if not specified.
 	CleanupPreserveOrchestrator *bool `yaml:"cleanup_preserve_orchestrator,omitempty"`
 
 	// CleanupServerURL is the OpenCode server URL for cleanup operations.
@@ -74,7 +68,6 @@ type DaemonConfig struct {
 	CleanupArchivedTTLDays *int `yaml:"cleanup_archived_ttl_days,omitempty"`
 
 	// RecoveryEnabled controls whether stuck agent recovery is enabled.
-	// Defaults to true if not specified.
 	RecoveryEnabled *bool `yaml:"recovery_enabled,omitempty"`
 
 	// RecoveryIntervalMinutes is how often to check for stuck agents (in minutes).
@@ -89,7 +82,6 @@ type DaemonConfig struct {
 	// Defaults to 60 if not specified.
 	RecoveryRateLimitMinutes *int `yaml:"recovery_rate_limit_minutes,omitempty"`
 
-	// Defaults to true if not specified.
 
 	// KnowledgeHealthIntervalHours is how often to run knowledge health checks (in hours).
 	// Defaults to 2 if not specified.
@@ -97,7 +89,6 @@ type DaemonConfig struct {
 	// Defaults to 50 if not specified.
 
 	// OrphanDetectionEnabled controls whether periodic orphan detection is enabled.
-	// Defaults to true if not specified.
 	OrphanDetectionEnabled *bool `yaml:"orphan_detection_enabled,omitempty"`
 
 	// OrphanDetectionIntervalMinutes is how often to check for orphaned issues (in minutes).
@@ -109,7 +100,6 @@ type DaemonConfig struct {
 	OrphanAgeThresholdMinutes *int `yaml:"orphan_age_threshold_minutes,omitempty"`
 
 	// PhaseTimeoutEnabled controls whether periodic phase timeout detection is enabled.
-	// Defaults to true if not specified.
 	PhaseTimeoutEnabled *bool `yaml:"phase_timeout_enabled,omitempty"`
 
 	// PhaseTimeoutIntervalMinutes is how often to check for unresponsive agents (in minutes).
@@ -121,7 +111,6 @@ type DaemonConfig struct {
 	PhaseTimeoutThresholdMinutes *int `yaml:"phase_timeout_threshold_minutes,omitempty"`
 
 	// AgreementCheckEnabled controls whether periodic agreement checking is enabled.
-	// Defaults to true if not specified.
 	AgreementCheckEnabled *bool `yaml:"agreement_check_enabled,omitempty"`
 
 	// AgreementCheckIntervalMinutes is how often to run agreement checks (in minutes).
@@ -129,7 +118,6 @@ type DaemonConfig struct {
 	AgreementCheckIntervalMinutes *int `yaml:"agreement_check_interval_minutes,omitempty"`
 
 	// InvariantCheckEnabled controls whether daemon self-check invariants run each poll cycle.
-	// Defaults to true if not specified.
 	InvariantCheckEnabled *bool `yaml:"invariant_check_enabled,omitempty"`
 
 	// InvariantViolationThreshold is the number of consecutive poll cycles with invariant
@@ -144,7 +132,6 @@ type DaemonConfig struct {
 	// These are prepended to the system PATH.
 	Path []string `yaml:"path,omitempty"`
 
-	// Defaults to true if not specified.
 
 	// PlanStalenessIntervalMinutes is how often to check for stale plans (in minutes).
 	// Defaults to 30 if not specified.

@@ -174,7 +174,6 @@ func GenerateContext(cfg *Config) (string, error) {
 		ExploreParentSkill:    cfg.ExploreParentSkill,
 		ExploreJudgeModel:     cfg.ExploreJudgeModel,
 		GovernanceContext:     governanceContext,
-		ClaimContext:          cfg.ClaimContext,
 	}
 
 	var buf bytes.Buffer

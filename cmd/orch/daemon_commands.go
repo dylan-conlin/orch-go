@@ -159,7 +159,6 @@ var (
 	daemonReflectInterval     int    // Periodic reflection interval in minutes (0 = disabled)
 	daemonReflectIssues       bool   // Create beads issues for synthesis opportunities
 	daemonReflectOpen         bool   // Create beads issues for open investigation actions
-	daemonModelDriftInterval  int    // Periodic model drift reflection interval in minutes (0 = disabled)
 	daemonKnowledgeHealthInterval int  // Knowledge health check interval in minutes (0 = disabled)
 	daemonCleanupEnabled         bool // Enable periodic session cleanup
 	daemonCleanupInterval        int  // Session cleanup interval in minutes (0 = disabled)
@@ -205,7 +204,6 @@ func init() {
 		cmd.Flags().IntVar(&daemonReflectInterval, "reflect-interval", 60, "Periodic reflection interval in minutes (0 = disabled, default: 60)")
 		cmd.Flags().BoolVar(&daemonReflectIssues, "reflect-issues", true, "Create beads issues for synthesis opportunities (default: true)")
 		cmd.Flags().BoolVar(&daemonReflectOpen, "reflect-open", true, "Create beads issues for open investigation actions (default: true)")
-		cmd.Flags().IntVar(&daemonModelDriftInterval, "reflect-model-drift-interval", 240, "Model drift reflection interval in minutes (0 = disabled, default: 240 = 4 hours)")
 		cmd.Flags().IntVar(&daemonKnowledgeHealthInterval, "knowledge-health-interval", 120, "Knowledge health check interval in minutes (0 = disabled, default: 120 = 2 hours)")
 		cmd.Flags().BoolVar(&daemonCleanupEnabled, "cleanup-enabled", true, "Enable periodic session cleanup (default: true)")
 		cmd.Flags().IntVar(&daemonCleanupInterval, "cleanup-interval", 360, "Session cleanup interval in minutes (0 = disabled, default: 360 = 6 hours)")

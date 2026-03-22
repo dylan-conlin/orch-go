@@ -71,7 +71,6 @@ func TestRunPeriodicTasks_NothingDue(t *testing.T) {
 	d := daemon.NewWithConfig(config)
 	tmpDir := t.TempDir()
 	logger := events.NewLogger(filepath.Join(tmpDir, "events.jsonl"))
-
 	result := runPeriodicTasks(d, "12:00:00", false, logger)
 
 	if result.PhaseTimeoutSnapshot != nil {
