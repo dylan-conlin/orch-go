@@ -181,13 +181,6 @@ func TestComputeLearning_GateHitRates(t *testing.T) {
 		t.Errorf("hotspot TotalEvaluations = %d, want 4", hotspot.TotalEvaluations)
 	}
 
-	// Verification failures
-	if skill.VerificationFailures != 1 {
-		t.Errorf("VerificationFailures = %d, want 1", skill.VerificationFailures)
-	}
-	if skill.VerificationBypasses != 1 {
-		t.Errorf("VerificationBypasses = %d, want 1", skill.VerificationBypasses)
-	}
 }
 
 func TestComputeLearning_MultipleSkills(t *testing.T) {

@@ -25,8 +25,6 @@ type SkillLearning struct {
 	RejectedCount         int                    `json:"rejected_count"`
 	ReworkCount           int                    `json:"rework_count"`
 	ReworkRate            float64                `json:"rework_rate"`
-	VerificationFailures  int                    `json:"verification_failures"`
-	VerificationBypasses  int                    `json:"verification_bypasses"`
 	GateHitRates          map[string]*GateStats  `json:"gate_hit_rates"`
 }
 
@@ -134,19 +132,6 @@ func computeLearningFiltered(eventsPath string, after, before time.Time) (*Learn
 			sl := store.ensureSkill(skill)
 			sl.ReworkCount++
 
-		case EventTypeVerificationFailed:
-			if skill == "" {
-				return
-			}
-			sl := store.ensureSkill(skill)
-			sl.VerificationFailures++
-
-		case EventTypeVerificationBypassed:
-			if skill == "" {
-				return
-			}
-			sl := store.ensureSkill(skill)
-			sl.VerificationBypasses++
 		}
 	})
 	if err != nil {
