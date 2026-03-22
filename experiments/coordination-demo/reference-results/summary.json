@@ -1,0 +1,48 @@
+{
+  "description": "Reference results from controlled coordination experiments",
+  "experiments": [
+    {
+      "name": "4-condition experiment",
+      "date": "2026-03-10",
+      "results_dir": "20260310-174045",
+      "model": "claude-haiku-4-5-20251001",
+      "trials_per_condition": 10,
+      "task_types": ["simple", "complex"],
+      "total_trials": 80,
+      "total_agent_invocations": 160,
+      "conditions": {
+        "no-coord": { "simple": "10/10 CONFLICT", "complex": "10/10 CONFLICT" },
+        "placement": { "simple": "10/10 SUCCESS", "complex": "10/10 SUCCESS" },
+        "context-share": { "simple": "10/10 CONFLICT", "complex": "10/10 CONFLICT" },
+        "messaging": { "simple": "10/10 CONFLICT", "complex": "10/10 CONFLICT" }
+      },
+      "individual_scores": "160/160 agents scored 6/6 (100%)"
+    },
+    {
+      "name": "gate condition extension",
+      "date": "2026-03-22",
+      "results_dir": "20260322-124035",
+      "model": "claude-haiku-4-5-20251001",
+      "trials_per_condition": 10,
+      "task_types": ["simple", "complex"],
+      "total_trials": 20,
+      "total_agent_invocations": 40,
+      "conditions": {
+        "gate": { "simple": "10/10 CONFLICT", "complex": "10/10 CONFLICT" }
+      },
+      "individual_scores": "40/40 agents scored 6/6 (100%)"
+    }
+  ],
+  "combined_totals": {
+    "total_trials": 100,
+    "total_agent_invocations": 200,
+    "individual_success_rate": "100% (200/200 scored 6/6)",
+    "coordination_success_rate": {
+      "no-coord": "0% (0/20)",
+      "context-share": "0% (0/20)",
+      "messaging": "0% (0/20)",
+      "gate": "0% (0/20)",
+      "placement": "100% (20/20)"
+    }
+  }
+}

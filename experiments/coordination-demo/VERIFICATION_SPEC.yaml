@@ -1,0 +1,39 @@
+description: Packaged coordination demo with narrative README, visualization, and three-command setup
+acceptance_criteria:
+  - id: AC-1
+    description: "demo.sh setup verifies prerequisites and reports ready"
+    command: "bash experiments/coordination-demo/demo.sh setup"
+    evidence: "All checks pass, reports 'Ready to run!'"
+    status: PASS
+
+  - id: AC-2
+    description: "demo.sh help shows clear usage and experiment summary"
+    command: "bash experiments/coordination-demo/demo.sh help"
+    evidence: "Shows hook line, 5 conditions, usage instructions"
+    status: PASS
+
+  - id: AC-3
+    description: "visualize.sh shows reference results with 5-condition bar chart"
+    command: "bash experiments/coordination-demo/visualize.sh"
+    evidence: "Shows 0% for 4 conditions, 100% for placement, messaging detail"
+    status: PASS
+
+  - id: AC-4
+    description: "visualize.sh can render results from an actual run directory"
+    command: "bash experiments/coordination-demo/visualize.sh experiments/coordination-demo/redesign/results/20260310-174045"
+    evidence: "Shows per-condition success rates from 80-trial run"
+    status: PASS
+
+  - id: AC-5
+    description: "reference-results/summary.json contains canonical 100-trial data"
+    command: "jq '.combined_totals.total_trials' experiments/coordination-demo/reference-results/summary.json"
+    evidence: "Returns 100"
+    status: PASS
+
+  - id: AC-6
+    description: "README.md tells narrative story with finding up front"
+    evidence: "README leads with hook, shows results table, includes reproduce section, framework summary, project structure"
+    status: PASS
+
+manual_verification:
+  - "Run ./demo.sh run to execute a real experiment (requires Claude CLI auth, ~10 min)"
