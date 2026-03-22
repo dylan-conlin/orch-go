@@ -2,6 +2,7 @@ package control
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -623,6 +624,117 @@ func TestVerifyLocked_NoSettings(t *testing.T) {
 	if unlocked != nil {
 		t.Errorf("expected nil, got %v", unlocked)
 	}
+}
+
+func TestIsGitTracked(t *testing.T) {
+	// Create a temp git repo
+	tmpDir := t.TempDir()
+	cmds := [][]string{
+		{"git", "-C", tmpDir, "init"},
+		{"git", "-C", tmpDir, "config", "user.email", "test@test.com"},
+		{"git", "-C", tmpDir, "config", "user.name", "Test"},
+	}
+	for _, args := range cmds {
+		if err := runCmd(args...); err != nil {
+			t.Fatalf("setup failed (%v): %v", args, err)
+		}
+	}
+
+	// Create and commit a file
+	tracked := filepath.Join(tmpDir, "tracked.json")
+	if err := os.WriteFile(tracked, []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := runCmd("git", "-C", tmpDir, "add", "tracked.json"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runCmd("git", "-C", tmpDir, "commit", "-m", "initial", "--no-verify"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create an untracked file
+	untracked := filepath.Join(tmpDir, "untracked.json")
+	if err := os.WriteFile(untracked, []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if !IsGitTracked(tracked) {
+		t.Error("committed file should be git-tracked")
+	}
+	if IsGitTracked(untracked) {
+		t.Error("untracked file should not be git-tracked")
+	}
+	if IsGitTracked("/nonexistent/file") {
+		t.Error("nonexistent file should not be git-tracked")
+	}
+}
+
+func TestLockSkipsGitTrackedFiles(t *testing.T) {
+	// Create a temp git repo
+	tmpDir := t.TempDir()
+	cmds := [][]string{
+		{"git", "-C", tmpDir, "init"},
+		{"git", "-C", tmpDir, "config", "user.email", "test@test.com"},
+		{"git", "-C", tmpDir, "config", "user.name", "Test"},
+	}
+	for _, args := range cmds {
+		if err := runCmd(args...); err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+	}
+
+	// Create and commit a settings file
+	claudeDir := filepath.Join(tmpDir, ".claude")
+	if err := os.MkdirAll(claudeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	gitTracked := filepath.Join(claudeDir, "settings.json")
+	if err := os.WriteFile(gitTracked, []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := runCmd("git", "-C", tmpDir, "add", ".claude/settings.json"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runCmd("git", "-C", tmpDir, "commit", "-m", "add settings", "--no-verify"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create an untracked file
+	notTracked := filepath.Join(tmpDir, "hook.py")
+	if err := os.WriteFile(notTracked, []byte("# hook"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Lock both files — git-tracked file should be skipped
+	err := Lock([]string{gitTracked, notTracked})
+	if err != nil {
+		t.Fatalf("Lock failed: %v", err)
+	}
+	defer Unlock([]string{gitTracked, notTracked})
+
+	// Git-tracked file should NOT be locked
+	status, err := FileStatus(gitTracked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Locked {
+		t.Error("git-tracked file should not be locked")
+	}
+
+	// Untracked file should be locked
+	status, err = FileStatus(notTracked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Locked {
+		t.Error("untracked file should be locked")
+	}
+}
+
+func runCmd(args ...string) error {
+	cmd := exec.Command(args[0], args[1:]...) //nolint:gosec
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 func TestFlagsSurviveLockUnlockLockCycle(t *testing.T) {

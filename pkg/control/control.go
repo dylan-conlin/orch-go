@@ -118,6 +118,9 @@ func FileStatus(path string) (Status, error) {
 }
 
 // Lock applies chflags uchg to the given files, making them immutable.
+// Files that are git-tracked are skipped with a warning, because uchg
+// prevents git pull/merge/checkout from replacing the file (git needs
+// to unlink+create, which fails with "Operation not permitted" on uchg files).
 func Lock(files []string) error {
 	for _, f := range files {
 		if _, err := os.Stat(f); err != nil {
@@ -125,6 +128,10 @@ func Lock(files []string) error {
 				return fmt.Errorf("control plane file missing: %s", f)
 			}
 			return err
+		}
+		if IsGitTracked(f) {
+			fmt.Fprintf(os.Stderr, "  skip %s (git-tracked, uchg would block git pull)\n", f)
+			continue
 		}
 		if err := exec.Command("chflags", "uchg", f).Run(); err != nil {
 			return fmt.Errorf("locking %s: %w", f, err)
@@ -151,6 +158,9 @@ func EnsureLocked() (int, error) {
 	for _, f := range files {
 		status, err := FileStatus(f)
 		if err != nil || !status.Exists || status.Locked {
+			continue
+		}
+		if IsGitTracked(f) {
 			continue
 		}
 		if err := exec.Command("chflags", "uchg", f).Run(); err != nil {
@@ -249,6 +259,20 @@ func expandPath(path string) string {
 		}
 	}
 	return os.ExpandEnv(path)
+}
+
+// IsGitTracked returns true if the file is tracked by git. Git-tracked files
+// should not have uchg applied because git pull/merge/checkout needs to
+// unlink+replace them, which uchg prevents.
+func IsGitTracked(path string) bool {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	dir := filepath.Dir(absPath)
+	base := filepath.Base(absPath)
+	cmd := exec.Command("git", "-C", dir, "ls-files", "--error-unmatch", base)
+	return cmd.Run() == nil
 }
 
 // DenyRules returns the deny rules that should be present in settings.json
