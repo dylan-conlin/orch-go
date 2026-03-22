@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for how skills work - loading, compilation, and embedding. Read this before debugging skill-related issues.
 
-**Last verified:** Jan 4, 2026
+**Last verified:** Mar 22, 2026
 
 ---
 
@@ -10,13 +10,25 @@
 
 Skills are instruction sets that tell agents how to do specific types of work:
 
-| Skill | Purpose |
-|-------|---------|
-| `investigation` | Explore codebase, answer questions |
-| `systematic-debugging` | Find and fix bugs |
-| `feature-impl` | Build features with phases |
-| `architect` | Design decisions and trade-offs |
-| `codebase-audit` | Comprehensive review |
+| Category | Skill | Purpose |
+|----------|-------|---------|
+| worker | `feature-impl` | Build features with configurable phases |
+| worker | `investigation` | Explore codebase, answer questions |
+| worker | `systematic-debugging` | Find and fix bugs |
+| worker | `architect` | Design decisions and trade-offs |
+| worker | `codebase-audit` | Comprehensive review |
+| worker | `research` | External research tasks |
+| worker | `experiment` | Run experiments |
+| worker | `experiential-eval` | Experience-based evaluation |
+| worker | `artifact-sync` | Documentation drift sync |
+| worker | `design-session` | UI/UX design sessions |
+| worker | `ux-audit` | UX quality audit |
+| meta | `orchestrator` | Orchestrator session management |
+| meta | `exploration-orchestrator` | Parallel decomposition orchestration |
+| meta | `exploration-judge` | Judge verdicts on exploration findings |
+| meta | `diagnostic` | System diagnostic sessions |
+| meta | `meta-orchestrator` | Multi-project orchestration |
+| shared | `worker-base` | Common protocols inherited by all workers |
 
 Skills live at: `~/.claude/skills/{category}/{skill}/SKILL.md`
 
@@ -47,7 +59,7 @@ orch spawn investigation "task"
 Some skills are compiled from multiple source files:
 
 ```
-~/orch-knowledge/skills/src/worker/{skill}/.skillc/
+orch-go/skills/src/worker/{skill}/.skillc/
 ├── skill.yaml          # Metadata
 ├── SKILL.md.template   # Main template
 └── phases/             # Phase-specific content

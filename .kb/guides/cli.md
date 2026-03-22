@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for the orch-go CLI. Read this before debugging CLI issues or adding new commands.
 
-**Last verified:** Jan 6, 2026
+**Last verified:** Mar 22, 2026
 
 **Supersedes:** 16 CLI investigations from Dec 19 - Jan 4 (see History section)
 
@@ -26,12 +26,14 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 
 | Command | Purpose | Common Flags |
 |---------|---------|--------------|
-| `orch spawn` | Create new agent session | `--issue`, `--model`, `--mcp`, `--tmux` |
+| `orch spawn` | Create new agent session | `--issue`, `--model`, `--backend`, `--light`, `--full`, `--dry-run` |
+| `orch work` | Start work on beads issue with skill inference | `--inline` |
 | `orch complete` | Verify and close agent work | `--force`, `--reason` |
 | `orch abandon` | Abandon stuck agents | - |
+| `orch reject` | Reject agent work quality and reopen issue | - |
+| `orch rework` | Spawn a rework agent for a completed issue | - |
 | `orch clean` | Clean up stale resources | `--workspaces`, `--sessions`, `--all` |
 | `orch wait` | Block until agent reaches phase | - |
-| `orch resume` | Resume paused agent | - |
 
 ### Monitoring Commands
 
@@ -42,6 +44,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `orch tail` | Capture agent output | - |
 | `orch question` | Extract pending question | - |
 | `orch review` | Batch completion review | `--needs-review` |
+| `orch retries` | Show issues with retry patterns | - |
 
 ### Strategic Commands
 
@@ -50,6 +53,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `orch focus` | Set/view priority goal | `--json` |
 | `orch drift` | Check alignment with focus | `--json` |
 | `orch next` | Suggest next action | `--json` |
+| `orch orient` | Session start orientation with throughput baseline | - |
 
 ### Daemon Commands
 
@@ -58,6 +62,28 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `orch daemon run` | Run work daemon |
 | `orch daemon preview` | Preview what would spawn |
 
+### Knowledge & Session Commands
+
+| Command | Purpose |
+|---------|---------|
+| `orch debrief` | Generate session debrief with auto-populated sections |
+| `orch thread` | Living threads — mid-session comprehension capture |
+| `orch comprehension` | Manage comprehension queue (pending review items) |
+| `orch decisions` | Decision lifecycle management (staleness, budgets) |
+| `orch plan` | Coordination plan management |
+
+### Infrastructure Commands
+
+| Command | Purpose |
+|---------|---------|
+| `orch harness` | Harness measurement (audit, report, init) |
+| `orch control` | Manage control plane immutability |
+| `orch hook` | Test, validate, and trace Claude Code hooks |
+| `orch settings` | Modify ~/.claude/settings.json programmatically |
+| `orch audit` | Randomized completion audit selection |
+| `orch init` | Initialize orch scaffolding in current directory |
+| `orch port` | Manage port allocations for projects |
+
 ### Utility Commands
 
 | Command | Purpose |
@@ -65,11 +91,11 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `orch serve` | Start dashboard API server |
 | `orch send` / `orch ask` | Send message to agent |
 | `orch account` | Manage Claude accounts |
-| `orch usage` | Show usage statistics |
+| `orch usage` | Show Claude Max usage for all accounts |
 | `orch hotspot` | Detect areas needing architect attention |
-| `orch reconcile` | Fix zombie in_progress issues |
-| `orch changelog` | Show ecosystem changelog |
-| `orch sessions` | Search session history |
+| `orch backlog` | Backlog maintenance (surface stale issues) |
+| `orch automation` | Manage orch automation (launchd jobs) |
+| `orch version` | Print version information |
 
 ---
 
@@ -79,25 +105,41 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 
 | Mode | Flag | Behavior | Use When |
 |------|------|----------|----------|
-| **Headless** (default) | none | HTTP API, returns immediately | Automation, batch work |
-| **Tmux** | `--tmux` | Creates tmux window with TUI | Visual monitoring |
-| **Inline** | `--inline` | Runs in current terminal, blocking | Quick tests |
+| **Claude CLI** (default) | `--backend claude` | tmux window with Claude CLI | Default for all spawns |
+| **OpenCode** | `--backend opencode` | HTTP API, returns immediately | Headless automation |
+| **Inline** | `--inline` (on `orch work`) | Runs in current terminal, blocking | Quick interactive work |
+
+### Spawn Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--issue` | Beads issue ID for tracking |
+| `--model` | Model alias or provider/model format |
+| `--backend` | `claude` (tmux) or `opencode` (HTTP) |
+| `--light` | Light tier (skips SYNTHESIS.md) |
+| `--full` | Full tier (requires SYNTHESIS.md) |
+| `--phases` | Feature-impl phases (e.g., `implementation,validation`) |
+| `--validation` | `none`, `tests`, `smoke-test` |
+| `--scope` | Session scope: `small`, `medium`, `large` |
+| `--account` | Account name for Claude CLI spawns |
+| `--effort` | Claude CLI effort: `low`, `medium`, `high` |
+| `--max-turns` | Max agentic turns (0 = unlimited) |
+| `--dry-run` | Show spawn plan without executing |
+| `--bypass-triage` | Acknowledge manual spawn bypasses daemon triage |
+| `--mcp` | MCP server preset (e.g., `playwright`) |
+| `--intent` | Declared outcome type: `experience`, `produce`, `build`, `investigate`, etc. |
 
 ### Model Selection
 
 | Alias | Model |
 |-------|-------|
-| `opus` | Claude Opus 4.5 (default) |
+| `opus` | Claude Opus 4.5 (default via Max subscription) |
 | `sonnet` | Claude Sonnet |
-| `flash` | Gemini 2.0 Flash |
+| `haiku` | Claude Haiku |
+| `flash` | Gemini Flash |
 | `pro` | Gemini Pro |
 
 **Rate limit escalation:** opus → switch account (`orch account switch work`) → flash
-
-### MCP Servers
-
-Common servers via `--mcp`:
-- `playwright` - Browser automation for UI verification
 
 ---
 

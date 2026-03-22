@@ -2,7 +2,7 @@
 
 **Purpose:** Descriptions of key orch-go packages — their responsibilities, main types, and APIs.
 
-**Extracted from:** CLAUDE.md (2026-03-20)
+**Last verified:** 2026-03-22
 
 ---
 
@@ -10,7 +10,7 @@
 
 - Uses Cobra framework for CLI structure
 - Global `--server` flag for OpenCode URL
-- Subcommand groups: `account`, `daemon`, `doctor`, `harness`, `plan`, `control`, `focus`, `hook`, `thread`, `audit`, `backlog`, `settings`, `kb`, `port`, `review`, `patterns`, `session`, `session-history`, `servers`, `learn`, `config`, `docs`, `precommit`, `model`, `logs`, `transcript`, `serve`, `stats`
+- Subcommand groups: `account`, `daemon`, `doctor`, `harness`, `plan`, `control`, `focus`, `hook`, `thread`, `audit`, `backlog`, `settings`, `kb`, `port`, `review`, `patterns`, `session`, `session-history`, `servers`, `learn`, `config`, `docs`, `precommit`, `model`, `logs`, `transcript`, `serve`, `stats`, `automation`, `decisions`, `comprehension`, `debrief`, `orient`
 
 ## pkg/opencode/ (OpenCode Client)
 
@@ -102,3 +102,106 @@
 - Tension-cluster detection (cross-model claim convergence)
 - Claim lifecycle states (hypothesis → tested → confirmed/refuted)
 - Drives daemon probe generation and orient surfacing
+
+## pkg/beads/ (Beads Issue Tracking)
+
+- `BeadsClient` interface decouples from `bd` CLI
+- Issue CRUD, comment management, label operations
+- Mock support for testing without `bd` binary
+
+## pkg/events/ (Event System)
+
+- Structured event types: `session.spawned`, `agent.completed`, `agent.rejected`, `spawn.gate_decision`, `daemon.architect_escalation`, etc.
+- `events.jsonl` append-only log for telemetry
+- Event enrichment fields for beads close hook
+
+## pkg/discovery/ (Agent Discovery)
+
+- Backend-aware agent query interface
+- Prevents multi-backend blindness (Class 2 defects)
+- Unified view across Claude CLI (tmux) and OpenCode backends
+
+## pkg/attention/ (Work Graph Monitoring)
+
+- Composable attention signal architecture
+- Attention signals for daemon work prioritization
+- Signal types: model contradictions, hotspot acceleration, knowledge decay
+
+## pkg/hook/ (Hook Testing & Tracing)
+
+- Hook configuration reader from `~/.claude/settings.json`
+- Matcher resolution, trace viewing
+- Simulation of hook invocations outside Claude Code
+
+## pkg/control/ (Control Plane)
+
+- Control plane immutability via macOS `chflags uchg`
+- Lock/unlock/status for governance files
+- Deny rule validation in settings.json
+
+## pkg/artifactsync/ (Artifact Sync)
+
+- Change-scope classification at completion time
+- Drift event logging to `artifact-drift.jsonl`
+- Manifest management for tracked documentation artifacts
+
+## pkg/tmux/ (Tmux Backend)
+
+- Tmux session and window management for agent spawning
+- Tmux follower polling for orchestrator output
+- Window targeting by workspace name
+
+## pkg/skills/ (Skill System)
+
+- Skill discovery and loading from `~/.claude/skills/`
+- Section filtering for skill content injection
+- Skill metadata parsing
+
+## pkg/kbmetrics/ (KB Health Metrics)
+
+- Claims-per-model extraction
+- Knowledge base health analysis
+- Quality scoring for spawn context
+
+## pkg/debrief/ (Session Debriefs)
+
+- Session debrief generation and auto-population
+- Durable artifacts at `.kb/sessions/YYYY-MM-DD-debrief.md`
+- Cross-session trend tracking
+
+## pkg/entropy/ (Codebase Health)
+
+- Growth trend analysis, duplication detection
+- Structural health scoring (Harness Layer 3)
+- Entropy spiral condition detection
+
+## pkg/focus/ (Priority Tracking)
+
+- North star tracking for multi-project prioritization
+- Current priority goal storage for work selection guidance
+
+## pkg/identity/ (Project Resolution)
+
+- Issue ID prefix to project directory mapping
+- Cross-project identity resolution
+
+## pkg/group/ (Project Groups)
+
+- Project group resolution
+- Collections of related projects sharing KB context scope
+
+## pkg/decisions/ (Decision Lifecycle)
+
+- Enforcement type classification
+- Staleness detection for uncited decisions
+- Decision budget cap enforcement
+
+## pkg/config/ (Project Config)
+
+- Project-level configuration (`orch.yaml`)
+- Backend selection, model defaults, spawn settings
+
+## pkg/userconfig/ (User Config)
+
+- User-level configuration (`~/.orch/config.yaml`)
+- Notification preferences, account defaults

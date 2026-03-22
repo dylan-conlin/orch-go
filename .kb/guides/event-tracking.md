@@ -2,7 +2,7 @@
 
 **Purpose:** Reference for all event types logged to `~/.orch/events.jsonl` for stats aggregation.
 
-**Extracted from:** CLAUDE.md (2026-03-20)
+**Last verified:** 2026-03-22
 
 ---
 
@@ -22,6 +22,7 @@
 | `agent.completed` | `orch complete` or `bd close` hook | Agent finished work |
 | `agent.abandoned` | `orch abandon` | Agent abandoned |
 | `agent.abandoned.telemetry` | `orch abandon` | Enriched abandonment data (skill, tokens, duration) |
+| `agent.rejected` | `orch reject` | Agent work rejected, issue reopened |
 | `agent.reworked` | `orch rework` | Rework spawned |
 | `agent.resumed` | `orch resume` | Agent resumed |
 | `agent.recovered` | daemon recovery | Stuck agent recovered |
