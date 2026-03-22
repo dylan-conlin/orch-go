@@ -46,10 +46,19 @@ BLANKET_GIT_ADD_PATTERNS = [
 ]
 
 
+def strip_quoted_strings(command: str) -> str:
+    """Remove content inside quotes and heredocs to avoid false-positives."""
+    result = re.sub(r"\$\(cat\s+<<'?\w+'?.*?\w+\s*\)", '', command, flags=re.DOTALL)
+    result = re.sub(r'"[^"]*"', '""', result)
+    result = re.sub(r"'[^']*'", "''", result)
+    return result
+
+
 def is_blanket_git_add(command: str) -> bool:
     """Detect if a Bash command uses blanket git add."""
+    stripped = strip_quoted_strings(command)
     for pattern in BLANKET_GIT_ADD_PATTERNS:
-        if re.search(pattern, command):
+        if re.search(pattern, stripped):
             return True
     return False
 
