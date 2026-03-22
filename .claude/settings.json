@@ -10,6 +10,17 @@
         ],
         "matcher": "Bash"
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "bash .claude/hooks/comprehension-queue-count.sh",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
     ]
   },
   "permissions": {

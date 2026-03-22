@@ -1,28 +1,29 @@
-task: "Move OpenSCAD hooks to global (~/.orch/hooks/)"
-beads_id: orch-go-fim6j
+task: "Wire UserPromptSubmit hook for comprehension:pending queue count"
+beads_id: orch-go-5ygdv
 tier: light
 
 verification:
   commands:
-    - name: "Staged hooks don't crash on empty input"
-      command: |
-        python3 .orch/staging/hooks/gate-openscad-stl-cgal.py < /dev/null; echo "cgal: $?"
-        python3 .orch/staging/hooks/gate-openscad-post-render.py < /dev/null; echo "render: $?"
-        python3 .orch/staging/hooks/gate-architect-production-files.py < /dev/null; echo "architect: $?"
-      expect: "All exit 0"
+    - name: "Hook script exists and is executable"
+      command: "test -x .claude/hooks/comprehension-queue-count.sh && echo PASS"
+      expect: "PASS"
 
-  manual_checks:
-    - "Orchestrator deploys hooks per .orch/staging/hooks/DEPLOY.md"
-    - "CGAL gate blocks STL export without --backend cgal in OpenSCAD project"
-    - "Post-render gate finds gates/geometry-check.sh via git rev-parse"
-    - "Architect gate reads .harness/config.yaml domain and blocks only in openscad projects"
-    - "Non-OpenSCAD projects unaffected (no openscad commands, no domain config)"
+    - name: "Hook returns valid JSON with additionalContext"
+      command: "bash .claude/hooks/comprehension-queue-count.sh | python3 -c 'import json,sys; d=json.load(sys.stdin); assert \"additionalContext\" in d; print(\"PASS\")'"
+      expect: "PASS"
+
+    - name: "Threshold escalation works"
+      command: "COMPREHENSION_THRESHOLD=0 bash .claude/hooks/comprehension-queue-count.sh | grep -q 'OVER THRESHOLD' && echo PASS"
+      expect: "PASS"
+
+    - name: "Hook wired in settings.json"
+      command: "python3 -c \"import json; d=json.load(open('.claude/settings.json')); assert 'UserPromptSubmit' in d['hooks']; print('PASS')\""
+      expect: "PASS"
+
+  manual_checks: []
 
   notes: |
-    Governance hook blocked direct writes to ~/.orch/hooks/ — expected behavior.
-    Hooks staged at .orch/staging/hooks/ with full deployment instructions.
-
-    Key changes from originals:
-    - gate-openscad-post-render.py: path resolution via git rev-parse instead of __file__-relative
-    - gate-architect-production-files.py: domain detection via .harness/config.yaml guard
-    - Both command-pattern hooks unchanged in logic (already self-filter on openscad presence)
+    Hook runs bd list -l comprehension:pending -s closed --no-pager, counts items
+    matching ^orch- pattern, and injects count as additionalContext.
+    Threshold default: 5 (configurable via COMPREHENSION_THRESHOLD env var).
+    Measured at ~50ms per invocation.
