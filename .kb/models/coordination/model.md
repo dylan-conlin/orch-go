@@ -72,7 +72,7 @@ The experimental findings generalize into four structural primitives required fo
 | **Throttle** | Velocity doesn't exceed verification bandwidth | Accretion gates, completion review, spawn rate limiting | Anthropic: 15x token consumption in multi-agent. McEntire: pipeline consumed $50 budget on planning alone |
 | **Align** | Agents share a current, accurate model of what correct means | Skills, CLAUDE.md, governance hooks, shared knowledge base | 50% of MAST failures (7/14 modes). Most neglected primitive across all frameworks |
 
-**Key insight:** Align is the meta-primitive. Without Align, the other three primitives drift — gates measure wrong things (Throttle), routes go stale (Route), sequence steps become wrong (Sequence). External evidence confirms: agents communicating perfectly while maintaining divergent models of correctness is the dominant failure pattern.
+**Key insight:** Align is the highest-leverage primitive and the validity condition for the other three. Route/Sequence/Throttle can mechanically operate without Align (messages get delivered, steps get ordered, velocity gets limited), but their coordination value degrades proportionally to Align quality. McEntire confirms: partial Align → 64% success, zero Align → 0%. This is a multiplier relationship, not a substrate dependency. External evidence confirms: agents communicating perfectly while maintaining divergent models of correctness is the dominant failure pattern. (Updated 2026-03-22: "meta-primitive"/"substrate" language replaced after falsification probe found 5 cases where Route/Sequence/Throttle mechanically hold while Align is broken — see probes/2026-03-22-probe-falsify-align-as-substrate.md.)
 
 **Degenerate case:** When N=1 (single agent), all four primitives are trivially satisfied. This explains why autoresearch succeeds with radical simplicity — it eliminates coordination rather than solving it.
 
@@ -134,6 +134,7 @@ The four primitives map onto control theory components. The mapping is structura
 | 2026-03-18 | Decay verification probe | All 4 claims confirmed current. Experiment data intact. Framework references updated (AutoGen → deprecated). Production architecture validates structural approach. |
 | 2026-03-22 | External framework validation probe | All 4 claims confirmed as general (not orch-go-specific). 14 MAST failure modes map to 4 primitives. McEntire experiment shows monotonic degradation. DeepMind scaling paper confirms centralized coordination reduces error amplification. Align identified as dominant/neglected primitive (50% of failures). |
 | 2026-03-22 | Control theory component mapping probe | Primitives map to control components (Route→Actuator, Sequence→Reference, Throttle→Controller, Align→Sensor) with 64% clean mapping. Sensor bleed pattern: 11/14 MAST modes involve sensors (79%), converging with open-loop thread's 87.5%. Structural homology, not isomorphism. |
+| 2026-03-22 | Align-as-substrate falsification probe | "Substrate" overclaims — 5 cases show Route/Sequence/Throttle mechanically holding while Align is broken (MAST FM-1.1, McEntire hierarchical 64%, launchd post-mortem, orch-go competing instructions, stale knowledge cascades). Align is a multiplier/validity condition with proportional (not binary) impact. "Meta-primitive" language replaced. |
 
 ---
 
@@ -162,7 +163,7 @@ The four primitives map onto control theory components. The mapping is structura
 - Can iterative messaging (multi-round negotiation) produce different results than single-shot plan exchange?
 - Does a stronger coordination instruction ("you MUST choose a different insertion point than the other agent") change behavior?
 - At what task granularity does structural placement become impractical?
-- Should Align decompose into sub-primitives? (It covers 50% of external failures — may be "state alignment" + "goal alignment")
+- Should Align decompose into sub-primitives? (It covers 50% of external failures — may be "state alignment" + "goal alignment"). **New evidence (2026-03-22):** 80-trial messaging condition shows task alignment defeating coordination alignment in 18/20 trials — agents agreed on the "correct" insertion point (task Align intact) while failing to coordinate (coordination Align broken). At minimum three sub-components: task alignment, state alignment, coordination alignment.
 - Do the four primitives have ordering dependencies? (Must Route precede Sequence?)
 - How do primitives interact with task type? (DeepMind found coordination strategy is task-dependent — financial reasoning favors centralized, web navigation favors decentralized)
 - Do the primitives apply to non-LLM multi-agent systems? (robotics, distributed computing, human organizations)

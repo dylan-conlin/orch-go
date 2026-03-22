@@ -1,0 +1,33 @@
+---
+verification_type: investigation
+task: "Probe: Falsify Align-as-substrate"
+issue: orch-go-ekkut
+
+outcomes:
+  - description: "At least 5 cases classified into the three categories"
+    status: pass
+    evidence: "15 cases classified: 5 Case 1, 4 Case 2, 6 Case 3"
+
+  - description: "Case 1 examples assessed for substrate falsification"
+    status: pass
+    evidence: "5 Case 1 examples found (MAST FM-1.1, McEntire hierarchical, launchd PM, competing instructions, stale knowledge). Substrate falsified at mechanical level, supported at functional value level."
+
+  - description: "Assessment of whether 'substrate' is the right word"
+    status: pass
+    evidence: "Concluded: 'substrate' overclaims. 'Multiplier' or 'validity condition' is more precise. Proportional (not binary) relationship demonstrated by McEntire hierarchical 64% success."
+
+  - description: "Model updated with refined language"
+    status: pass
+    evidence: "model.md updated: line 75 'meta-primitive' replaced with 'highest-leverage primitive and validity condition'. Evidence table extended. Open question updated with 80-trial Align decomposition evidence."
+
+  - description: "Probe file created with all required sections"
+    status: pass
+    evidence: "probes/2026-03-22-probe-falsify-align-as-substrate.md — Question, What I Tested, What I Observed, Model Impact all filled"
+
+artifacts:
+  probe: ".kb/models/coordination/probes/2026-03-22-probe-falsify-align-as-substrate.md"
+  investigation: ".kb/investigations/2026-03-22-inv-probe-falsify-align-substrate-find.md"
+  model_updated: ".kb/models/coordination/model.md"
+  synthesis: ".orch/workspace/og-inv-probe-falsify-align-22mar-b596/SYNTHESIS.md"
+
+manual_verification: none
