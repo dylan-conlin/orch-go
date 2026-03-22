@@ -134,6 +134,10 @@ func daemonSetup() (*daemonLoopState, error) {
 	// The daemon goes straight from polling bd ready to spawning issues.
 	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
 
+	// Wire comprehension queue throttle — without this, the gate in compliance.go
+	// fails open (ComprehensionQuerier is nil, so the check is skipped entirely).
+	d.ComprehensionQuerier = &daemon.BeadsComprehensionQuerier{}
+
 	// Wire beads health service (reuses collectHealthSnapshot from doctor_health.go)
 	d.BeadsHealth = daemon.NewDefaultBeadsHealthService(collectHealthSnapshot, getHealthStore())
 
