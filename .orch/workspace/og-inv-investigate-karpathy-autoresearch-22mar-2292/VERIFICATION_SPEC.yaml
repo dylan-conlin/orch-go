@@ -1,0 +1,38 @@
+verification:
+  type: investigation
+  issue: orch-go-h40x4
+
+  artifacts:
+    - path: .kb/investigations/2026-03-22-inv-investigate-karpathy-autoresearch-48k-stars.md
+      type: investigation
+      status: complete
+      checks:
+        - "DEKN summary filled with concrete findings"
+        - "6 findings with evidence, source, and significance"
+        - "Synthesis section with 5 key insights"
+        - "Structured uncertainty separates tested from untested claims"
+        - "Implementation recommendations with authority classification"
+        - "Sources section with markdown hyperlinks"
+
+    - path: .orch/workspace/og-inv-investigate-karpathy-autoresearch-22mar-2292/SYNTHESIS.md
+      type: synthesis
+      status: complete
+      checks:
+        - "Plain-Language Summary present and readable"
+        - "Verification Contract section present"
+
+  source_files_read:
+    - ~/Documents/personal/autoresearch/README.md
+    - ~/Documents/personal/autoresearch/program.md
+    - ~/Documents/personal/autoresearch/train.py
+    - ~/Documents/personal/autoresearch/prepare.py
+    - ~/Documents/personal/autoresearch/analysis.ipynb
+    - ~/Documents/personal/autoresearch/pyproject.toml
+
+  commands_run:
+    - "wc -l train.py prepare.py program.md README.md (1225 total lines)"
+    - "git log --oneline --all (60 commits)"
+    - "git log --oneline --all | head -30 (recent history)"
+    - "git log --oneline --all | tail -20 (earliest commits)"
+
+  manual_verification: none required
