@@ -1,6 +1,6 @@
 model: harness-engineering
 version: 1
-last_audit: "2026-03-19"
+last_audit: "2026-03-22"
 
 claims:
   - id: HE-01
@@ -410,3 +410,43 @@ claims:
         type: relates
         note: "Absence of scoped auto-surfacing is an attractor gap — knowledge exists but isn't routed to point of relevance"
     model_md_ref: "## Core Mechanism #2, ## Why This Fails #3, ## Constraints: Why Both Attractors and Gates?"
+
+  - id: HE-14
+    text: "Problem-surface constraints (narrowing what agents work on) can eliminate behavioral enforcement machinery (gates/hooks constraining how they work). Before adding behavioral enforcement, ask whether the problem can be narrowed. 7 existing orch-go patterns use problem constraints without naming them. autoresearch (48k stars) proves the extreme case: total problem constraint, zero behavioral enforcement."
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "13/13 HE claims about behavioral enforcement, 0/13 about problem constraints — structural blind spot in model coverage"
+        date: "2026-03-22"
+        verdict: extends
+      - source: "7 existing orch-go patterns that use problem constraints without naming them: spawn tiers, verify levels, --explore, daemon routing, hotspot extraction, domain harnesses, issue type scoping"
+        date: "2026-03-22"
+        verdict: extends
+      - source: "autoresearch (48k stars): 1 file, 1 metric, 5-min runs, zero governance — problem constraint eliminates enforcement"
+        date: "2026-03-22"
+        verdict: extends
+      - source: "V0 verification level already eliminates ~11 of 14 completion gates via implicit problem constraint"
+        date: "2026-03-22"
+        verdict: confirms
+      - source: "Fowler quote 'constraining the solution space' has two interpretations: (A) add enforcement, (B) simplify the problem — model only used (A)"
+        date: "2026-03-22"
+        verdict: extends
+    last_validated: "2026-03-22"
+    domain_tags: ["problem-constraint", "behavioral-constraint", "autoresearch", "scope-narrowing", "gate-reduction", "constraint-first"]
+    falsifies_if: "A tightly-constrained problem surface (single file, scalar metric, fixed budget) that still requires behavioral enforcement to produce correct outputs — measured across N>20 runs"
+    tensions:
+      - claim: HE-01
+        model: harness-engineering
+        type: extends
+        note: "HE-01 says hard > soft harness. HE-14 adds a third option: no enforcement needed when problem is sufficiently constrained. Not hard/soft — absent."
+      - claim: HE-02
+        model: harness-engineering
+        type: extends
+        note: "HE-02 says every convention without a gate erodes. HE-14 says some problems don't need conventions OR gates — they're self-constraining."
+      - claim: HE-05
+        model: harness-engineering
+        type: extends
+        note: "HE-05 ranks prevention > detection > rejection. HE-14 adds: elimination > prevention — remove the need for the gate entirely."
+    model_md_ref: "## Core Mechanism #9, ## Critical Invariants #8, ## Constraints: Why Narrow the Problem Before Adding Enforcement?"

@@ -1,7 +1,7 @@
 # Model: Harness Engineering
 
 **Domain:** Multi-Agent Code Quality Practices
-**Last Updated:** 2026-03-21
+**Last Updated:** 2026-03-22
 **Validation Status:** WORKING HYPOTHESIS — practices are grounded in one system (orch-go, 3 months). Independent external review (Codex, Mar 10) identified the framework as "software architecture + CI/policy enforcement + tech debt management with agent vocabulary" — strongest as internal operating model, weakest when claiming to be a new discipline. The practices (hard/soft distinction, gate layering, attractor + gate pattern) work in this system. The generalizations are untested. See `.kb/threads/2026-03-10-closed-loop-risk-ai-agents.md`.
 **Synthesized From:**
 - `.kb/investigations/2026-03-07-inv-analyze-accretion-pattern-orch-go.md` — Accretion structural analysis (daemon.go +892 lines, 6 cross-cutting concerns)
@@ -251,7 +251,36 @@ In orch-go, conventions without enforcement have been violated. This is consiste
 - Pre-commit hooks prevent known-bad patterns
 - Escape hatches (`--force-hotspot --architect-ref`) allow bypass with justification
 
-### 8. The Compositional Correctness Gap
+### 9. Problem-Surface Constraints (Narrowing vs Enforcing)
+
+The model's taxonomy (hard/soft harness, 13 claims, 14 gates, 8 failure modes) is entirely about behavioral enforcement — constraining HOW agents work after the problem is defined. A complementary strategy exists: constraining WHAT agents work on so enforcement machinery isn't needed.
+
+**The distinction:**
+
+| Strategy | Mechanism | Example | Governance Cost |
+|----------|-----------|---------|----------------|
+| **Behavioral enforcement** | Gates, hooks, rules constrain agent behavior | 14-gate completion pipeline, 12 deny hooks | High — each gate needs measurement, calibration, bypass handling |
+| **Problem-surface constraint** | Narrow scope, single file, scalar metric, fixed budget | autoresearch: 1 file, 1 metric, zero governance | Low — enforcement becomes unnecessary, not just harder |
+
+**Evidence that orch-go already uses problem constraints without naming them:**
+
+| Pattern | What It Constrains | Code | Eliminates |
+|---------|-------------------|------|------------|
+| Spawn tiers (light/full) | Synthesis requirements | `pkg/spawn/config.go:17-47` | SYNTHESIS.md gate for light-tier |
+| Verification levels (V0-V3) | Which completion gates fire | `pkg/spawn/verify_level.go:6-55` | V0 eliminates ~11 of 14 gates |
+| --explore decomposition | Task scope via parallel narrowing | `cmd/orch/spawn_cmd.go:243-264` | Scope-creep governance |
+| Daemon skill routing | Skill assigned by hotspot target | `pkg/daemon/coordination.go:40-98` | Post-hoc accretion enforcement |
+| Hotspot extraction | Pre-spawn blocking + extraction | `pkg/daemon/coordination.go:47-77` | Feature work on bloated files |
+| Domain harness (OpenSCAD) | Valid parameter/geometry space | `.harness/openscad/CLAUDE.md:124-132` | Behavioral review of designs |
+| Issue type scoping | Min verification by type | `pkg/spawn/verify_level.go:46-55` | Gate overhead for simple tasks |
+
+**The Fowler quote has two valid interpretations.** "Constraining the solution space" can mean (A) add enforcement that prevents wrong paths (the model's current interpretation — 14 gates, 12 hooks), or (B) simplify the problem so wrong paths don't exist (autoresearch's approach — 1 file, 1 metric, zero governance). The model adopted (A) exclusively; (B) is the missing half.
+
+**External evidence:** autoresearch (48k stars, 16 days) succeeds with zero governance because it constrains the problem surface — 1 editable file, 1 scalar metric, 5-minute runs, keep/discard via git. No task decomposition, no skill routing, no completion gates. The constraint IS the architecture. See `.kb/investigations/2026-03-22-inv-investigate-karpathy-autoresearch-48k-stars.md`.
+
+**Design principle:** When encountering a governance failure, two responses are available: (1) add behavioral enforcement (gate, hook, rule), or (2) narrow the problem so enforcement isn't needed (decompose, route, scope, tier). The model previously only recommended (1). Both should be considered, with (2) preferred when feasible — it's cheaper, simpler, and can't be bypassed.
+
+### 10. The Compositional Correctness Gap
 
 #### Compliance vs Coordination (a lens, not a partition)
 
@@ -329,7 +358,9 @@ Compliance vs coordination is one instance of a broader failure mode class: the 
 
 7. **Enforcement without measurement is theological; enforcement with measurement is empirical.** A gate you can't measure is an assertion you can't test. The dupdetect gate (111s invisible cost, 4.7% accretion coverage) demonstrates that even hard, deterministic enforcement can be operationally broken without a measurement surface. Every harness layer must be a pair: enforcement surface + measurement surface. One without the other is incomplete. (Evidence: Mar 11 instrumentation audit — 52% field gaps, 0 gate_decision events, survivorship bias architecture.)
 
-8. **Stronger models may need more coordination gates, not fewer.** Indirectly supported by 5 converging evidence lines, no contradictory data found. Not experimentally controlled — this is a plausible claim, not a validated one. **Instrumentation update (Mar 20):** model field now populated in `session.spawned` events (all backends). `accretion.delta` events have model field in schema but line-count fields (`code_added`, `code_net`) are not populated — only 3 of 425 accretion.delta events have model data, none with line counts. Controlled comparison still blocked. **Coordination demo evidence (N=160, haiku-only):** coordination conditions reduce per-agent accretion 8-12% vs no-coord baseline (Cohen's d: 0.17-0.29, small effect). Placement (file routing) most effective at -12.2%. Effect larger on complex tasks (-14.2%) than simple (-8.3%). This shows coordination gates reduce accretion even for a single model tier — the cross-model comparison (haiku vs opus) has not been run. **Back-of-envelope math** suggests the system-level effect is large: if Opus completes ~96% vs non-Anthropic ~20%, total system accretion scales ~5x even if per-session accretion is identical. The stated falsification criterion ("less accretion per agent-session") targets the wrong metric — coordination is a system-level property (completion rate × per-session accretion × spawn velocity), not per-session. **Production data (N=235 Opus sessions, Mar 15-21):** 8,157 lines/day, 34 sessions/day, mean 243 lines/session. System-level math: ~5x coordination pressure from Opus vs non-Anthropic via completion rate multiplier alone. **Cross-model demo (N=80):** 100% merge conflict rate regardless of model — capability doesn't solve coordination. Controlled per-model experiment still blocked on accretion.delta instrumentation.
+8. **Before adding behavioral enforcement, ask whether the problem can be narrowed.** Problem-surface constraints (narrowing what agents work on) can eliminate behavioral enforcement machinery (gates/hooks constraining how they work). orch-go already has 7 unnamed problem-constraint patterns (spawn tiers, verification levels, --explore decomposition, skill routing, hotspot extraction, domain harnesses, issue type scoping). autoresearch (48k stars) proves the extreme case: total problem constraint, zero behavioral enforcement. When the problem surface is tight enough (1 file, 1 metric, fixed budget), governance becomes unnecessary — not just simpler, but absent. The model's prior 13 claims all address the second question ("how to enforce") without first asking "can we narrow the problem so enforcement isn't needed?" (Mar 22 probe — 0/13 claims covered problem-surface constraints.)
+
+9. **Stronger models may need more coordination gates, not fewer.** Indirectly supported by 5 converging evidence lines, no contradictory data found. Not experimentally controlled — this is a plausible claim, not a validated one. **Instrumentation update (Mar 20):** model field now populated in `session.spawned` events (all backends). `accretion.delta` events have model field in schema but line-count fields (`code_added`, `code_net`) are not populated — only 3 of 425 accretion.delta events have model data, none with line counts. Controlled comparison still blocked. **Coordination demo evidence (N=160, haiku-only):** coordination conditions reduce per-agent accretion 8-12% vs no-coord baseline (Cohen's d: 0.17-0.29, small effect). Placement (file routing) most effective at -12.2%. Effect larger on complex tasks (-14.2%) than simple (-8.3%). This shows coordination gates reduce accretion even for a single model tier — the cross-model comparison (haiku vs opus) has not been run. **Back-of-envelope math** suggests the system-level effect is large: if Opus completes ~96% vs non-Anthropic ~20%, total system accretion scales ~5x even if per-session accretion is identical. The stated falsification criterion ("less accretion per agent-session") targets the wrong metric — coordination is a system-level property (completion rate × per-session accretion × spawn velocity), not per-session. **Production data (N=235 Opus sessions, Mar 15-21):** 8,157 lines/day, 34 sessions/day, mean 243 lines/session. System-level math: ~5x coordination pressure from Opus vs non-Anthropic via completion rate multiplier alone. **Cross-model demo (N=80):** 100% merge conflict rate regardless of model — capability doesn't solve coordination. Controlled per-model experiment still blocked on accretion.delta instrumentation.
 
 ---
 
@@ -435,6 +466,13 @@ Compliance vs coordination is one instance of a broader failure mode class: the 
 **This enables:** Data-backed evaluation of gate effectiveness (Mar 24 checkpoint)
 **This constrains:** Cannot ship enforcement without corresponding measurement surface — must instrument before declaring "shipped"
 
+### Why Narrow the Problem Before Adding Enforcement?
+
+**Constraint:** Problem-surface constraints (narrowing scope, single files, scalar metrics) eliminate enforcement machinery. Behavioral enforcement (gates, hooks, rules) adds cost that scales with governance complexity.
+
+**This enables:** Choosing the cheaper enforcement strategy first — narrow the problem, then enforce only what narrowing can't handle
+**This constrains:** Must evaluate problem-constraint feasibility before defaulting to new gates/hooks
+
 ### Why Package Structure Matters More Than Instructions?
 
 **Constraint:** Package structure is persistent across all agent sessions — always visible, always enforced (by the compiler). Instructions compete with system prompt and degrade under pressure.
@@ -499,6 +537,8 @@ Compliance vs coordination is one instance of a broader failure mode class: the 
 **2026-03-08 (evening):** Compliance vs coordination failure mode distinction crystallized. daemon.go +892 was coordination failure (30 agents each correct, collectively incoherent), not compliance failure. Stronger models fix compliance but worsen coordination — faster agents accrete more confidently. Harness engineering reframed as permanent discipline (coordination infrastructure) rather than transitional (training wheels). Publication plan created with 4 phases: deepen model → cross-language evidence → publication draft → portable tooling.
 
 **2026-03-17:** First post-gate effectiveness measurement (1 week since Mar 10 wiring). Raw velocity -25% (6,131→4,597/wk), but confounded by lower commit activity (-19%); per-commit velocity only -5.6%. Gate's direct blocking negligible (2 blocks, both bypassed). Indirect effect dramatic: hotspot count 12→3, daemon.go 1,559→197. Gate works as coordination mechanism (extraction pressure) not compliance mechanism (blocking). Falsification criterion #1 inconclusive — velocity metric may be wrong measure; structural health (hotspot count, file size Gini) better captures gate effect. Checkpoint Mar 24 needs commit-normalized data.
+
+**2026-03-22:** Problem-surface constraints identified as structural blind spot. All 13 claims (HE-01 through HE-13) exclusively cover behavioral enforcement; 0/13 address constraining the problem surface. 7 existing orch-go patterns that use problem constraints found unnamed (spawn tiers, verify levels, --explore, daemon routing, hotspot extraction, domain harnesses, issue type scoping). autoresearch (48k stars) provided external evidence: total problem constraint = zero governance. New §9 added. New invariant #8 added. New constraint added. The Fowler quote "constraining the solution space" has two valid interpretations; the model previously only used one.
 
 **2026-03-20:** §8 generalized from "compliance vs coordination" to "compositional correctness gap." Two independent cross-domain evidence sources (LED magnetic letters gate stack, SendCutSend sheet metal DFM) showed the same structure as daemon.go coordination failure: individually valid components compose into non-functional wholes because validation gates operate at the component level. Named concept added. Three-scale evidence table added (operation→assembly, geometry→function, agent→system).
 
@@ -568,4 +608,5 @@ Compliance vs coordination is one instance of a broader failure mode class: the 
 - 2026-03-11: Retrospective accuracy audit (Phase 3) — **Signal gates have 0% false positive rate across 173 samples.** Audited all blocks/failures for 8 signal gates (build, vet, phase_complete, synthesis, explain_back, verified, triage, accretion_precommit). Zero false positives found. Gates split into correctness gates (11 events, catch real defects) and discipline gates (162 events, measure human process compliance). Discipline gates (explain_back, verified, triage) have 100% eventual-completion rate — they enforce process without blocking correct work. Low-volume gates (build/vet n=3) have wide confidence intervals; Phase 4 prospective tracking needed. self_review (NOISE) confirmed at 79% FP rate (15/19 failures are intentional CLI output or pre-existing code). Extends model with gate accuracy data and correctness/discipline gate taxonomy.
 - 2026-03-20: Stronger models accretion rate by model [HE-08] — **Claim indirectly supported by 5 converging evidence lines; controlled experiment not yet run.** Model field wired into `session.spawned` (working) but `accretion.delta` events lack line-count fields (only 3/425 have model, none with code_added/code_net). Coordination demo (N=160, haiku-only) shows coordination conditions reduce accretion 8-12% vs no-coord baseline (Cohen's d 0.17-0.29, small). Placement most effective (-12.2%). Effect larger on complex tasks. Back-of-envelope: system-level accretion scales ~5x with Opus completion rate (~96%) vs non-Anthropic (~20%). Falsification criterion ("less accretion per agent-session") may be wrong metric — coordination is system-level. Next: fix accretion.delta line-count emission, then run coordination demo with `--model opus` for haiku-vs-opus controlled comparison (N>50 per model).
 - 2026-03-20: Compositional correctness gap — **Compliance vs coordination is one instance of a broader cross-domain failure mode class.** LED magnetic letters gate stack (~150 renders): cut-channel LED routing passes all 4 gate layers (parameter, geometry, printability, intent) but produces disconnected channels — valid manifold STL, non-functional enclosure. Sheet metal DFM (SendCutSend): individual operations (cuts, bends, hardware) pass DFM rules but composed assembly interferes. Same structure as daemon.go +892 from 30 correct commits. Named concept "compositional correctness gap": gates validate at component level, failure emerges at composition level. §8 generalized with three-scale evidence table (operation→assembly, geometry→function, agent→system). See `.kb/investigations/2026-03-20-inv-extend-harness-engineering-model-kb.md`.
+- 2026-03-22: Problem-surface constraints blind spot — **All 13 HE claims cover behavioral enforcement; 0/13 address problem-surface constraints.** 7 existing orch-go patterns use problem constraints without naming them (spawn tiers, verify levels, --explore, daemon routing, hotspot extraction, domain harnesses, issue type scoping). autoresearch (48k stars, 1 file, 1 metric, zero governance) is external evidence that total problem constraint eliminates behavioral enforcement. Fowler quote "constraining the solution space" has two valid interpretations — model only used one. New §9, invariant #8, and constraint added.
 - 2026-03-20: SCS AI Part Builder compositional correctness gap (CCG-DFM) — **Confirms compositional correctness gap in production commercial DFM tooling.** SCS's AI Part Builder (powered by Smithy, api.smithy.cc) tested with 4 parts. PEM-near-bend-line test: zero DFM warnings, valid geometry, unmanufacturable part. Integration is iframe with one-way handoff — Smithy validates geometry, SCS validates manufacturing, neither validates manufacturability. **0% recall** on hardware+bend conflicts (regression from SCS's own DFM tools at 46.2%). Gap is at the third-party integration boundary. Three architectural paths identified (none implemented): Smithy internalizes DFM, real-time DFM API, or remove one-way gate. See `.kb/models/smithy-geometry-engine/model.md` for full Smithy model.
