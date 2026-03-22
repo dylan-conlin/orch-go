@@ -1,0 +1,53 @@
+verification:
+  type: investigation
+  outcome: misdiagnosis
+
+  claim_tested: "Harness hooks block workers from editing serve.go and dashboard handlers"
+  verdict: "FALSE — governance hook does not protect serve.go"
+
+  evidence:
+    - test: "Governance hook with serve.go input"
+      command: |
+        echo '{"tool_name":"Edit","tool_input":{"file_path":"cmd/orch/serve.go"}}' \
+          | CLAUDE_CONTEXT=worker python3 ~/.orch/hooks/gate-governance-file-protection.py
+      expected: "No output (exit 0, no deny)"
+      actual: "No output (exit 0, no deny)"
+      pass: true
+
+    - test: "Governance hook with governance file input (control)"
+      command: |
+        echo '{"tool_name":"Edit","tool_input":{"file_path":"pkg/spawn/gates/gate.go"}}' \
+          | CLAUDE_CONTEXT=worker python3 ~/.orch/hooks/gate-governance-file-protection.py
+      expected: "Deny output with pattern match"
+      actual: "Deny output: matched pattern pkg/spawn/gates/"
+      pass: true
+
+    - test: "Prior fix was worker-spawned"
+      command: "bd show orch-go-wfx1t"
+      expected: "Assignee is a worker agent, comments show Phase protocol"
+      actual: "Assignee: og-debug-orch-serve-burns-22mar-b338, Phase: Planning → Implementing → Complete"
+      pass: true
+
+    - test: "Current CPU usage"
+      command: "ps aux | grep 'orch serve'"
+      expected: "Low CPU (< 5%)"
+      actual: "0.3% CPU"
+      pass: true
+
+  protected_paths_audit:
+    governance_hook_patterns:
+      - ".orch/hooks/*.py"
+      - "scripts/pre-commit"
+      - "cmd/orch/*_lint_test.go"
+      - "cmd/orch/governance_checksum_test.go"
+      - "cmd/orch/testdata/governance_checksums.json"
+      - "pkg/spawn/gates/"
+      - "pkg/verify/precommit.go"
+      - "pkg/verify/accretion.go"
+    not_protected:
+      - "cmd/orch/serve.go"
+      - "cmd/orch/serve_*.go"
+      - "cmd/orch/serve_agents_cache.go"
+      - "cmd/orch/serve_beads_cache.go"
+
+  manual_verification: none required
