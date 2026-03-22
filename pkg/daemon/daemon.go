@@ -294,6 +294,17 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 	return d
 }
 
+// ReconcileSpawnCacheWithSessions cross-checks the spawn cache against live
+// agent sessions and evicts entries for dead agents. Call this at daemon startup
+// to clear stale entries left by agents killed during reboot. Without this,
+// the 6-hour TTL blocks respawning until it expires.
+func (d *Daemon) ReconcileSpawnCacheWithSessions() int {
+	if d.SpawnedIssues == nil || d.Agents == nil {
+		return 0
+	}
+	return d.SpawnedIssues.ReconcileWithSessions(d.Agents.HasExistingSessionOrError)
+}
+
 // Issue selection methods are in issue_selection.go:
 //   resolveIssueQuerier, issueMatchesLabel, NextIssue, NextIssueExcluding, expandTriageReadyEpics
 

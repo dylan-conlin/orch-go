@@ -154,6 +154,13 @@ func daemonSetup() (*daemonLoopState, error) {
 	// Seed verification tracker with unverified backlog from previous sessions
 	seedVerificationTracker(d)
 
+	// Reconcile spawn cache against live sessions.
+	// After reboot, agents are dead but their spawn cache entries persist (6h TTL).
+	// Without this, the daemon refuses to re-spawn until TTL expires.
+	if evicted := d.ReconcileSpawnCacheWithSessions(); evicted > 0 {
+		fmt.Printf("Spawn cache: evicted %d entries for dead sessions\n", evicted)
+	}
+
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 

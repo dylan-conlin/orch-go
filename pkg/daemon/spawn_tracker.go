@@ -338,6 +338,57 @@ func (t *SpawnedIssueTracker) ReconcileWithIssues(openIssues []Issue) int {
 	return removed
 }
 
+// ReconcileWithSessions cross-checks spawn cache entries against live sessions.
+// For each tracked issue, it calls sessionChecker to determine if the session is alive.
+// Entries where the session is confirmed dead are evicted. If sessionChecker returns
+// an error, the entry is preserved (fail-closed) to avoid evicting entries for
+// agents that may still be running but whose session check infrastructure is down.
+//
+// Call this at daemon startup to clear stale entries left by agents killed during
+// reboot. This is distinct from CleanStale (TTL-based) and ReconcileWithIssues
+// (issue-status-based).
+func (t *SpawnedIssueTracker) ReconcileWithSessions(sessionChecker func(issueID string) (bool, error)) int {
+	if sessionChecker == nil {
+		return 0
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	evicted := 0
+	for id := range t.spawned {
+		alive, err := sessionChecker(id)
+		if err != nil {
+			// Fail-closed: can't confirm dead, keep the entry
+			fmt.Fprintf(os.Stderr, "spawn-tracker: session check error for %s, keeping entry: %v\n", id, err)
+			continue
+		}
+		if !alive {
+			fmt.Fprintf(os.Stderr, "spawn-tracker: evicting dead session %s from cache\n", id)
+			delete(t.spawned, id)
+			evicted++
+		}
+	}
+
+	if evicted > 0 {
+		// Clean orphaned title entries
+		for title, id := range t.spawnedTitles {
+			if _, exists := t.spawned[id]; !exists {
+				delete(t.spawnedTitles, title)
+			}
+		}
+		// Clean spawn counts for evicted issues
+		for id := range t.spawnCounts {
+			if _, exists := t.spawned[id]; !exists {
+				delete(t.spawnCounts, id)
+			}
+		}
+		t.saveLocked()
+	}
+
+	return evicted
+}
+
 // Count returns the number of currently tracked spawned issues.
 func (t *SpawnedIssueTracker) Count() int {
 	t.mu.Lock()

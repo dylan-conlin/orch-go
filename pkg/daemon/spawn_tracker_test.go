@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -749,6 +750,248 @@ func TestDaemon_OrphanDetectionPreservesSpawnCache(t *testing.T) {
 	}
 	if spawnCount != 1 {
 		t.Errorf("Spawner should still have 1 call (no duplicate), got %d", spawnCount)
+	}
+}
+
+// --- ReconcileWithSessions tests ---
+
+func TestSpawnedIssueTracker_ReconcileWithSessions_EvictsDeadSessions(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+	tracker.MarkSpawnedWithTitle("issue-alive", "Alive task")
+	tracker.MarkSpawnedWithTitle("issue-dead", "Dead task")
+
+	evicted := tracker.ReconcileWithSessions(func(issueID string) (bool, error) {
+		return issueID == "issue-alive", nil // issue-dead has no session
+	})
+
+	if evicted != 1 {
+		t.Errorf("expected 1 evicted, got %d", evicted)
+	}
+	if !tracker.IsSpawned("issue-alive") {
+		t.Error("issue-alive should still be tracked")
+	}
+	if tracker.IsSpawned("issue-dead") {
+		t.Error("issue-dead should be evicted")
+	}
+	// Title index should also be cleaned
+	spawned, _ := tracker.IsTitleSpawned("Dead task")
+	if spawned {
+		t.Error("title for dead issue should be cleaned")
+	}
+	spawned, _ = tracker.IsTitleSpawned("Alive task")
+	if spawned != true {
+		t.Error("title for alive issue should be preserved")
+	}
+}
+
+func TestSpawnedIssueTracker_ReconcileWithSessions_FailClosedOnError(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+	tracker.MarkSpawned("issue-error")
+	tracker.MarkSpawned("issue-dead")
+
+	evicted := tracker.ReconcileWithSessions(func(issueID string) (bool, error) {
+		if issueID == "issue-error" {
+			return false, fmt.Errorf("session check failed")
+		}
+		return false, nil // dead
+	})
+
+	if evicted != 1 {
+		t.Errorf("expected 1 evicted (only issue-dead), got %d", evicted)
+	}
+	if !tracker.IsSpawned("issue-error") {
+		t.Error("issue-error should be preserved (fail-closed on error)")
+	}
+	if tracker.IsSpawned("issue-dead") {
+		t.Error("issue-dead should be evicted")
+	}
+}
+
+func TestSpawnedIssueTracker_ReconcileWithSessions_AllAlive(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+	tracker.MarkSpawned("issue-1")
+	tracker.MarkSpawned("issue-2")
+
+	evicted := tracker.ReconcileWithSessions(func(issueID string) (bool, error) {
+		return true, nil // all alive
+	})
+
+	if evicted != 0 {
+		t.Errorf("expected 0 evicted, got %d", evicted)
+	}
+	if tracker.Count() != 2 {
+		t.Errorf("expected 2 tracked, got %d", tracker.Count())
+	}
+}
+
+func TestSpawnedIssueTracker_ReconcileWithSessions_AllDead(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+	tracker.MarkSpawned("issue-1")
+	tracker.MarkSpawned("issue-2")
+	tracker.MarkSpawned("issue-3")
+
+	evicted := tracker.ReconcileWithSessions(func(issueID string) (bool, error) {
+		return false, nil // all dead
+	})
+
+	if evicted != 3 {
+		t.Errorf("expected 3 evicted, got %d", evicted)
+	}
+	if tracker.Count() != 0 {
+		t.Errorf("expected 0 tracked, got %d", tracker.Count())
+	}
+}
+
+func TestSpawnedIssueTracker_ReconcileWithSessions_NilChecker(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+	tracker.MarkSpawned("issue-1")
+
+	evicted := tracker.ReconcileWithSessions(nil)
+
+	if evicted != 0 {
+		t.Errorf("expected 0 evicted with nil checker, got %d", evicted)
+	}
+	if !tracker.IsSpawned("issue-1") {
+		t.Error("issue-1 should still be tracked with nil checker")
+	}
+}
+
+func TestSpawnedIssueTracker_ReconcileWithSessions_EmptyTracker(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+
+	evicted := tracker.ReconcileWithSessions(func(issueID string) (bool, error) {
+		t.Error("checker should not be called on empty tracker")
+		return false, nil
+	})
+
+	if evicted != 0 {
+		t.Errorf("expected 0 evicted on empty tracker, got %d", evicted)
+	}
+}
+
+func TestSpawnedIssueTracker_ReconcileWithSessions_CleansSpawnCounts(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+	tracker.MarkSpawned("issue-dead")
+	tracker.MarkSpawned("issue-dead") // spawn count = 2
+	tracker.MarkSpawned("issue-alive")
+
+	if count := tracker.SpawnCount("issue-dead"); count != 2 {
+		t.Fatalf("issue-dead spawn count should be 2, got %d", count)
+	}
+
+	tracker.ReconcileWithSessions(func(issueID string) (bool, error) {
+		return issueID == "issue-alive", nil
+	})
+
+	if count := tracker.SpawnCount("issue-dead"); count != 0 {
+		t.Errorf("issue-dead spawn count should be 0 after eviction, got %d", count)
+	}
+	if count := tracker.SpawnCount("issue-alive"); count != 1 {
+		t.Errorf("issue-alive spawn count should be 1, got %d", count)
+	}
+}
+
+func TestSpawnedIssueTracker_ReconcileWithSessions_FilePersistence(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "spawn_cache.json")
+
+	// Create tracker with entries, evict dead ones
+	tracker1 := NewSpawnedIssueTrackerWithFile(cachePath)
+	tracker1.MarkSpawned("issue-alive")
+	tracker1.MarkSpawned("issue-dead")
+
+	evicted := tracker1.ReconcileWithSessions(func(issueID string) (bool, error) {
+		return issueID == "issue-alive", nil
+	})
+	if evicted != 1 {
+		t.Fatalf("expected 1 evicted, got %d", evicted)
+	}
+
+	// Reload from disk — eviction should have been persisted
+	tracker2 := NewSpawnedIssueTrackerWithFile(cachePath)
+	if !tracker2.IsSpawned("issue-alive") {
+		t.Error("issue-alive should survive restart")
+	}
+	if tracker2.IsSpawned("issue-dead") {
+		t.Error("issue-dead should NOT survive restart (evicted)")
+	}
+}
+
+// TestDaemon_ReconcileSpawnCacheWithSessions_Integration tests the full daemon method.
+func TestDaemon_ReconcileSpawnCacheWithSessions_Integration(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+	tracker.MarkSpawned("issue-alive")
+	tracker.MarkSpawned("issue-dead-1")
+	tracker.MarkSpawned("issue-dead-2")
+
+	d := &Daemon{
+		SpawnedIssues: tracker,
+		Agents: &mockAgentDiscoverer{
+			HasExistingSessionOrErrorFunc: func(beadsID string) (bool, error) {
+				return beadsID == "issue-alive", nil
+			},
+		},
+	}
+
+	evicted := d.ReconcileSpawnCacheWithSessions()
+	if evicted != 2 {
+		t.Errorf("expected 2 evicted, got %d", evicted)
+	}
+	if !tracker.IsSpawned("issue-alive") {
+		t.Error("issue-alive should still be tracked")
+	}
+	if tracker.IsSpawned("issue-dead-1") {
+		t.Error("issue-dead-1 should be evicted")
+	}
+	if tracker.IsSpawned("issue-dead-2") {
+		t.Error("issue-dead-2 should be evicted")
+	}
+}
+
+func TestDaemon_ReconcileSpawnCacheWithSessions_NilDeps(t *testing.T) {
+	// No SpawnedIssues
+	d1 := &Daemon{Agents: &defaultAgentDiscoverer{}}
+	if d1.ReconcileSpawnCacheWithSessions() != 0 {
+		t.Error("should return 0 with nil SpawnedIssues")
+	}
+
+	// No Agents
+	d2 := &Daemon{SpawnedIssues: NewSpawnedIssueTracker()}
+	if d2.ReconcileSpawnCacheWithSessions() != 0 {
+		t.Error("should return 0 with nil Agents")
+	}
+}
+
+// TestDaemon_RebootRecovery_EndToEnd verifies the full reboot recovery scenario:
+// spawn → reboot kills agent → daemon restart with session reconciliation → respawn succeeds.
+func TestDaemon_RebootRecovery_EndToEnd(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "spawn_cache.json")
+
+	// Step 1: Daemon spawns an issue (simulate pre-reboot state)
+	tracker1 := NewSpawnedIssueTrackerWithFile(cachePath)
+	tracker1.MarkSpawnedWithTitle("issue-1", "Build feature")
+	tracker1.MarkSpawnedWithTitle("issue-2", "Fix bug")
+	if tracker1.Count() != 2 {
+		t.Fatalf("expected 2 tracked issues, got %d", tracker1.Count())
+	}
+
+	// Step 2: Simulate reboot — load cache from disk, run session reconciliation.
+	// Both sessions are dead (killed by reboot).
+	tracker2 := NewSpawnedIssueTrackerWithFile(cachePath)
+	evicted := tracker2.ReconcileWithSessions(func(issueID string) (bool, error) {
+		return false, nil // all sessions dead after reboot
+	})
+	if evicted != 2 {
+		t.Errorf("expected 2 evicted after reboot, got %d", evicted)
+	}
+
+	// Step 3: Daemon can now re-spawn both issues (not blocked by cache)
+	if tracker2.IsSpawned("issue-1") {
+		t.Error("issue-1 should be evicted, allowing re-spawn")
+	}
+	if tracker2.IsSpawned("issue-2") {
+		t.Error("issue-2 should be evicted, allowing re-spawn")
 	}
 }
 
