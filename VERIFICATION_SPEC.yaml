@@ -1,42 +1,29 @@
-probe_id: knowledge-decay-opencode-fork
-claim: "OpenCode fork model claims are current"
-model: opencode-fork
-beads_id: orch-go-1pqsn
-tier: light
-verdict: partially_stale
+task: Architect domain harness integration
+beads_id: orch-go-cvxtm
+type: architecture-decision
 
-verification:
-  evidence_sources:
-    - source: "git log --oneline upstream/dev..HEAD | wc -l"
-      finding: "32 custom commits (model claimed 16)"
-      supports_claim: false
+deliverables:
+  model_update:
+    file: .kb/models/domain-harness-architecture/model.md
+    verification: "Open Questions section replaced with Resolved Architecture Decisions (2026-03-21). Four decisions documented with rationale and alternatives considered."
+  implementation_issues:
+    - id: orch-go-5iw98
+      scope: "harness CLI: --openscad flag + --refresh"
+      target_repo: ~/Documents/personal/harness
+    - id: orch-go-fim6j
+      scope: "Global hook migration from project-local"
+      target_repo: ~/.orch/hooks/ + led-magnetic-letters + led-totem-toppers
+    - id: orch-go-4dz0u
+      scope: "openscad-harness: validate.scad two-file split"
+      target_repo: ~/Documents/personal/openscad-harness
+    - id: orch-go-oimo2
+      scope: "openscad-harness: Layer 5 vision-check.sh"
+      target_repo: ~/Documents/personal/openscad-harness
 
-    - source: "find packages/opencode/src -name instance.ts"
-      finding: "Restructured to src/project/instance.ts (model had src/instance.ts)"
-      supports_claim: false
+decisions_summary:
+  q1_consumption_mechanism: "Local path copy with configurable source (OPENSCAD_HARNESS_PATH). --refresh for non-destructive base updates."
+  q2_hook_detection: "Command-pattern hooks go global (harmless in non-OpenSCAD). File-pattern hooks use .harness/config.yaml domain field."
+  q3_validator_extension: "Two-file split: validate.scad (base, refreshable) + validate-project.scad (project-owned). Material overrides via call-site parameters."
+  q4_layer5_ownership: "Gate script in openscad-harness, viewpoint config + calibration data in project."
 
-    - source: "wc -l packages/opencode/src/project/instance.ts"
-      finding: "350 lines (matches model claim)"
-      supports_claim: true
-
-    - source: "grep ORCH_WORKER src/server/routes/session.ts"
-      finding: "Server-side code exists at line 245 (model said 'may have been lost')"
-      supports_claim: false
-
-    - source: "ls packages/opencode/src/session/cleanup.ts"
-      finding: "TTL cleanup extracted to dedicated module (model had monolithic session.ts)"
-      supports_claim: true
-
-  model_updates_applied:
-    - "Fixed all file paths in References section"
-    - "Updated commit count 16 -> 32"
-    - "Removed 'lost code' caveat for ORCH_WORKER"
-    - "Updated sync strategy (Feb 25 rebase with 268 upstream commits)"
-    - "Added cleanup.ts extraction note"
-    - "Noted upstream src/ restructure into subdirectories"
-
-  manual_checks: none
-
-files_modified:
-  - ".kb/models/opencode-fork/probes/2026-03-21-probe-knowledge-decay-verification.md"
-  - ".kb/models/opencode-fork/model.md"
+manual_verification: none
