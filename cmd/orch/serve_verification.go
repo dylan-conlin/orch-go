@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
@@ -22,6 +23,96 @@ type VerificationAPIResponse struct {
 	OverrideTrend   *verify.OverrideTrend `json:"override_trend,omitempty"`
 	ProjectDir      string                `json:"project_dir,omitempty"`
 	Error           string                `json:"error,omitempty"`
+}
+
+// overrideTrendCache caches CalculateOverrideTrend results to avoid re-reading
+// the entire events.jsonl file (62MB, 181K lines, ~750ms) on every request.
+// Override trends change very slowly (counts events over 7+ days), so a 60s TTL
+// eliminates >98% of file reads with negligible staleness.
+type overrideTrendCache struct {
+	mu        sync.RWMutex
+	trend     *verify.OverrideTrend
+	fetchedAt time.Time
+	ttl       time.Duration
+	days      int // track which window was cached
+}
+
+var globalOverrideTrendCache = &overrideTrendCache{
+	ttl: 60 * time.Second,
+}
+
+func (c *overrideTrendCache) get(days int) (*verify.OverrideTrend, error) {
+	c.mu.RLock()
+	if c.trend != nil && c.days == days && time.Since(c.fetchedAt) < c.ttl {
+		result := c.trend
+		c.mu.RUnlock()
+		return result, nil
+	}
+	c.mu.RUnlock()
+
+	trend, err := verify.CalculateOverrideTrend(days)
+	if err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	c.trend = trend
+	c.days = days
+	c.fetchedAt = time.Now()
+	c.mu.Unlock()
+
+	return trend, nil
+}
+
+func (c *overrideTrendCache) invalidate() {
+	c.mu.Lock()
+	c.trend = nil
+	c.fetchedAt = time.Time{}
+	c.mu.Unlock()
+}
+
+// unverifiedCountCache caches CountUnverifiedWorkWithDir results to avoid
+// shelling out to beads CLI on every /api/verification request.
+type unverifiedCountCache struct {
+	mu        sync.RWMutex
+	count     int
+	err       error
+	fetchedAt time.Time
+	ttl       time.Duration
+	dir       string
+}
+
+var globalUnverifiedCountCache = &unverifiedCountCache{
+	ttl: 30 * time.Second,
+}
+
+func (c *unverifiedCountCache) get(projectDir string) (int, error) {
+	c.mu.RLock()
+	if c.dir == projectDir && time.Since(c.fetchedAt) < c.ttl && c.err == nil {
+		count := c.count
+		c.mu.RUnlock()
+		return count, nil
+	}
+	c.mu.RUnlock()
+
+	count, err := verify.CountUnverifiedWorkWithDir(projectDir)
+
+	c.mu.Lock()
+	c.count = count
+	c.err = err
+	c.dir = projectDir
+	c.fetchedAt = time.Now()
+	c.mu.Unlock()
+
+	return count, err
+}
+
+func (c *unverifiedCountCache) invalidate() {
+	c.mu.Lock()
+	c.count = 0
+	c.err = nil
+	c.fetchedAt = time.Time{}
+	c.mu.Unlock()
 }
 
 // handleVerification returns verification status for the dashboard.
@@ -48,8 +139,8 @@ func handleVerification(w http.ResponseWriter, r *http.Request) {
 		ProjectDir: projectDir,
 	}
 
-	// Unverified count (scoped by project when provided)
-	count, err := verify.CountUnverifiedWorkWithDir(projectDir)
+	// Unverified count (scoped by project when provided) — cached to avoid beads CLI spawning
+	count, err := globalUnverifiedCountCache.get(projectDir)
 	if err != nil {
 		resp.Error = fmt.Sprintf("Failed to count unverified work: %v", err)
 	} else {
@@ -73,8 +164,8 @@ func handleVerification(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Override trend (verification bypasses)
-	trend, err := verify.CalculateOverrideTrend(trendDays)
+	// Override trend (verification bypasses) — cached to avoid re-reading 62MB events.jsonl
+	trend, err := globalOverrideTrendCache.get(trendDays)
 	if err == nil && trend != nil {
 		resp.OverrideTrend = trend
 	}

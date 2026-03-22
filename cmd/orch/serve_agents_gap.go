@@ -4,13 +4,69 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
+	"sort"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
 )
 
-// getGapAnalysisFromEvents reads spawn events and extracts gap analysis data for given beads IDs.
-// Returns a map of beads ID -> GapAPIResponse.
+// gapAnalysisCache caches getGapAnalysisFromEvents results to avoid re-reading
+// the entire events.jsonl file (62MB) on every /api/agents request.
+// Gap data only changes when agents are spawned, so a 60s TTL is appropriate.
+type gapAnalysisCache struct {
+	mu        sync.RWMutex
+	data      map[string]*GapAPIResponse
+	fetchedAt time.Time
+	ttl       time.Duration
+	key       string // sorted beads IDs as cache key
+}
+
+var globalGapAnalysisCache = &gapAnalysisCache{
+	ttl: 60 * time.Second,
+}
+
+func (c *gapAnalysisCache) get(beadsIDs []string) map[string]*GapAPIResponse {
+	sorted := make([]string, len(beadsIDs))
+	copy(sorted, beadsIDs)
+	sort.Strings(sorted)
+	key := strings.Join(sorted, ",")
+
+	c.mu.RLock()
+	if c.data != nil && c.key == key && time.Since(c.fetchedAt) < c.ttl {
+		result := c.data
+		c.mu.RUnlock()
+		return result
+	}
+	c.mu.RUnlock()
+
+	data := getGapAnalysisFromEventsUncached(beadsIDs)
+
+	c.mu.Lock()
+	c.data = data
+	c.key = key
+	c.fetchedAt = time.Now()
+	c.mu.Unlock()
+
+	return data
+}
+
+func (c *gapAnalysisCache) invalidate() {
+	c.mu.Lock()
+	c.data = nil
+	c.fetchedAt = time.Time{}
+	c.mu.Unlock()
+}
+
+// getGapAnalysisFromEvents returns cached gap analysis data for the given beads IDs.
 func getGapAnalysisFromEvents(beadsIDs []string) map[string]*GapAPIResponse {
+	return globalGapAnalysisCache.get(beadsIDs)
+}
+
+// getGapAnalysisFromEventsUncached reads spawn events and extracts gap analysis data for given beads IDs.
+// Returns a map of beads ID -> GapAPIResponse.
+func getGapAnalysisFromEventsUncached(beadsIDs []string) map[string]*GapAPIResponse {
 	result := make(map[string]*GapAPIResponse)
 	if len(beadsIDs) == 0 {
 		return result

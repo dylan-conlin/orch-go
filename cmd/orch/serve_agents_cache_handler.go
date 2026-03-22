@@ -31,6 +31,15 @@ func handleCacheInvalidate(w http.ResponseWriter, r *http.Request) {
 	// Invalidate tracked agents cache (queryTrackedAgents results)
 	globalTrackedAgentsCache.invalidate()
 
+	// Invalidate override trend cache (verification bypass trend)
+	globalOverrideTrendCache.invalidate()
+
+	// Invalidate unverified count cache
+	globalUnverifiedCountCache.invalidate()
+
+	// Invalidate gap analysis cache (spawn event data)
+	globalGapAnalysisCache.invalidate()
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"status":  "ok",
