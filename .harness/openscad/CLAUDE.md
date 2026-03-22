@@ -108,7 +108,7 @@ Gate: warn if `$fn > 128`, block if `$fn > 256`.
 - **No summary JSON on failure** — `--summary-file` is not created when assert fires; rely on stderr parsing
 - **`--hardwarnings` doesn't catch manifold warnings** — only language-level warnings, not geometry
 
-## Gate Stack (4 layers)
+## Gate Stack (5 layers)
 
 | Layer | Type | Tool | Blocks? | Status |
 |-------|------|------|---------|--------|
@@ -116,6 +116,7 @@ Gate: warn if `$fn > 128`, block if `$fn > 256`.
 | 2 — Geometry validation | Execution (hard) | `gates/geometry-check.sh` | Yes | Implemented + tested (5 tests) |
 | 3 — Printability | Execution (hard) | PrusaSlicer CLI | Yes | Not yet integrated |
 | 4 — Intent alignment | Judgment (soft) | LLM-as-gate | Advisory only | Not yet implemented |
+| 5 — Vision verification | Judgment (soft) | `gates/vision-check.sh` | Advisory only | Implemented, needs calibration |
 
 ## Required Outputs per Design
 

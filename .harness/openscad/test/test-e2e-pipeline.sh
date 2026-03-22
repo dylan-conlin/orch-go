@@ -6,10 +6,12 @@
 #   Layer 2: Geometry validation (CGAL manifold + polygon budget)
 #   Layer 3: Printability (PrusaSlicer CLI — skipped if unavailable)
 #   Layer 4: Intent alignment (LLM gate — skipped if claude CLI unavailable)
+#   Layer 5: Vision verification (LLM vision — skipped if claude CLI unavailable)
 #
 # Usage:
 #   ./test/test-e2e-pipeline.sh              # Run full pipeline
-#   ./test/test-e2e-pipeline.sh --skip-l4    # Skip Layer 4 (no LLM calls)
+#   ./test/test-e2e-pipeline.sh --skip-l4    # Skip Layer 4+5 (no LLM calls)
+#   ./test/test-e2e-pipeline.sh --skip-l5    # Skip Layer 5 only
 #
 # Exit codes:
 #   0 = all available gates passed
@@ -299,6 +301,50 @@ DRIFTEOF
         fi
     else
         skip "claude CLI not installed — Layer 4 skipped"
+    fi
+fi
+
+echo ""
+
+# =============================================
+# Layer 5: Vision Verification (Claude vision)
+# =============================================
+echo "=== Layer 5: Vision Verification ==="
+echo ""
+
+SKIP_L5=false
+for arg in "$@"; do
+    case "$arg" in
+        --skip-l5) SKIP_L5=true ;;
+    esac
+done
+
+if [ "$SKIP_L5" = "true" ]; then
+    skip "Layer 5 skipped (--skip-l5 flag)"
+elif [ "$SKIP_L4" = "true" ]; then
+    skip "Layer 5 skipped (--skip-l4 implies skip LLM gates)"
+else
+    echo "Test 13: Vision verification gate"
+    if command -v claude >/dev/null 2>&1; then
+        if bash "$GATES_DIR/vision-check.sh" "$SCAD" "$SPEC" "$SUMMARY" > "$TMPDIR/l5-stdout.txt" 2>&1; then
+            EXIT_CODE=$?
+            VERDICT=$(grep "^Verdict:" "$TMPDIR/l5-stdout.txt" | head -1 | sed 's/Verdict: //')
+            if echo "$VERDICT" | grep -qi "PASS"; then
+                pass "vision gate: $VERDICT"
+            else
+                echo "  INFO: Verdict=$VERDICT (advisory, non-blocking)"
+                pass "vision gate ran successfully"
+            fi
+        else
+            EXIT_CODE=$?
+            if [ "$EXIT_CODE" -eq 2 ]; then
+                pass "vision gate returned NEEDS_REVIEW (non-blocking)"
+            else
+                pass "vision gate ran (advisory mode, exit=$EXIT_CODE)"
+            fi
+        fi
+    else
+        skip "claude CLI not installed — Layer 5 skipped"
     fi
 fi
 

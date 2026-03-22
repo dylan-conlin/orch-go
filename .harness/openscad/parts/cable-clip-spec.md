@@ -23,3 +23,26 @@ Desk-mount cable management clip that holds USB/charging cables organized along 
 
 ## Print Orientation
 Print upright (clip opening facing down). No supports needed for snap-fit geometry.
+
+## Verification Viewpoints
+
+### top-down
+Camera: 0,0,0,0,0,0,80
+Checklist:
+- Two cable slot openings visible from above
+- Slots evenly spaced and centered on body
+- Overall rectangular footprint with no degenerate geometry
+
+### front
+Camera: 0,0,0,90,0,0,80
+Checklist:
+- U-shaped clip profile visible (desk grip extending below)
+- Cable retainer bumps visible on top surface
+- Front opening slot for cable insertion visible
+
+### side
+Camera: 0,0,0,90,0,90,80
+Checklist:
+- Snap-fit gap visible between front wall and bottom grip
+- Wall thickness appears adequate (not paper-thin)
+- Clip depth proportional to desk thickness parameter
