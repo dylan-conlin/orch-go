@@ -1,7 +1,7 @@
 # Model: Coaching Plugin
 
 **Domain:** OpenCode Plugins / Behavioral Monitoring
-**Last Updated:** 2026-03-06 (4 probes merged: metrics redesign validation, header implementation, stress test, worker health injection)
+**Last Updated:** 2026-03-21 (5 probes merged: metrics redesign validation, header implementation, stress test, worker health injection, knowledge decay verification)
 **Synthesized From:** 15 investigations (Jan 10-18, 2026) + 4 probes (Feb 14-20, 2026)
 
 ---
@@ -37,17 +37,18 @@ Dashboard Visualization (/api/coaching)
 
 ### Detection Patterns
 
-**Orchestrator patterns (5 behavioral proxies):**
+**Orchestrator patterns (4 behavioral proxies):**
 
 | Pattern | What It Detects | Trigger Condition | Action |
 |---------|-----------------|-------------------|--------|
 | `frame_collapse` | Orchestrator editing code | edit/write on code file | Tiered injection (1st warning, 3+ strong) |
 | `circular_pattern` | Contradicting prior investigations | Decision keywords vs investigation Next | Stream to coach session |
 | `behavioral_variation` | Semantic group thrashing | 3+ variations without 30s pause | Write to JSONL |
-| `spawn_without_context` | Spawning without sufficient task framing | Tool call sequence proxy | Inject coaching |
 | `completion_backlog` | Phase state accumulation proxy | Phase state as proxy | Write to JSONL (Go backend) |
 
-**Note on removed patterns:** `action_ratio` and `analysis_paralysis` were found to account for 72% of all real-world events (736 of 1022 metrics), indicating noise rather than signal. `compensation_pattern`, `dylan_signal_prefix`, and `premise_skipping` were also removed in the metrics redesign (Feb 2026) to reduce false-positive noise.
+**Note:** `spawn_without_context` was removed at some point after Jan 2026 (confirmed absent Mar 2026).
+
+**Note on removed patterns:** `action_ratio` and `analysis_paralysis` were found to account for 72% of all real-world events (736 of 1022 metrics), indicating noise rather than signal. `compensation_pattern`, `dylan_signal_prefix`, `premise_skipping`, and `spawn_without_context` were also removed to reduce false-positive noise.
 
 **Worker health metrics (operational as of Feb 14, 2026):**
 
@@ -412,8 +413,14 @@ Intervention: daemon polls metrics file → threshold check → inject via API
 - `.kb/guides/resilient-infrastructure-patterns.md` (if exists) - Pain as Signal principle
 
 **Primary Evidence (Verify These):**
-- `plugins/coaching.ts` - Main plugin implementation (1831 lines as of Jan 18)
-- `cmd/orch/serve_coaching.go` - API endpoint (321 lines)
+- `plugins/coaching.ts` - Main plugin entry (544 lines, refactored from 1831-line monolith into 7 files totaling ~1545 lines)
+- `plugins/coaching-types.ts` - Shared types, constants, utilities
+- `plugins/coaching-classification.ts` - Bash command classification, spawn detection
+- `plugins/coaching-investigation.ts` - Investigation recommendation loading, contradiction detection
+- `plugins/coaching-injection.ts` - Coaching message injection (noReply)
+- `plugins/coaching-detection.ts` - File line count, code file detection
+- `plugins/coaching-worker-health.ts` - Worker health metric tracking
+- `cmd/orch/serve_coaching.go` - API endpoint (268 lines)
 - `pkg/opencode/client.go:561` - ORCH_WORKER header setting
 - `~/.orch/coaching-metrics.jsonl` - Metrics persistence file
 - `web/src/lib/stores/coaching.ts` - Dashboard Svelte store
@@ -438,6 +445,7 @@ Intervention: daemon polls metrics file → threshold check → inject via API
 | `2026-02-14-worker-detection-stress-test.md` | 2026-02-14 | Complete | Confirms stress test execution (55 tool calls) that validated worker detection and context_usage metric firing; final result already incorporated in model Summary |
 | `2026-02-14-metrics-redesign-architecture-validation.md` | 2026-02-14 | Complete | Extends model: documents session-start injection as a 3rd injection mechanism; dual JSONL writers; and validates that removing action_ratio/analysis_paralysis (72% of noise events) doesn't break behavioral proxy coverage |
 | `2026-02-20-probe-worker-health-injection.md` | 2026-02-20 | Complete | Extends model: confirms worker detection caches only true; documents accurate thresholds for all 5 worker health metrics including accretion_warning for large file edits (>800 lines) |
+| `2026-03-21-probe-knowledge-decay-verification.md` | 2026-03-21 | Complete | Decay check: plugin refactored to 7 files (1545 lines total); `spawn_without_context` pattern removed; worker detection chain and all 5 worker health metrics confirmed intact |
 
 ## Auto-Linked Investigations
 
