@@ -1,0 +1,5 @@
+Auto-merging pkg/display/display.go
+CONFLICT (content): Merge conflict in pkg/display/display.go
+Auto-merging pkg/display/display_test.go
+CONFLICT (content): Merge conflict in pkg/display/display_test.go
+Automatic merge failed; fix conflicts and then commit the result.

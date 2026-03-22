@@ -1,0 +1,1 @@
+e34a8975a feat(display): add FormatRate function for transfer rate formatting

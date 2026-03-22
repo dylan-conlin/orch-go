@@ -1,0 +1,98 @@
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 1a699243d..8d9a5590e 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -44,6 +44,52 @@ func StripANSI(s string) string {
+ 	return ansiRegex.ReplaceAllString(s, "")
+ }
+ 
++// FormatRate formats a transfer rate as a human-readable string.
++// Output style: "0 B/s", "512 B/s", "1.0 KiB/s", "1.5 MiB/s", "1.0 GiB/s".
++func FormatRate(bytesPerSec float64) string {
++	if bytesPerSec == 0 {
++		return "0 B/s"
++	}
++
++	negative := false
++	if bytesPerSec < 0 {
++		negative = true
++		bytesPerSec = -bytesPerSec
++	}
++
++	const (
++		KiB = 1024
++		MiB = 1024 * 1024
++		GiB = 1024 * 1024 * 1024
++	)
++
++	prefix := ""
++	if negative {
++		prefix = "-"
++	}
++
++	if bytesPerSec < KiB {
++		return fmt.Sprintf("%s%d B/s", prefix, int(bytesPerSec))
++	}
++
++	var value float64
++	var unit string
++
++	switch {
++	case bytesPerSec < MiB:
++		value = bytesPerSec / KiB
++		unit = "KiB/s"
++	case bytesPerSec < GiB:
++		value = bytesPerSec / MiB
++		unit = "MiB/s"
++	default:
++		value = bytesPerSec / GiB
++		unit = "GiB/s"
++	}
++
++	return fmt.Sprintf("%s%.1f %s", prefix, value, unit)
++}
++
+ // FormatDuration formats a duration as a human-readable string.
+ // Output style: "0s", "45s", "3m 12s", "2h 15m", "3d 5h".
+ func FormatDuration(d time.Duration) string {
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index fcd3fa61c..68347f250 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -84,6 +84,36 @@ func TestStripANSI(t *testing.T) {
+ 	}
+ }
+ 
++func TestFormatRate(t *testing.T) {
++	tests := []struct {
++		input float64
++		want  string
++	}{
++		{0, "0 B/s"},
++		{1, "1 B/s"},
++		{512, "512 B/s"},
++		{1023, "1023 B/s"},
++		{1024, "1.0 KiB/s"},
++		{1536, "1.5 KiB/s"},
++		{2048, "2.0 KiB/s"},
++		{1024 * 512, "512.0 KiB/s"},
++		{1048576, "1.0 MiB/s"},
++		{1048576 * 1.5, "1.5 MiB/s"},
++		{1048576 * 512, "512.0 MiB/s"},
++		{1024 * 1024 * 1024, "1.0 GiB/s"},
++		{1024 * 1024 * 1024 * 2.5, "2.5 GiB/s"},
++		{-1024, "-1.0 KiB/s"},
++		{-1048576, "-1.0 MiB/s"},
++		{-512, "-512 B/s"},
++	}
++	for _, tt := range tests {
++		got := FormatRate(tt.input)
++		if got != tt.want {
++			t.Errorf("FormatRate(%v) = %q, want %q", tt.input, got, tt.want)
++		}
++	}
++}
++
+ func TestFormatDuration(t *testing.T) {
+ 	tests := []struct {
+ 		input time.Duration

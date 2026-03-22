@@ -3,7 +3,7 @@
 **Created:** 2026-03-09
 **Updated:** 2026-03-22
 **Status:** Active
-**Source:** Synthesized from 4 investigation(s) + 2 controlled experiments (100 trials) + external validation (6 independent sources) + 3 probe extensions (control theory, mechanism dimension, Align falsification)
+**Source:** Synthesized from 4 investigation(s) + 3 controlled experiments (110 trials) + external validation (6 independent sources) + 4 probe extensions (control theory, mechanism dimension, Align falsification, automated attractor discovery)
 
 ## What This Is
 
@@ -35,8 +35,10 @@ Giving agents awareness of each other's work — whether through context sharing
 Explicit, non-overlapping insertion point instructions (e.g., "place after function X" vs "place after function Y") prevent merge conflicts with 100% reliability, for both simple and complex tasks.
 
 **Test:** Placement condition with specified insertion points
-**Evidence:** placement 20/20 SUCCESS (clean merge + tests pass)
-**Status:** Confirmed (p=1.0, 20 trials)
+**Evidence:** placement 20/20 SUCCESS (clean merge + tests pass); attractor decay 9/9 SUCCESS with stale anchors (3 mutation types × 3 trials)
+**Status:** Confirmed (p=1.0, 29 trials including decay experiment)
+
+**Attractor resilience (2026-03-22):** Placement attractors tolerate codebase mutations. Tested three mutation types with ORIGINAL (stale) placement prompts: function renames (agent adapted semantically), file reorganization (agent used secondary anchors), and addition of competing insertion points (agent followed literal attractor). 9/9 SUCCESS. The coordination value comes from **region separation** (agents assigned to different file regions), not from specific anchor function names. Agents compensate for stale anchors through semantic adaptation and anchor redundancy. See `probes/2026-03-22-probe-attractor-decay-degradation-curve.md`.
 
 ### Claim 3: Individual agent capability is not the bottleneck
 
@@ -148,7 +150,7 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 
 **Why gates fail:** They require correct runtime decisions by LLMs. Each decision point is a failure opportunity. CrewAI's manager must correctly route tasks. LangGraph's edges must correctly evaluate state. The 80-trial gate condition (Claim 5) shows agents perform self-checks but don't change behavior — the semantically correct answer beats the coordination-correct answer at every decision point.
 
-**Why attractors work:** Coordination decisions are made at design time. Anthropic's lead agent defines work regions before subagents start. orch-go's `.kb/models/*/probes/` directory reduces orphans not by checking at commit time (gate — bypassed 100%) but by making the model directory the natural destination for probe output (attractor — orphan rate halved).
+**Why attractors work:** Coordination decisions are made at design time. Anthropic's lead agent defines work regions before subagents start. orch-go's `.kb/models/*/probes/` directory reduces orphans not by checking at commit time (gate — bypassed 100%) but by making the model directory the natural destination for probe output (attractor — orphan rate halved). Crucially, attractor placement can be *discovered automatically* from failure data (see Key Experiment: Automated Attractor Discovery) — the system parses collision diffs, identifies gravitational insertion points, and generates non-overlapping constraints with zero human intervention. Gate logic, by contrast, requires human judgment about what runtime checks to perform.
 
 **Practical design principle:** Use attractors for the heavy-load primitives (Route, Align) where agents must get coordination right consistently. Gates are acceptable for lighter primitives (Throttle, Sequence) that tolerate occasional failure.
 
@@ -210,6 +212,8 @@ This explains why autoresearch succeeds with radical simplicity — it eliminate
 | 2026-03-22 | Align-as-substrate falsification probe | "Substrate" overclaims — 5 cases show Route/Sequence/Throttle mechanically holding while Align is broken (MAST FM-1.1, McEntire hierarchical 64%, launchd post-mortem, orch-go competing instructions, stale knowledge cascades). Align is a multiplier/validity condition with proportional (not binary) impact. "Meta-primitive" language replaced. |
 | 2026-03-22 | Gate condition experiment (N=20) | Post-hoc self-checking gate produces 100% conflict rate (20/20). Agents perform the check, report no conflict, keep identical insertion points. Gates are subject to the same semantic-correctness bias as the original decision. All 40 agents scored 6/6 individually. |
 | 2026-03-22 | Gate/attractor external validation probe | 6/6 external frameworks show perfect correlation: gate-based coordination fails (CrewAI, LangGraph, OpenAI Agents SDK), attractor-based works (Anthropic production, autoresearch). McEntire degradation tracks gate/attractor gradient: pure attractor 100% → attractor+gates 64% → pure gates 32% → max gates 0%. |
+| 2026-03-22 | Automated attractor discovery experiment (N=10) | System automatically discovered effective placement constraints from 2 observed collisions. Phase 1: 2/3 CONFLICT (gravitational point: FormatDurationShort). Phase 2: 7/7 SUCCESS with auto-generated constraints. Zero human intervention in constraint generation. Closed loop validated: observe failures → extract constraints → inject constraints → prevent failures. |
+| 2026-03-22 | Attractor decay experiment (N=9) | Stale attractors do NOT degrade coordination. 9/9 SUCCESS across 3 mutation types (rename, reorganize, add alternatives) with original stale placement prompts. Agents adapt through semantic resolution and anchor redundancy. Region separation is the load-bearing property, not anchor accuracy. Hypothesis of cliff-edge failure disproved. |
 
 ---
 
@@ -250,6 +254,27 @@ This explains why autoresearch succeeds with radical simplicity — it eliminate
 
 ---
 
+## Key Experiment: Automated Attractor Discovery (2026-03-22)
+
+**Design:** 2-phase experiment. Phase 1: 3 trials (no attractors, collect collisions). Phase 2: 7 trials (auto-generated attractors). 10 trials total, 20 agent invocations.
+**Model:** claude-haiku-4-5 (both agents)
+**Tasks:** Agent A (FormatBytes) + Agent B (FormatRate) — same as simple condition in 4-condition experiment
+
+| Phase | Mechanism | Result |
+|-------|-----------|--------|
+| Phase 1 (no attractors) | No placement instructions | 2/3 CONFLICT (1 trial invalid — worktree race) |
+| Phase 2 (auto-generated) | Constraints generated from Phase 1 collision patterns | **7/7 SUCCESS** |
+
+**How it works:** The system parses Phase 1 conflict diffs to extract hunk start lines (`@@ -92 @@`), maps them to function boundaries via `grep -n '^func '`, identifies `FormatDurationShort` as the "gravitational function" (where both agents independently insert), scans for alternative insertion points, and assigns Agent B to `StripANSI` (maximally separated). Constraint text is injected into prompts with zero human editing.
+
+**Key finding:** Structural coordination is not just effective but *automatable*. Only 1 collision was needed — a single conflict diff provides the hunk header and function boundary needed to generate effective constraints. The closed loop works: observe failures → extract collision points → generate non-overlapping constraints → inject into prompts → prevent failures.
+
+**Implication for attractors:** This strengthens the attractor mechanism. Not only do attractors work better than gates (previous experiments), but attractor placement can be *discovered automatically* from failure data. Gate logic requires human judgment about what to check; attractor placement can be derived algorithmically from the structure of observed failures.
+
+**Results:** `experiments/coordination-demo/redesign/results/attractor-20260322-154220/`
+
+---
+
 ## Open Questions
 
 ### Answered
@@ -258,6 +283,7 @@ This explains why autoresearch succeeds with radical simplicity — it eliminate
 - ~~Is Align a substrate (other primitives can't function without it)?~~ **Answered 2026-03-22:** No — "substrate" overclaims. 5 cases show Route/Sequence/Throttle mechanically holding while Align is broken. Align is a multiplier/validity condition with proportional (not binary) impact. See `probes/2026-03-22-probe-falsify-align-as-substrate.md`.
 - ~~Does the control theory mapping (Route→Actuator, Sequence→Reference, Throttle→Controller, Align→Sensor) hold?~~ **Answered 2026-03-22:** Structural homology, not isomorphism. 64% clean mapping with systematic sensor bleed pattern. Qualitative insights transfer; formal tools do not. See `probes/2026-03-22-probe-control-theory-component-mapping.md`.
 - ~~Does the gate/attractor mechanism distinction generalize beyond orch-go?~~ **Answered 2026-03-22:** Yes — 6/6 external frameworks show perfect correlation. Gate-based coordination fails, attractor-based coordination works. McEntire degradation tracks gate/attractor gradient monotonically. See `.kb/models/knowledge-accretion/probes/2026-03-22-probe-validate-gate-attractor-external-frameworks.md`.
+- ~~Can structural attractors be discovered automatically from collision patterns?~~ **Answered 2026-03-22:** Yes. 2-phase experiment: system parsed conflict diffs, identified gravitational insertion point, generated non-overlapping constraints, achieved 7/7 success with zero human intervention. 1 collision is sufficient for effective constraint generation. See `probes/2026-03-22-probe-automated-attractor-discovery.md`.
 
 ### Open
 
@@ -269,7 +295,9 @@ This explains why autoresearch succeeds with radical simplicity — it eliminate
 - How do primitives interact with task type? (DeepMind found coordination strategy is task-dependent — financial reasoning favors centralized, web navigation favors decentralized)
 - Do the primitives apply to non-LLM multi-agent systems? (robotics, distributed computing, human organizations)
 - Does the multiplier model (Coordination_value = Route x Sequence x Throttle x Align) hold quantitatively, or is the interaction more complex? McEntire's 64% hierarchical result is consistent, but no controlled experiment isolates each factor.
-- Can attractor-based coordination degrade? (What happens when structural destinations become stale or misaligned with evolving requirements?)
+- ~~Can attractor-based coordination degrade? (What happens when structural destinations become stale or misaligned with evolving requirements?)~~ **Answered 2026-03-22:** Not for incremental codebase changes. 9/9 SUCCESS with stale attractors across renames, file reorganization, and competing insertion points. Agents adapt through semantic resolution and anchor redundancy. Region separation (not anchor accuracy) is the load-bearing property. Untested: wholesale restructuring. See `probes/2026-03-22-probe-attractor-decay-degradation-curve.md`.
+- Does automated attractor discovery work for complex tasks? (Multi-file, ambiguous requirements may produce collision patterns harder to parse or requiring more nuanced constraint generation.)
+- What is the minimum number of natural insertion points needed per agent? (Automated discovery relies on function boundaries as candidate points. With 6 functions and 2 agents, alternatives were plentiful. What about 6+ agents?)
 
 ## Source Investigations
 
