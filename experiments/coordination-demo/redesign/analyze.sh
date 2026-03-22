@@ -77,7 +77,7 @@ if [ -f "$RESULTS_DIR/scores.csv" ]; then
     echo "=== Individual Success Rates ==="
 
     # Process scores.csv
-    for condition in no-coord placement context-share messaging; do
+    for condition in no-coord placement context-share messaging gate; do
         for task_type in simple complex; do
             for agent in a b; do
                 total_score=0

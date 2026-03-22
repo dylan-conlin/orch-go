@@ -3,7 +3,7 @@
 **Created:** 2026-03-09
 **Updated:** 2026-03-22
 **Status:** Active
-**Source:** Synthesized from 4 investigation(s) + 1 controlled experiment (80 trials) + external validation (6 independent sources)
+**Source:** Synthesized from 4 investigation(s) + 2 controlled experiments (100 trials) + external validation (6 independent sources)
 
 ## What This Is
 
@@ -46,6 +46,16 @@ Both simple tasks (FormatBytes + FormatRate, ~40s each) and complex tasks (Visua
 **Test:** Run same 4 conditions on simple and complex task pairs
 **Evidence:** Identical results across both task types in all conditions
 **Status:** Confirmed
+
+### Claim 5: Post-hoc self-checking (gates) does not prevent conflicts
+
+Giving agents a mandatory post-implementation verification step — "check your insertion point against the other agent's likely insertion point, revise if conflicting" — produces 100% conflict rate, identical to uncoordinated agents. Agents perform the check, report "no conflict expected," and keep their insertion point unchanged.
+
+**Test:** Gate condition with context sharing + mandatory conflict check-and-revise step, N=20
+**Evidence:** gate 20/20 CONFLICT (10/10 simple, 10/10 complex), all agents 6/6 individually
+**Status:** Confirmed (p=1.0, 20 trials, 2026-03-22)
+
+**Why gates fail here:** The self-check is itself subject to the same bias as the original insertion — agents evaluate "is my insertion point correct?" rather than "is my insertion point non-conflicting?" The semantically correct location beats the coordination-safe location at every decision point, including the verification step. This mirrors the orch-go production finding that blocking gates are bypassed 100% of the time (`.kb/decisions/2026-03-17-accretion-gates-advisory-not-blocking.md`).
 
 ---
 
@@ -135,6 +145,7 @@ The four primitives map onto control theory components. The mapping is structura
 | 2026-03-22 | External framework validation probe | All 4 claims confirmed as general (not orch-go-specific). 14 MAST failure modes map to 4 primitives. McEntire experiment shows monotonic degradation. DeepMind scaling paper confirms centralized coordination reduces error amplification. Align identified as dominant/neglected primitive (50% of failures). |
 | 2026-03-22 | Control theory component mapping probe | Primitives map to control components (Route→Actuator, Sequence→Reference, Throttle→Controller, Align→Sensor) with 64% clean mapping. Sensor bleed pattern: 11/14 MAST modes involve sensors (79%), converging with open-loop thread's 87.5%. Structural homology, not isomorphism. |
 | 2026-03-22 | Align-as-substrate falsification probe | "Substrate" overclaims — 5 cases show Route/Sequence/Throttle mechanically holding while Align is broken (MAST FM-1.1, McEntire hierarchical 64%, launchd post-mortem, orch-go competing instructions, stale knowledge cascades). Align is a multiplier/validity condition with proportional (not binary) impact. "Meta-primitive" language replaced. |
+| 2026-03-22 | Gate condition experiment (N=20) | Post-hoc self-checking gate produces 100% conflict rate (20/20). Agents perform the check, report no conflict, keep identical insertion points. Gates are subject to the same semantic-correctness bias as the original decision. All 40 agents scored 6/6 individually. |
 
 ---
 
@@ -157,11 +168,29 @@ The four primitives map onto control theory components. The mapping is structura
 
 ---
 
+## Key Experiment: Gate Condition Extension (2026-03-22)
+
+**Design:** 1 condition (gate) × 2 task types (simple + complex) × N=10 = 20 trials, 40 agent invocations
+**Model:** claude-haiku-4-5 (both agents)
+**Tasks:** Same as 4-condition experiment
+
+| Condition | Mechanism | Simple | Complex |
+|-----------|-----------|:------:|:-------:|
+| gate | Context sharing + mandatory post-implementation conflict check-and-revise | 10/10 CONFLICT | 10/10 CONFLICT |
+
+**Gate prompt:** After implementing, agents were required to: (1) review their insertion points, (2) predict the other agent's insertion points, (3) check for overlap, (4) revise if conflicting. Despite this explicit check-and-revise protocol, all 20 trials produced conflicts.
+
+**Duration comparison:** Gate condition agents averaged 105s (simple) and 144-251s (complex), comparable to context-share condition, suggesting agents didn't spend significant extra time on the verification step.
+
+**Results:** `experiments/coordination-demo/redesign/results/20260322-124035/`
+
+---
+
 ## Open Questions
 
 - Does placement work when the number of agents exceeds the number of natural insertion points?
 - Can iterative messaging (multi-round negotiation) produce different results than single-shot plan exchange?
-- Does a stronger coordination instruction ("you MUST choose a different insertion point than the other agent") change behavior?
+- ~~Does a stronger coordination instruction ("you MUST choose a different insertion point than the other agent") change behavior?~~ **Answered 2026-03-22:** No. Gate condition with mandatory check-and-revise step: 20/20 CONFLICT. Even explicit self-verification doesn't overcome semantic-correctness bias.
 - At what task granularity does structural placement become impractical?
 - Should Align decompose into sub-primitives? (It covers 50% of external failures — may be "state alignment" + "goal alignment"). **New evidence (2026-03-22):** 80-trial messaging condition shows task alignment defeating coordination alignment in 18/20 trials — agents agreed on the "correct" insertion point (task Align intact) while failing to coordinate (coordination Align broken). At minimum three sub-components: task alignment, state alignment, coordination alignment.
 - Do the four primitives have ordering dependencies? (Must Route precede Sequence?)

@@ -1,0 +1,78 @@
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 1a699243d..51a010afc 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -92,3 +92,37 @@ func FormatDurationShort(d time.Duration) string {
+ 	}
+ 	return fmt.Sprintf("%dh", int(d.Hours()))
+ }
++
++// FormatRate formats a transfer rate (bytes per second) into a human-readable
++// string using binary units: B/s, KiB/s, MiB/s, GiB/s.
++// Shows 1 decimal place for non-B/s units (e.g., "1.5 MiB/s").
++func FormatRate(bytesPerSec float64) string {
++	if bytesPerSec == 0 {
++		return "0 B/s"
++	}
++
++	isNegative := bytesPerSec < 0
++	bytes := bytesPerSec
++	if isNegative {
++		bytes = -bytes
++	}
++
++	units := []string{"B/s", "KiB/s", "MiB/s", "GiB/s"}
++	divisor := 1024.0
++	unitIndex := 0
++
++	for bytes >= divisor && unitIndex < len(units)-1 {
++		bytes /= divisor
++		unitIndex++
++	}
++
++	prefix := ""
++	if isNegative {
++		prefix = "-"
++	}
++
++	if unitIndex == 0 {
++		return fmt.Sprintf("%s%.0f %s", prefix, bytes, units[unitIndex])
++	}
++	return fmt.Sprintf("%s%.1f %s", prefix, bytes, units[unitIndex])
++}
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index fcd3fa61c..7d1ec97ad 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -132,3 +132,31 @@ func TestFormatDurationShort(t *testing.T) {
+ 		}
+ 	}
+ }
++
++func TestFormatRate(t *testing.T) {
++	tests := []struct {
++		input float64
++		want  string
++	}{
++		{0, "0 B/s"},
++		{512, "512 B/s"},
++		{1024, "1.0 KiB/s"},
++		{1536, "1.5 KiB/s"},
++		{1048576, "1.0 MiB/s"},
++		{1048576 * 1.5, "1.5 MiB/s"},
++		{1073741824, "1.0 GiB/s"},
++		{1073741824 * 2.5, "2.5 GiB/s"},
++		{-1024, "-1.0 KiB/s"},
++		{-1048576, "-1.0 MiB/s"},
++		{100, "100 B/s"},
++		{1023, "1023 B/s"},
++		{2048, "2.0 KiB/s"},
++		{-512, "-512 B/s"},
++	}
++	for _, tt := range tests {
++		got := FormatRate(tt.input)
++		if got != tt.want {
++			t.Errorf("FormatRate(%g) = %q, want %q", tt.input, got, tt.want)
++		}
++	}
++}

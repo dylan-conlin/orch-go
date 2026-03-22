@@ -1,0 +1,1 @@
+78ad22e55 feat: add FormatRate function to pkg/display

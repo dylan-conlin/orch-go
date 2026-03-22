@@ -25,7 +25,7 @@ RESULTS_BASE="$SCRIPT_DIR/results"
 # Defaults
 TRIALS=10
 TASK_TYPES=("simple" "complex")
-CONDITIONS=("no-coord" "placement" "context-share" "messaging")
+CONDITIONS=("no-coord" "placement" "context-share" "messaging" "gate")
 MODEL="haiku"
 MODEL_FULL="claude-haiku-4-5-20251001"
 TIMEOUT_MINUTES=10
@@ -176,6 +176,37 @@ You have access to a shared coordination directory: ${msg_dir}
 
 ### Goal: Your changes must merge cleanly with the other agent's changes."
             echo "${base_prompt}${msg_note}"
+            ;;
+
+        gate)
+            local gate_note="
+
+## IMPORTANT: Coordination Context
+
+Another agent is SIMULTANEOUSLY working on this same codebase. They are implementing a different feature that also modifies display.go and display_test.go.
+
+Their full task description:
+---
+${other_prompt}
+---
+
+You must coordinate to avoid merge conflicts:
+- Be aware of where the other agent will insert code
+- Choose insertion points that won't overlap with theirs
+- Ensure your changes can be merged cleanly with theirs
+- Do NOT implement their task — only implement yours
+
+## MANDATORY: Post-Implementation Conflict Check
+
+After you finish writing your code, you MUST perform this verification step before committing:
+
+1. **Review your insertion points:** Look at exactly where in display.go and display_test.go you placed your new code.
+2. **Predict the other agent's insertion points:** Based on their task description above, determine where they will most likely insert their code.
+3. **Check for overlap:** If your insertion point is the same as or adjacent to where the other agent will likely insert code, you MUST revise your code to use a DIFFERENT insertion point that won't conflict.
+4. **Document your check:** Add a comment at the top of your commit message: 'Conflict check: [your insertion point] vs predicted [their insertion point] — [conflict/no conflict]'
+
+This verification step is REQUIRED. Do NOT skip it. If you detect a potential conflict, you MUST move your code to a different location in the file before committing."
+            echo "${base_prompt}${gate_note}"
             ;;
     esac
 }
