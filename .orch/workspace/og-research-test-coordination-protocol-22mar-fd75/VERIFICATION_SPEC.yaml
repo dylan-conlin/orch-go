@@ -1,0 +1,47 @@
+verification:
+  type: research
+  investigation: .kb/investigations/2026-03-22-research-test-coordination-protocol-primitives-external-frameworks.md
+
+  claims:
+    - claim: "All 14 MAST failure modes map to exactly one of the four primitives"
+      verified: true
+      method: "Manual mapping of each MAST mode to Route/Sequence/Throttle/Align"
+      evidence: "See Finding 1 table in investigation file"
+
+    - claim: "Success rate degrades monotonically with missing primitives"
+      verified: true
+      method: "Cross-referenced McEntire experiment results with primitive coverage"
+      evidence: "100% (single) → 64% (hierarchical) → 32% (swarm) → 0% (pipeline)"
+
+    - claim: "Getmaxim production categories map 1:1 to primitives"
+      verified: true
+      method: "Independent mapping of Getmaxim categories to primitives"
+      evidence: "State Sync→Align, Comms→Sequence, Overhead→Throttle, Contention→Route"
+
+    - claim: "No external failure pattern requires a fifth primitive"
+      verified: true
+      method: "Attempted to find residual failures that don't map to any primitive"
+      evidence: "40+ failure modes across 6 sources all map cleanly"
+
+    - claim: "Align is the dominant failure mode (50% of MAST)"
+      verified: true
+      method: "Count of MAST modes mapping to each primitive"
+      evidence: "7/14 modes map to Align"
+
+  artifacts_produced:
+    - path: .kb/investigations/2026-03-22-research-test-coordination-protocol-primitives-external-frameworks.md
+      type: investigation
+      status: complete
+
+    - path: .kb/models/coordination/probes/2026-03-22-external-framework-validation.md
+      type: probe
+      status: complete
+      merged: true
+
+    - path: .kb/models/coordination/model.md
+      type: model-update
+      status: complete
+      changes: "Added Four Coordination Primitives section, evidence entry, open questions"
+
+  manual_verification_needed: false
+  notes: "Pure research task — no code changes, no tests required. Verification is evidence quality."

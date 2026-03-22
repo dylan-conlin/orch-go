@@ -1,9 +1,9 @@
 # Model: Coordination
 
 **Created:** 2026-03-09
-**Updated:** 2026-03-18
+**Updated:** 2026-03-22
 **Status:** Active
-**Source:** Synthesized from 4 investigation(s) + 1 controlled experiment (80 trials)
+**Source:** Synthesized from 4 investigation(s) + 1 controlled experiment (80 trials) + external validation (6 independent sources)
 
 ## What This Is
 
@@ -61,6 +61,27 @@ Both simple tasks (FormatBytes + FormatRate, ~40s each) and complex tasks (Visua
 
 ---
 
+## Four Coordination Primitives (Generalized Framework)
+
+The experimental findings generalize into four structural primitives required for multi-agent coordination. External validation (2026-03-22) confirms these are general to any multi-agent system, not specific to orch-go.
+
+| Primitive | What It Does | orch-go Implementation | External Validation |
+|-----------|-------------|----------------------|---------------------|
+| **Route** | Agents don't collide — work is assigned to non-overlapping regions | Structural placement, file-level routing, issue-level separation | CrewAI's core failure is broken routing (GitHub #4783). DeepMind: centralized routing reduces error amplification from 17.2x to 4.4x |
+| **Sequence** | Work happens in the right order | Spawn → implement → verify pipeline, daemon triage ordering | McEntire: pipeline architecture (broken sequence) achieved 0% success. MAST FM-1.3, FM-1.5, FM-2.1 |
+| **Throttle** | Velocity doesn't exceed verification bandwidth | Accretion gates, completion review, spawn rate limiting | Anthropic: 15x token consumption in multi-agent. McEntire: pipeline consumed $50 budget on planning alone |
+| **Align** | Agents share a current, accurate model of what correct means | Skills, CLAUDE.md, governance hooks, shared knowledge base | 50% of MAST failures (7/14 modes). Most neglected primitive across all frameworks |
+
+**Key insight:** Align is the meta-primitive. Without Align, the other three primitives drift — gates measure wrong things (Throttle), routes go stale (Route), sequence steps become wrong (Sequence). External evidence confirms: agents communicating perfectly while maintaining divergent models of correctness is the dominant failure pattern.
+
+**Degenerate case:** When N=1 (single agent), all four primitives are trivially satisfied. This explains why autoresearch succeeds with radical simplicity — it eliminates coordination rather than solving it.
+
+**Quantitative relationship:** Success degrades monotonically with missing primitives:
+- McEntire: 100% (single/0 missing) → 64% (hierarchical/~1.5 missing) → 32% (swarm/~3 missing) → 0% (pipeline/~4 missing)
+- DeepMind: 17.2x error amplification (independent/no primitives) → 4.4x (centralized/+Route+Sequence)
+
+---
+
 ## Boundaries
 
 **What this model covers:**
@@ -87,6 +108,7 @@ Both simple tasks (FormatBytes + FormatRate, ~40s each) and complex tasks (Visua
 | 2026-03-09 | Complex task (N=1) | 4-file conflicts including add/add type, semantic conflicts from design divergence |
 | 2026-03-10 | 4-condition experiment (N=80) | Placement 20/20 success, all other conditions 60/60 conflict, 160/160 individual 6/6 |
 | 2026-03-18 | Decay verification probe | All 4 claims confirmed current. Experiment data intact. Framework references updated (AutoGen → deprecated). Production architecture validates structural approach. |
+| 2026-03-22 | External framework validation probe | All 4 claims confirmed as general (not orch-go-specific). 14 MAST failure modes map to 4 primitives. McEntire experiment shows monotonic degradation. DeepMind scaling paper confirms centralized coordination reduces error amplification. Align identified as dominant/neglected primitive (50% of failures). |
 
 ---
 
@@ -115,6 +137,10 @@ Both simple tasks (FormatBytes + FormatRate, ~40s each) and complex tasks (Visua
 - Can iterative messaging (multi-round negotiation) produce different results than single-shot plan exchange?
 - Does a stronger coordination instruction ("you MUST choose a different insertion point than the other agent") change behavior?
 - At what task granularity does structural placement become impractical?
+- Should Align decompose into sub-primitives? (It covers 50% of external failures — may be "state alignment" + "goal alignment")
+- Do the four primitives have ordering dependencies? (Must Route precede Sequence?)
+- How do primitives interact with task type? (DeepMind found coordination strategy is task-dependent — financial reasoning favors centralized, web navigation favors decentralized)
+- Do the primitives apply to non-LLM multi-agent systems? (robotics, distributed computing, human organizations)
 
 ## Source Investigations
 
