@@ -8,7 +8,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/daemonconfig"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/group"
-	"github.com/dylan-conlin/orch-go/pkg/modeldrift"
 )
 
 // Config holds configuration for the daemon.
@@ -126,12 +125,6 @@ type Daemon struct {
 	Spawner Spawner
 	// Completions finds completed agents.
 	Completions CompletionFinder
-	// Reflector runs knowledge reflection.
-	Reflector Reflector
-	// ModelDrift provides I/O for model drift analysis.
-	ModelDrift modeldrift.Store
-	// KnowledgeHealth provides knowledge health operations.
-	KnowledgeHealth KnowledgeHealthService
 	// AgreementCheck provides agreement checking operations.
 	AgreementCheck AgreementCheckService
 	// Cleaner cleans up stale sessions.
@@ -152,47 +145,17 @@ type Daemon struct {
 	// BeadsHealth provides beads health snapshot collection and storage.
 	BeadsHealth BeadsHealthService
 
-	// FrictionAccumulator scans completed agents for friction and stores results.
-	FrictionAccumulator FrictionAccumulatorService
 
 	// ArtifactSync provides periodic artifact drift analysis and issue creation.
 	ArtifactSync ArtifactSyncService
 
-	// SynthesisAutoCreate provides periodic auto-creation of synthesis issues
-	// for investigation clusters lacking model directories.
-	SynthesisAutoCreate SynthesisAutoCreateService
 
-	// ProactiveExtraction provides periodic scanning for files approaching the
-	// critical 1500-line threshold. Creates architect issues at 1200 lines.
-	// DEPRECATED: Replaced by AccretionResponse for event-driven detection.
-	ProactiveExtraction ProactiveExtractionService
 
-	// AccretionResponse reacts to accretion.delta events by creating architect
-	// extraction issues when files grow rapidly across multiple completions.
-	AccretionResponse AccretionResponseService
 
-	// TriggerScan provides periodic pattern detection that creates beads issues
-	// for recurring bugs, orphaned investigations, stale threads, etc.
-	TriggerScan TriggerScanService
 
-	// DetectorOutcomes provides I/O for computing per-detector resolution rates.
-	// When set, RunPeriodicTriggerScan adjusts budgets based on detector performance.
-	DetectorOutcomes DetectorOutcomeService
 
-	// TriggerDetectors holds the registered pattern detectors for the trigger scan system.
-	// Constructed at daemon startup, used by RunPeriodicTriggerScan.
-	TriggerDetectors []PatternDetector
 
-	// TriggerExpiry provides periodic expiry of stale daemon:trigger issues.
-	TriggerExpiry TriggerExpiryService
 
-	// Digest provides periodic scanning of .kb/ artifacts and production
-	// of consumable digest products in ~/.orch/digest/.
-	Digest DigestService
-	// DigestDir is the directory where digest product files are stored.
-	DigestDir string
-	// DigestStatePath is the path to the digest scan state file.
-	DigestStatePath string
 
 	// CompletionDedupTracker prevents re-processing the same Phase: Complete
 	// across poll cycles. Defense-in-depth for when daemon:ready-review label
@@ -227,9 +190,6 @@ type Daemon struct {
 	// Computed via events.ComputeLearning() at daemon startup or refresh.
 	Learning *events.LearningStore
 
-	// PlanStatusQuerier queries beads for plan phase issue statuses.
-	// When nil, uses defaultPlanStatusQuerier (shells out to bd).
-	PlanStatusQuerier PlanStatusQuerier
 
 	// FocusGoal is the current focus goal text (from ~/.orch/focus.json).
 	// When set, issues from projects matching this goal get a priority boost.
@@ -241,11 +201,7 @@ type Daemon struct {
 	// Built from ProjectRegistry at daemon startup.
 	ProjectDirNames map[string]string
 
-	// ClaimProbeService generates probe issues for stale/unconfirmed claims.
-	ClaimProbeService ClaimProbeService
 
-	// TensionClusterService creates architect issues for tension clusters.
-	TensionClusterService TensionClusterService
 
 	// CapacityPoll polls account capacity and writes to file cache.
 	// When nil, uses the default implementation that calls ListAccountsWithCapacity.
@@ -284,9 +240,6 @@ func NewWithConfig(config Config) *Daemon {
 		Issues:                   &defaultIssueQuerier{},
 		Spawner:                  &defaultSpawner{},
 		Completions:              &defaultCompletionFinder{},
-		Reflector:                &defaultReflector{},
-		ModelDrift:               modeldrift.NewDefaultStore(),
-		KnowledgeHealth:          &defaultKnowledgeHealthService{},
 		AgreementCheck:           &defaultAgreementCheckService{},
 		Cleaner:                  &defaultSessionCleaner{},
 		ActiveCounter:            &defaultActiveCounter{},
@@ -295,7 +248,6 @@ func NewWithConfig(config Config) *Daemon {
 		CompletionDedupTracker:   NewCompletionDedupTracker(),
 		BeadsCircuitBreaker:      NewBeadsCircuitBreaker(),
 		ArtifactSync:             &defaultArtifactSyncService{},
-		SynthesisAutoCreate:      &defaultSynthesisAutoCreateService{},
 	}
 	// Initialize worker pool if MaxAgents is set
 	if config.MaxAgents > 0 {
@@ -329,9 +281,6 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		Issues:              &defaultIssueQuerier{},
 		Spawner:             &defaultSpawner{},
 		Completions:         &defaultCompletionFinder{},
-		Reflector:           &defaultReflector{},
-		ModelDrift:          modeldrift.NewDefaultStore(),
-		KnowledgeHealth:     &defaultKnowledgeHealthService{},
 		AgreementCheck:      &defaultAgreementCheckService{},
 		Cleaner:             &defaultSessionCleaner{},
 		ActiveCounter:       &defaultActiveCounter{},

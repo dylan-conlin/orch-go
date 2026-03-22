@@ -45,9 +45,6 @@ type DaemonStatus struct {
 	// Surfaced to enable health card alerting when daemon stops processing completions.
 	CompletionFailures *CompletionFailureSnapshot `json:"completion_failures,omitempty"`
 
-	// KnowledgeHealth holds the latest knowledge health check snapshot.
-	// Surfaced to enable dashboard visibility into quick entry accumulation.
-	KnowledgeHealth *KnowledgeHealthSnapshot `json:"knowledge_health,omitempty"`
 
 	// PhaseTimeout holds the latest phase timeout detection snapshot.
 	// Surfaced to show unresponsive agent count in daemon status and dashboard.
@@ -65,9 +62,6 @@ type DaemonStatus struct {
 	// Surfaced to show issue/code health trends in daemon status and dashboard.
 	BeadsHealth *BeadsHealthSnapshot `json:"beads_health,omitempty"`
 
-	// FrictionAccumulation holds the latest friction accumulation snapshot.
-	// Surfaced to show friction patterns in daemon status and dashboard.
-	FrictionAccumulation *FrictionAccumulationSnapshot `json:"friction_accumulation,omitempty"`
 }
 
 // VerificationStatusSnapshot is a snapshot of verification tracking state.

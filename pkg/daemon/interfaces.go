@@ -28,18 +28,6 @@ type CompletionFinder interface {
 	ListCompletedAgents(config CompletionConfig) ([]CompletedAgent, error)
 }
 
-// Reflector runs knowledge reflection.
-type Reflector interface {
-	Reflect(createIssues bool) (*ReflectResult, error)
-	ReflectOpen() error
-}
-
-// KnowledgeHealthService provides knowledge health operations.
-type KnowledgeHealthService interface {
-	Check() (*KnowledgeHealthResult, error)
-	CreateIssue(result *KnowledgeHealthResult) error
-}
-
 // SessionCleaner cleans up stale sessions.
 type SessionCleaner interface {
 	Cleanup(config Config) (int, string, error)
@@ -144,28 +132,6 @@ func (f *defaultCompletionFinder) ListCompletedAgents(config CompletionConfig) (
 		}
 	}
 	return ListCompletedAgentsDefault(config)
-}
-
-// defaultReflector is the production Reflector.
-type defaultReflector struct{}
-
-func (r *defaultReflector) Reflect(createIssues bool) (*ReflectResult, error) {
-	return DefaultRunReflection(createIssues)
-}
-
-func (r *defaultReflector) ReflectOpen() error {
-	return RunOpenReflection()
-}
-
-// defaultKnowledgeHealthService is the production KnowledgeHealthService.
-type defaultKnowledgeHealthService struct{}
-
-func (s *defaultKnowledgeHealthService) Check() (*KnowledgeHealthResult, error) {
-	return DefaultKnowledgeHealthCheck()
-}
-
-func (s *defaultKnowledgeHealthService) CreateIssue(result *KnowledgeHealthResult) error {
-	return DefaultCreateKnowledgeHealthIssue(result)
 }
 
 // defaultAgreementCheckService is the production AgreementCheckService.

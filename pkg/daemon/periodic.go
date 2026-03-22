@@ -10,60 +10,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/identity"
 )
 
-// ShouldRunReflection returns true if periodic reflection should run.
-// This checks if reflection is enabled and enough time has elapsed since the last run.
-func (d *Daemon) ShouldRunReflection() bool {
-	return d.Scheduler.IsDue(TaskReflect)
-}
-
-// RunPeriodicReflection runs the periodic reflection analysis if due.
-// Returns the result if reflection was run, or nil if it wasn't due.
-func (d *Daemon) RunPeriodicReflection() *ReflectResult {
-	if !d.ShouldRunReflection() {
-		return nil
-	}
-
-	reflector := d.Reflector
-	if reflector == nil {
-		reflector = &defaultReflector{}
-	}
-	result, err := reflector.Reflect(d.Config.ReflectCreateIssues)
-	if err != nil {
-		return &ReflectResult{
-			Error:   err,
-			Message: fmt.Sprintf("Reflection failed: %v", err),
-		}
-	}
-
-	if d.Config.ReflectOpenEnabled {
-		if err := reflector.ReflectOpen(); err != nil {
-			return &ReflectResult{
-				Suggestions: result.Suggestions,
-				Saved:       result.Saved,
-				Error:       err,
-				Message:     fmt.Sprintf("Reflection open failed: %v", err),
-			}
-		}
-	}
-
-	// Update last reflect time on success
-	d.Scheduler.MarkRun(TaskReflect)
-
-	return result
-}
-
-// LastReflectTime returns when reflection was last run.
-// Returns zero time if reflection has never run.
-func (d *Daemon) LastReflectTime() time.Time {
-	return d.Scheduler.LastRunTime(TaskReflect)
-}
-
-// NextReflectTime returns when the next reflection is scheduled.
-// Returns zero time if reflection is disabled.
-func (d *Daemon) NextReflectTime() time.Time {
-	return d.Scheduler.NextRunTime(TaskReflect)
-}
-
 // ShouldRunCleanup returns true if periodic session cleanup should run.
 // This checks if cleanup is enabled and enough time has elapsed since the last run.
 func (d *Daemon) ShouldRunCleanup() bool {

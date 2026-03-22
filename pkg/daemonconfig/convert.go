@@ -24,8 +24,6 @@ func FromUserConfig(cfg *userconfig.Config) Config {
 		ReflectCreateIssues: cfg.DaemonReflectIssues(),
 		ReflectOpenEnabled:  cfg.DaemonReflectOpen(),
 
-		ReflectModelDriftEnabled:  cfg.DaemonReflectModelDriftEnabled(),
-		ReflectModelDriftInterval: time.Duration(cfg.DaemonReflectModelDriftIntervalHours()) * time.Hour,
 
 		CleanupEnabled:              cfg.DaemonCleanupEnabled(),
 		CleanupInterval:             time.Duration(cfg.DaemonCleanupIntervalHours()) * time.Hour,
@@ -41,9 +39,6 @@ func FromUserConfig(cfg *userconfig.Config) Config {
 
 		VerificationPauseThreshold: cfg.DaemonVerificationPauseThreshold(),
 
-		KnowledgeHealthEnabled:   cfg.DaemonKnowledgeHealthEnabled(),
-		KnowledgeHealthInterval:  time.Duration(cfg.DaemonKnowledgeHealthIntervalHours()) * time.Hour,
-		KnowledgeHealthThreshold: cfg.DaemonKnowledgeHealthThreshold(),
 
 		OrphanDetectionEnabled:  cfg.DaemonOrphanDetectionEnabled(),
 		OrphanDetectionInterval: time.Duration(cfg.DaemonOrphanDetectionIntervalMinutes()) * time.Minute,
@@ -59,8 +54,6 @@ func FromUserConfig(cfg *userconfig.Config) Config {
 		InvariantCheckEnabled:       cfg.DaemonInvariantCheckEnabled(),
 		InvariantViolationThreshold: cfg.DaemonInvariantViolationThreshold(),
 
-		PlanStalenessEnabled:  cfg.DaemonPlanStalenessEnabled(),
-		PlanStalenessInterval: time.Duration(cfg.DaemonPlanStalenessIntervalMinutes()) * time.Minute,
 
 		Compliance: complianceFromYAML(cfg.DaemonComplianceConfig()),
 	}

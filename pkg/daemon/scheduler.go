@@ -5,7 +5,6 @@ import "time"
 // Task name constants for the periodic scheduler.
 const (
 	TaskReflect              = "reflect"
-	TaskModelDriftReflect    = "model_drift_reflect"
 	TaskKnowledgeHealth      = "knowledge_health"
 	TaskCleanup              = "cleanup"
 	TaskRecovery             = "recovery"
@@ -24,12 +23,9 @@ const (
 	TaskAccretionResponse    = "accretion_response"
 	TaskTriggerScan          = "trigger_scan"
 	TaskTriggerExpiry        = "trigger_expiry"
-	TaskDigest               = "digest"
 	TaskInvestigationOrphan             = "investigation_orphan"
 	TaskVerificationFailedEscalation   = "verification_failed_escalation"
 	TaskLightweightCleanup             = "lightweight_cleanup"
-	TaskClaimProbeGeneration           = "claim_probe_generation"
-	TaskTensionClusterScan             = "tension_cluster_scan"
 	TaskCapacityPoll                   = "capacity_poll"
 	TaskAuditSelect                    = "audit_select"
 )
@@ -127,7 +123,6 @@ func (s *PeriodicScheduler) LastRunTime(name string) time.Time {
 func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s := NewPeriodicScheduler()
 	s.Register(TaskReflect, cfg.ReflectEnabled, cfg.ReflectInterval)
-	s.Register(TaskModelDriftReflect, cfg.ReflectModelDriftEnabled, cfg.ReflectModelDriftInterval)
 	s.Register(TaskKnowledgeHealth, cfg.KnowledgeHealthEnabled, cfg.KnowledgeHealthInterval)
 	s.Register(TaskCleanup, cfg.CleanupEnabled, cfg.CleanupInterval)
 	s.Register(TaskRecovery, cfg.RecoveryEnabled, cfg.RecoveryInterval)
@@ -146,12 +141,9 @@ func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s.Register(TaskAccretionResponse, cfg.AccretionResponseEnabled, cfg.AccretionResponseInterval)
 	s.Register(TaskTriggerScan, cfg.TriggerScanEnabled, cfg.TriggerScanInterval)
 	s.Register(TaskTriggerExpiry, cfg.TriggerExpiryEnabled, cfg.TriggerExpiryInterval)
-	s.Register(TaskDigest, cfg.DigestEnabled, cfg.DigestInterval)
 	s.Register(TaskInvestigationOrphan, cfg.InvestigationOrphanEnabled, cfg.InvestigationOrphanInterval)
 	s.Register(TaskVerificationFailedEscalation, cfg.VerificationFailedEscalationEnabled, cfg.VerificationFailedEscalationInterval)
 	s.Register(TaskLightweightCleanup, cfg.LightweightCleanupEnabled, cfg.LightweightCleanupInterval)
-	s.Register(TaskClaimProbeGeneration, cfg.ClaimProbeGenerationEnabled, cfg.ClaimProbeGenerationInterval)
-	s.Register(TaskTensionClusterScan, cfg.TensionClusterScanEnabled, cfg.TensionClusterScanInterval)
 	s.Register(TaskCapacityPoll, cfg.CapacityPollEnabled, cfg.CapacityPollInterval)
 	s.Register(TaskAuditSelect, cfg.AuditSelectEnabled, cfg.AuditSelectInterval)
 	return s

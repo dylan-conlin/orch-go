@@ -1,13 +1,14 @@
 # Model: Beads SQLite Database Corruption
 
 **Domain:** Beads / SQLite / Data Integrity
-**Last Updated:** 2026-03-19
+**Last Updated:** 2026-03-22
 **Synthesized From:** 3 investigations (Jan 21-22), 3+ corruption incidents (Jan 21-22), daemon logs showing 57+ restart cycles, Feb 2026 architecture review
 
 **Probes:**
 - 2026-03-18: Knowledge decay verification — all 6 fix claims confirmed against current beads codebase, model accurate and current
 - 2026-03-19: Model drift fix — removed stale `.beads/daemon.log` reference (file no longer exists since daemon doesn't run with JSONL-only default)
 - 2026-03-19: Model drift fix — updated stale investigation references (3 deleted during archive cleanup) and removed backup directory references (cleaned up)
+- 2026-03-22: Staleness review — model verified accurate. Fixed WAL checkpoint line reference (208→215), demoted daemon.log grep in monitoring (daemon doesn't run under JSONL-only default). No substantive drift found despite 5 stale spawns.
 
 ---
 
@@ -286,10 +287,10 @@ ls -la .beads/beads.db* 2>/dev/null
 # beads.db-wal  0 bytes
 # beads.db-shm  32KB
 
-# Check daemon restart frequency (daemon.log only exists if daemon is running;
-# with JSONL-only default, daemon.log is typically absent — that's healthy)
-grep "Daemon started" .beads/daemon.log 2>/dev/null | tail -20
-# If multiple starts within minutes = rapid-cycle problem
+# With JSONL-only default, daemon doesn't run — no daemon.log expected.
+# If using --sqlite mode, check daemon restart frequency:
+# grep "Daemon started" .beads/daemon.log 2>/dev/null | tail -20
+# Multiple starts within minutes = rapid-cycle problem
 ```
 
 ### orch doctor Check (Recommended)
@@ -310,14 +311,14 @@ Add to `orch doctor`:
 - Incident tracking — Jan 21 2026
 
 **Source Code:**
-- `~/Documents/personal/beads/internal/storage/sqlite/store.go:208` - Close() checkpoint logic
+- `~/Documents/personal/beads/internal/storage/sqlite/store.go:215` - Close() checkpoint logic
 - `~/Documents/personal/beads/cmd/bd/main.go` - CLI entry point, daemon auto-start
 
 **Related Models:**
 - `.kb/models/beads-integration-architecture/model.md` - RPC vs direct mode, client design
 
 **Primary Evidence (Verify These):**
-- `~/Documents/personal/beads/internal/storage/sqlite/store.go:208` - WAL checkpoint implementation showing TRUNCATE mode
+- `~/Documents/personal/beads/internal/storage/sqlite/store.go:215` - WAL checkpoint implementation showing TRUNCATE mode
 - `~/Documents/personal/beads/cmd/bd/main.go` - Daemon auto-start logic
 - `~/Documents/personal/beads/internal/storage/sqlite/` - SQLite storage implementation with WAL mode
 

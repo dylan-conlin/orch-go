@@ -43,13 +43,9 @@ type Config struct {
 	// investigation actions (Next: items older than 3 days).
 	ReflectOpenEnabled bool
 
-	// ReflectModelDriftEnabled controls whether model drift reflection is enabled.
 	// When enabled, the daemon will scan staleness events and create model maintenance issues.
-	ReflectModelDriftEnabled bool
 
-	// ReflectModelDriftInterval is how often to run model drift reflection (0 = disabled).
 	// Default is 4 hours.
-	ReflectModelDriftInterval time.Duration
 
 	// CleanupEnabled controls whether periodic session cleanup is enabled.
 	// When enabled, the daemon will run session cleanup periodically.
@@ -403,8 +399,6 @@ func DefaultConfig() Config {
 		ReflectInterval:                time.Hour, // Hourly by default
 		ReflectCreateIssues:            true,
 		ReflectOpenEnabled:             true,
-		ReflectModelDriftEnabled:       true,
-		ReflectModelDriftInterval:      4 * time.Hour,
 		CleanupEnabled:                 true,
 		CleanupInterval:                6 * time.Hour, // Every 6 hours by default
 		CleanupAgeDays:                 7,             // 7 days threshold
