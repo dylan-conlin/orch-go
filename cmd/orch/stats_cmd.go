@@ -152,6 +152,8 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 			a.processDaemonSpawn(event)
 		case "session.auto_completed":
 			a.processAutoCompleted(event)
+		case "spawn.bypass":
+			a.processSpawnBypass(event)
 		case "spawn.triage_bypassed":
 			a.processTriageBypassed(event)
 		case "spawn.hotspot_bypassed":

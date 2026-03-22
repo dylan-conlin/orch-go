@@ -381,6 +381,12 @@ type Config struct {
 	// auto-completed pool (0.0–1.0). The remainder comes from all completions.
 	// Default: 0.6 (60% auto-completed, 40% any completion).
 	AuditAutoCompleteWeight float64
+
+	// ComprehensionThreshold is the maximum number of comprehension:pending items
+	// before the daemon pauses spawning. The orchestrator adds this label after
+	// completing agents; removing it signals comprehension is done.
+	// Default: 5. Set to 0 to disable comprehension throttle.
+	ComprehensionThreshold int
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -473,5 +479,6 @@ func DefaultConfig() Config {
 		AuditSelectInterval:                     168 * time.Hour, // Weekly
 		AuditSelectCount:                        2,               // 2 issues per cycle
 		AuditAutoCompleteWeight:                 0.6,             // 60% from auto-completed pool
+		ComprehensionThreshold:                  5,               // Pause after 5 uncomprehended items
 	}
 }

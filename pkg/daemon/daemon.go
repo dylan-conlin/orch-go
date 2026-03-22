@@ -97,6 +97,10 @@ type Daemon struct {
 	// This prevents the infinite retry loop on verification failures.
 	VerificationRetryTracker *VerificationRetryTracker
 
+	// ComprehensionQuerier checks the comprehension queue depth.
+	// When set and count exceeds threshold, daemon pauses spawning.
+	ComprehensionQuerier ComprehensionQuerier
+
 	// Issues queries beads issues for the spawn pipeline.
 	Issues IssueQuerier
 	// ProjectRegistry resolves issue ID prefixes to project directories.

@@ -45,6 +45,9 @@ type statsAggregator struct {
 	escapeHatchSpawns   []escapeHatchSpawn
 	escapeHatchInWindow int
 
+	// Bypass tracking (direct orch spawn, not via daemon)
+	bypassSpawns int
+
 	// Verification
 	gateFailures      map[string]int                    // gate -> failure count
 	gatesBypassed     map[string]int                    // gate -> bypass count
@@ -381,6 +384,13 @@ func (a *statsAggregator) processDaemonSpawn(event StatsEvent) {
 		return
 	}
 	a.report.DaemonStats.DaemonSpawns++
+}
+
+func (a *statsAggregator) processSpawnBypass(event StatsEvent) {
+	if event.Timestamp < a.cutoffDays {
+		return
+	}
+	a.bypassSpawns++
 }
 
 func (a *statsAggregator) processAutoCompleted(event StatsEvent) {
@@ -742,6 +752,11 @@ func (a *statsAggregator) calcRatesAndDuration() {
 		a.report.Summary.CompletionRate = float64(a.report.Summary.TotalCompletions) / float64(a.report.Summary.TotalSpawns) * 100
 		a.report.Summary.AbandonmentRate = float64(a.report.Summary.TotalAbandonments) / float64(a.report.Summary.TotalSpawns) * 100
 		a.report.DaemonStats.DaemonSpawnRate = float64(a.report.DaemonStats.DaemonSpawns) / float64(a.report.Summary.TotalSpawns) * 100
+		a.report.DaemonStats.BypassSpawns = a.bypassSpawns
+		totalSpawns := a.report.DaemonStats.DaemonSpawns + a.bypassSpawns
+		if totalSpawns > 0 {
+			a.report.DaemonStats.BypassRate = float64(a.bypassSpawns) / float64(totalSpawns) * 100
+		}
 	}
 
 	if len(a.durations) > 0 {

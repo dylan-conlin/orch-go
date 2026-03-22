@@ -14,9 +14,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/config"
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/orch"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -521,5 +523,20 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		}
 		return err
 	}
+
+	// 15. Emit spawn.bypass event for direct (non-daemon) spawns
+	if !daemonDriven {
+		logger := events.NewLogger(events.DefaultLogPath())
+		_ = logger.Log(events.Event{
+			Type:      "spawn.bypass",
+			Timestamp: time.Now().Unix(),
+			Data: map[string]interface{}{
+				"beads_id": beadsID,
+				"skill":    skillName,
+				"reason":   spawnReason,
+			},
+		})
+	}
+
 	return nil
 }

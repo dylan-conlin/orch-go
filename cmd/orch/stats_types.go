@@ -93,6 +93,8 @@ type DaemonStatsSummary struct {
 	AutoCompletions int     `json:"auto_completions"`
 	TriageBypassed  int     `json:"triage_bypassed"`
 	DaemonSpawnRate float64 `json:"daemon_spawn_rate"`
+	BypassSpawns    int     `json:"bypass_spawns"`
+	BypassRate      float64 `json:"bypass_rate"`
 }
 
 // WaitStatsSummary contains wait operation metrics

@@ -67,6 +67,33 @@ func TestCheckPreSpawnGates_ShortCircuits(t *testing.T) {
 	}
 }
 
+func TestCheckPreSpawnGates_ComprehensionQueueFull(t *testing.T) {
+	q := &mockComprehensionQuerier{count: 6}
+	d := &Daemon{
+		ComprehensionQuerier: q,
+		Config: Config{ComprehensionThreshold: 5},
+	}
+	signal := d.CheckPreSpawnGates()
+	if signal.Allowed {
+		t.Error("CheckPreSpawnGates() should block when comprehension queue is full")
+	}
+	if signal.Reason == "" {
+		t.Error("CheckPreSpawnGates() should provide a reason when blocked")
+	}
+}
+
+func TestCheckPreSpawnGates_ComprehensionQueueBelowThreshold(t *testing.T) {
+	q := &mockComprehensionQuerier{count: 2}
+	d := &Daemon{
+		ComprehensionQuerier: q,
+		Config: Config{ComprehensionThreshold: 5},
+	}
+	signal := d.CheckPreSpawnGates()
+	if !signal.Allowed {
+		t.Errorf("CheckPreSpawnGates() should allow when comprehension queue is below threshold; Reason: %s", signal.Reason)
+	}
+}
+
 func TestCheckIssueCompliance_PassesCleanIssue(t *testing.T) {
 	d := &Daemon{}
 	issue := Issue{ID: "proj-1", IssueType: "feature", Status: "open"}

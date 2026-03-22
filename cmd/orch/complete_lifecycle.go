@@ -203,6 +203,11 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 			// Non-critical
 		}
 
+		// Remove comprehension:pending — this completion is now comprehended
+		if err := daemon.RemoveComprehensionPendingInDir(target.BeadsID, target.BeadsProjectDir); err != nil {
+			// Non-critical: label may not exist (e.g., manual completion, not daemon-queued)
+		}
+
 		// Signal human verification to daemon
 		if err := daemon.WriteVerificationSignal(); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to signal human verification to daemon: %v\n", err)

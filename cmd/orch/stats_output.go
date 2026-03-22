@@ -57,7 +57,7 @@ func outputStatsText(report *StatsReport) error {
 	fmt.Printf("  Daemon spawns:    %d (%.1f%% of all spawns)\n", report.DaemonStats.DaemonSpawns, report.DaemonStats.DaemonSpawnRate)
 	fmt.Printf("  Auto-completions: %d\n", report.DaemonStats.AutoCompletions)
 	fmt.Printf("  Triage bypassed:  %d\n", report.DaemonStats.TriageBypassed)
-
+	outputBypassStats(report)
 	// Wait metrics (if any)
 	if report.WaitStats.WaitCompleted > 0 || report.WaitStats.WaitTimeouts > 0 {
 		fmt.Println()
@@ -506,4 +506,13 @@ func truncateSkill(skill string, maxLen int) string {
 		return skill
 	}
 	return skill[:maxLen-3] + "..."
+}
+
+func outputBypassStats(report *StatsReport) {
+	if report.DaemonStats.BypassSpawns > 0 {
+		fmt.Printf("  Bypass spawns:    %d (%.1f%% bypass rate)\n", report.DaemonStats.BypassSpawns, report.DaemonStats.BypassRate)
+		if report.DaemonStats.BypassRate > 20 {
+			fmt.Printf("  Warning: bypass rate exceeds 20%% — investigate if daemon workflow meets needs\n")
+		}
+	}
 }

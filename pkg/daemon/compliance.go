@@ -52,7 +52,20 @@ func (d *Daemon) CheckPreSpawnGates() SpawnGateSignal {
 		}
 	}
 
-	// Gate 3: Rate limit — hourly spawn cap.
+	// Gate 3: Comprehension queue — pause spawning when too much uncomprehended work exists.
+	if d.ComprehensionQuerier != nil {
+		allowed, count, threshold := CheckComprehensionThrottle(d.ComprehensionQuerier, d.Config.ComprehensionThreshold)
+		if !allowed {
+			reason := fmt.Sprintf("Comprehension queue full: %d/%d pending items. Run 'orch comprehension' to review.", count, threshold)
+			logDaemonGateDecision("comprehension", "block", "", "", reason)
+			return SpawnGateSignal{
+				Allowed: false,
+				Reason:  reason,
+			}
+		}
+	}
+
+	// Gate 4: Rate limit — hourly spawn cap.
 	if d.RateLimiter != nil {
 		canSpawn, count, msg := d.RateLimiter.CanSpawn()
 		if !canSpawn {

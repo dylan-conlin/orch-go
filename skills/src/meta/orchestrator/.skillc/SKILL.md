@@ -36,7 +36,7 @@ description: Always-loaded runtime policy for orchestrator agents. Routes decisi
   2. **Insight** — What emerged from seeing findings together that wasn't visible in isolation?
   3. **Position** — What does Dylan now understand differently, and where does the thread lead?
 
-**Tool action space:** orch spawn/complete/status/review, bd create/show/ready/close, kb context/quick, git status, Read orchestration artifacts. Infrastructure hooks enforce tool boundaries (Edit/Write, code file reads, bash commands).
+**Tool action space:** orch complete/status/review/comprehension, bd create/show/ready/close/label, kb context/quick, git status, Read orchestration artifacts. Infrastructure hooks enforce tool boundaries (Edit/Write, code file reads, bash commands). **Orchestrator does NOT spawn agents** — execution is the daemon's job. Dylan retains `orch spawn` for direct bypass.
 
 **Synthesis is comprehension, not reporting.** "We spawned two architects and got 10 issues" is a summary. "We discovered that X and Y are two halves of the same problem, and the gap between them is where cognitive load lives" is comprehension. Workers produce atoms; you compose meaning.
 
@@ -62,8 +62,7 @@ description: Always-loaded runtime policy for orchestrator agents. Routes decisi
 | **Release work to daemon** | `bd create "task" -l triage:ready` | PRIMARY: daemon handles spawning |
 | **Release bug fix** | `bd create "fix X" --type bug -l triage:ready` | Typed issue → daemon infers skill |
 | **Release feature** | `bd create "add X" --type feature -l triage:ready` | Typed issue → daemon infers skill |
-| **Spawn directly (exception)** | `orch spawn SKILL "task"` + justification | Needs immediate attention OR custom context |
-| **Daemon down, need to spawn** | `orch spawn` directly (not Agent tool) | "Manual spawn" = CLI, not built-in tools |
+| **Daemon down** | Inform Dylan — he can `orch spawn` directly | Orchestrator doesn't spawn; Dylan retains bypass |
 | **Agent at Phase: Complete** | `orch complete <id>` | Don't ask, just verify and close |
 | **Multiple agents complete** | `orch review` then synthesize | Batch review workflow |
 | **Investigation cluster (15+)** | Spawn architect to create model | Synthesis into queryable understanding |
@@ -131,20 +130,26 @@ True stall rate ~4%. Classify before abandoning:
 
 ## Work Pipeline
 
-**Primary workflow:** Symptom → Issue → Release to Daemon → Completion Review
+**Primary workflow:** Symptom → Enrich Issue → Release to Daemon → Completion Review → Comprehension
 
-Release is the default. Direct spawn (`orch spawn`) is the exception requiring justification.
+The orchestrator's value is judgment, not execution. You enrich and release; the daemon spawns and completes.
+
+**Enrichment protocol (every issue):**
+1. **Type** — Set correct issue type (bug, feature, task, investigation, question)
+2. **Skill label** — Add `skill:*` label when type-based inference would be wrong (e.g., a task that needs `architect` instead of `feature-impl`). Skip if type-default is correct.
+3. **Area label** — Always add `area:*` label for context injection (dashboard, spawn, beads, cli, skill, kb, opencode)
+4. **Description** — Write a structured description: what's wrong/needed, what evidence exists, what success looks like. Terse one-liners starve the daemon's inference pipeline.
 
 **Release terminology:**
-- "Release this bug" → `bd create "fix X" --type bug -l triage:ready`
-- "Release this feature" → `bd create "add X" --type feature -l triage:ready`
-- "Spawn directly" → Exception: urgent, custom context needed
+- "Release this bug" → `bd create "fix X" --type bug -l triage:ready -l area:spawn`
+- "Release this feature" → `bd create "add X" --type feature -l triage:ready -l area:dashboard`
+- "Override routing" → `bd create "design X" --type task -l triage:ready -l skill:architect -l area:kb`
 
 **Interpreting Dylan's requests:**
-- "X seems broken" → `bd create "X symptom" --type bug -l triage:ready`
-- "Fix X" → `bd create "fix X" --type bug -l triage:ready`
-- "Implement X" → `bd create "add X" --type feature -l triage:ready`
-- "Can you look at X" → `bd create "understand X" --type investigation -l triage:ready`
+- "X seems broken" → `bd create "X symptom" --type bug -l triage:ready -l area:*`
+- "Fix X" → `bd create "fix X" --type bug -l triage:ready -l area:*`
+- "Implement X" → `bd create "add X" --type feature -l triage:ready -l area:*`
+- "Can you look at X" → `bd create "understand X" --type investigation -l triage:ready -l area:*`
 
 **Containerized orchestrators:** Direct spawn is unavailable in Docker sandbox; use release path (`bd create ... -l triage:ready`).
 
@@ -156,9 +161,11 @@ Before labeling, verify: type is clear (skill inference will work), no blocking 
 
 | Prefix    | Purpose         | Values                                      |
 |-----------|----------------|-----------------------------------------------|
+| `skill:`  | Routing override | feature-impl, architect, systematic-debugging, investigation, etc. |
 | `area:`   | Work domain     | dashboard, spawn, beads, cli, skill, kb, opencode |
 | `effort:` | Size estimation | small → `--tier light`, medium → default, large → `--tier heavy` |
 | `status:` | Meta-status     | parked, blocked-external, needs-review |
+| `comprehension:` | Review state | pending (daemon-added, orchestrator-removed) |
 
 ### Beads Tracking
 
@@ -167,77 +174,47 @@ Before labeling, verify: type is clear (skill inference will work), no blocking 
 
 ---
 
-## Spawning Essentials
+## Spawning (Daemon-Only)
+
+**The orchestrator does NOT spawn agents.** Execution is the daemon's responsibility. The orchestrator enriches issues and releases them via `triage:ready`; the daemon handles skill inference, model selection, and spawning.
 
 ### Agent Tool Is NOT a Spawn Mechanism
 
-Never use the Claude Code Agent tool to create worker agents. Always use `orch spawn`. The Agent tool bypasses all spawn infrastructure: hooks, skill loading, workspace creation, beads tracking, and completion pipeline. Agents spawned via Agent tool have no SKILL.md, no SPAWN_CONTEXT.md, no phase reporting, and no completion path.
+Never use the Claude Code Agent tool to create worker agents. The Agent tool bypasses all spawn infrastructure.
 
-**"Manual spawn" = `orch spawn` CLI.** When the daemon is down, "spawn manually" means run `orch spawn` by hand — not use built-in tools as a spawn workaround.
-
-**Legitimate Agent tool uses:** Explore (codebase search), research subagents for context gathering. These are NOT spawn — they don't create workers with lifecycle tracking.
+**Legitimate Agent tool uses:** Explore (codebase search), research subagents for context gathering. These are NOT spawn.
 
 ### Worktree Isolation Constraint
 
-Never use worktree isolation (`isolation: "worktree"`) for Docker-dependent projects. Docker bind mounts resolve from the main repo, not worktrees — edits in worktrees are invisible to containers.
-
-### Model Selection
-
-| Flag | Result |
-|------|--------|
-| (none) | Sonnet + claude backend (tmux) |
-| `--model opus` | Opus + claude backend (tmux) |
-| `--backend opencode` | Sonnet + headless (HTTP API) |
-
-**Use opus for:** systematic-debugging, investigation, architect, codebase-audit, research.
-
-**Sonnet sufficient for:** single-file fixes, known simple edits, config changes, well-scoped implementation.
-
-**Rate limiting:** Default sonnet → need opus: `--model opus` → hit Max limits: `orch account switch work` → both limited: `--backend opencode`.
+Never use worktree isolation (`isolation: "worktree"`) for Docker-dependent projects. Docker bind mounts resolve from the main repo, not worktrees.
 
 ### Context Gathering vs Investigation
 
-Orchestrators gather context for spawn prompts (kb context, SYNTHESIS.md, beads issues). Workers investigate code.
+Orchestrators gather context for issue enrichment (kb context, SYNTHESIS.md, beads issues). Workers investigate code.
 
 | Orchestrator activity | Time |
 |----------------------|------|
 | `kb context`, SYNTHESIS.md, beads issues | < 5 min total |
 
-**The 5-minute rule:** Context gathering beyond 5 minutes is investigation territory — spawn a worker instead. Infrastructure hooks detect drift into code reading.
+**The 5-minute rule:** Context gathering beyond 5 minutes is investigation territory — release an investigation issue instead.
 
-### Spawn Modes
+### When Daemon Is Down
 
-- **Default (headless)** — HTTP API, no TUI, returns immediately
-- **`--tmux`** — Creates tmux window (opt-in for monitoring)
-- **`--inline`** — Runs in current terminal (blocking)
-- **Policy/orchestrator skills** auto-default to tmux
-
-### Spawn Decision: Parallel vs Serial
-
-Parallelize ONLY IF tasks are independent AND parallelization shortens critical path. `Parallel Time = (N × ~10min overhead) + max(task durations)`.
-
-### Infrastructure Auto-Detection
-
-Keywords like `opencode`, `spawn`, `daemon`, `orch serve` auto-apply `--backend claude` + opus. Claude CLI survives OpenCode server crashes.
-
-### Spawn Command Template
-
-```
-orch spawn --bypass-triage --issue <ID> --intent <TYPE> --reason "<why>" SKILL "task"
-```
-
-| Flag | Required | Notes |
-|------|----------|-------|
-| `--issue <ID>` | Yes (auto-created for `--no-track`) | Beads issue ID for tracking |
-| `--intent <TYPE>` | Yes | `build\|fix\|investigate\|explore\|produce\|compare\|experience` |
-| `--bypass-triage` | When skipping daemon | Direct spawn without `triage:ready` label |
-| `--reason "<why>"` | With `--bypass-triage` | Min 10 chars explaining why bypassing daemon |
-| `--model opus` | Optional | Default: sonnet. Use opus for complex work |
-| `--dry-run` | No | Validate spawn plan without executing (skill, context, settings) |
+If the daemon is down and work is urgent, inform Dylan. He can run `orch spawn` directly (this is the bypass escape hatch, measured as `spawn.bypass` events).
 
 ---
 
 ## Completion Lifecycle
+
+### Comprehension Queue
+
+Completed work enters a `comprehension:pending` state — mechanically done but not yet understood. The daemon adds this label after auto-completing agents. The orchestrator removes it during completion review.
+
+**`orch comprehension`** — List pending comprehension items, mark them reviewed.
+
+**Throttle:** If `comprehension:pending` count exceeds threshold (default 5), the daemon pauses spawning. This is by design: idle agents with good scoping > busy agents with blind scoping.
+
+**Session start:** Check comprehension queue via `orch orient`. Drain pending items before releasing new work.
 
 ### Three-Layer Reconnection (Every Completion)
 
@@ -454,7 +431,7 @@ opencode    → agent execution        (Claude frontend, session management)
 
 ## Commands Quick Reference
 
-**Lifecycle:** `orch spawn SKILL "task"` | `orch status` | `orch complete <id>` | `orch review`
+**Lifecycle:** `orch status` | `orch complete <id>` | `orch review` | `orch comprehension`
 
 **Monitoring:** `orch status` | `orch wait <id>` | `orch monitor` | `orch serve` (dashboard localhost:5188)
 

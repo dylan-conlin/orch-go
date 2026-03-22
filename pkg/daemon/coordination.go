@@ -222,8 +222,8 @@ func (d *Daemon) ExecuteCompletionRoute(
 			result.Processed = true
 			result.AutoCompleted = true
 			result.CloseReason = completionSummary
-			// Auto-completed agents don't count toward verification ceiling —
-			// they're already closed by the daemon and don't need human review.
+			// Queue for orchestrator comprehension (fire-and-forget)
+			d.addComprehensionPending(agent.BeadsID, effectiveProjectDir, config)
 			return result
 		}
 		// Fall through to label if no auto-completer
@@ -238,8 +238,8 @@ func (d *Daemon) ExecuteCompletionRoute(
 			result.Processed = true
 			result.AutoCompleted = true
 			result.CloseReason = completionSummary
-			// Auto-completed agents don't count toward verification ceiling —
-			// they're already closed by the daemon and don't need human review.
+			// Queue for orchestrator comprehension (fire-and-forget)
+			d.addComprehensionPending(agent.BeadsID, effectiveProjectDir, config)
 			return result
 		}
 		// Fall through to label if no auto-completer
@@ -266,6 +266,9 @@ func (d *Daemon) labelReadyReview(agent CompletedAgent, completionSummary, effec
 		verify.RemoveTriageLabels(agent.BeadsID, effectiveProjectDir)
 
 		d.recordUnverifiedCompletion(agent.BeadsID, config)
+
+		// Queue for orchestrator comprehension (fire-and-forget)
+		d.addComprehensionPending(agent.BeadsID, effectiveProjectDir, config)
 	}
 
 	result.Processed = true
@@ -284,6 +287,22 @@ func (d *Daemon) recordUnverifiedCompletion(beadsID string, config CompletionCon
 			status := d.VerificationTracker.Status()
 			fmt.Printf("    Verification pause triggered: %d/%d auto-completions. Resume with: orch daemon resume\n",
 				status.CompletionsSinceVerification, status.Threshold)
+		}
+	}
+}
+
+// addComprehensionPending adds the comprehension:pending label to a completed issue.
+// Fire-and-forget: label failure is logged but doesn't block completion processing.
+func (d *Daemon) addComprehensionPending(beadsID, projectDir string, config CompletionConfig) {
+	var err error
+	if projectDir != "" {
+		err = AddComprehensionPendingInDir(beadsID, projectDir)
+	} else {
+		err = AddComprehensionPending(beadsID)
+	}
+	if err != nil {
+		if config.Verbose {
+			fmt.Printf("    Warning: failed to add comprehension:pending label to %s: %v\n", beadsID, err)
 		}
 	}
 }
