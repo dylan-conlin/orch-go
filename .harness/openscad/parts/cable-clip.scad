@@ -16,6 +16,7 @@ fn = 32;               // facet count for curves
 
 // --- Layer 1: Parameter Validation ---
 use <../lib/validate.scad>
+use <../lib/validate-project.scad>
 
 validate_part(width, height, depth, wall_thickness, fn, holes=[cable_diameter]);
 validate_range("cable_diameter", cable_diameter, 2, 15);

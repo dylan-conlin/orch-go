@@ -19,7 +19,8 @@ agent (Claude Code)
 ├── CLAUDE.md              # This file — project constraints and workflow
 ├── parts/                 # .scad source files (one file per part)
 ├── lib/                   # Shared validation modules
-│   └── validate.scad      # Layer 1 assert gate library
+│   ├── validate.scad      # BASE Layer 1 assert gate library (refreshable — do not edit)
+│   └── validate-project.scad  # Project-specific validators (project-owned, never overwritten)
 ├── exports/               # Rendered outputs (STL, PNG, summary JSON)
 ├── sweeps/                # Parameter sweep results
 ├── gates/                 # Gate scripts (Layer 2-4)
@@ -50,13 +51,25 @@ agent (Claude Code)
 
 ### Parameter Validation (Layer 1 — assert gates)
 
-Every `.scad` file MUST include parameter validation at the top using `lib/validate.scad`:
+Validation is split into two files:
+
+- **`lib/validate.scad`** — BASE library (refreshable via `harness init --openscad --refresh`). Generic validators: `validate_part`, `validate_range`, `validate_positive`, etc. Do not add project-specific validators here.
+- **`lib/validate-project.scad`** — Project-owned extensions. Add project-specific validators here (e.g., `validate_build_plate`, `validate_wire_channel`). Never overwritten by harness refresh.
+
+Every `.scad` file MUST include both:
 
 ```openscad
 use <../lib/validate.scad>
+use <../lib/validate-project.scad>
 
 validate_part(width, height, depth, wall_thickness, fn, holes=[hole_diameter]);
 validate_range("fillet_radius", fillet_radius, 0, min(wall_thickness, 5));
+```
+
+**Call-site parameterization** — base validators accept parameters with defaults. Override at the call site instead of creating wrappers:
+```openscad
+validate_wall_thickness("wall", wall, min_wall=1.2);  // PETG override
+validate_wall_thickness("wall", wall);                  // default 0.8 (PLA)
 ```
 
 Pattern: `GATE FAIL:` prefix for grep-able error extraction. Exit code 1 on violation.

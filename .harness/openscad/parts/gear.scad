@@ -13,6 +13,7 @@ fn = 64;                // facet count (gears need higher resolution)
 
 // --- Layer 1: Parameter Validation ---
 use <../lib/validate.scad>
+use <../lib/validate-project.scad>
 
 validate_positive("teeth", teeth);
 validate_positive("module_pitch", module_pitch);

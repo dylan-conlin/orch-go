@@ -1,6 +1,9 @@
-// validate.scad — Layer 1 parameter validation library
+// validate.scad — BASE Layer 1 parameter validation library (refreshable)
+// Refreshable via: harness init --openscad --refresh
+// DO NOT add project-specific validators here — use validate-project.scad instead.
+//
 // Pattern: assert() gates with GATE FAIL: prefix for grep-able error extraction
-// Usage: include <lib/validate.scad> then call validate_* modules
+// Usage: use <../lib/validate.scad> then call validate_* modules
 
 // Validate a numeric parameter is within bounds
 // Fails with GATE FAIL: prefix and interpolated values

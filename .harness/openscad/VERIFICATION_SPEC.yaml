@@ -1,50 +1,59 @@
-# VERIFICATION_SPEC.yaml — Layer 5 vision-check.sh gate
-# Beads ID: orch-go-oimo2
+# VERIFICATION_SPEC.yaml — validate.scad base/project split
+# Beads ID: orch-go-d9r0a
 
 deliverables:
-  - path: .harness/openscad/gates/vision-check.sh
-    type: gate-script
-    description: "Layer 5 vision verification gate — multi-angle render + Claude vision analysis"
-    verification: "File exists, is executable, tests pass"
+  - path: .harness/openscad/lib/validate.scad
+    type: source-update
+    description: "Updated header to mark as BASE (refreshable), with directive not to add project-specific validators"
+    verification: "grep 'BASE' .harness/openscad/lib/validate.scad && grep 'validate-project.scad' .harness/openscad/lib/validate.scad"
 
-  - path: .harness/openscad/test/test-vision-gate.sh
-    type: test
-    description: "10 tests for vision gate (8 structural, 2 LLM-dependent)"
-    verification: "bash .harness/openscad/test/test-vision-gate.sh — 8 passed, 0 failed, 2 skipped"
-
-  - path: .harness/openscad/parts/cable-clip-spec.md
-    type: spec-update
-    description: "Added verification viewpoints section (top-down, front, side)"
-    verification: "grep 'Verification Viewpoints' .harness/openscad/parts/cable-clip-spec.md"
+  - path: .harness/openscad/lib/validate-project.scad
+    type: new-file
+    description: "Project-owned extension file with documentation, examples, and call-site parameterization guidance"
+    verification: "test -f .harness/openscad/lib/validate-project.scad && grep 'project-owned' .harness/openscad/lib/validate-project.scad"
 
   - path: .harness/openscad/CLAUDE.md
     type: docs-update
-    description: "Updated gate stack table from 4 to 5 layers"
-    verification: "grep 'Vision verification' .harness/openscad/CLAUDE.md"
+    description: "Updated directory structure (shows both validate files) and Parameter Validation section (documents split pattern and call-site parameterization)"
+    verification: "grep 'validate-project.scad' .harness/openscad/CLAUDE.md && grep 'Call-site parameterization' .harness/openscad/CLAUDE.md"
 
-  - path: .harness/openscad/test/test-e2e-pipeline.sh
-    type: test-update
-    description: "Added Layer 5 to e2e pipeline test with --skip-l5 flag"
-    verification: "grep 'Layer 5' .harness/openscad/test/test-e2e-pipeline.sh"
+  - path: .harness/openscad/parts/bracket.scad
+    type: source-update
+    description: "Added use <../lib/validate-project.scad>"
+    verification: "grep 'validate-project.scad' .harness/openscad/parts/bracket.scad"
+
+  - path: .harness/openscad/parts/cable-clip.scad
+    type: source-update
+    description: "Added use <../lib/validate-project.scad>"
+    verification: "grep 'validate-project.scad' .harness/openscad/parts/cable-clip.scad"
+
+  - path: .harness/openscad/parts/enclosure.scad
+    type: source-update
+    description: "Added use <../lib/validate-project.scad>"
+    verification: "grep 'validate-project.scad' .harness/openscad/parts/enclosure.scad"
+
+  - path: .harness/openscad/parts/gear.scad
+    type: source-update
+    description: "Added use <../lib/validate-project.scad>"
+    verification: "grep 'validate-project.scad' .harness/openscad/parts/gear.scad"
 
 automated_verification:
-  - command: "bash .harness/openscad/test/test-vision-gate.sh"
-    expected: "ALL TESTS PASSED (8 passed, 0 failed, 2 skipped)"
+  - command: "grep -c 'validate-project.scad' .harness/openscad/parts/*.scad"
+    expected: "All 4 parts files include validate-project.scad"
+  - command: "grep 'BASE' .harness/openscad/lib/validate.scad"
+    expected: "Header marks file as BASE (refreshable)"
+  - command: "grep 'project-owned' .harness/openscad/lib/validate-project.scad"
+    expected: "File documents project ownership"
 
 manual_verification:
-  - step: "Run with --with-llm to verify full Claude vision analysis"
-    command: "bash .harness/openscad/test/test-vision-gate.sh --with-llm"
-    when: "When claude CLI is available"
+  - step: "Verify OpenSCAD renders still work with both use directives"
+    command: "openscad -o /dev/null --backend manifold .harness/openscad/parts/bracket.scad"
+    when: "When openscad CLI is available"
 
 design_decisions:
-  - decision: "Layer 5 is separate from Layer 4 (not a modification)"
-    reason: "Different abstraction levels — L4 analyzes source code, L5 analyzes rendered output"
-  - decision: "Viewpoint definitions live in spec files, not the gate script"
-    reason: "What to verify is per-part/per-project; how to verify is generic"
-  - decision: "Fail-open on all error paths"
-    reason: "Advisory gate — should never block work due to infrastructure issues"
-
-remaining_work:
-  - "26-letter instrumented sweep for calibration data (dependency noted in task)"
-  - "Precision/recall measurement once calibration data exists"
-  - "Promote from advisory to blocking after measured precision >80%"
+  - decision: "validate-project.scad uses `use <validate.scad>` to import base validators"
+    reason: "Project validators can compose on top of base validators without parts needing to know the dependency chain"
+  - decision: "Call-site parameterization over wrapper modules or config files"
+    reason: "OpenSCAD modules already accept default parameters — overriding at the call site is simpler and more transparent than indirection layers"
+  - decision: "All parts include both use directives even when no project validators exist yet"
+    reason: "Ensures project validators are available immediately when added, without requiring parts to be updated later"
