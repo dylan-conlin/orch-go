@@ -51,25 +51,14 @@
 - OODA poll cycle: Sense → Orient → Decide → Act
 - `ComplianceConfig` for per-spawn resolution
 - Allocation profiles for skill-aware slot scoring
-- Learning Store for per-skill metrics from events.jsonl
-- Phase 2 trigger detectors: model contradictions, hotspot acceleration, knowledge decay, skill performance drift
-- Per-detector outcome tracking (completed/abandoned rates from beads data)
-- Proactive extraction: auto-extracts knowledge from completed agent work
 - Verification retry: retries failed verifications with backoff
 - Agreement checks: cross-validates daemon decisions
-- Synthesis auto-create: generates synthesis artifacts from accumulated findings
 - Beads health monitoring with circuit breaker
 - Phase timeout detection and escalation
-- Investigation orphan cleanup
-- Friction accumulator for system improvement signals
+- Artifact sync: documentation drift detection
 - Cycle cache (`cycle_cache.go`): shares `GetActiveAgents()` across periodic tasks to avoid redundant queries
-
-## pkg/digest/ (KB Artifact Digest)
-
-- Produces consumable thinking products from KB artifact changes
-- Scans `.kb/threads/`, `.kb/models/`, `.kb/investigations/` for changes
-- Packages notable changes as digest files in `~/.orch/digest/`
-- Gate logic for filtering low-signal changes
+- Audit selection: random quality audits weighted toward auto-completed work
+- Capacity polling: account capacity cache for `orch status`
 
 ## pkg/dupdetect/ (Duplicate Detection)
 

@@ -53,20 +53,11 @@
 | `daemon.question_detected` | daemon periodic | Question actually found in agent output |
 | `daemon.agreement_check` | daemon periodic | Cross-validation of daemon decisions |
 | `daemon.beads_health` | daemon periodic | Beads health monitoring with circuit breaker |
-| `daemon.friction_accumulation` | daemon periodic | System improvement signal accumulation |
 | `daemon.artifact_sync` | daemon periodic | Documentation drift detection |
 | `daemon.registry_refresh` | daemon periodic | Agent registry refresh |
-| `daemon.synthesis_auto_create` | daemon periodic | Auto-synthesis artifact generation |
-| `daemon.learning_refresh` | daemon periodic | Learning store refresh from events |
-| `daemon.plan_staleness` | daemon periodic | Plan staleness notification |
-| `daemon.proactive_extraction` | daemon periodic | Knowledge extraction from completed work |
-| `daemon.trigger_scan` | daemon periodic | Phase 2 trigger detector scan |
-| `daemon.trigger_expiry` | daemon periodic | Expired trigger cleanup |
 | `daemon.verification_failed_escalation` | daemon periodic | Failed verification retry |
-| `daemon.investigation_orphan` | daemon periodic | Investigation orphan cleanup |
 | `daemon.lightweight_cleanup` | daemon periodic | Lightweight workspace cleanup |
-| `daemon.digest` | daemon periodic | KB artifact digest generation |
-| `daemon.tension_cluster` | daemon periodic | Tension-cluster backlog generation |
+| `daemon.audit_select` | daemon periodic | Random quality audit selection |
 | `decision.made` | daemon | Decision with classification tier |
 | `accretion.delta` | completion | File growth/shrinkage during session |
 | `accretion.snapshot` | periodic | Directory-level line counts |

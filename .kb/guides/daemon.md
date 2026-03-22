@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for the orch daemon's autonomous agent spawning system. This guide synthesizes learnings from 33 investigations conducted between Dec 2025 - Jan 2026.
 
-**Last verified:** Mar 1, 2026
+**Last verified:** Mar 22, 2026
 
 ---
 
@@ -42,7 +42,7 @@ The daemon is an autonomous agent spawner that:
 **Related packages:**
 - `pkg/daemonconfig/` — ComplianceConfig, allocation profiles
 - `pkg/orient/` — Orient phase measurement, work graph
-- `cmd/orch/daemon_periodic.go` — Periodic tasks (backlog cull, plan advancement)
+- `cmd/orch/daemon_periodic.go` — Periodic tasks (cleanup, recovery, health, sync)
 
 ### OODA Poll Loop
 
@@ -65,8 +65,10 @@ The daemon uses an OODA (Observe-Orient-Decide-Act) cycle:
 │    4. ACT: Spawn agents via orch work <id>                               │
 │                                                                          │
 │  Periodic Tasks:                                                         │
-│    - Backlog cull (surface stale P3/P4 issues)                          │
-│    - Plan lifecycle advancement (staleness detection)                    │
+│    - Agent cleanup, recovery, orphan detection                          │
+│    - Phase timeout, question detection, agreement checks                │
+│    - Beads health, artifact sync, lightweight cleanup                   │
+│    - Capacity polling, audit selection, registry refresh                │
 │    - Completion polling (Phase: Complete → orch complete)                │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
