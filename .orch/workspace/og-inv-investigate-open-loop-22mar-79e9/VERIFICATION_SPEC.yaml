@@ -1,0 +1,45 @@
+verification:
+  type: investigation
+  skill: investigation
+  level: V1
+
+  evidence:
+    - name: "Probe file exists with all 4 required sections"
+      command: "head -80 .kb/models/completion-verification/probes/2026-03-22-probe-open-loop-infrastructure-code-audit.md"
+      expects: "Question, What I Tested, What I Observed, Model Impact sections present"
+
+    - name: "Model updated with new failure mode §8"
+      command: "grep -c 'Consumer-Last Construction' .kb/models/completion-verification/model.md"
+      expects: "1 (new section exists)"
+
+    - name: "Model §7 updated with reject status"
+      command: "grep 'orch reject.*was built' .kb/models/completion-verification/model.md"
+      expects: "Mention of reject command existing but 0 events"
+
+    - name: "Probe reference added to model"
+      command: "grep '2026-03-22.*Open-Loop' .kb/models/completion-verification/model.md"
+      expects: "Probe entry in Probes section"
+
+    - name: "Production evidence: 0 agent.rejected events"
+      command: "grep -c '\"type\":\"agent.rejected\"' ~/.orch/events.jsonl"
+      expects: "0"
+
+    - name: "Production evidence: accretion.delta events exist but are unconsumed"
+      command: "grep -c 'accretion.delta' ~/.orch/events.jsonl"
+      expects: ">0 (events emitted but no daemon consumer)"
+
+    - name: "Code evidence: ComprehensionQuerier never wired"
+      command: "grep -c 'ComprehensionQuerier' cmd/orch/daemon_loop.go"
+      expects: "0 (not initialized in daemon setup)"
+
+    - name: "Code evidence: accretion response wiring gap"
+      command: "sed -n '141,145p' cmd/orch/daemon_loop.go"
+      expects: "Comment with blank lines, no implementation"
+
+    - name: "SYNTHESIS.md exists"
+      command: "test -f .orch/workspace/og-inv-investigate-open-loop-22mar-79e9/SYNTHESIS.md && echo exists"
+      expects: "exists"
+
+  manual_steps: []
+
+  summary: "Investigation found 10 concrete open loops in the completion/daemon pipeline. All evidence is from production event data and direct code audit — no tests to run."

@@ -321,17 +321,43 @@ Completed agent activity remains viewable via hybrid persistent layer:
 
 ### 7. Human Negative-Feedback Channel Structural Disuse
 
-**What happens:** `orch rework` exists (cmd/orch/rework_cmd.go, 356 lines) and `agent.reworked` events are defined — but in 1,102+ completions, there have been **0 reworks** and only **11 abandons** (all operational, none quality-based). The human feedback channel is structurally unused.
+**What happens:** `orch rework` exists (cmd/orch/rework_cmd.go, 356 lines) and `agent.reworked` events are defined — but in 1,285+ completions, there have been **0 reworks**, **0 agent.rejected events**, and only **11 abandons** (all operational, none quality-based). The human feedback channel is structurally unused.
 
 **Root cause — friction asymmetry:** Rework requires 3 mandatory inputs (beads-id, feedback text, `--bypass-triage`) plus 5 blocking preconditions (closed issue, archived workspace, worker skill only, preflight checks, full context gathering). Compare to `orch work <issue-id>` (re-spawn): 1 input, 0 preconditions. Rational actors always re-spawn rather than rework.
 
-**Root cause — vocabulary gap:** No "reject" verb exists. `orch abandon` is oriented around stuck/crashed agents (kills tmux, exports transcript, generates FAILURE_REPORT.md), not quality rejection. `orch review` suggests `orch complete` — there is no reject action in the review UX.
+**Root cause — vocabulary gap (partially addressed):** `orch reject` was built (March 2026) as a 1-step negative feedback verb matching friction of `orch complete`. It emits `agent.rejected` events and reopens issues. However, as of March 22 2026, **0 reject events exist in production** — the verb exists but has never been used by human or machine.
 
 **Root cause — auto-completion bypass:** Daemon auto-completes 37% of agents (406/1,102) via `orch complete --force`, which bypasses all interactive gates. These completions enter the learning loop indistinguishable from human-verified work.
 
-**Implication:** The learning loop has no negative signal. Skill success rates show 100% because the only path for expressing "bad work" (rework/abandon) is 8x harder than the path for expressing "work done" (complete/auto-complete). Gate effectiveness metrics are inflated — "pass" means mechanical gate passed, not work was good.
+**Root cause — consumer-side gap:** Even if rejections were generated, the daemon does not consume `RejectedCount` from the learning store. Only `SuccessRate` affects daemon allocation (±20% priority modulation via allocation.go:107-119). RejectedCount, ReworkCount, VerificationFailures, and VerificationBypasses are all write-only metrics in learning.go — aggregated but never read by any behavioral code path.
 
-**Source:** Probe `probes/2026-03-20-probe-human-feedback-channel-structural-disuse.md`
+**Implication:** The learning loop has no negative signal at any layer. The vocabulary gap is partially addressed (reject verb exists) but the structural gap persists: (1) reject is never triggered automatically, (2) even if triggered, daemon doesn't consume rejection data, (3) the audit system that would generate automatic rejections has a disconnected middle (see §8).
+
+**Source:** Probe `probes/2026-03-20-probe-human-feedback-channel-structural-disuse.md`, probe `probes/2026-03-22-probe-open-loop-infrastructure-code-audit.md`
+
+### 8. Consumer-Last Construction (Systemic Open Loops)
+
+**What happens:** The completion/daemon pipeline contains **10 concrete open loops** where infrastructure is built on the emission side (events logged, labels added, config fields defined, scheduler tasks registered) but the consumption side (daemon reads signal and changes behavior) is missing. The pipe is built on both ends but not connected in the middle.
+
+**Instances (code-verified, Mar 22 2026):**
+
+| # | Loop | Emission | Missing Consumer |
+|---|------|----------|-----------------|
+| 1 | Quality audit | periodic_audit.go labels issues `audit:deep-review` | No code spawns audit agents for labeled issues |
+| 2 | Accretion response | 513 accretion.delta events emitted | daemon_loop.go:141 has blank wiring (comment only) |
+| 3 | Reject → learning | reject_cmd.go emits agent.rejected | RejectedCount never read by daemon |
+| 4 | Comprehension queue | comprehension:pending labels added | ComprehensionQuerier never instantiated (always nil) |
+| 5 | Verification metrics | VerificationFailures/Bypasses aggregated | Both fields are dead code (never read) |
+| 6 | Rework feedback | ReworkCount aggregated in learning.go | Display-only in orient, no daemon routing |
+| 7-10 | 11 periodic tasks | Registered in scheduler.go, config fields defined | Never called from daemon_periodic.go |
+
+**Root cause — consumer-last construction:** The system consistently builds infrastructure in this order: (1) emit events/labels, (2) define config/scheduler registration, (3) never return to build the consumer. This is not a testing gap (Phase 3 of a plan) — the consumer code was never written. Each instance follows the same pattern: emitters are built during feature work, consumers are deferred indefinitely.
+
+**Structural evidence:** 24 tasks registered in pkg/daemon/scheduler.go (lines 125-148); only 13 invoked from cmd/orch/daemon_periodic.go. 11 tasks have config fields, scheduler registration, and sometimes implementation functions — but no call site from the main loop. ~2,800 lines of structurally unreachable code.
+
+**Production evidence (as of Mar 22 2026):** 1,285 completions, 513 accretion.delta events, 0 agent.rejected events, 0 audit verdicts, 0 reworks. Every feedback channel except SuccessRate is structurally unused.
+
+**Source:** Probe `probes/2026-03-22-probe-open-loop-infrastructure-code-audit.md`
 
 ---
 
@@ -534,6 +560,7 @@ Empirically confirmed that `feature-impl` spawned with V2 + TierLight creates co
 
 - 2026-03-20: Human Feedback Channel Structural Disuse — 0 reworks, 11 operational abandons in 1,102 completions. Friction asymmetry (rework=8 steps, complete=0 steps) creates false ground truth. §7 updated.
 - 2026-03-20: Daemon-Driven Random Quality Audit Design — 3-layer structural pipeline: daemon periodic audit selection (weighted toward auto-completed work), spawned audit agent for intent/test/quality review, verdict-to-reject pipeline feeding `agent.rejected` events into learning loop. Key gap found: `learning.go` missing `RejectedCount` field and `agent.rejected` handler — learning loop structurally blind to rejections even after `orch reject` ships. See `.kb/investigations/2026-03-20-inv-design-daemon-driven-random-quality-audit.md`.
+- 2026-03-22: Open-Loop Infrastructure Code Audit — 10 concrete open loops found where emission infrastructure exists but consumer/action layer is missing. Pattern named "consumer-last construction": system builds emitters + config first, never returns to build consumer. 513 accretion.delta events with no reader, 11 periodic tasks registered but never invoked, ComprehensionQuerier always nil, RejectedCount/VerificationFailures/VerificationBypasses are dead code. §7 updated (reject exists but 0 production events), §8 added.
 
 ## Auto-Linked Investigations
 
