@@ -1,7 +1,7 @@
 # Model: Claude Code Agent Configuration
 
 **Domain:** How CLI flags, CLAUDE.md, settings, and hooks compose to shape spawned agent behavior
-**Last Updated:** 2026-03-12
+**Last Updated:** 2026-03-22
 **Synthesized From:** 3 investigations (Feb 14 - Feb 28, 2026) + 1 hook audit probe (Mar 12) + ongoing spawn infrastructure evolution
 
 ---
@@ -81,6 +81,11 @@ A comprehensive audit of Claude Code v2.1.63 (Feb 28) mapped all available CLI f
 
 **Implication:** If a behavior is hook-enforced, remove it from skill text. One authority per behavior.
 
+### Why hook commands must use absolute paths
+**Constraint:** Relative paths in settings.json hook commands resolve against the Bash tool's cwd, which may not match the project root. When the script can't be found, python3 exits with code 2, and Claude Code treats exit code 2 as a **deny** — blocking ALL matching tool calls. A single broken hook path can brick an entire agent session.
+
+**Implication:** Always use `$CLAUDE_PROJECT_DIR` (set by Claude Code for all hook executions) or `~/` prefix for hook script paths. Never use bare relative paths like `.claude/hooks/script.py`. The `harness init` command should generate `$CLAUDE_PROJECT_DIR`-based paths.
+
 ### Why CLI flags are under-adopted
 **Constraint:** The spawn infrastructure (`BuildClaudeLaunchCommand` in `pkg/spawn/claude.go`) was built when fewer flags existed. New flags require explicit integration.
 
@@ -98,7 +103,12 @@ Settings.json hooks evolve independently of skill content. SPAWN_CONTEXT.md temp
 
 **Confirmed example (Mar 12 audit):** `pre-commit-knowledge-gate.py` guards the `kn` CLI system which has been dead since Dec 25, 2025 (`kn` binary not on PATH, last entry 2.5 months old). The hook still fires on every `git commit`, consuming ~49ms per invocation to guard a system that no longer exists. Additionally, `gate-worker-git-add-all.py` is registered twice in settings.json (indices 5 and 10).
 
-### Failure Mode 3: Under-Restriction
+### Failure Mode 3: Hook Path Resolution Failure (Critical)
+Hooks configured with relative paths (e.g., `python3 .claude/hooks/gate.py`) fail when the Bash tool's cwd differs from the project root. Python exits with code 2 (file not found), and Claude Code treats this as a deny decision. Because the hook matches ALL Bash commands, every Bash command is blocked — total agent blockage with zero diagnostic output.
+
+**Confirmed incident (Mar 22):** Agent orch-go-4dz0u had all Bash blocked after cwd shifted. Only reached Planning phase, all work lost. Fix: replace relative paths with `$CLAUDE_PROJECT_DIR`-based absolute paths in settings.json.
+
+### Failure Mode 4: Under-Restriction
 Agents get more capabilities than needed because CLI flag adoption lags. Investigation agents have full write access when `--permission-mode plan` would be more appropriate. All agents get the same reasoning depth when `--effort` could differentiate.
 
 ---
@@ -149,6 +159,7 @@ Agents get more capabilities than needed because CLI flag adoption lags. Investi
 - `.kb/decisions/2026-02-26-phase-based-liveness-over-tmux-as-state.md` — Phase comments as agent heartbeat
 
 **Probes:**
+- 2026-03-22: Hook cwd Path Resolution Failure — relative paths in settings.json cause total Bash blockage when cwd shifts; fix: use $CLAUDE_PROJECT_DIR; also found regex false-positive on quoted strings
 - 2026-03-12: Hook Infrastructure Audit — 11 hooks audited, zero observability, 1 dead-system guard, 1 duplicate registration, Stop hook confirmed in production
 
 **Related models:**
@@ -157,6 +168,7 @@ Agents get more capabilities than needed because CLI flag adoption lags. Investi
 
 ## Auto-Linked Investigations
 
+- .kb/investigations/simple/2026-03-19-empirical-audit-displaced-code-governance-hooks.md
 - .kb/investigations/2026-03-08-design-portable-harness-tooling.md
 - .kb/investigations/2026-02-27-inv-claude-code-worktree-agent-isolation.md
 - .kb/investigations/archived/2026-01-16-inv-audit-sessionstart-hooks-claude-code.md

@@ -4,7 +4,7 @@
       {
         "hooks": [
           {
-            "command": "python3 .claude/hooks/gate-git-add-all.py",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gate-git-add-all.py",
             "type": "command"
           }
         ],
@@ -15,7 +15,7 @@
       {
         "hooks": [
           {
-            "command": "bash .claude/hooks/comprehension-queue-count.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/comprehension-queue-count.sh",
             "type": "command"
           }
         ],
