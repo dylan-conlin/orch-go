@@ -360,6 +360,71 @@ func TestCheckChannelHealth_NilLearning(t *testing.T) {
 	}
 }
 
+func TestScoreIssue_RejectionsReduceEffectiveSuccessRate(t *testing.T) {
+	// A skill with high self-reported success rate but many rejections
+	// should score lower than one with fewer rejections
+	learning := &events.LearningStore{
+		Skills: map[string]*events.SkillLearning{
+			"feature-impl": {
+				SpawnCount:       20,
+				TotalCompletions: 20,
+				SuccessCount:     18,
+				SuccessRate:      0.9,
+				RejectedCount:    0, // no rejections
+			},
+			"systematic-debugging": {
+				SpawnCount:       20,
+				TotalCompletions: 20,
+				SuccessCount:     18,
+				SuccessRate:      0.9,
+				RejectedCount:    8, // 8 rejections out of 18 successes
+			},
+		},
+	}
+
+	feature := Issue{ID: "a-1", Priority: 2, IssueType: "feature"} // feature-impl, 0 rejections
+	bug := Issue{ID: "a-2", Priority: 2, IssueType: "bug"}         // systematic-debugging, 8 rejections
+
+	featureScore := ScoreIssue(feature, learning)
+	bugScore := ScoreIssue(bug, learning)
+
+	// Same priority, same self-reported success rate, but the rejected skill should score lower
+	if featureScore.Score <= bugScore.Score {
+		t.Errorf("feature-impl (0 rejections) score (%f) should beat systematic-debugging (8 rejections) score (%f)",
+			featureScore.Score, bugScore.Score)
+	}
+
+	// The rejected skill's effective success rate should be noticeably lower
+	if bugScore.SkillSuccessRate >= featureScore.SkillSuccessRate {
+		t.Errorf("rejected skill rate (%f) should be < non-rejected skill rate (%f)",
+			bugScore.SkillSuccessRate, featureScore.SkillSuccessRate)
+	}
+}
+
+func TestScoreIssue_RejectionsCannotExceedSuccesses(t *testing.T) {
+	// Edge case: RejectedCount > SuccessCount should clamp to 0, not go negative
+	learning := &events.LearningStore{
+		Skills: map[string]*events.SkillLearning{
+			"feature-impl": {
+				SpawnCount:       10,
+				TotalCompletions: 10,
+				SuccessCount:     3,
+				SuccessRate:      0.3,
+				RejectedCount:    5, // more rejections than successes
+			},
+		},
+	}
+
+	issue := Issue{ID: "a-1", Priority: 2, IssueType: "feature"}
+	score := ScoreIssue(issue, learning)
+
+	// Effective success rate should be 0 (clamped), not negative
+	if score.SkillSuccessRate < 0 {
+		t.Errorf("SkillSuccessRate = %f, should not be negative even when rejections > successes",
+			score.SkillSuccessRate)
+	}
+}
+
 func TestBlendedSuccessRate(t *testing.T) {
 	tests := []struct {
 		name        string

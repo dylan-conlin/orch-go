@@ -104,6 +104,8 @@ func BlendedSuccessRate(observed float64, sampleSize int) float64 {
 
 // lookupSuccessRate returns the blended success rate for a skill.
 // Blends observed success rate with the default rate based on sample size.
+// Rejections reduce effective successes: a "success" that was later rejected
+// is not a real success. This closes the reject-to-allocation feedback loop.
 func lookupSuccessRate(skill string, learning *events.LearningStore) float64 {
 	if learning == nil {
 		return DefaultSuccessRate
@@ -115,7 +117,19 @@ func lookupSuccessRate(skill string, learning *events.LearningStore) float64 {
 	}
 
 	sampleSize := sl.TotalCompletions + sl.AbandonedCount
-	return BlendedSuccessRate(sl.SuccessRate, sampleSize)
+	if sampleSize <= 0 {
+		return DefaultSuccessRate
+	}
+
+	// Subtract rejections from successes to get effective success count.
+	// Clamp to zero — rejections can't make success count negative.
+	effectiveSuccesses := sl.SuccessCount - sl.RejectedCount
+	if effectiveSuccesses < 0 {
+		effectiveSuccesses = 0
+	}
+	effectiveRate := float64(effectiveSuccesses) / float64(sampleSize)
+
+	return BlendedSuccessRate(effectiveRate, sampleSize)
 }
 
 // MinCompletionsForChannelHealthCheck is the minimum number of completions
