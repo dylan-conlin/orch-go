@@ -1,29 +1,31 @@
-task: Architect domain harness integration
-beads_id: orch-go-cvxtm
-type: architecture-decision
+task: "harness init --openscad: domain flag with gates, validators, config copy and --refresh"
+beads_id: orch-go-5iw98
+tier: light
 
-deliverables:
-  model_update:
-    file: .kb/models/domain-harness-architecture/model.md
-    verification: "Open Questions section replaced with Resolved Architecture Decisions (2026-03-21). Four decisions documented with rationale and alternatives considered."
-  implementation_issues:
-    - id: orch-go-5iw98
-      scope: "harness CLI: --openscad flag + --refresh"
-      target_repo: ~/Documents/personal/harness
-    - id: orch-go-fim6j
-      scope: "Global hook migration from project-local"
-      target_repo: ~/.orch/hooks/ + led-magnetic-letters + led-totem-toppers
-    - id: orch-go-4dz0u
-      scope: "openscad-harness: validate.scad two-file split"
-      target_repo: ~/Documents/personal/openscad-harness
-    - id: orch-go-oimo2
-      scope: "openscad-harness: Layer 5 vision-check.sh"
-      target_repo: ~/Documents/personal/openscad-harness
+verification:
+  commands:
+    - name: "Domain init tests"
+      command: "cd ~/Documents/personal/harness && go test -v -count=1 -run 'TestDomain' ./pkg/scaffold/"
+      expect: "9 PASS, 0 FAIL"
+    - name: "Full harness test suite"
+      command: "cd ~/Documents/personal/harness && go test -count=1 ./..."
+      expect: "7 packages PASS"
+    - name: "Binary compiles and shows new flags"
+      command: "harness init --help"
+      expect: "contains --openscad and --refresh flags"
 
-decisions_summary:
-  q1_consumption_mechanism: "Local path copy with configurable source (OPENSCAD_HARNESS_PATH). --refresh for non-destructive base updates."
-  q2_hook_detection: "Command-pattern hooks go global (harmless in non-OpenSCAD). File-pattern hooks use .harness/config.yaml domain field."
-  q3_validator_extension: "Two-file split: validate.scad (base, refreshable) + validate-project.scad (project-owned). Material overrides via call-site parameters."
-  q4_layer5_ownership: "Gate script in openscad-harness, viewpoint config + calibration data in project."
+  manual_checks:
+    - "harness init --openscad --dry-run shows gates, validate.scad, validate-project.scad, config.yaml steps"
+    - "harness init --openscad creates all domain files in project"
+    - "harness init --openscad --refresh overwrites base files but preserves validate-project.scad"
+    - "OPENSCAD_HARNESS_PATH env var overrides default source path"
 
-manual_verification: none
+  notes: |
+    Implementation lives in ~/Documents/personal/harness (standalone harness binary),
+    not in orch-go. orch harness init delegates to this binary with DisableFlagParsing,
+    so --openscad and --refresh pass through automatically.
+
+    Files modified in harness repo:
+    - cmd/harness/init_cmd.go (added --openscad and --refresh flags)
+    - pkg/scaffold/domain.go (new: DomainInit, resolveSourcePath)
+    - pkg/scaffold/domain_test.go (new: 9 tests)
