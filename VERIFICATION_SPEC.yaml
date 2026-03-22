@@ -1,25 +1,55 @@
-task: "Knowledge decay verification probe for domain-harness-architecture model"
-beads_id: orch-go-kq1sw
-tier: light
-
 verification:
+  task: "Verify daemon Phase 2-4 implementation end-to-end"
+  beads_id: orch-go-u8466
+  result: PASS
+
   checks:
-    - name: "Probe file exists"
-      command: "test -f .kb/models/domain-harness-architecture/probes/2026-03-21-probe-knowledge-decay-verification.md && echo PASS"
-      expect: "PASS"
+    - name: "comprehension:pending added on auto-complete"
+      status: PASS
+      evidence: |
+        coordination.go:226 - addComprehensionPending called in auto-complete-light path
+        coordination.go:242 - addComprehensionPending called in auto-complete path
+        coordination.go:271 - addComprehensionPending called in label-ready-review path
+        coordination.go:296-308 - addComprehensionPending method delegates to AddComprehensionPendingInDir/AddComprehensionPending
 
-    - name: "Model updated with implementation status"
-      command: "grep -q 'DESIGNED, NOT IMPLEMENTED' .kb/models/domain-harness-architecture/model.md && echo PASS"
-      expect: "PASS"
+    - name: "daemon throttles when queue exceeds threshold"
+      status: PASS
+      evidence: |
+        compliance.go:55-66 - Gate 3 calls CheckComprehensionThrottle(d.ComprehensionQuerier, d.Config.ComprehensionThreshold)
+        comprehension_queue.go:96-109 - CheckComprehensionThrottle returns (count < threshold, count, threshold)
+        daemonconfig/config.go:482 - Default threshold is 5
+        daemon.go:102 - ComprehensionQuerier field on Daemon struct
+        Tests: TestCheckPreSpawnGates_ComprehensionQueueFull, TestCheckPreSpawnGates_ComprehensionQueueBelowThreshold
 
-    - name: "Model has evidence section"
-      command: "grep -q '2026-03-21: Knowledge Decay Verification' .kb/models/domain-harness-architecture/model.md && echo PASS"
-      expect: "PASS"
+    - name: "orch complete removes comprehension:pending"
+      status: PASS
+      evidence: |
+        complete_lifecycle.go:207 - daemon.RemoveComprehensionPendingInDir(target.BeadsID, target.BeadsProjectDir)
+        Called in post-lifecycle when !target.IsClosed && target.BeadsID != ""
+        Fire-and-forget: error is non-critical (label may not exist for manual completions)
 
-  evidence_summary: |
-    6 claims verified against filesystem: 2 confirmed (problem diagnosis, invariant 6),
-    3 contradicted (harness init --openscad not implemented, two-file split not adopted,
-    global hooks migration not started), 1 confirmed-worsening (gate script divergence).
-    Model updated to reflect designed-but-not-implemented status.
+    - name: "spawn.bypass event emitted on direct orch spawn"
+      status: PASS
+      evidence: |
+        spawn_cmd.go:527-539 - Emits "spawn.bypass" event when !daemonDriven
+        Data includes beads_id, skill, reason
 
-  manual_checks: []
+    - name: "bypass rate shows in orch stats"
+      status: PASS
+      evidence: |
+        stats_aggregation.go:389-394 - processSpawnBypass increments bypassSpawns counter
+        stats_aggregation.go:755-758 - BypassRate = bypassSpawns / (daemonSpawns + bypassSpawns) * 100
+        stats_output.go:511-518 - outputBypassStats prints count and rate with >20% warning
+        stats_cmd.go:155-156 - spawn.bypass events routed to processSpawnBypass
+
+    - name: "comprehension CLI command"
+      status: PASS
+      evidence: |
+        comprehension_cmd.go - Full CLI with list/count/review subcommands
+        Registered in init() with default behavior (list)
+
+  tests:
+    - command: "go test ./pkg/daemon/ -run 'Comprehension|Compliance' -v"
+      result: "25+ tests PASS (0.376s)"
+    - command: "go test ./cmd/orch/ -run 'Stats' -v"
+      result: "PASS (0.318s)"
