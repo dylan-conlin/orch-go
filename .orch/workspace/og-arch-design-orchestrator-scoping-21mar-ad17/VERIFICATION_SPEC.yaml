@@ -1,0 +1,58 @@
+---
+# Verification Specification for Orchestrator-as-Scoping-Agent Design
+agent: og-arch-design-orchestrator-scoping-21mar-ad17
+issue: orch-go-hlklh
+skill: architect
+type: design
+
+verification:
+  automated:
+    - name: investigation-file-exists
+      command: "test -f .kb/investigations/2026-03-21-inv-design-orchestrator-scoping-agent-architecture.md"
+      expected: "exit code 0"
+      result: "PASS"
+
+    - name: investigation-status-complete
+      command: "grep 'Status:' .kb/investigations/2026-03-21-inv-design-orchestrator-scoping-agent-architecture.md"
+      expected: "Status: Complete"
+      result: "PASS"
+
+    - name: synthesis-file-exists
+      command: "test -f .orch/workspace/og-arch-design-orchestrator-scoping-21mar-ad17/SYNTHESIS.md"
+      expected: "exit code 0"
+      result: "PASS"
+
+    - name: blocking-questions-created
+      command: "bd show orch-go-24ysj && bd show orch-go-n66ic"
+      expected: "Both issues exist"
+      result: "PASS"
+
+  manual:
+    - name: design-coherence
+      description: "Investigation covers all 7 design forks with substrate-informed recommendations"
+      verified: true
+
+    - name: evidence-grounded
+      description: "Recommendations cite specific data (69% type-fallback, 0 reworks, 37% auto-complete)"
+      verified: true
+
+    - name: blocking-questions-identified
+      description: "Unnavigable forks surfaced as explicit questions with authority classification"
+      verified: true
+
+deliverables:
+  primary:
+    - path: ".kb/investigations/2026-03-21-inv-design-orchestrator-scoping-agent-architecture.md"
+      description: "Full architect investigation with 7 forks, 3 findings, 4-phase implementation plan"
+
+  secondary:
+    - path: "orch-go-24ysj"
+      description: "Blocking question: skill specification fork"
+    - path: "orch-go-n66ic"
+      description: "Blocking question: inline work fork"
+
+migration_status:
+  designed: "orchestrator-as-scoping-agent architecture (judgment/execution separation, enrichment protocol, comprehension queue, bypass measurement)"
+  implemented: "none"
+  deployed: "none"
+  remaining: "4-phase implementation (orchestrator skill rewrite, comprehension queue, two-phase completion, bypass measurement)"
