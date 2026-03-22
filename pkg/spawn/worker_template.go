@@ -36,7 +36,6 @@ Do NOT re-investigate or redesign — implement according to these specification
 {{.ArchitectDesign}}
 
 {{end}}
-{{end}}
 {{if .Tier}}
 SPAWN TIER: {{.Tier}}
 {{if eq .Tier "light"}}
