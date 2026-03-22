@@ -1,7 +1,7 @@
 # Model: OpenCode Session Lifecycle
 
 **Domain:** OpenCode Integration / Session Management
-**Last Updated:** 2026-03-06
+**Last Updated:** 2026-03-21
 **Synthesized From:** 24 investigations (2025-12-19 to 2026-01-08) into OpenCode HTTP API, session persistence, SSE monitoring, and plugin system
 
 ---
@@ -45,16 +45,19 @@ spawn (orch spawn creates session)
 session created (POST /session)   ← NOT /api/sessions — orch-go client has used /session since initial commit
     ↓
 busy (agent working, SSE: session.status "busy")
-    ↓
-idle (agent finished, SSE: session.status "idle")
-    ↓
-session persists on disk (survives server restarts)
+    ↓                              ↘
+idle (agent finished)          retry (transient failure, auto-retry)
+    ↓                              ↓
+session persists on disk       retries then → idle or error
 ```
 
+**Status types:** `busy` (working), `idle` (finished), `retry` (transient failure, has attempt count and next retry time).
+
 **Critical behaviors:**
-- Sessions are **never deleted** by OpenCode (persist indefinitely)
+- Sessions persist on disk by default (survives server restarts)
+- Sessions can be created with a `TimeTTL` (seconds) for automatic expiration — 0 means no expiration
 - Sessions accept messages even after `idle` state
-- Server restart doesn't lose session history (disk storage)
+- `DELETE /session/{id}` deletes individual sessions; `orch clean --sessions` for bulk cleanup
 
 ### Spawn Modes
 
@@ -75,8 +78,9 @@ session persists on disk (survives server restarts)
 
 ### Completion Detection
 
-**Mechanism:**
+**Two mechanisms available:**
 
+**1. SSE (event-driven, used by Monitor):**
 ```
 SSE Stream: /event
 ──────────────────────────────────────────
@@ -85,39 +89,39 @@ message.part.updated                 ← Content streaming
 session.status { status: "idle" }    ← Agent finished
 ```
 
+**2. HTTP Polling (used by WaitForSessionIdle):**
+```
+GET /session/status?ids=<session-id>
+→ Returns: { "<session-id>": { "type": "busy"|"idle"|"retry", ... } }
+Polls every 500ms until busy→idle transition.
+```
+
 **Key insight:** Completion is `busy` → `idle` transition, NOT session disappearance.
 
 **Why this matters:**
 - Session existence ≠ agent still working
-- Can't poll for completion (need SSE)
-- `orch wait` blocks on SSE stream until idle event
+- Both SSE and polling are supported — polling via `GET /session/status` is simpler
+- Monitor uses SSE for multi-session watching; `WaitForSessionIdle` uses polling for single-session blocking
 
 ### Critical Invariants
 
-1. **Sessions persist across restarts** - Disk storage at `~/.local/share/opencode/storage/`
+1. **Sessions persist across restarts** - SQLite storage at `~/.local/share/opencode/opencode.db`
 2. **Directory filtering is required for disk queries** - Without `x-opencode-directory` header, only get in-memory sessions
-3. **Completion is event-based** - Must watch SSE, can't infer from session state polling
-4. **Sessions never expire** - No TTL, cleanup is manual (`orch clean --sessions`)
-5. **Session directory is set at spawn** - Cross-project spawn bug: sessions get orchestrator's directory instead of `--workdir` target
+3. **Completion detection supports both SSE and polling** - SSE via `/event`, polling via `GET /session/status`
+4. **Sessions can have TTL** - `TimeTTL` field on creation enables automatic expiration; 0 = no expiration (default)
+5. **Session directory is explicitly set at creation** - `CreateSession` accepts `directory` parameter and sets `x-opencode-directory` header (cross-project bug fixed)
 
 ---
 
 ## Why This Fails
 
-### Failure Mode 1: Cross-Project Sessions Show Wrong Directory
+### Failure Mode 1: Cross-Project Sessions Show Wrong Directory (FIXED)
 
 **Symptom:** `orch spawn --workdir /other/project` creates session with orchestrator's directory
 
-**Root cause:** `spawn_cmd.go` doesn't pass `--workdir` value to OpenCode session creation
+**Root cause (was):** `spawn_cmd.go` didn't pass `--workdir` value to OpenCode session creation
 
-**Why it happens:**
-- OpenCode sets session directory from CWD at spawn time
-- `--workdir` changes agent's working directory but not spawn caller's CWD
-- Session gets orchestrator's directory, not target project
-
-**Impact:** Sessions unfindable via `x-opencode-directory` header filtering
-
-**Fix needed:** Pass explicit directory to OpenCode session creation
+**Fix (confirmed 2026-03-21):** `CreateSession` now accepts explicit `directory` parameter and sets `x-opencode-directory` header. `SendMessageInDirectory` also accepts directory for message routing. The `x-opencode-env-ORCH_WORKER` header signals worker sessions to the plugin system.
 
 ### Failure Mode 2: Session Accumulation
 
@@ -159,16 +163,14 @@ session.status { status: "idle" }    ← Agent finished
 
 ## Constraints
 
-### Why Can't We Query Session State via HTTP?
+### Session State is Queryable via HTTP (constraint removed)
 
-**Constraint:** OpenCode HTTP API doesn't expose session state (busy/idle)
+**Previous constraint (now resolved):** OpenCode HTTP API didn't expose session state.
 
-**Implication:** Can only check session existence, not what it's doing
+**Current state:** `GET /session/status` returns status (`busy`/`idle`/`retry`) for all or specific sessions. `WaitForSessionIdle` polls this endpoint every 500ms. SSE via `/event` remains available for event-driven monitoring.
 
-**Workaround:** SSE stream for real-time state updates, but requires persistent connection
-
-**This enables:** Event-driven completion detection
-**This constrains:** No poll-based status checking
+**This enables:** Both poll-based and event-driven completion detection
+**This constrains:** Status is in-memory only — sessions not in the status map are considered idle
 
 ### Why Can't We Filter Sessions Without Headers?
 
@@ -181,16 +183,19 @@ session.status { status: "idle" }    ← Agent finished
 **This enables:** Fast queries when you only need running sessions
 **This constrains:** Can't get "all sessions across all projects" in one query
 
-### Why Do Sessions Persist Indefinitely?
+### Why Do Sessions Persist by Default?
 
-**Constraint:** OpenCode design choice - no automatic session cleanup
+**Constraint:** Sessions persist unless given a TTL or explicitly deleted
 
-**Implication:** Session count grows without bound, queries slow down
+**Implication:** Without TTL, session count grows without bound
 
-**Workaround:** Manual cleanup via `orch clean --sessions`
+**Mitigations:**
+- `TimeTTL` on `CreateSession` enables automatic expiration
+- `DELETE /session/{id}` for individual deletion
+- `orch clean --sessions --days N` for bulk cleanup
 
 **This enables:** Session history survives crashes/restarts
-**This constrains:** Requires periodic maintenance
+**This constrains:** Requires either TTL or periodic cleanup for long-running systems
 
 ---
 
@@ -260,6 +265,7 @@ session.status { status: "idle" }    ← Agent finished
 |-------|------|-------------|
 | `2026-02-18-probe-api-prefix-history.md` | 2026-02-18 | orch-go always used `/session` (never `/api/sessions`); no committed `/api` prefix in OpenCode server history; no SPA proxy stripping — contradicts model's "POST /api/sessions" claim |
 | `2026-02-20-probe-coaching-plugin-injection.md` | 2026-02-20 | Plugin injection uses `client.session.prompt` with `noReply: true` (message insertion, not system prompt mutation); `tool.execute.after` fires for gpt-5.2-codex sessions |
+| `2026-03-21-probe-knowledge-decay-verification.md` | 2026-03-21 | Two stale constraints corrected: `GET /session/status` enables polling (not SSE-only); `TimeTTL` enables session expiration; `retry` status type documented; cross-project directory bug confirmed fixed |
 
 **Primary Evidence (Verify These):**
 - `pkg/opencode/client.go` - HTTP REST client (~728 lines)

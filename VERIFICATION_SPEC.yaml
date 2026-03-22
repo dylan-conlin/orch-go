@@ -1,43 +1,44 @@
-probe_id: HE-08
-claim: "Stronger models may need more coordination gates, not fewer"
-model: harness-engineering
-beads_id: orch-go-avgn8
+task: orch-go-4hjp3
+title: Knowledge decay verification - opencode-session-lifecycle model
+type: knowledge-probe
+model: opencode-session-lifecycle
+beads_id: orch-go-4hjp3
 tier: light
-verdict: indirectly_supported
+verdict: moderately_stale_now_corrected
 
 verification:
+  claims_checked: 7
+  confirmed: 4
+  stale_corrected: 2
+  partially_stale_corrected: 1
+
   evidence_sources:
-    - source: "Production git log (N=235 Opus sessions, Mar 15-21)"
-      finding: "8,157 lines/day, 34 sessions/day, mean 243 lines/session"
+    - source: "pkg/opencode/client.go"
+      finding: "GET /session/status endpoint exists, WaitForSessionIdle polls it every 500ms"
+      corrects: "Model claimed 'can't poll for status' — now can"
+
+    - source: "pkg/opencode/client.go:488"
+      finding: "CreateSessionRequest has TimeTTL field for automatic session expiration"
+      corrects: "Model claimed 'sessions never expire' — TTL now supported"
+
+    - source: "pkg/opencode/types.go:67"
+      finding: "SessionStatusInfo has IsRetrying() — 'retry' is a third status type"
+      corrects: "Model only documented busy/idle states"
+
+    - source: "pkg/opencode/client.go:501-524"
+      finding: "CreateSession accepts directory param and sets x-opencode-directory header"
+      corrects: "Cross-project directory bug marked as fixed"
+
+    - source: "pkg/opencode/sse.go, monitor.go"
+      finding: "SSE completion detection via session.status busy→idle confirmed intact"
       supports_claim: true
 
-    - source: "Coordination demo (N=160, haiku-only)"
-      finding: "Gates reduce accretion 8-12%, effect larger on complex tasks"
+    - source: "pkg/spawn/backends/"
+      finding: "Three backends (headless, tmux, inline) confirmed"
       supports_claim: true
-
-    - source: "Cross-model merge demo (N=80, haiku+opus)"
-      finding: "100% merge conflict rate regardless of model capability"
-      supports_claim: true
-
-    - source: "daemon.go case study"
-      finding: "+892 lines from 30 correct Opus commits"
-      supports_claim: true
-
-    - source: "System-level math (completion rate multiplier)"
-      finding: "~5x coordination pressure from Opus vs non-Anthropic"
-      supports_claim: true
-
-  falsification_criterion_assessment: |
-    Original criterion ("less accretion per agent-session") is poorly specified.
-    Coordination pressure is system-level: completion_rate x per_session_accretion x spawn_velocity.
-    Revised: "Total system accretion rate does NOT increase when switching models on same task queue."
-
-  remaining_blockers:
-    - "accretion.delta events lack code_added/code_net fields"
-    - "Coordination demo not yet run with --model opus (N>50 per model)"
 
   manual_checks: none
 
 files_modified:
-  - ".kb/models/harness-engineering/probes/2026-03-20-probe-stronger-models-accretion-rate-by-model.md"
-  - ".kb/models/harness-engineering/model.md"
+  - ".kb/models/opencode-session-lifecycle/probes/2026-03-21-probe-knowledge-decay-verification.md"
+  - ".kb/models/opencode-session-lifecycle/model.md"
