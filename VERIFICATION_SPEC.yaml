@@ -1,31 +1,28 @@
-task: "harness init --openscad: domain flag with gates, validators, config copy and --refresh"
-beads_id: orch-go-5iw98
+task: "Move OpenSCAD hooks to global (~/.orch/hooks/)"
+beads_id: orch-go-fim6j
 tier: light
 
 verification:
   commands:
-    - name: "Domain init tests"
-      command: "cd ~/Documents/personal/harness && go test -v -count=1 -run 'TestDomain' ./pkg/scaffold/"
-      expect: "9 PASS, 0 FAIL"
-    - name: "Full harness test suite"
-      command: "cd ~/Documents/personal/harness && go test -count=1 ./..."
-      expect: "7 packages PASS"
-    - name: "Binary compiles and shows new flags"
-      command: "harness init --help"
-      expect: "contains --openscad and --refresh flags"
+    - name: "Staged hooks don't crash on empty input"
+      command: |
+        python3 .orch/staging/hooks/gate-openscad-stl-cgal.py < /dev/null; echo "cgal: $?"
+        python3 .orch/staging/hooks/gate-openscad-post-render.py < /dev/null; echo "render: $?"
+        python3 .orch/staging/hooks/gate-architect-production-files.py < /dev/null; echo "architect: $?"
+      expect: "All exit 0"
 
   manual_checks:
-    - "harness init --openscad --dry-run shows gates, validate.scad, validate-project.scad, config.yaml steps"
-    - "harness init --openscad creates all domain files in project"
-    - "harness init --openscad --refresh overwrites base files but preserves validate-project.scad"
-    - "OPENSCAD_HARNESS_PATH env var overrides default source path"
+    - "Orchestrator deploys hooks per .orch/staging/hooks/DEPLOY.md"
+    - "CGAL gate blocks STL export without --backend cgal in OpenSCAD project"
+    - "Post-render gate finds gates/geometry-check.sh via git rev-parse"
+    - "Architect gate reads .harness/config.yaml domain and blocks only in openscad projects"
+    - "Non-OpenSCAD projects unaffected (no openscad commands, no domain config)"
 
   notes: |
-    Implementation lives in ~/Documents/personal/harness (standalone harness binary),
-    not in orch-go. orch harness init delegates to this binary with DisableFlagParsing,
-    so --openscad and --refresh pass through automatically.
+    Governance hook blocked direct writes to ~/.orch/hooks/ — expected behavior.
+    Hooks staged at .orch/staging/hooks/ with full deployment instructions.
 
-    Files modified in harness repo:
-    - cmd/harness/init_cmd.go (added --openscad and --refresh flags)
-    - pkg/scaffold/domain.go (new: DomainInit, resolveSourcePath)
-    - pkg/scaffold/domain_test.go (new: 9 tests)
+    Key changes from originals:
+    - gate-openscad-post-render.py: path resolution via git rev-parse instead of __file__-relative
+    - gate-architect-production-files.py: domain detection via .harness/config.yaml guard
+    - Both command-pattern hooks unchanged in logic (already self-filter on openscad presence)
