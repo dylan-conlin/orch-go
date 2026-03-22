@@ -1,7 +1,7 @@
 # Model: Code Extraction Patterns
 
 **Domain:** Architecture / Refactoring / Context Management
-**Last Updated:** 2026-03-19 (drift update: extraction.go deletion, complete_pipeline extraction, serve_agents family update)
+**Last Updated:** 2026-03-22 (drift update: complete_* family expansion 7→14 satellites, updated line counts)
 **Synthesized From:** 13 investigations (Jan 3-8, 2026) into Go (main.go, serve.go) and Svelte component extraction
 
 ---
@@ -75,7 +75,7 @@ Smaller, cohesive files are more resilient to **Session Amnesia**. A new agent c
 - **800 lines:** Extraction trigger. Files crossing this threshold must be extracted to reach the 400-line target.
 
 **Reasoning:** 800 lines is the heuristic limit where "Context Noise" begins to degrade agent reasoning. But empirical data (Mar 2026 probe, n=12 files) shows that extracting to "just under 800" fails — residuals left at 600-700 re-cross 800 within weeks. Residuals extracted to <400 lines resist re-accretion:
-- Residuals at <400: doctor.go (269), session.go (121) — stable (extraction.go was here at 280 but was later fully extracted and deleted)
+- Residuals at <400: doctor.go (269), session.go (121) — stable (extraction.go was here at 280 but was later fully extracted and deleted; complete_cmd.go at 342 post-extraction — tracking)
 - Residuals at 600-700: daemon.go (715→896), context.go (~600→895) — re-accreted past 800
 
 **Key evidence:** Extracted satellite files (100-300 lines) show zero post-extraction commits across 9 files sampled. All new feature work lands in the residual parent, never satellites. This means: the more code moved to satellites, the more code resists re-accretion.
@@ -118,6 +118,14 @@ Smaller, cohesive files are more resilient to **Session Amnesia**. A new agent c
 - Pipeline phase extraction established as a distinct pattern (vs. domain handler extraction)
 - Advisory dispatcher fan-out (10+ callsites across 6+ files) is inherently high-coupling — structural, not pathological
 
+### Mar 2026: `complete_*` family continued extraction (7→14 satellites)
+- `complete_pipeline.go` further reduced from 672 to 620 lines through continued extraction
+- 7 new satellite files extracted: `complete_cmd.go` (342), `complete_architect.go` (166), `complete_synthesis.go` (120), `complete_duplication.go` (79), `complete_trust.go` (58), `complete_actions.go` (52), `complete_cleanup.go` (42)
+- `complete_cmd.go` extracted from `main.go` — command definition separated from pipeline logic
+- Validates Three-Number Framework: satellites land at 42-166 lines (well within 100-300 ideal), residual (`complete_pipeline.go`) at 620 (above 400 target but below 800 trigger)
+- `complete_postlifecycle.go` at 683 lines — approaching 800-line trigger, candidate for next extraction cycle
+- Total complete_* family: 14 non-test source files from original monolithic `complete_pipeline.go`
+
 ### Mar 10, 2026: Three-Number Framework established (200/400/800)
 - Empirical analysis of 13 extraction commits: residuals under 400 lines stay stable, residuals over 600 re-accrete
 - Satellite files (100-300 lines) have zero post-extraction commits — all accretion hits the residual parent
@@ -156,7 +164,7 @@ Smaller, cohesive files are more resilient to **Session Amnesia**. A new agent c
 - `cmd/orch/shared.go` (303 lines) - Shared utilities extraction (extracted first to break cross-dependencies)
 - `cmd/orch/serve_agents_*.go` - Domain handler family (8 files + tests) extracted from monolithic `serve_agents.go` (itself extracted from `serve.go`); `serve_agents.go` deleted Feb 2026
 - `cmd/orch/serve_agents_cache.go` (719 lines) - Sub-domain infrastructure extraction; approaching 800-line trigger
-- `cmd/orch/complete_*.go` - Pipeline phase extraction family (7 files) extracted from `complete_pipeline.go` (Feb-Mar 2026)
+- `cmd/orch/complete_*.go` - Pipeline phase extraction family (14 non-test files) extracted from `complete_pipeline.go` (Feb-Mar 2026); `complete_pipeline.go` now 620 lines
 - `pkg/orch/spawn_*.go` - Domain extraction family (10 files) from deleted `extraction.go` (Mar 2026)
-- `cmd/orch/main.go` (354 lines) - Package main showing multiple file split within same package
+- `cmd/orch/main.go` (357 lines) - Package main showing multiple file split within same package
 - `web/src/lib/components/agent-detail/` - Svelte tab component extraction pattern
