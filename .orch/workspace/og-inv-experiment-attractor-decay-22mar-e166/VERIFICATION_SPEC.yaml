@@ -1,0 +1,41 @@
+verification:
+  type: experiment
+  automated:
+    - description: "Attractor decay experiment ran successfully (9 trials)"
+      command: "ls experiments/coordination-demo/redesign/results/20260322-154258/metadata.json"
+      expected: "file exists"
+      result: PASS
+
+    - description: "All 9 merge results are 'success'"
+      command: "cat experiments/coordination-demo/redesign/results/20260322-154258/merge_summary.csv"
+      expected: "9 rows with 'success', 0 with 'conflict'"
+      result: PASS
+
+    - description: "All 18 agents scored 4/4"
+      command: "cat experiments/coordination-demo/redesign/results/20260322-154258/scores.csv"
+      expected: "18 rows with total=4"
+      result: PASS
+
+    - description: "Probe file exists with all required sections"
+      command: "head -80 .kb/models/coordination/probes/2026-03-22-probe-attractor-decay-degradation-curve.md"
+      expected: "Question, What I Tested, What I Observed, Model Impact sections present"
+      result: PASS
+
+    - description: "Model updated with decay findings"
+      command: "grep 'attractor decay' .kb/models/coordination/model.md"
+      expected: "Multiple references to attractor decay experiment"
+      result: PASS
+
+    - description: "Open question answered"
+      command: "grep -c 'Can attractor-based coordination degrade' .kb/models/coordination/model.md"
+      expected: "1 (in answered section with strikethrough)"
+      result: PASS
+
+  manual: []
+
+  summary: |
+    Experiment B: Attractor Decay ran 9 trials (3 phases x 3 trials) testing
+    whether stale placement attractors degrade coordination. All 9 trials
+    succeeded (100%), disproving the cliff-edge failure hypothesis. Probe file
+    and coordination model updated with findings. Two resilience mechanisms
+    identified: semantic adaptation and anchor redundancy.

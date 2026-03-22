@@ -1,0 +1,89 @@
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 707d530e1..c4098f6ee 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -92,3 +92,36 @@ func FormatElapsed(d time.Duration) string {
+ 	}
+ 	return fmt.Sprintf("%dh", int(d.Hours()))
+ }
++
++// FormatBytes formats byte counts into human-readable strings using binary units.
++// Output style: "0 B", "512 B", "1.0 KiB", "1.5 MiB", "2.3 GiB".
++func FormatBytes(bytes int64) string {
++	const (
++		KiB = 1024
++		MiB = KiB * 1024
++		GiB = MiB * 1024
++		TiB = GiB * 1024
++	)
++
++	abs := bytes
++	if abs < 0 {
++		abs = -abs
++	}
++
++	switch {
++	case abs < KiB:
++		return fmt.Sprintf("%d B", bytes)
++	case abs < MiB:
++		val := float64(bytes) / KiB
++		return fmt.Sprintf("%.1f KiB", val)
++	case abs < GiB:
++		val := float64(bytes) / MiB
++		return fmt.Sprintf("%.1f MiB", val)
++	case abs < TiB:
++		val := float64(bytes) / GiB
++		return fmt.Sprintf("%.1f GiB", val)
++	default:
++		val := float64(bytes) / TiB
++		return fmt.Sprintf("%.1f TiB", val)
++	}
++}
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index 80790e83c..5f40c41aa 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -132,3 +132,43 @@ func TestFormatElapsed(t *testing.T) {
+ 		}
+ 	}
+ }
++
++func TestFormatBytes(t *testing.T) {
++	tests := []struct {
++		input int64
++		want  string
++	}{
++		// Zero and small bytes
++		{0, "0 B"},
++		{1, "1 B"},
++		{512, "512 B"},
++		{1023, "1023 B"},
++		// KiB boundary
++		{1024, "1.0 KiB"},
++		{1536, "1.5 KiB"},
++		{2048, "2.0 KiB"},
++		{5120, "5.0 KiB"},
++		// MiB boundary
++		{1048576, "1.0 MiB"},
++		{1572864, "1.5 MiB"},
++		{5242880, "5.0 MiB"},
++		// GiB boundary
++		{1073741824, "1.0 GiB"},
++		{1610612736, "1.5 GiB"},
++		{5368709120, "5.0 GiB"},
++		// TiB boundary
++		{1099511627776, "1.0 TiB"},
++		{1649267441664, "1.5 TiB"},
++		// Negative values
++		{-512, "-512 B"},
++		{-1024, "-1.0 KiB"},
++		{-1536, "-1.5 KiB"},
++		{-1048576, "-1.0 MiB"},
++	}
++	for _, tt := range tests {
++		got := FormatBytes(tt.input)
++		if got != tt.want {
++			t.Errorf("FormatBytes(%d) = %q, want %q", tt.input, got, tt.want)
++		}
++	}
++}

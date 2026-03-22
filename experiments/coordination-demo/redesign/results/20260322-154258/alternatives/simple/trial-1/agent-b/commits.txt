@@ -1,0 +1,1 @@
+ecb5bf414 display: add FormatRate function with comprehensive tests

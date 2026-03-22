@@ -1,0 +1,1 @@
+396370a33 feat: add FormatRate function to pkg/display

@@ -1,0 +1,10 @@
+✓ **Completion reported to beads**
+
+The `FormatRate` function is now fully implemented and tested:
+
+- **Function added** to `pkg/display/display.go` after `StripANSI`
+- **Tests added** to `pkg/display/display_test.go` with 16 cases covering all requirements
+- **All tests passing** including zero, boundaries, negatives, and GiB/s range
+- **Changes committed** with proper message
+
+Ready for use in the codebase.

@@ -3,7 +3,7 @@
 **Created:** 2026-03-09
 **Updated:** 2026-03-22
 **Status:** Active
-**Source:** Synthesized from 4 investigation(s) + 3 controlled experiments (110 trials) + external validation (6 independent sources) + 4 probe extensions (control theory, mechanism dimension, Align falsification, automated attractor discovery)
+**Source:** Synthesized from 4 investigation(s) + 4 controlled experiments (119 trials) + external validation (6 independent sources) + 5 probe extensions (control theory, mechanism dimension, Align falsification, automated attractor discovery, attractor decay resilience)
 
 ## What This Is
 
@@ -151,6 +151,8 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 **Why gates fail:** They require correct runtime decisions by LLMs. Each decision point is a failure opportunity. CrewAI's manager must correctly route tasks. LangGraph's edges must correctly evaluate state. The 80-trial gate condition (Claim 5) shows agents perform self-checks but don't change behavior — the semantically correct answer beats the coordination-correct answer at every decision point.
 
 **Why attractors work:** Coordination decisions are made at design time. Anthropic's lead agent defines work regions before subagents start. orch-go's `.kb/models/*/probes/` directory reduces orphans not by checking at commit time (gate — bypassed 100%) but by making the model directory the natural destination for probe output (attractor — orphan rate halved). Crucially, attractor placement can be *discovered automatically* from failure data (see Key Experiment: Automated Attractor Discovery) — the system parses collision diffs, identifies gravitational insertion points, and generates non-overlapping constraints with zero human intervention. Gate logic, by contrast, requires human judgment about what runtime checks to perform.
+
+**Attractor resilience (2026-03-22):** Attractors tolerate stale anchors. 9/9 trials succeeded with original placement prompts after codebase mutations (renames, file reorganization, competing insertion points). Agents adapt through two mechanisms: (1) **semantic adaptation** — when an anchor function is renamed, agents find the semantically equivalent function; (2) **anchor redundancy** — placement instructions with multiple anchors ("after X, BEFORE Y") survive losing one anchor. The load-bearing property is **region separation** (agents assigned to different file regions), not anchor name accuracy. See `probes/2026-03-22-probe-attractor-decay-degradation-curve.md`.
 
 **Practical design principle:** Use attractors for the heavy-load primitives (Route, Align) where agents must get coordination right consistently. Gates are acceptable for lighter primitives (Throttle, Sequence) that tolerate occasional failure.
 
