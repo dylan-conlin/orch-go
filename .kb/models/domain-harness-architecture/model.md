@@ -2,7 +2,7 @@
 
 **Domain:** Cross-Project Enforcement Layering
 **Last Updated:** 2026-03-21
-**Validation Status:** WORKING HYPOTHESIS — emerged from observing duplication/drift/gaps across 4 OpenSCAD projects + orch-go. Architecture proposed, not yet implemented.
+**Validation Status:** DESIGNED, NOT IMPLEMENTED — architecture decided but no implementation exists. Duplication/drift/gap diagnosis confirmed by 2026-03-21 probe; all four "resolved" decisions remain unimplemented.
 **Synthesized From:**
 - Led-totem-toppers architect failure (2026-03-21): architect edited production .scad files, carved notch through ACME threads. No deny hook existed. Soft skill constraint failed.
 - Led-magnetic-letters harness audit: 3 Claude Code hooks, 5-layer gate stack, pre-commit gates — most complete enforcement, but adapted (diverged) copies of openscad-harness gates.
@@ -224,9 +224,28 @@ The gate script:
 
 ---
 
+## Implementation Status (as of 2026-03-21 probe)
+
+| Decision | Design Status | Implementation Status |
+|----------|--------------|----------------------|
+| Q1: `harness init --openscad` | Decided | NOT IMPLEMENTED — `harness_cmd.go` has no `--openscad` flag, no OpenSCAD logic |
+| Q2: Global hooks with domain detection | Decided | NOT IMPLEMENTED — `~/.orch/hooks/` has zero OpenSCAD hooks; all OpenSCAD hooks remain project-local |
+| Q3: Two-file validator split | Decided | NOT ADOPTED — both projects have single diverged `validate.scad`; no `validate-project.scad` exists |
+| Q4: Vision check (L5) | Decided | PARTIALLY IMPLEMENTED — `vision-check.sh` exists in led-magnetic-letters gates but not via openscad-harness |
+
+**Current actual state:**
+- Hooks: project-local in `.claude/hooks/` (led-magnetic-letters: 3 hooks, led-totem-toppers: 4 hooks)
+- Validators: single `lib/validate.scad` per project, diverged (different defaults, different domain modules)
+- Gates: manually copied, diverging (led-magnetic-letters has 8 scripts, led-totem-toppers has 1, openscad-harness has 3)
+- No `.harness/config.yaml` with `domain: openscad` in any project
+
 ## Remaining Open Questions
 
-None — all four architecture questions resolved. Implementation tracked via beads issues.
+All four architecture questions are decided in design but none are implemented. The open question is implementation prioritization — the duplication/drift problem the architecture was designed to solve is actively worsening.
+
+## Evidence
+
+- 2026-03-21: Knowledge Decay Verification — first probe. Problem diagnosis confirmed, all four resolved decisions found unimplemented. Divergence actively worsening.
 
 ---
 

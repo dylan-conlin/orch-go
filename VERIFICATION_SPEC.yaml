@@ -1,29 +1,25 @@
-task: "Wire UserPromptSubmit hook for comprehension:pending queue count"
-beads_id: orch-go-5ygdv
+task: "Knowledge decay verification probe for domain-harness-architecture model"
+beads_id: orch-go-kq1sw
 tier: light
 
 verification:
-  commands:
-    - name: "Hook script exists and is executable"
-      command: "test -x .claude/hooks/comprehension-queue-count.sh && echo PASS"
+  checks:
+    - name: "Probe file exists"
+      command: "test -f .kb/models/domain-harness-architecture/probes/2026-03-21-probe-knowledge-decay-verification.md && echo PASS"
       expect: "PASS"
 
-    - name: "Hook returns valid JSON with additionalContext"
-      command: "bash .claude/hooks/comprehension-queue-count.sh | python3 -c 'import json,sys; d=json.load(sys.stdin); assert \"additionalContext\" in d; print(\"PASS\")'"
+    - name: "Model updated with implementation status"
+      command: "grep -q 'DESIGNED, NOT IMPLEMENTED' .kb/models/domain-harness-architecture/model.md && echo PASS"
       expect: "PASS"
 
-    - name: "Threshold escalation works"
-      command: "COMPREHENSION_THRESHOLD=0 bash .claude/hooks/comprehension-queue-count.sh | grep -q 'OVER THRESHOLD' && echo PASS"
+    - name: "Model has evidence section"
+      command: "grep -q '2026-03-21: Knowledge Decay Verification' .kb/models/domain-harness-architecture/model.md && echo PASS"
       expect: "PASS"
 
-    - name: "Hook wired in settings.json"
-      command: "python3 -c \"import json; d=json.load(open('.claude/settings.json')); assert 'UserPromptSubmit' in d['hooks']; print('PASS')\""
-      expect: "PASS"
+  evidence_summary: |
+    6 claims verified against filesystem: 2 confirmed (problem diagnosis, invariant 6),
+    3 contradicted (harness init --openscad not implemented, two-file split not adopted,
+    global hooks migration not started), 1 confirmed-worsening (gate script divergence).
+    Model updated to reflect designed-but-not-implemented status.
 
   manual_checks: []
-
-  notes: |
-    Hook runs bd list -l comprehension:pending -s closed --no-pager, counts items
-    matching ^orch- pattern, and injects count as additionalContext.
-    Threshold default: 5 (configurable via COMPREHENSION_THRESHOLD env var).
-    Measured at ~50ms per invocation.
