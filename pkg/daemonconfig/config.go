@@ -92,18 +92,6 @@ type Config struct {
 	// Default is 3.
 	VerificationPauseThreshold int
 
-	// KnowledgeHealthEnabled controls whether periodic knowledge health checks are enabled.
-	// When enabled, the daemon counts active kb quick entries during idle cycles
-	// and flags accumulation without promotion.
-	KnowledgeHealthEnabled bool
-
-	// KnowledgeHealthInterval is how often to run the knowledge health check (0 = disabled).
-	KnowledgeHealthInterval time.Duration
-
-	// KnowledgeHealthThreshold is the number of active quick entries that triggers
-	// a triage:review issue for knowledge maintenance. Default is 50.
-	KnowledgeHealthThreshold int
-
 	// OrphanDetectionEnabled controls whether periodic orphan detection is enabled.
 	// When enabled, the daemon detects in_progress issues with no active agent
 	// (no OpenCode session, no tmux window) and resets them to open for respawning.
@@ -158,15 +146,6 @@ type Config struct {
 	// Default is 1 hour.
 	BeadsHealthInterval time.Duration
 
-	// FrictionAccumulationEnabled controls whether periodic friction accumulation is enabled.
-	// When enabled, the daemon scans recently-closed agents' beads comments for friction
-	// reports and stores them in ~/.orch/friction.jsonl for pattern analysis.
-	FrictionAccumulationEnabled bool
-
-	// FrictionAccumulationInterval is how often to scan for friction items (0 = disabled).
-	// Default is 1 hour.
-	FrictionAccumulationInterval time.Duration
-
 	// ArtifactSyncEnabled controls whether periodic artifact sync checking is enabled.
 	// When enabled, the daemon analyzes drift events from ~/.orch/artifact-drift.jsonl
 	// against ARTIFACT_MANIFEST.yaml and creates beads issues for drifted artifacts.
@@ -201,100 +180,9 @@ type Config struct {
 	// Default is 5 minutes.
 	RegistryRefreshInterval time.Duration
 
-	// SynthesisAutoCreateEnabled controls whether the daemon auto-creates beads
-	// issues for investigation clusters that lack a corresponding model directory.
-	// When enabled, clusters detected by kb reflect with 5+ investigations (configurable)
-	// and no .kb/models/{topic}/ directory will get a triage:ready issue created.
-	SynthesisAutoCreateEnabled bool
-
-	// SynthesisAutoCreateInterval is how often to check for synthesis opportunities.
-	SynthesisAutoCreateInterval time.Duration
-
-	// SynthesisAutoCreateThreshold is the minimum number of investigations in a cluster
-	// before auto-creating a synthesis issue. Default is 5.
-	SynthesisAutoCreateThreshold int
-
 	// Compliance holds per-spawn compliance level configuration.
 	// When nil/zero-value, defaults to ComplianceStrict (current behavior).
 	Compliance ComplianceConfig
-
-	// LearningRefreshEnabled controls whether the daemon periodically
-	// recomputes learning metrics and auto-adjusts compliance levels.
-	LearningRefreshEnabled bool
-
-	// LearningRefreshInterval is how often to recompute learning metrics
-	// and evaluate compliance auto-downgrades. Default is 1 hour.
-	LearningRefreshInterval time.Duration
-
-	// PlanStalenessEnabled controls whether periodic plan staleness detection is enabled.
-	// When enabled, the daemon scans active plans in .kb/plans/ and detects:
-	// - Unhydrated plans (active but no beads issues)
-	// - Phase advancement stalls (completed phases with unstarted successors)
-	// - No-progress plans (hydrated but no phases in progress or complete)
-	PlanStalenessEnabled bool
-
-	// PlanStalenessInterval is how often to check for stale plans (0 = disabled).
-	// Default is 30 minutes.
-	PlanStalenessInterval time.Duration
-
-	// ProactiveExtractionEnabled controls whether periodic proactive extraction scanning is enabled.
-	// When enabled, the daemon scans source files and creates architect issues for files
-	// crossing 1200 lines (before they hit the 1500-line critical threshold that blocks spawning).
-	ProactiveExtractionEnabled bool
-
-	// ProactiveExtractionInterval is how often to scan for files approaching critical size.
-	// Default is 6 hours.
-	ProactiveExtractionInterval time.Duration
-
-	// AccretionResponseEnabled controls whether event-driven accretion response is enabled.
-	// When enabled, the daemon reads accretion.delta events and creates architect issues
-	// for files that grew >200 net lines across >=3 completions. Replaces ProactiveExtraction.
-	AccretionResponseEnabled bool
-
-	// AccretionResponseInterval is how often to check accretion.delta events.
-	// Default is 1 hour.
-	AccretionResponseInterval time.Duration
-
-	// TriggerScanEnabled controls whether periodic pattern detection trigger scanning is enabled.
-	// When enabled, the daemon runs pattern detectors that surface recurring bugs,
-	// orphaned investigations, stale threads, etc. as beads issues.
-	TriggerScanEnabled bool
-
-	// TriggerScanInterval is how often to run the trigger scan (0 = disabled).
-	// Default is 1 hour.
-	TriggerScanInterval time.Duration
-
-	// TriggerBudgetMax is the maximum number of open daemon:trigger issues allowed.
-	// Prevents creation/removal asymmetry from bloating the issue queue.
-	// Default is 10.
-	TriggerBudgetMax int
-
-	// TriggerExpiryEnabled controls whether periodic trigger expiry is enabled.
-	// When enabled, the daemon auto-closes daemon:trigger issues not acted on
-	// within TriggerExpiryMaxAge, addressing creation/removal asymmetry.
-	TriggerExpiryEnabled bool
-
-	// TriggerExpiryInterval is how often to check for expired trigger issues.
-	TriggerExpiryInterval time.Duration
-
-	// TriggerExpiryMaxAge is the maximum age for daemon:trigger issues before
-	// they are auto-closed. Issues older than this are expired with the
-	// daemon:expired label. Default is 14 days.
-	TriggerExpiryMaxAge time.Duration
-
-
-	// InvestigationOrphanEnabled controls whether periodic investigation orphan surfacing is enabled.
-	// When enabled, the daemon surfaces investigations that have been in_progress for longer than
-	// InvestigationOrphanThreshold without completion, creating closure pressure via notifications.
-	InvestigationOrphanEnabled bool
-
-	// InvestigationOrphanInterval is how often to check for orphaned investigations (0 = disabled).
-	// Default is 1 hour.
-	InvestigationOrphanInterval time.Duration
-
-	// InvestigationOrphanThreshold is how long an investigation can be in_progress without
-	// completion before being flagged as orphaned. Default is 48 hours.
-	InvestigationOrphanThreshold time.Duration
 
 	// VerificationFailedEscalationEnabled controls whether the daemon periodically
 	// escalates verification-failed agents to triage:review for human attention.
@@ -377,10 +265,7 @@ func DefaultConfig() Config {
 		RecoveryInterval:               5 * time.Minute,  // Check every 5 minutes
 		RecoveryIdleThreshold:          10 * time.Minute, // Idle >10min triggers recovery
 		RecoveryRateLimit:              time.Hour,        // 1 resume per agent per hour
-		VerificationPauseThreshold:     5,                // Pause after 5 unique auto-completions
-		KnowledgeHealthEnabled:         true,
-		KnowledgeHealthInterval:        2 * time.Hour, // Every 2 hours
-		KnowledgeHealthThreshold:       50,            // Flag when 50+ active entries
+		VerificationPauseThreshold:     5, // Pause after 5 unique auto-completions
 		OrphanDetectionEnabled:         true,
 		OrphanDetectionInterval:        30 * time.Minute, // Check every 30 minutes
 		OrphanAgeThreshold:             time.Hour,        // 1 hour before considering orphaned
@@ -393,8 +278,6 @@ func DefaultConfig() Config {
 		InvariantViolationThreshold:    3, // Pause after 3 consecutive violation cycles
 		BeadsHealthEnabled:             true,
 		BeadsHealthInterval:            time.Hour, // Every hour
-		FrictionAccumulationEnabled:    true,
-		FrictionAccumulationInterval:   time.Hour, // Every hour
 		ArtifactSyncEnabled:            true,
 		ArtifactSyncInterval:           24 * time.Hour, // Daily cadence
 		ArtifactSyncAutoSpawn:          false,          // Issues only by default
@@ -402,26 +285,6 @@ func DefaultConfig() Config {
 		ArtifactSyncCLAUDEMDLineBudget: 300,            // CLAUDE.md line budget
 		RegistryRefreshEnabled:         true,
 		RegistryRefreshInterval:        5 * time.Minute, // Refresh every 5 minutes
-		SynthesisAutoCreateEnabled:     true,
-		SynthesisAutoCreateInterval:    2 * time.Hour, // Every 2 hours (after reflection)
-		SynthesisAutoCreateThreshold:   5,             // 5+ investigations triggers auto-create
-		LearningRefreshEnabled:         true,
-		LearningRefreshInterval:        time.Hour, // Hourly learning refresh + compliance auto-adjust
-		PlanStalenessEnabled:           true,
-		PlanStalenessInterval:          30 * time.Minute, // Check every 30 minutes
-		ProactiveExtractionEnabled:     false,                // DEPRECATED: replaced by AccretionResponse
-		ProactiveExtractionInterval:    6 * time.Hour,
-		AccretionResponseEnabled:       true,
-		AccretionResponseInterval:      time.Hour, // Hourly event-driven accretion check
-		TriggerScanEnabled:             true,
-		TriggerScanInterval:            time.Hour, // Hourly trigger scan
-		TriggerBudgetMax:               10,        // Max 10 open trigger issues
-		TriggerExpiryEnabled:           true,
-		TriggerExpiryInterval:          24 * time.Hour,      // Daily expiry check
-		TriggerExpiryMaxAge:            14 * 24 * time.Hour, // 14-day TTL for trigger issues
-		InvestigationOrphanEnabled:               true,
-		InvestigationOrphanInterval:              time.Hour,      // Hourly check
-		InvestigationOrphanThreshold:             48 * time.Hour, // 48h before flagging
 		VerificationFailedEscalationEnabled:      true,
 		VerificationFailedEscalationInterval:     30 * time.Minute, // Check every 30 minutes
 		VerificationFailedEscalationTimeout:      time.Hour,        // 1h before escalating to triage:review

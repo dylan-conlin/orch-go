@@ -82,12 +82,6 @@ type DaemonConfig struct {
 	// Defaults to 60 if not specified.
 	RecoveryRateLimitMinutes *int `yaml:"recovery_rate_limit_minutes,omitempty"`
 
-
-	// KnowledgeHealthIntervalHours is how often to run knowledge health checks (in hours).
-	// Defaults to 2 if not specified.
-
-	// Defaults to 50 if not specified.
-
 	// OrphanDetectionEnabled controls whether periodic orphan detection is enabled.
 	OrphanDetectionEnabled *bool `yaml:"orphan_detection_enabled,omitempty"`
 
@@ -131,10 +125,6 @@ type DaemonConfig struct {
 	// Path is a list of directories to add to the daemon's PATH environment variable.
 	// These are prepended to the system PATH.
 	Path []string `yaml:"path,omitempty"`
-
-
-	// PlanStalenessIntervalMinutes is how often to check for stale plans (in minutes).
-	// Defaults to 30 if not specified.
 
 	// Compliance holds per-spawn compliance level configuration.
 	// Levels: strict (default), standard, relaxed, autonomous.

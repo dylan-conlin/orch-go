@@ -27,8 +27,6 @@ func daemonConfigFromFlags() daemon.Config {
 	config.ReflectInterval = time.Duration(daemonReflectInterval) * time.Minute
 	config.ReflectCreateIssues = daemonReflectIssues
 	config.ReflectOpenEnabled = daemonReflectOpen
-	config.KnowledgeHealthEnabled = daemonKnowledgeHealthInterval > 0
-	config.KnowledgeHealthInterval = time.Duration(daemonKnowledgeHealthInterval) * time.Minute
 	config.CleanupEnabled = daemonCleanupEnabled && daemonCleanupInterval > 0
 	config.CleanupInterval = time.Duration(daemonCleanupInterval) * time.Minute
 	config.CleanupAgeDays = daemonCleanupAge
@@ -44,8 +42,6 @@ func daemonConfigFromFlags() daemon.Config {
 	config.AgreementCheckInterval = time.Duration(daemonAgreementCheckInterval) * time.Minute
 	config.BeadsHealthEnabled = daemonBeadsHealthInterval > 0
 	config.BeadsHealthInterval = time.Duration(daemonBeadsHealthInterval) * time.Minute
-	config.FrictionAccumulationEnabled = daemonFrictionAccumInterval > 0
-	config.FrictionAccumulationInterval = time.Duration(daemonFrictionAccumInterval) * time.Minute
 
 	return config
 }

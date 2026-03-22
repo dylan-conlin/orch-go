@@ -4,30 +4,19 @@ import "time"
 
 // Task name constants for the periodic scheduler.
 const (
-	TaskReflect              = "reflect"
-	TaskKnowledgeHealth      = "knowledge_health"
-	TaskCleanup              = "cleanup"
-	TaskRecovery             = "recovery"
-	TaskOrphanDetection      = "orphan_detection"
-	TaskPhaseTimeout         = "phase_timeout"
-	TaskQuestionDetection    = "question_detection"
-	TaskAgreementCheck       = "agreement_check"
-	TaskBeadsHealth          = "beads_health"
-	TaskFrictionAccumulation = "friction_accumulation"
-	TaskArtifactSync         = "artifact_sync"
-	TaskRegistryRefresh      = "registry_refresh"
-	TaskSynthesisAutoCreate  = "synthesis_auto_create"
-	TaskLearningRefresh      = "learning_refresh"
-	TaskPlanStaleness        = "plan_staleness"
-	TaskProactiveExtraction  = "proactive_extraction"
-	TaskAccretionResponse    = "accretion_response"
-	TaskTriggerScan          = "trigger_scan"
-	TaskTriggerExpiry        = "trigger_expiry"
-	TaskInvestigationOrphan             = "investigation_orphan"
-	TaskVerificationFailedEscalation   = "verification_failed_escalation"
-	TaskLightweightCleanup             = "lightweight_cleanup"
-	TaskCapacityPoll                   = "capacity_poll"
-	TaskAuditSelect                    = "audit_select"
+	TaskCleanup                      = "cleanup"
+	TaskRecovery                     = "recovery"
+	TaskOrphanDetection              = "orphan_detection"
+	TaskPhaseTimeout                 = "phase_timeout"
+	TaskQuestionDetection            = "question_detection"
+	TaskAgreementCheck               = "agreement_check"
+	TaskBeadsHealth                  = "beads_health"
+	TaskArtifactSync                 = "artifact_sync"
+	TaskRegistryRefresh              = "registry_refresh"
+	TaskVerificationFailedEscalation = "verification_failed_escalation"
+	TaskLightweightCleanup           = "lightweight_cleanup"
+	TaskCapacityPoll                 = "capacity_poll"
+	TaskAuditSelect                  = "audit_select"
 )
 
 // periodicTask holds the scheduling state for a single periodic task.
@@ -122,8 +111,6 @@ func (s *PeriodicScheduler) LastRunTime(name string) time.Time {
 // registered from the given config.
 func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s := NewPeriodicScheduler()
-	s.Register(TaskReflect, cfg.ReflectEnabled, cfg.ReflectInterval)
-	s.Register(TaskKnowledgeHealth, cfg.KnowledgeHealthEnabled, cfg.KnowledgeHealthInterval)
 	s.Register(TaskCleanup, cfg.CleanupEnabled, cfg.CleanupInterval)
 	s.Register(TaskRecovery, cfg.RecoveryEnabled, cfg.RecoveryInterval)
 	s.Register(TaskOrphanDetection, cfg.OrphanDetectionEnabled, cfg.OrphanDetectionInterval)
@@ -131,17 +118,8 @@ func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s.Register(TaskQuestionDetection, cfg.PhaseTimeoutEnabled, cfg.PhaseTimeoutInterval) // shares config with phase timeout
 	s.Register(TaskAgreementCheck, cfg.AgreementCheckEnabled, cfg.AgreementCheckInterval)
 	s.Register(TaskBeadsHealth, cfg.BeadsHealthEnabled, cfg.BeadsHealthInterval)
-	s.Register(TaskFrictionAccumulation, cfg.FrictionAccumulationEnabled, cfg.FrictionAccumulationInterval)
 	s.Register(TaskArtifactSync, cfg.ArtifactSyncEnabled, cfg.ArtifactSyncInterval)
 	s.Register(TaskRegistryRefresh, cfg.RegistryRefreshEnabled, cfg.RegistryRefreshInterval)
-	s.Register(TaskSynthesisAutoCreate, cfg.SynthesisAutoCreateEnabled, cfg.SynthesisAutoCreateInterval)
-	s.Register(TaskLearningRefresh, cfg.LearningRefreshEnabled, cfg.LearningRefreshInterval)
-	s.Register(TaskPlanStaleness, cfg.PlanStalenessEnabled, cfg.PlanStalenessInterval)
-	s.Register(TaskProactiveExtraction, cfg.ProactiveExtractionEnabled, cfg.ProactiveExtractionInterval)
-	s.Register(TaskAccretionResponse, cfg.AccretionResponseEnabled, cfg.AccretionResponseInterval)
-	s.Register(TaskTriggerScan, cfg.TriggerScanEnabled, cfg.TriggerScanInterval)
-	s.Register(TaskTriggerExpiry, cfg.TriggerExpiryEnabled, cfg.TriggerExpiryInterval)
-	s.Register(TaskInvestigationOrphan, cfg.InvestigationOrphanEnabled, cfg.InvestigationOrphanInterval)
 	s.Register(TaskVerificationFailedEscalation, cfg.VerificationFailedEscalationEnabled, cfg.VerificationFailedEscalationInterval)
 	s.Register(TaskLightweightCleanup, cfg.LightweightCleanupEnabled, cfg.LightweightCleanupInterval)
 	s.Register(TaskCapacityPoll, cfg.CapacityPollEnabled, cfg.CapacityPollInterval)
