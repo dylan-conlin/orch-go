@@ -167,6 +167,38 @@ func TestClaimIsProbeEligible(t *testing.T) {
 			Claim{Confidence: Contested, Priority: PriorityCore},
 			false,
 		},
+		{
+			"unconfirmed with recent evidence is not eligible (already probed)",
+			Claim{
+				Confidence: Unconfirmed, Priority: PriorityCore,
+				Evidence: []Evidence{{Source: "probe result", Date: "2026-03-10", Verdict: "extends"}},
+			},
+			false,
+		},
+		{
+			"unconfirmed with old evidence is eligible",
+			Claim{
+				Confidence: Unconfirmed, Priority: PriorityCore,
+				Evidence: []Evidence{{Source: "old probe", Date: "2026-01-01", Verdict: "extends"}},
+			},
+			true,
+		},
+		{
+			"stale with recent evidence is not eligible",
+			Claim{
+				Confidence: Stale, Priority: PriorityCore,
+				Evidence: []Evidence{{Source: "recent probe", Date: "2026-03-15", Verdict: "confirms"}},
+			},
+			false,
+		},
+		{
+			"confirmed stale with recent evidence is not eligible",
+			Claim{
+				Confidence: Confirmed, Priority: PriorityCore, LastValidated: "2026-01-01",
+				Evidence: []Evidence{{Source: "recent re-check", Date: "2026-03-18", Verdict: "confirms"}},
+			},
+			false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -174,6 +206,35 @@ func TestClaimIsProbeEligible(t *testing.T) {
 			got := tt.claim.IsProbeEligible(now)
 			if got != tt.wantResult {
 				t.Errorf("IsProbeEligible() = %v, want %v", got, tt.wantResult)
+			}
+		})
+	}
+}
+
+func TestClaimHasRecentEvidence(t *testing.T) {
+	now := time.Date(2026, 3, 19, 0, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name     string
+		evidence []Evidence
+		want     bool
+	}{
+		{"no evidence", nil, false},
+		{"empty date", []Evidence{{Date: ""}}, false},
+		{"invalid date", []Evidence{{Date: "bad"}}, false},
+		{"recent evidence", []Evidence{{Date: "2026-03-10"}}, true},
+		{"old evidence", []Evidence{{Date: "2026-01-01"}}, false},
+		{"mixed old and recent", []Evidence{{Date: "2026-01-01"}, {Date: "2026-03-15"}}, true},
+		{"exactly at threshold", []Evidence{{Date: "2026-02-17"}}, true},
+		{"one day past threshold", []Evidence{{Date: "2026-02-16"}}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Claim{Evidence: tt.evidence}
+			got := c.HasRecentEvidence(now)
+			if got != tt.want {
+				t.Errorf("HasRecentEvidence() = %v, want %v", got, tt.want)
 			}
 		})
 	}

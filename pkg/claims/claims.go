@@ -172,8 +172,16 @@ func (c *Claim) IsStale(now time.Time) bool {
 
 // IsProbeEligible returns true if this claim should be considered for probe
 // generation: unconfirmed or stale, and priority is core or supporting.
+// Claims with recent evidence (within StalenessThresholdDays) are skipped
+// even if confidence is still unconfirmed — a probe already ran.
 func (c *Claim) IsProbeEligible(now time.Time) bool {
 	if c.Priority == PriorityPeripheral {
+		return false
+	}
+	// If evidence was collected recently, don't re-probe regardless of confidence.
+	// This prevents re-spawning probes for claims where a probe completed but
+	// confidence wasn't updated (e.g., verdict was "indirectly supported").
+	if c.HasRecentEvidence(now) {
 		return false
 	}
 	if c.Confidence == Unconfirmed || c.Confidence == Stale {
@@ -181,6 +189,25 @@ func (c *Claim) IsProbeEligible(now time.Time) bool {
 	}
 	if c.Confidence == Confirmed && c.IsStale(now) {
 		return true
+	}
+	return false
+}
+
+// HasRecentEvidence returns true if the claim has any evidence entry with a
+// date within StalenessThresholdDays of now.
+func (c *Claim) HasRecentEvidence(now time.Time) bool {
+	threshold := time.Duration(StalenessThresholdDays) * 24 * time.Hour
+	for _, e := range c.Evidence {
+		if e.Date == "" {
+			continue
+		}
+		d, err := time.Parse("2006-01-02", e.Date)
+		if err != nil {
+			continue
+		}
+		if now.Sub(d) <= threshold {
+			return true
+		}
 	}
 	return false
 }

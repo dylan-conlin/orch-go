@@ -154,6 +154,57 @@ claims:
 	}
 }
 
+func TestRunClaimProbeGeneration_SkipsClaimWithRecentEvidence(t *testing.T) {
+	dir := t.TempDir()
+	modelDir := filepath.Join(dir, ".kb", "models", "test-model")
+	os.MkdirAll(modelDir, 0755)
+
+	os.WriteFile(filepath.Join(modelDir, "model.md"), []byte("# Test\n"), 0644)
+
+	// Claim is unconfirmed but has recent evidence — should NOT be re-probed
+	claimsYAML := `model: test-model
+version: 1
+claims:
+  - id: TM-01
+    text: "Test claim with recent evidence"
+    type: mechanism
+    scope: local
+    confidence: unconfirmed
+    priority: core
+    falsifies_if: "This never happens"
+    evidence:
+      - source: "prior probe found indirect support"
+        date: "` + time.Now().AddDate(0, 0, -5).Format("2006-01-02") + `"
+        verdict: extends
+`
+	os.WriteFile(filepath.Join(modelDir, "claims.yaml"), []byte(claimsYAML), 0644)
+
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	mock := &mockClaimProbeService{
+		openProbes: make(map[string]bool),
+	}
+
+	d := NewWithConfig(daemonconfig.Config{
+		ClaimProbeGenerationEnabled:  true,
+		ClaimProbeGenerationInterval: time.Hour,
+	})
+	d.ClaimProbeService = mock
+
+	result := d.RunPeriodicClaimProbeGeneration()
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if result.ProbeCount != 0 {
+		t.Errorf("ProbeCount = %d, want 0 (should skip claim with recent evidence)", result.ProbeCount)
+	}
+	if len(mock.createdProbes) != 0 {
+		t.Errorf("created probes = %d, want 0", len(mock.createdProbes))
+	}
+}
+
 func TestClaimProbeGenerationDefaultConfig(t *testing.T) {
 	config := daemonconfig.DefaultConfig()
 	if !config.ClaimProbeGenerationEnabled {
