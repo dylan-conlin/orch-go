@@ -3,13 +3,20 @@
 **Created:** 2026-03-09
 **Updated:** 2026-03-22
 **Status:** Active
-**Source:** Synthesized from 4 investigation(s) + 2 controlled experiments (100 trials) + external validation (6 independent sources)
+**Source:** Synthesized from 4 investigation(s) + 2 controlled experiments (100 trials) + external validation (6 independent sources) + 3 probe extensions (control theory, mechanism dimension, Align falsification)
 
 ## What This Is
 
-A model of multi-agent coordination failure in software engineering tasks. Describes when and why parallel agents produce individually correct work that cannot be merged, and which coordination mechanisms prevent versus fail to prevent these failures.
+A framework for multi-agent coordination in software engineering tasks. Describes when and why parallel agents produce individually correct work that cannot be merged, which coordination mechanisms prevent versus fail to prevent these failures, and how to implement coordination that works.
+
+Three layers:
+1. **Primitives** (Route, Sequence, Throttle, Align) — WHAT coordination requires
+2. **Mechanisms** (gate vs attractor) — HOW to implement each primitive
+3. **Scope** (N>1 boundary) — WHEN coordination is needed at all
 
 The core insight: **communication does not produce coordination.** Agents can understand each other's work, discuss plans, and acknowledge potential conflicts — yet still produce unmergeable code. Only structural constraints (explicit placement instructions) prevent conflicts. This challenges the premise of frameworks like CrewAI, AutoGen, and LangGraph that assume agent-to-agent messaging solves coordination.
+
+The implementation insight: **gates fail, attractors work.** Runtime coordination decisions (gates) are bypassed or produce wrong answers. Design-time structural coordination (attractors) succeeds because no runtime decision is required. 6/6 external frameworks confirm: every failing system uses gates, every working system uses attractors.
 
 ---
 
@@ -114,15 +121,70 @@ The four primitives map onto control theory components. The mapping is structura
 
 **Evidence:** Probe 2026-03-22, mapping all 14 MAST failure modes to control components. See `.kb/models/coordination/probes/2026-03-22-probe-control-theory-component-mapping.md`.
 
+### Mechanism Dimension: Gates vs Attractors
+
+The four primitives describe WHAT coordination requires. The mechanism dimension describes HOW to implement it. Two mechanism types exist, and they are not interchangeable:
+
+**Gate (runtime checking):** Coordination that depends on a runtime decision or check. An LLM, conditional branch, or validation step decides what happens next during execution. Can fail because the decider makes the wrong choice, or can be bypassed because agents route around the check.
+
+**Attractor (structural destination):** Coordination embedded in the system's shape at design time. The structure itself routes work — no runtime decision required. Cannot be "bypassed" because there is no alternative path; the structure IS the coordination.
+
+**Evidence: perfect correlation across 6 external frameworks.**
+
+| Framework | Works? | Primary Mechanism |
+|-----------|--------|-------------------|
+| CrewAI | No | Gate (manager LLM routing) |
+| LangGraph | No | Gate (conditional graph edges) |
+| OpenAI Agents SDK | No | Gate (output-mediated handoffs) |
+| Claude Agent SDK | No | Absent (human manual) |
+| Anthropic production | **Yes** | **Attractor-dominant** (task regions + output formats) |
+| autoresearch | **Yes** | **Pure attractor** (N=1 structural constraint) |
+
+**McEntire degradation tracks the gate/attractor gradient:**
+- Single agent (pure attractor): 100%
+- Hierarchical (attractor + gates): 64%
+- Swarm (pure gates): 32%
+- Pipeline (maximum gates): 0%
+
+**Why gates fail:** They require correct runtime decisions by LLMs. Each decision point is a failure opportunity. CrewAI's manager must correctly route tasks. LangGraph's edges must correctly evaluate state. The 80-trial gate condition (Claim 5) shows agents perform self-checks but don't change behavior — the semantically correct answer beats the coordination-correct answer at every decision point.
+
+**Why attractors work:** Coordination decisions are made at design time. Anthropic's lead agent defines work regions before subagents start. orch-go's `.kb/models/*/probes/` directory reduces orphans not by checking at commit time (gate — bypassed 100%) but by making the model directory the natural destination for probe output (attractor — orphan rate halved).
+
+**Practical design principle:** Use attractors for the heavy-load primitives (Route, Align) where agents must get coordination right consistently. Gates are acceptable for lighter primitives (Throttle, Sequence) that tolerate occasional failure.
+
+| Primitive | Recommended Mechanism | Why |
+|-----------|----------------------|-----|
+| **Route** | Attractor (structural assignment) | Runtime LLM routing decisions fail (CrewAI #4783) |
+| **Align** | Attractor (output formats, shared knowledge) | Correctness checks become ceremony (McEntire pipeline 87% false rejections) |
+| **Throttle** | Gate acceptable (rate limits, scaling rules) | Binary check, low ambiguity |
+| **Sequence** | Gate acceptable (dependency ordering) | Ordering is mechanically enforceable |
+
+**Evidence:** Probe 2026-03-22, gate/attractor validation across 6 frameworks. See `.kb/models/knowledge-accretion/probes/2026-03-22-probe-validate-gate-attractor-external-frameworks.md`. Also: orch-go production data from `.kb/models/knowledge-accretion/probes/2026-03-20-probe-intervention-effectiveness-audit.md`.
+
+---
+
+## Boundary Condition: N=1
+
+When N=1 (single agent), all four coordination primitives are trivially satisfied:
+- **Route:** Only one agent — no collision possible
+- **Sequence:** Only one agent — ordering is implicit
+- **Throttle:** Only one agent — velocity = verification bandwidth
+- **Align:** Only one agent — model of correctness is self-consistent
+
+This explains why autoresearch succeeds with radical simplicity — it eliminates coordination rather than solving it. The coordination framework's scope begins at N>1, where the action surface exceeds one agent's capacity.
+
+**Implication:** The first architectural decision is not "which primitives to implement" but "can the work be structured so N=1 per work region?" If yes, coordination is free. orch-go's daemon implements this: each agent gets its own issue, avoiding coordination entirely. The 80-trial experiment shows what happens when N>1 without structural separation — 100% conflict rate.
+
 ---
 
 ## Boundaries
 
 **What this model covers:**
-- Same-file parallel editing coordination
-- Git merge conflicts as coordination failure signal
-- Communication vs structural coordination mechanisms
-- Agent behavior under coordination instructions
+- Multi-agent coordination failure and prevention in software engineering tasks
+- Four coordination primitives (Route, Sequence, Throttle, Align) validated across 100 trials + 6 external sources
+- Mechanism dimension: gate (runtime) vs attractor (structural) implementation
+- Control theory structural homology (qualitative insights, not formal tools)
+- Scope boundary: N>1 (single agent trivially satisfies all primitives)
 
 **What this model does NOT cover:**
 - Cross-file coordination (agents editing entirely different files)
@@ -130,6 +192,7 @@ The four primitives map onto control theory components. The mapping is structura
 - Human-in-the-loop coordination
 - Non-git merge strategies (e.g., semantic merge tools)
 - Tasks where agents naturally edit different regions
+- Quantitative control theory (stability analysis, optimal control, formal observability)
 
 ---
 
@@ -146,6 +209,7 @@ The four primitives map onto control theory components. The mapping is structura
 | 2026-03-22 | Control theory component mapping probe | Primitives map to control components (Route→Actuator, Sequence→Reference, Throttle→Controller, Align→Sensor) with 64% clean mapping. Sensor bleed pattern: 11/14 MAST modes involve sensors (79%), converging with open-loop thread's 87.5%. Structural homology, not isomorphism. |
 | 2026-03-22 | Align-as-substrate falsification probe | "Substrate" overclaims — 5 cases show Route/Sequence/Throttle mechanically holding while Align is broken (MAST FM-1.1, McEntire hierarchical 64%, launchd post-mortem, orch-go competing instructions, stale knowledge cascades). Align is a multiplier/validity condition with proportional (not binary) impact. "Meta-primitive" language replaced. |
 | 2026-03-22 | Gate condition experiment (N=20) | Post-hoc self-checking gate produces 100% conflict rate (20/20). Agents perform the check, report no conflict, keep identical insertion points. Gates are subject to the same semantic-correctness bias as the original decision. All 40 agents scored 6/6 individually. |
+| 2026-03-22 | Gate/attractor external validation probe | 6/6 external frameworks show perfect correlation: gate-based coordination fails (CrewAI, LangGraph, OpenAI Agents SDK), attractor-based works (Anthropic production, autoresearch). McEntire degradation tracks gate/attractor gradient: pure attractor 100% → attractor+gates 64% → pure gates 32% → max gates 0%. |
 
 ---
 
@@ -188,14 +252,24 @@ The four primitives map onto control theory components. The mapping is structura
 
 ## Open Questions
 
+### Answered
+
+- ~~Does a stronger coordination instruction ("you MUST choose a different insertion point than the other agent") change behavior?~~ **Answered 2026-03-22:** No. Gate condition with mandatory check-and-revise step: 20/20 CONFLICT. Even explicit self-verification doesn't overcome semantic-correctness bias.
+- ~~Is Align a substrate (other primitives can't function without it)?~~ **Answered 2026-03-22:** No — "substrate" overclaims. 5 cases show Route/Sequence/Throttle mechanically holding while Align is broken. Align is a multiplier/validity condition with proportional (not binary) impact. See `probes/2026-03-22-probe-falsify-align-as-substrate.md`.
+- ~~Does the control theory mapping (Route→Actuator, Sequence→Reference, Throttle→Controller, Align→Sensor) hold?~~ **Answered 2026-03-22:** Structural homology, not isomorphism. 64% clean mapping with systematic sensor bleed pattern. Qualitative insights transfer; formal tools do not. See `probes/2026-03-22-probe-control-theory-component-mapping.md`.
+- ~~Does the gate/attractor mechanism distinction generalize beyond orch-go?~~ **Answered 2026-03-22:** Yes — 6/6 external frameworks show perfect correlation. Gate-based coordination fails, attractor-based coordination works. McEntire degradation tracks gate/attractor gradient monotonically. See `.kb/models/knowledge-accretion/probes/2026-03-22-probe-validate-gate-attractor-external-frameworks.md`.
+
+### Open
+
 - Does placement work when the number of agents exceeds the number of natural insertion points?
 - Can iterative messaging (multi-round negotiation) produce different results than single-shot plan exchange?
-- ~~Does a stronger coordination instruction ("you MUST choose a different insertion point than the other agent") change behavior?~~ **Answered 2026-03-22:** No. Gate condition with mandatory check-and-revise step: 20/20 CONFLICT. Even explicit self-verification doesn't overcome semantic-correctness bias.
 - At what task granularity does structural placement become impractical?
-- Should Align decompose into sub-primitives? (It covers 50% of external failures — may be "state alignment" + "goal alignment"). **New evidence (2026-03-22):** 80-trial messaging condition shows task alignment defeating coordination alignment in 18/20 trials — agents agreed on the "correct" insertion point (task Align intact) while failing to coordinate (coordination Align broken). At minimum three sub-components: task alignment, state alignment, coordination alignment.
+- Should Align decompose into sub-primitives? **Evidence supports yes (2026-03-22):** 80-trial messaging condition shows task alignment defeating coordination alignment in 18/20 trials. At minimum three sub-components: task alignment (agent understands its own task), state alignment (agent knows system state), coordination alignment (agent adjusts behavior for multi-agent context). Needs formal decomposition and separate testing.
 - Do the four primitives have ordering dependencies? (Must Route precede Sequence?)
 - How do primitives interact with task type? (DeepMind found coordination strategy is task-dependent — financial reasoning favors centralized, web navigation favors decentralized)
 - Do the primitives apply to non-LLM multi-agent systems? (robotics, distributed computing, human organizations)
+- Does the multiplier model (Coordination_value = Route x Sequence x Throttle x Align) hold quantitatively, or is the interaction more complex? McEntire's 64% hierarchical result is consistent, but no controlled experiment isolates each factor.
+- Can attractor-based coordination degrade? (What happens when structural destinations become stale or misaligned with evolving requirements?)
 
 ## Source Investigations
 
