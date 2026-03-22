@@ -1,7 +1,7 @@
 # Model: Measurement Honesty
 
 **Domain:** Epistemic Properties of Self-Measurement Systems
-**Last Updated:** 2026-03-19
+**Last Updated:** 2026-03-21
 **Validation Status:** WORKING HYPOTHESIS — derived from one system (orch-go) over 3 months of measurement infrastructure development. The taxonomy is grounded in 10 subsystems audited, 3 deleted, 5 simplified. Not yet tested in a second system.
 **Synthesized From:**
 - `.kb/investigations/2026-03-18-arch-trust-audit-measurement-subsystems.md` — 8-system trust audit: 3 DELETE, 5 SIMPLIFY, 0 GROUND
@@ -44,6 +44,7 @@ The diagnostic question: **"What would make this metric go red?"**
 
 1. **If nothing can** → False confidence. Delete.
    - Example: Merge rate in single-branch workflow. All commits go to main. Merge rate is always 100%. Nothing can make it not-100%. It's measuring "did the agent commit" which is the same as "did the agent complete."
+   - Example: Skill inference "success rate." The pipeline has exhaustive fallback (label → title → description → type), and the type field is present in 100% of issues (4,036/4,036). The metric structurally cannot fail — it measures "did a skill get assigned," not "was the right skill assigned."
 
 2. **If something can, but you don't know the false positive rate** → Noisy signal. Calibrate.
    - Example: Duplication detector. It fires on ~89 events. But before measurement, assumed 0% FP rate. Actual: 35%. The signal exists but operators can't correctly weight it without knowing precision.
@@ -246,6 +247,8 @@ The rebuild addressed false confidence by splitting the measurement into two mea
 
 **2026-03-19:** Governance displacement probe revealed two new failure modes. (1) **Two-gap independence:** measuring an action (hook deny count) without its consequence (code displacement) creates a new instance of false confidence — "we blocked N times" doesn't mean governance works. (2) **Structural undetectability ceiling:** some displacement outcomes (invisible workarounds) cannot be detected regardless of instrumentation, meaning displacement metrics are inherently floor estimates. Added §5 and §6 to "Why This Fails."
 
+**2026-03-21:** Issue quality baseline probe confirmed invariants #1 and #2 in daemon skill inference. The spawn.skill_inferred pipeline (682 unique inferences, 641 daemon spawns) has a 100% "success rate" — but this is structurally guaranteed by exhaustive fallback chains (label → title → description → type), not evidence of correct routing. 69% of inferences fall through to the coarsest signal (type-based), and zero mechanism exists to measure whether inferred skills were correct. Added new false-confidence example (exhaustive fallback producing guaranteed positive results).
+
 ---
 
 ## References
@@ -258,6 +261,7 @@ The rebuild addressed false confidence by splitting the measurement into two mea
 - `.kb/models/knowledge-accretion/probes/2026-03-18-probe-phase-transition-mechanical-to-epistemic-failures.md` — Trust pyramid, false coherence taxonomy, Phase 1 vs Phase 2 failure modes
 - 2026-03-19: Knowledge Decay Verification — All 6 concrete claims confirmed. Found active instance of §3 failure mode: `SuccessRate` field names in allocation code still use old semantics despite display relabeling.
 - 2026-03-19: Governance Displacement Measurement Design — Confirms invariants #2 and #4. Extends model with two-gap independence (action-fired vs consequence-measured), structural undetectability ceiling, and latency-honesty tradeoff in hook instrumentation. Proposes 3-phase measurement design for governance hooks.
+- 2026-03-21: Issue Quality Baseline — Confirms invariants #1 and #2. Skill inference "success rate" is false confidence: exhaustive fallback guarantees 100% via type field (always present), while routing accuracy is unmeasured. 69% type-based fallback, 12% label, 12% title, 5% description. Corpus: 4,036 issues, 100% have type, 66% have description, 15% have labels.
 
 **Publications:**
 - `.kb/publications/self-measurement-report.md` — Orch-go self-measurement report (methodology and honest reporting template)
