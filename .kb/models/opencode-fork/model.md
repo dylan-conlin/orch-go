@@ -2,14 +2,14 @@
 
 **Domain:** Dylan's OpenCode fork at `~/Documents/personal/opencode`
 **Created:** 2026-02-13
-**Last Updated:** 2026-03-06
+**Last Updated:** 2026-03-21
 **Source:** Investigation `2026-02-13-inv-build-model-opencode-fork.md` + fork's own `2026-02-11-inv-opencode-fork-resource-audit-investigate.md`
 
 ---
 
 ## Summary
 
-Dylan owns a fork of [sst/opencode](https://github.com/sst/opencode) at `~/Documents/personal/opencode`. The fork is 16 custom commits ahead of upstream (linear forward — all upstream changes included). Custom changes focus on **memory management** (LRU/TTL instance eviction preventing 8.4GB unbounded growth), **SSE cleanup** (idempotent teardown preventing leaked connections), **OAuth stealth mode** (Claude Max access), **ORCH_WORKER header forwarding** (worker session detection), **session metadata** (extensible key-value storage), and **session TTL** (auto-expiry with periodic cleanup). The fork is a TypeScript monorepo (Bun runtime, Hono HTTP framework) with sessions stored in SQLite database (~/.local/share/opencode/opencode.db) using Drizzle ORM with migration-based schema management. Session status (idle/busy/retry) is tracked in-memory only, lost on server restart. A `GET /session/status` endpoint already exists for querying session state.
+Dylan owns a fork of [sst/opencode](https://github.com/sst/opencode) at `~/Documents/personal/opencode`. The fork is 32 custom commits ahead of upstream (linear forward — rebased onto upstream/dev ~Feb 25, 2026 incorporating 268 upstream commits). Custom changes focus on **memory management** (LRU/TTL instance eviction preventing 8.4GB unbounded growth), **SSE cleanup** (idempotent teardown preventing leaked connections), **OAuth stealth mode** (Claude Max access), **ORCH_WORKER header forwarding + server-side metadata.role** (worker session detection, full chain working), **session metadata** (extensible key-value storage), and **session TTL** (auto-expiry with periodic cleanup). The fork is a TypeScript monorepo (Bun runtime, Hono HTTP framework) with sessions stored in SQLite database (~/.local/share/opencode/opencode.db) using Drizzle ORM with migration-based schema management. Session status (idle/busy/retry) is tracked in-memory only, lost on server restart. A `GET /session/status` endpoint already exists for querying session state.
 
 ---
 
@@ -47,7 +47,7 @@ Sessions are stored in SQLite database at `~/.local/share/opencode/opencode.db`:
 - Managed via Drizzle ORM (bun-sqlite driver)
 
 **Schema Management:**
-- Schema definitions in `packages/opencode/src/*.sql.ts` files (e.g., `session.sql.ts`, `message.sql.ts`)
+- Schema definitions in `packages/opencode/src/**/*.sql.ts` files (e.g., `session/session.sql.ts`, `message.sql.ts`) — note: upstream restructured into subdirectories ~Feb 2026
 - Migration files generated via `bun drizzle-kit generate` in `packages/opencode/migration/`
 - Migrations applied at server startup via `drizzle-orm/bun-sqlite/migrator`
 - **CRITICAL:** Schema changes in `*.sql.ts` MUST have corresponding migrations or server crashes on startup (columns missing from actual database)
@@ -96,53 +96,52 @@ A fire-and-forget race existed in MCP hot-reload: `InstanceBootstrap` called `MC
 
 ### Remote Setup
 ```
-fork     → git@github.com:user/opencode.git  (Dylan's GitHub fork)
-origin   → https://github.com/sst/opencode            (upstream, stale Jan 27)
-upstream → https://github.com/sst/opencode.git         (upstream, fetched Feb 5)
+fork     → git@github.com:dylan-conlin/opencode.git  (Dylan's GitHub fork)
+origin   → https://github.com/sst/opencode            (upstream)
+upstream → https://github.com/sst/opencode.git         (upstream)
 ```
 
-### Custom Commits (upstream/dev..HEAD, 16 commits)
+### Custom Commits (upstream/dev..HEAD, 32 commits as of 2026-03-21)
 
-| Date | Commit | Category | Description |
-|------|--------|----------|-------------|
-| Feb 14 | f3c3865b8 | feat(session) | Add TTL with periodic cleanup and SSE events |
-| Feb 14 | 36f084ca5 | feat | Add optional metadata field to Session.Info schema |
-| Feb 14 | 3ea245f6f | fix | Rebind session_delete from ctrl+d to <leader>d |
-| Feb 11 | c08ed9c | investigation | Complete OpenCode fork resource audit |
-| Feb 11 | fac8fc8 | investigation | Initial checkpoint for fork resource audit |
-| Feb 9 | 5032a89 | fix(config) | Skip .test.ts/.spec.ts from plugin directories |
-| Feb 9 | 26d2312 | fix(server) | Catch unhandled AbortError from prompt_async cancellation |
-| Feb 7 | e9e4834 | fix | **Instance eviction (LRU/TTL) + SSE cleanup** — prevents 8.4GB growth |
-| Feb 7 | c9c2796 | fix(server) | Bound instance cache with LRU eviction, fix SSE teardown on dispose |
-| Feb 7 | 85b0bc8 | feat(server) | Log periodic memory usage for leak diagnosis |
-| Feb 7 | 0d841ae | fix(tui) | Clean up error rendering for DOMException and NotFoundError |
-| Jan 29 | 87e9212 | fix(sdk) | Make SSE reconnection fix permanent in build process |
-| Jan 29 | 2a2c3bf | investigation | Verify OAuth priority fix was lost from dev branch |
-| Jan 28 | 2e851f3 | fix | Forward ORCH_WORKER env var as x-opencode-env-ORCH_WORKER header |
-| Jan 28 | f321338 | test | Tests for session.metadata.role from ORCH_WORKER header |
-| Jan 28 | 2137108 | feat(stealth) | **Full pi-ai stealth mode** parity for Claude Max OAuth |
+The full commit table is too large to maintain inline. Key categories of custom commits:
+
+| Category | Count | Key Changes |
+|----------|-------|-------------|
+| Memory management | 3 | Instance LRU/TTL eviction, periodic memory logging |
+| SSE/server | 3 | SSE cleanup, AbortError handling, retry limits |
+| Session features | 4 | TTL, metadata, keybind fix, TUI delete fix |
+| ORCH_WORKER | 4 | Header forwarding (SDK), server-side metadata.role, plugin hook chain |
+| Auth/stealth | 2 | OAuth stealth mode, OAuth priority investigation |
+| MCP | 2 | watchConfig race fix, file watcher for hot-reload |
+| Build/infra | 4 | SSE reconnect fix, plugin filter, GitHub Actions cleanup, OpenAPI spec fixes |
+| Investigation/probes | 4 | Fork audit, Codex plugin probe, metadata API verification |
+| Rebase | 1 | Major rebase incorporating 268 upstream commits (~Feb 25) |
+| Other | 5 | Synthesis updates, TUI fixes, spec constraints |
 
 ### Sync Strategy
-- Last upstream fetch: Feb 5, 2026
+- Last upstream rebase: ~Feb 25, 2026 (incorporated 268 upstream commits)
 - Sync method: `git reset --hard upstream/dev` + cherry-pick custom commits
 - upstream/dev IS ancestor of local dev — pure linear forward advancement
-- Fork now 16 custom commits ahead (3 new commits added Feb 14: TTL, metadata, keybind fix)
-- **510 commits ahead of origin/dev** (stale origin, not meaningfully different from upstream)
+- Fork now 32 custom commits ahead — approaching the pain threshold for rebasing
+- **Note:** Upstream restructured `src/` into subdirectories during the 268-commit rebase. All flat `src/*.ts` paths became `src/{module}/*.ts`.
 
 ### Critical Custom Changes
 
-**1. Instance LRU/TTL Eviction (instance.ts)**
+**1. Instance LRU/TTL Eviction (`src/project/instance.ts`)**
 Upstream: 95-line file, bare `Map<string, Promise<Context>>()` — zero eviction, unbounded growth.
 Fork: 350-line file with `MAX_INSTANCES=20`, `IDLE_TTL_MS=30min`, LRU eviction, TTL eviction, active-instance protection, eviction counters. Prevents the 8.4GB catastrophe that was killing macOS.
 
-**2. SSE Cleanup (server.ts)**
+**2. SSE Cleanup (`src/server/server.ts`)**
 Added idempotent SSE teardown with `cleaned` flag and dual cleanup paths (client abort + server dispose). Prevents leaked SSE connections from accumulating memory.
 
 **3. OAuth Stealth Mode**
 Implements pi-ai stealth mode parity for Claude Max OAuth. Enables Opus access via Max subscription.
 
-**4. ORCH_WORKER Header (sdk/client.ts)**
-Forwards `ORCH_WORKER` env var as `x-opencode-env-ORCH_WORKER` HTTP header. Enables server to detect worker sessions. **Note:** This change is in `packages/sdk/js/src/v2/client.ts` and the commit message references `session.metadata.role` being set on the server side (session.ts:207-211), but the corresponding server-side code was not found in the current codebase — may have been lost during an upstream rebase.
+**4. ORCH_WORKER Full Chain (`sdk/client.ts` + `src/server/routes/session.ts`)**
+SDK forwards `ORCH_WORKER` env var as `x-opencode-env-ORCH_WORKER` HTTP header. Server reads the header and sets `session.metadata.role` on session creation (`src/server/routes/session.ts:245-249`). Plugin hooks pass metadata through the chain. Full worker detection pipeline is operational.
+
+**5. Session TTL Cleanup (`src/session/cleanup.ts`)**
+Extracted from monolithic session.ts into dedicated cleanup module. Runs every 5 minutes, queries sessions with TTL set, deletes expired ones while respecting busy sessions.
 
 ---
 
@@ -294,9 +293,9 @@ server.instance.disposed
 
 ### Sync with Upstream
 - Fork must be periodically rebased onto upstream/dev
-- Custom changes can be lost during rebase (ORCH_WORKER server-side code was lost)
+- Custom changes can be lost during rebase (ORCH_WORKER server-side code was lost once, then re-implemented)
 - Strategy: keep custom commits minimal and well-isolated
-- **16 custom commits is manageable** — any more and rebasing becomes painful
+- **32 custom commits as of Mar 2026** — approaching the pain threshold. Upstream restructured `src/` into subdirectories, which means future rebases may require path adjustments in custom commits
 
 ### Instance vs Session Confusion
 - Instance eviction (TTL/LRU) does NOT delete sessions
@@ -322,7 +321,7 @@ server.instance.disposed
 - Error: columns missing from actual database when server tries to query/insert
 - Pre-commit hook enforces migration generation: checks for schema changes without corresponding migrations
 - Migration workflow:
-  1. Edit schema in `packages/opencode/src/*.sql.ts`
+  1. Edit schema in `packages/opencode/src/**/*.sql.ts`
   2. Run `bun drizzle-kit generate` to create migration file in `migration/`
   3. Server auto-applies migrations at startup via `drizzle-orm/bun-sqlite/migrator`
 - **Never skip migrations** — SQLite won't auto-sync schema changes like some ORMs
@@ -368,14 +367,16 @@ server.instance.disposed
 
 ## References
 
-**Primary Evidence (Verify These):**
-- `~/Documents/personal/opencode/packages/opencode/src/instance.ts` - Instance LRU/TTL eviction implementation (350 lines, custom)
-- `~/Documents/personal/opencode/packages/opencode/src/server.ts` - SSE cleanup with idempotent teardown
-- `~/Documents/personal/opencode/packages/opencode/src/session.ts` - Session storage and API implementation (now using Drizzle ORM)
-- `~/Documents/personal/opencode/packages/opencode/src/session.sql.ts` - Session table schema definition (Drizzle)
+**Primary Evidence (paths verified 2026-03-21):**
+- `~/Documents/personal/opencode/packages/opencode/src/project/instance.ts` - Instance LRU/TTL eviction implementation (350 lines, custom)
+- `~/Documents/personal/opencode/packages/opencode/src/server/server.ts` - SSE cleanup with idempotent teardown
+- `~/Documents/personal/opencode/packages/opencode/src/session/index.ts` - Session storage (Drizzle ORM)
+- `~/Documents/personal/opencode/packages/opencode/src/session/cleanup.ts` - TTL cleanup job (extracted from session.ts)
+- `~/Documents/personal/opencode/packages/opencode/src/server/routes/session.ts` - Session API routes incl. ORCH_WORKER metadata.role
+- `~/Documents/personal/opencode/packages/opencode/src/session/session.sql.ts` - Session table schema definition (Drizzle)
 - `~/Documents/personal/opencode/packages/opencode/migration/` - Drizzle migration files
 - `~/Documents/personal/opencode/packages/sdk/js/src/v2/client.ts` - ORCH_WORKER header forwarding
-- `~/Documents/personal/opencode/.git/` - Git history showing 16 custom commits ahead of upstream
+- `~/Documents/personal/opencode/.git/` - Git history showing 32 custom commits ahead of upstream
 - `~/.local/share/opencode/opencode.db` - SQLite database (WAL mode)
 - `~/Documents/personal/opencode/packages/opencode/src/project/state.ts` - State.create caching logic (rejected Promise fix applied)
 - `~/Documents/personal/opencode/packages/opencode/src/mcp/index.ts` - MCP watcher initialization (race condition fix applied)
@@ -390,6 +391,7 @@ server.instance.disposed
 | `probes/2026-02-18-probe-state-create-rejected-promise-cache.md` | 2026-02-18 | CONFIRMS + EXTENDS | Empirically confirmed rejected Promise caching (`attempts=1, samePromise=true`); fix validated enabling retry after rejection |
 | `probes/2026-02-18-probe-verify-session-metadata-api.md` | 2026-02-18 | CONFIRMS | Metadata persists via `Session.setMetadata`; TTL cleanup guards busy sessions; `GET /session/status` returns liveness only, not metadata |
 | `probes/2026-02-20-probe-mcp-hot-reload-production-failure.md` | 2026-02-20 | EXTENDS | Documented MCP watcher fire-and-forget race condition (double unawaited async init); fix applied and verified with regression test |
+| `probes/2026-03-21-probe-knowledge-decay-verification.md` | 2026-03-21 | CORRECTS | File paths all stale (upstream restructured src/ into subdirectories); commit count 16→32; ORCH_WORKER server-side code restored; upstream rebase incorporated 268 commits |
 
 ## Auto-Linked Investigations
 

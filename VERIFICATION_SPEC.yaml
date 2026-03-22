@@ -1,44 +1,42 @@
-task: orch-go-4hjp3
-title: Knowledge decay verification - opencode-session-lifecycle model
-type: knowledge-probe
-model: opencode-session-lifecycle
-beads_id: orch-go-4hjp3
+probe_id: knowledge-decay-opencode-fork
+claim: "OpenCode fork model claims are current"
+model: opencode-fork
+beads_id: orch-go-1pqsn
 tier: light
-verdict: moderately_stale_now_corrected
+verdict: partially_stale
 
 verification:
-  claims_checked: 7
-  confirmed: 4
-  stale_corrected: 2
-  partially_stale_corrected: 1
-
   evidence_sources:
-    - source: "pkg/opencode/client.go"
-      finding: "GET /session/status endpoint exists, WaitForSessionIdle polls it every 500ms"
-      corrects: "Model claimed 'can't poll for status' — now can"
+    - source: "git log --oneline upstream/dev..HEAD | wc -l"
+      finding: "32 custom commits (model claimed 16)"
+      supports_claim: false
 
-    - source: "pkg/opencode/client.go:488"
-      finding: "CreateSessionRequest has TimeTTL field for automatic session expiration"
-      corrects: "Model claimed 'sessions never expire' — TTL now supported"
+    - source: "find packages/opencode/src -name instance.ts"
+      finding: "Restructured to src/project/instance.ts (model had src/instance.ts)"
+      supports_claim: false
 
-    - source: "pkg/opencode/types.go:67"
-      finding: "SessionStatusInfo has IsRetrying() — 'retry' is a third status type"
-      corrects: "Model only documented busy/idle states"
-
-    - source: "pkg/opencode/client.go:501-524"
-      finding: "CreateSession accepts directory param and sets x-opencode-directory header"
-      corrects: "Cross-project directory bug marked as fixed"
-
-    - source: "pkg/opencode/sse.go, monitor.go"
-      finding: "SSE completion detection via session.status busy→idle confirmed intact"
+    - source: "wc -l packages/opencode/src/project/instance.ts"
+      finding: "350 lines (matches model claim)"
       supports_claim: true
 
-    - source: "pkg/spawn/backends/"
-      finding: "Three backends (headless, tmux, inline) confirmed"
+    - source: "grep ORCH_WORKER src/server/routes/session.ts"
+      finding: "Server-side code exists at line 245 (model said 'may have been lost')"
+      supports_claim: false
+
+    - source: "ls packages/opencode/src/session/cleanup.ts"
+      finding: "TTL cleanup extracted to dedicated module (model had monolithic session.ts)"
       supports_claim: true
+
+  model_updates_applied:
+    - "Fixed all file paths in References section"
+    - "Updated commit count 16 -> 32"
+    - "Removed 'lost code' caveat for ORCH_WORKER"
+    - "Updated sync strategy (Feb 25 rebase with 268 upstream commits)"
+    - "Added cleanup.ts extraction note"
+    - "Noted upstream src/ restructure into subdirectories"
 
   manual_checks: none
 
 files_modified:
-  - ".kb/models/opencode-session-lifecycle/probes/2026-03-21-probe-knowledge-decay-verification.md"
-  - ".kb/models/opencode-session-lifecycle/model.md"
+  - ".kb/models/opencode-fork/probes/2026-03-21-probe-knowledge-decay-verification.md"
+  - ".kb/models/opencode-fork/model.md"
