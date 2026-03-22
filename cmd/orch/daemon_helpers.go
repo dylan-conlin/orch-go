@@ -27,8 +27,6 @@ func daemonConfigFromFlags() daemon.Config {
 	config.ReflectInterval = time.Duration(daemonReflectInterval) * time.Minute
 	config.ReflectCreateIssues = daemonReflectIssues
 	config.ReflectOpenEnabled = daemonReflectOpen
-	config.ReflectModelDriftEnabled = daemonModelDriftInterval > 0
-	config.ReflectModelDriftInterval = time.Duration(daemonModelDriftInterval) * time.Minute
 	config.KnowledgeHealthEnabled = daemonKnowledgeHealthInterval > 0
 	config.KnowledgeHealthInterval = time.Duration(daemonKnowledgeHealthInterval) * time.Minute
 	config.CleanupEnabled = daemonCleanupEnabled && daemonCleanupInterval > 0

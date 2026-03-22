@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"github.com/dylan-conlin/orch-go/pkg/artifactsync"
-	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // Test helpers
@@ -119,62 +118,6 @@ func (m *mockReflector) Reflect(createIssues bool) (*ReflectResult, error) {
 func (m *mockReflector) ReflectOpen() error {
 	if m.ReflectOpenFunc != nil {
 		return m.ReflectOpenFunc()
-	}
-	return nil
-}
-
-// mockModelDriftStore implements modeldrift.Store for tests.
-type mockModelDriftStore struct {
-	ReadStalenessEventsFunc func(path string) ([]spawn.StalenessEvent, error)
-	LoadMetadataFunc        func(modelPath string) (ModelDriftMetadata, error)
-	CountCommitsFunc        func(projectDir, lastUpdated string, files []string) (int, error)
-	CreateIssueFunc         func(args ModelDriftIssueCreateArgs) (string, error)
-}
-
-func (m *mockModelDriftStore) ReadStalenessEvents(path string) ([]spawn.StalenessEvent, error) {
-	if m.ReadStalenessEventsFunc != nil {
-		return m.ReadStalenessEventsFunc(path)
-	}
-	return nil, nil
-}
-
-func (m *mockModelDriftStore) LoadMetadata(modelPath string) (ModelDriftMetadata, error) {
-	if m.LoadMetadataFunc != nil {
-		return m.LoadMetadataFunc(modelPath)
-	}
-	return ModelDriftMetadata{}, nil
-}
-
-func (m *mockModelDriftStore) CountCommits(projectDir, lastUpdated string, files []string) (int, error) {
-	if m.CountCommitsFunc != nil {
-		return m.CountCommitsFunc(projectDir, lastUpdated, files)
-	}
-	return 0, nil
-}
-
-func (m *mockModelDriftStore) CreateIssue(args ModelDriftIssueCreateArgs) (string, error) {
-	if m.CreateIssueFunc != nil {
-		return m.CreateIssueFunc(args)
-	}
-	return "", nil
-}
-
-// mockKnowledgeHealthService implements KnowledgeHealthService for tests.
-type mockKnowledgeHealthService struct {
-	CheckFunc       func() (*KnowledgeHealthResult, error)
-	CreateIssueFunc func(result *KnowledgeHealthResult) error
-}
-
-func (m *mockKnowledgeHealthService) Check() (*KnowledgeHealthResult, error) {
-	if m.CheckFunc != nil {
-		return m.CheckFunc()
-	}
-	return &KnowledgeHealthResult{}, nil
-}
-
-func (m *mockKnowledgeHealthService) CreateIssue(result *KnowledgeHealthResult) error {
-	if m.CreateIssueFunc != nil {
-		return m.CreateIssueFunc(result)
 	}
 	return nil
 }

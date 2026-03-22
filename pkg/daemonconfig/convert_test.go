@@ -7,6 +7,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 )
 
+
 func TestFromUserConfig_Defaults(t *testing.T) {
 	cfg := userconfig.DefaultConfig()
 	result := FromUserConfig(cfg)
@@ -89,25 +90,11 @@ func TestFromUserConfig_Defaults(t *testing.T) {
 	if result.InvariantViolationThreshold != defaults.InvariantViolationThreshold {
 		t.Errorf("InvariantViolationThreshold = %d, want %d", result.InvariantViolationThreshold, defaults.InvariantViolationThreshold)
 	}
-	if result.ReflectModelDriftEnabled != defaults.ReflectModelDriftEnabled {
-		t.Errorf("ReflectModelDriftEnabled = %v, want %v", result.ReflectModelDriftEnabled, defaults.ReflectModelDriftEnabled)
-	}
-	if result.ReflectModelDriftInterval != defaults.ReflectModelDriftInterval {
-		t.Errorf("ReflectModelDriftInterval = %v, want %v", result.ReflectModelDriftInterval, defaults.ReflectModelDriftInterval)
-	}
-	if result.KnowledgeHealthEnabled != defaults.KnowledgeHealthEnabled {
-		t.Errorf("KnowledgeHealthEnabled = %v, want %v", result.KnowledgeHealthEnabled, defaults.KnowledgeHealthEnabled)
-	}
-	if result.KnowledgeHealthInterval != defaults.KnowledgeHealthInterval {
-		t.Errorf("KnowledgeHealthInterval = %v, want %v", result.KnowledgeHealthInterval, defaults.KnowledgeHealthInterval)
-	}
-	if result.KnowledgeHealthThreshold != defaults.KnowledgeHealthThreshold {
-		t.Errorf("KnowledgeHealthThreshold = %d, want %d", result.KnowledgeHealthThreshold, defaults.KnowledgeHealthThreshold)
-	}
 	if result.CleanupArchivedTTLDays != defaults.CleanupArchivedTTLDays {
 		t.Errorf("CleanupArchivedTTLDays = %d, want %d", result.CleanupArchivedTTLDays, defaults.CleanupArchivedTTLDays)
 	}
 }
+
 
 func TestFromUserConfig_CustomValues(t *testing.T) {
 	pollInterval := 30
@@ -149,12 +136,11 @@ func TestFromUserConfig_CustomValues(t *testing.T) {
 	}
 }
 
+
 func TestFromUserConfig_AllFieldsCustom(t *testing.T) {
 	// Verify all fields can be overridden via userconfig
 	maxSpawns := 10
 	spawnDelay := 5
-	modelDriftEnabled := false
-	modelDriftHours := 8
 	cleanupEnabled := false
 	cleanupHours := 12
 	cleanupDays := 14
@@ -164,9 +150,6 @@ func TestFromUserConfig_AllFieldsCustom(t *testing.T) {
 	recoveryInterval := 15
 	recoveryIdle := 20
 	recoveryRate := 120
-	khEnabled := false
-	khHours := 4
-	khThreshold := 100
 	orphanEnabled := false
 	orphanInterval := 60
 	orphanAge := 120
@@ -182,8 +165,6 @@ func TestFromUserConfig_AllFieldsCustom(t *testing.T) {
 		Daemon: userconfig.DaemonConfig{
 			MaxSpawnsPerHour:               &maxSpawns,
 			SpawnDelaySeconds:              &spawnDelay,
-			ReflectModelDriftEnabled:       &modelDriftEnabled,
-			ReflectModelDriftIntervalHours: &modelDriftHours,
 			CleanupEnabled:                 &cleanupEnabled,
 			CleanupIntervalHours:           &cleanupHours,
 			CleanupAgeDays:                 &cleanupDays,
@@ -194,9 +175,6 @@ func TestFromUserConfig_AllFieldsCustom(t *testing.T) {
 			RecoveryIntervalMinutes:        &recoveryInterval,
 			RecoveryIdleThresholdMinutes:   &recoveryIdle,
 			RecoveryRateLimitMinutes:       &recoveryRate,
-			KnowledgeHealthEnabled:         &khEnabled,
-			KnowledgeHealthIntervalHours:   &khHours,
-			KnowledgeHealthThreshold:       &khThreshold,
 			OrphanDetectionEnabled:         &orphanEnabled,
 			OrphanDetectionIntervalMinutes: &orphanInterval,
 			OrphanAgeThresholdMinutes:      &orphanAge,
@@ -217,12 +195,6 @@ func TestFromUserConfig_AllFieldsCustom(t *testing.T) {
 	}
 	if result.SpawnDelay != 5*time.Second {
 		t.Errorf("SpawnDelay = %v, want 5s", result.SpawnDelay)
-	}
-	if result.ReflectModelDriftEnabled != false {
-		t.Errorf("ReflectModelDriftEnabled = %v, want false", result.ReflectModelDriftEnabled)
-	}
-	if result.ReflectModelDriftInterval != 8*time.Hour {
-		t.Errorf("ReflectModelDriftInterval = %v, want 8h", result.ReflectModelDriftInterval)
 	}
 	if result.CleanupEnabled != false {
 		t.Errorf("CleanupEnabled = %v, want false", result.CleanupEnabled)
@@ -253,15 +225,6 @@ func TestFromUserConfig_AllFieldsCustom(t *testing.T) {
 	}
 	if result.RecoveryRateLimit != 120*time.Minute {
 		t.Errorf("RecoveryRateLimit = %v, want 120m", result.RecoveryRateLimit)
-	}
-	if result.KnowledgeHealthEnabled != false {
-		t.Errorf("KnowledgeHealthEnabled = %v, want false", result.KnowledgeHealthEnabled)
-	}
-	if result.KnowledgeHealthInterval != 4*time.Hour {
-		t.Errorf("KnowledgeHealthInterval = %v, want 4h", result.KnowledgeHealthInterval)
-	}
-	if result.KnowledgeHealthThreshold != 100 {
-		t.Errorf("KnowledgeHealthThreshold = %d, want 100", result.KnowledgeHealthThreshold)
 	}
 	if result.OrphanDetectionEnabled != false {
 		t.Errorf("OrphanDetectionEnabled = %v, want false", result.OrphanDetectionEnabled)
@@ -295,6 +258,7 @@ func TestFromUserConfig_AllFieldsCustom(t *testing.T) {
 	}
 }
 
+
 func TestFromUserConfig_ComplianceNil(t *testing.T) {
 	cfg := userconfig.DefaultConfig()
 	result := FromUserConfig(cfg)
@@ -307,6 +271,7 @@ func TestFromUserConfig_ComplianceNil(t *testing.T) {
 		t.Errorf("Compliance.Resolve() = %v, want strict", got)
 	}
 }
+
 
 func TestFromUserConfig_ComplianceWithOverrides(t *testing.T) {
 	cfg := &userconfig.Config{
@@ -351,6 +316,7 @@ func TestFromUserConfig_ComplianceWithOverrides(t *testing.T) {
 	}
 }
 
+
 func TestFromUserConfig_ComplianceInvalidLevel(t *testing.T) {
 	cfg := &userconfig.Config{
 		Daemon: userconfig.DaemonConfig{
@@ -379,6 +345,7 @@ func TestFromUserConfig_ComplianceInvalidLevel(t *testing.T) {
 		t.Errorf("Skills[architect] = %v, want strict", got)
 	}
 }
+
 
 func TestFromUserConfig_ReflectConfig(t *testing.T) {
 	enabled := false

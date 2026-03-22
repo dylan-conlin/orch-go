@@ -1394,29 +1394,6 @@ func TestDaemonSpawnDelaySeconds(t *testing.T) {
 		t.Errorf("DaemonSpawnDelaySeconds() explicit = %d, want 10", got)
 	}
 }
-
-func TestDaemonReflectModelDriftEnabled(t *testing.T) {
-	cfg := &Config{}
-	if got := cfg.DaemonReflectModelDriftEnabled(); got != true {
-		t.Errorf("DaemonReflectModelDriftEnabled() default = %v, want true", got)
-	}
-	cfg.Daemon.ReflectModelDriftEnabled = boolPtr(false)
-	if got := cfg.DaemonReflectModelDriftEnabled(); got != false {
-		t.Errorf("DaemonReflectModelDriftEnabled() explicit = %v, want false", got)
-	}
-}
-
-func TestDaemonReflectModelDriftIntervalHours(t *testing.T) {
-	cfg := &Config{}
-	if got := cfg.DaemonReflectModelDriftIntervalHours(); got != 4 {
-		t.Errorf("DaemonReflectModelDriftIntervalHours() default = %d, want 4", got)
-	}
-	cfg.Daemon.ReflectModelDriftIntervalHours = intPtr(8)
-	if got := cfg.DaemonReflectModelDriftIntervalHours(); got != 8 {
-		t.Errorf("DaemonReflectModelDriftIntervalHours() explicit = %d, want 8", got)
-	}
-}
-
 func TestDaemonCleanupEnabled(t *testing.T) {
 	cfg := &Config{}
 	if got := cfg.DaemonCleanupEnabled(); got != true {
@@ -1526,40 +1503,6 @@ func TestDaemonRecoveryRateLimitMinutes(t *testing.T) {
 		t.Errorf("DaemonRecoveryRateLimitMinutes() explicit = %d, want 120", got)
 	}
 }
-
-func TestDaemonKnowledgeHealthEnabled(t *testing.T) {
-	cfg := &Config{}
-	if got := cfg.DaemonKnowledgeHealthEnabled(); got != true {
-		t.Errorf("DaemonKnowledgeHealthEnabled() default = %v, want true", got)
-	}
-	cfg.Daemon.KnowledgeHealthEnabled = boolPtr(false)
-	if got := cfg.DaemonKnowledgeHealthEnabled(); got != false {
-		t.Errorf("DaemonKnowledgeHealthEnabled() explicit = %v, want false", got)
-	}
-}
-
-func TestDaemonKnowledgeHealthIntervalHours(t *testing.T) {
-	cfg := &Config{}
-	if got := cfg.DaemonKnowledgeHealthIntervalHours(); got != 2 {
-		t.Errorf("DaemonKnowledgeHealthIntervalHours() default = %d, want 2", got)
-	}
-	cfg.Daemon.KnowledgeHealthIntervalHours = intPtr(4)
-	if got := cfg.DaemonKnowledgeHealthIntervalHours(); got != 4 {
-		t.Errorf("DaemonKnowledgeHealthIntervalHours() explicit = %d, want 4", got)
-	}
-}
-
-func TestDaemonKnowledgeHealthThreshold(t *testing.T) {
-	cfg := &Config{}
-	if got := cfg.DaemonKnowledgeHealthThreshold(); got != 50 {
-		t.Errorf("DaemonKnowledgeHealthThreshold() default = %d, want 50", got)
-	}
-	cfg.Daemon.KnowledgeHealthThreshold = intPtr(100)
-	if got := cfg.DaemonKnowledgeHealthThreshold(); got != 100 {
-		t.Errorf("DaemonKnowledgeHealthThreshold() explicit = %d, want 100", got)
-	}
-}
-
 func TestDaemonOrphanDetectionEnabled(t *testing.T) {
 	cfg := &Config{}
 	if got := cfg.DaemonOrphanDetectionEnabled(); got != true {

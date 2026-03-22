@@ -288,11 +288,6 @@ type Config struct {
 	// daemon:expired label. Default is 14 days.
 	TriggerExpiryMaxAge time.Duration
 
-	// DigestEnabled controls whether the periodic digest producer is enabled.
-	DigestEnabled bool
-
-	// DigestInterval is how often to scan for artifact changes and produce digests.
-	DigestInterval time.Duration
 
 	// InvestigationOrphanEnabled controls whether periodic investigation orphan surfacing is enabled.
 	// When enabled, the daemon surfaces investigations that have been in_progress for longer than
@@ -335,26 +330,6 @@ type Config struct {
 	// before being auto-closed. Default is 2 hours.
 	LightweightCleanupTimeout time.Duration
 
-	// ClaimProbeGenerationEnabled controls whether the daemon generates probe issues
-	// for stale or unconfirmed claims in active models. Claims are read from
-	// .kb/models/*/claims.yaml files.
-	ClaimProbeGenerationEnabled bool
-
-	// ClaimProbeGenerationInterval is how often to check for probe-eligible claims.
-	// Default is 2 hours.
-	ClaimProbeGenerationInterval time.Duration
-
-	// TensionClusterScanEnabled controls whether the daemon scans for tension clusters
-	// across KB models and creates architect issues for clusters meeting the threshold.
-	TensionClusterScanEnabled bool
-
-	// TensionClusterScanInterval is how often to scan for tension clusters.
-	// Default is 24 hours.
-	TensionClusterScanInterval time.Duration
-
-	// TensionClusterThreshold is the minimum number of claims required for a cluster
-	// to trigger an architect issue. Default is 3.
-	TensionClusterThreshold int
 
 	// CapacityPollEnabled controls whether the daemon periodically polls account capacity
 	// and writes the result to ~/.orch/capacity-cache.json for orch status to read.
@@ -451,8 +426,6 @@ func DefaultConfig() Config {
 		TriggerExpiryEnabled:           true,
 		TriggerExpiryInterval:          24 * time.Hour,      // Daily expiry check
 		TriggerExpiryMaxAge:            14 * 24 * time.Hour, // 14-day TTL for trigger issues
-		DigestEnabled:                  true,
-		DigestInterval:                 30 * time.Minute,
 		InvestigationOrphanEnabled:               true,
 		InvestigationOrphanInterval:              time.Hour,      // Hourly check
 		InvestigationOrphanThreshold:             48 * time.Hour, // 48h before flagging
@@ -462,11 +435,6 @@ func DefaultConfig() Config {
 		LightweightCleanupEnabled:                true,
 		LightweightCleanupInterval:               30 * time.Minute, // Check every 30 minutes
 		LightweightCleanupTimeout:                2 * time.Hour,    // 2h before auto-closing
-		ClaimProbeGenerationEnabled:              true,
-		ClaimProbeGenerationInterval:             2 * time.Hour,  // Every 2 hours
-		TensionClusterScanEnabled:               true,
-		TensionClusterScanInterval:              24 * time.Hour, // Daily
-		TensionClusterThreshold:                 3,              // 3+ claims from 2+ models
 		CapacityPollEnabled:                     true,
 		CapacityPollInterval:                    5 * time.Minute, // Poll every 5 minutes
 		AuditSelectEnabled:                      true,

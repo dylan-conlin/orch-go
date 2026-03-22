@@ -44,13 +44,10 @@ type DaemonConfig struct {
 	// Defaults to 3 if not specified.
 	SpawnDelaySeconds *int `yaml:"spawn_delay_seconds,omitempty"`
 
-	// ReflectModelDriftEnabled controls whether model drift reflection is enabled.
 	// Defaults to true if not specified.
-	ReflectModelDriftEnabled *bool `yaml:"reflect_model_drift_enabled,omitempty"`
 
 	// ReflectModelDriftIntervalHours is how often to run model drift reflection (in hours).
 	// Defaults to 4 if not specified.
-	ReflectModelDriftIntervalHours *int `yaml:"reflect_model_drift_interval_hours,omitempty"`
 
 	// CleanupEnabled controls whether periodic session cleanup is enabled.
 	// Defaults to true if not specified.
@@ -92,17 +89,12 @@ type DaemonConfig struct {
 	// Defaults to 60 if not specified.
 	RecoveryRateLimitMinutes *int `yaml:"recovery_rate_limit_minutes,omitempty"`
 
-	// KnowledgeHealthEnabled controls whether periodic knowledge health checks are enabled.
 	// Defaults to true if not specified.
-	KnowledgeHealthEnabled *bool `yaml:"knowledge_health_enabled,omitempty"`
 
 	// KnowledgeHealthIntervalHours is how often to run knowledge health checks (in hours).
 	// Defaults to 2 if not specified.
-	KnowledgeHealthIntervalHours *int `yaml:"knowledge_health_interval_hours,omitempty"`
 
-	// KnowledgeHealthThreshold is the number of active quick entries that triggers a maintenance issue.
 	// Defaults to 50 if not specified.
-	KnowledgeHealthThreshold *int `yaml:"knowledge_health_threshold,omitempty"`
 
 	// OrphanDetectionEnabled controls whether periodic orphan detection is enabled.
 	// Defaults to true if not specified.
@@ -152,13 +144,10 @@ type DaemonConfig struct {
 	// These are prepended to the system PATH.
 	Path []string `yaml:"path,omitempty"`
 
-	// PlanStalenessEnabled controls whether periodic plan staleness detection is enabled.
 	// Defaults to true if not specified.
-	PlanStalenessEnabled *bool `yaml:"plan_staleness_enabled,omitempty"`
 
 	// PlanStalenessIntervalMinutes is how often to check for stale plans (in minutes).
 	// Defaults to 30 if not specified.
-	PlanStalenessIntervalMinutes *int `yaml:"plan_staleness_interval_minutes,omitempty"`
 
 	// Compliance holds per-spawn compliance level configuration.
 	// Levels: strict (default), standard, relaxed, autonomous.
@@ -259,23 +248,7 @@ func (c *Config) DaemonSpawnDelaySeconds() int {
 	return *c.Daemon.SpawnDelaySeconds
 }
 
-// DaemonReflectModelDriftEnabled returns whether model drift reflection is enabled.
-// Defaults to true if not configured.
-func (c *Config) DaemonReflectModelDriftEnabled() bool {
-	if c.Daemon.ReflectModelDriftEnabled == nil {
-		return true
-	}
-	return *c.Daemon.ReflectModelDriftEnabled
-}
 
-// DaemonReflectModelDriftIntervalHours returns the model drift reflection interval in hours.
-// Defaults to 4 if not configured.
-func (c *Config) DaemonReflectModelDriftIntervalHours() int {
-	if c.Daemon.ReflectModelDriftIntervalHours == nil {
-		return 4
-	}
-	return *c.Daemon.ReflectModelDriftIntervalHours
-}
 
 // DaemonCleanupEnabled returns whether periodic session cleanup is enabled.
 // Defaults to true if not configured.
@@ -367,32 +340,8 @@ func (c *Config) DaemonRecoveryRateLimitMinutes() int {
 	return *c.Daemon.RecoveryRateLimitMinutes
 }
 
-// DaemonKnowledgeHealthEnabled returns whether periodic knowledge health checks are enabled.
-// Defaults to true if not configured.
-func (c *Config) DaemonKnowledgeHealthEnabled() bool {
-	if c.Daemon.KnowledgeHealthEnabled == nil {
-		return true
-	}
-	return *c.Daemon.KnowledgeHealthEnabled
-}
 
-// DaemonKnowledgeHealthIntervalHours returns how often to run knowledge health checks.
-// Defaults to 2 if not configured.
-func (c *Config) DaemonKnowledgeHealthIntervalHours() int {
-	if c.Daemon.KnowledgeHealthIntervalHours == nil {
-		return 2
-	}
-	return *c.Daemon.KnowledgeHealthIntervalHours
-}
 
-// DaemonKnowledgeHealthThreshold returns the number of active quick entries that triggers maintenance.
-// Defaults to 50 if not configured.
-func (c *Config) DaemonKnowledgeHealthThreshold() int {
-	if c.Daemon.KnowledgeHealthThreshold == nil {
-		return 50
-	}
-	return *c.Daemon.KnowledgeHealthThreshold
-}
 
 // DaemonOrphanDetectionEnabled returns whether periodic orphan detection is enabled.
 // Defaults to true if not configured.
@@ -484,23 +433,7 @@ func (c *Config) DaemonInvariantViolationThreshold() int {
 	return *c.Daemon.InvariantViolationThreshold
 }
 
-// DaemonPlanStalenessEnabled returns whether periodic plan staleness detection is enabled.
-// Defaults to true if not configured.
-func (c *Config) DaemonPlanStalenessEnabled() bool {
-	if c.Daemon.PlanStalenessEnabled == nil {
-		return true
-	}
-	return *c.Daemon.PlanStalenessEnabled
-}
 
-// DaemonPlanStalenessIntervalMinutes returns how often to check for stale plans (in minutes).
-// Defaults to 30 if not configured.
-func (c *Config) DaemonPlanStalenessIntervalMinutes() int {
-	if c.Daemon.PlanStalenessIntervalMinutes == nil {
-		return 30
-	}
-	return *c.Daemon.PlanStalenessIntervalMinutes
-}
 
 // DaemonWorkingDirectory returns the daemon's working directory.
 // Defaults to ~/Documents/personal/orch-go if not configured.

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -138,25 +137,10 @@ func daemonSetup() (*daemonLoopState, error) {
 	// Wire beads health service (reuses collectHealthSnapshot from doctor_health.go)
 	d.BeadsHealth = daemon.NewDefaultBeadsHealthService(collectHealthSnapshot, getHealthStore())
 
-	// Wire proactive extraction service (DEPRECATED — replaced by accretion response)
-	d.ProactiveExtraction = daemon.NewDefaultProactiveExtractionService()
 
 	// Wire accretion response service (event-driven extraction issue creation)
-	d.AccretionResponse = daemon.NewDefaultAccretionResponseService()
 
-	// Wire trigger scan service and detectors (pattern-based issue creation)
-	d.TriggerScan = daemon.NewDefaultTriggerScanService()
-	d.TriggerDetectors = daemon.DefaultTriggerDetectors()
 
-	// Wire trigger expiry service (auto-close stale daemon:trigger issues)
-	d.TriggerExpiry = daemon.NewDefaultTriggerExpiryService()
-
-	// Wire detector outcome tracking (precision measurement via beads resolution rates)
-	d.DetectorOutcomes = daemon.NewDefaultDetectorOutcomeService()
-
-	{
-		homeDir, _ := os.UserHomeDir()
-	}
 
 
 	// Wire focus-aware priority boost
@@ -214,16 +198,6 @@ func (s *daemonLoopState) logDaemonConfig() {
 		s.dlog.Printf("  Reflect open:      %v\n", s.config.ReflectOpenEnabled)
 	} else {
 		s.dlog.Printf("  Reflect interval:  disabled\n")
-	}
-	if s.config.ReflectModelDriftEnabled {
-		s.dlog.Printf("  Model drift:       %s\n", formatDaemonDuration(s.config.ReflectModelDriftInterval))
-	} else {
-		s.dlog.Printf("  Model drift:       disabled\n")
-	}
-	if s.config.KnowledgeHealthEnabled {
-		s.dlog.Printf("  Knowledge health:  %s (threshold: %d entries)\n", formatDaemonDuration(s.config.KnowledgeHealthInterval), s.config.KnowledgeHealthThreshold)
-	} else {
-		s.dlog.Printf("  Knowledge health:  disabled\n")
 	}
 	if s.config.CleanupEnabled {
 		s.dlog.Printf("  Cleanup interval:  %s\n", formatDaemonDuration(s.config.CleanupInterval))

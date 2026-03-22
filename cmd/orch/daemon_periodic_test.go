@@ -13,25 +13,6 @@ import (
 
 // --- Test mock types implementing daemon interfaces for external tests ---
 
-type testReflector struct {
-	reflectFunc     func(createIssues bool) (*daemon.ReflectResult, error)
-	reflectOpenFunc func() error
-}
-
-func (r *testReflector) Reflect(createIssues bool) (*daemon.ReflectResult, error) {
-	if r.reflectFunc != nil {
-		return r.reflectFunc(createIssues)
-	}
-	return &daemon.ReflectResult{}, nil
-}
-
-func (r *testReflector) ReflectOpen() error {
-	if r.reflectOpenFunc != nil {
-		return r.reflectOpenFunc()
-	}
-	return nil
-}
-
 type testSessionCleaner struct {
 	cleanupFunc func(config daemon.Config) (int, string, error)
 }
@@ -70,27 +51,14 @@ func (d *testAgentDiscoverer) HasExistingSessionOrError(beadsID string) (bool, e
 // Tests that exercise one specific task enable just that task.
 func disableAllPeriodicTasks() daemon.Config {
 	config := daemon.DefaultConfig()
-	config.ReflectEnabled = false
-	config.ReflectModelDriftEnabled = false
-	config.KnowledgeHealthEnabled = false
 	config.CleanupEnabled = false
 	config.RecoveryEnabled = false
 	config.OrphanDetectionEnabled = false
 	config.PhaseTimeoutEnabled = false
 	config.AgreementCheckEnabled = false
 	config.BeadsHealthEnabled = false
-	config.FrictionAccumulationEnabled = false
 	config.ArtifactSyncEnabled = false
 	config.RegistryRefreshEnabled = false
-	config.SynthesisAutoCreateEnabled = false
-	config.LearningRefreshEnabled = false
-	config.PlanStalenessEnabled = false
-	config.ProactiveExtractionEnabled = false
-	config.AccretionResponseEnabled = false
-	config.TriggerScanEnabled = false
-	config.TriggerExpiryEnabled = false
-	config.DigestEnabled = false
-	config.InvestigationOrphanEnabled = false
 	config.VerificationFailedEscalationEnabled = false
 	config.LightweightCleanupEnabled = false
 	return config

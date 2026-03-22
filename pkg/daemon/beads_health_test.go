@@ -2,10 +2,13 @@ package daemon
 
 import (
 	"testing"
+	"errors"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/health"
 )
+
+var errTestFailure = errors.New("test failure")
 
 func TestShouldRunBeadsHealth(t *testing.T) {
 	t.Run("disabled returns false", func(t *testing.T) {

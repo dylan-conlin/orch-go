@@ -1,8 +1,8 @@
 # Model: Beads Integration Architecture
 
 **Domain:** Beads Integration / Issue Tracking / RPC Client
-**Last Updated:** 2026-03-19
-**Synthesized From:** 28 investigations + beads-integration.md guide (synthesized from 17 investigations, Dec 2025 - Jan 2026) on RPC client design, CLI fallback, auto-tracking protocol, performance optimization. Updated 2026-03-06 via 6 probe merges (see References). Updated 2026-03-19 via model-drift audit (file structure, exec.Command inventory, deleted references).
+**Last Updated:** 2026-03-22
+**Synthesized From:** 28 investigations + beads-integration.md guide (synthesized from 17 investigations, Dec 2025 - Jan 2026) on RPC client design, CLI fallback, auto-tracking protocol, performance optimization. Updated 2026-03-06 via 6 probe merges (see References). Updated 2026-03-19 via model-drift audit (file structure, exec.Command inventory, deleted references). Updated 2026-03-22 via model-drift review (exec.Command inventory refresh, reject_cmd.go addition, friction_accumulator.go deletion, beads storage mode update).
 
 ---
 
@@ -10,7 +10,7 @@
 
 Beads integration uses **RPC-first with CLI fallback** pattern: try JSON-over-Unix-socket RPC client (fast, no process spawn), fall back to CLI subprocess if daemon unavailable. The integration operates at **three points in agent lifecycle**: spawn (create issue), work (report phase via comments), complete (close with reason). **Auto-tracking** creates issues automatically unless `--no-track` flag set. The `pkg/beads` package provides a `BeadsClient` interface with three implementations: `Client` (RPC daemon), `CLIClient` (bd CLI subprocess), and `MockClient` (testing). The RPC client provides 10x performance improvement over CLI (single RPC call vs subprocess spawn + JSON parse).
 
-**Important:** Beads is a maintained fork (not upstream) with 43+ local commits. The `pkg/beads` "no direct exec.Command" constraint is aspirational — 12 direct calls exist across 8 files. Beads updates are unconditional (no CAS), creating TOCTOU races in concurrent daemon scenarios.
+**Important:** Beads is a maintained fork (not upstream) with 43+ local commits. The `pkg/beads` "no direct exec.Command" constraint is aspirational — 14 direct calls exist across 8 files. Beads updates are unconditional (no CAS), creating TOCTOU races in concurrent daemon scenarios.
 
 ---
 
@@ -236,17 +236,17 @@ output, _ := cmd.Output()
 issues := parseJSON(output)
 ```
 
-**Reality check (updated 2026-03-19):** 12 direct `exec.Command("bd")` calls exist outside `pkg/beads` in production code:
+**Reality check (updated 2026-03-22):** 14 direct `exec.Command("bd")` calls exist outside `pkg/beads` in production code:
 - `pkg/focus/guidance.go` (1 call) — `bd ready --json`
-- `pkg/daemon/friction_accumulator.go` (2 calls) — `bd list --status=closed --json`, `bd comments list`
 - `cmd/orch/init.go` (1 call) — `bd init`
 - `cmd/orch/doctor_health.go` (1 call) — health check via bd
 - `cmd/orch/reconcile.go` (1 call) — various bd commands
 - `cmd/orch/status_infra.go` (1 call) — `bd config get issue_prefix`
 - `cmd/orch/debrief_cmd.go` (3 calls) — `bd list --status=in_progress`, `bd ready`
 - `cmd/orch/orient_cmd.go` (2 calls) — `bd ready`, `bd list --status=in_progress`
+- `cmd/orch/reject_cmd.go` (4 calls) — `bd reopen`, `bd comments add`, `bd label add` x2
 
-**Note:** Previous violations in `pkg/daemon/issue_adapter.go`, `pkg/daemon/extraction.go`, and `pkg/verify/beads_api.go` have been cleaned up (0 direct calls remaining). New violations were introduced in `friction_accumulator.go`, `debrief_cmd.go`, `orient_cmd.go`, and `doctor_health.go`.
+**Note:** `pkg/daemon/friction_accumulator.go` (previously 2 calls) has been deleted from the main tree. `cmd/orch/reject_cmd.go` was added (2026-03-21) with 4 new direct calls for the rejection workflow (reopen + comment + label tagging).
 
 The "no direct exec.Command" constraint is aspirational, not enforced.
 
@@ -399,7 +399,7 @@ bd sync (PID A)
 
 **Constraint:** All beads integration *should* go through `pkg/beads`, never direct `exec.Command("bd")`.
 
-**Reality:** 11 direct `exec.Command("bd")` calls exist outside `pkg/beads`. The constraint is aspirational, not enforced.
+**Reality:** 14 direct `exec.Command("bd")` calls exist outside `pkg/beads` across 8 files. The constraint is aspirational, not enforced.
 
 **Implication:** Can't use beads CLI shortcuts in code, must use package methods — in principle.
 
@@ -425,7 +425,7 @@ bd sync (PID A)
 | Investigation issue type | `d813a87c` (Feb 7) | Tier determination in verify |
 | bd close non-zero exit | `a3f8729e` (Feb 5) | Error handling in reconcile.go |
 
-**Infrastructure improvements (implicit dependency):** JSONL-only default mode, sandbox detection (prevents SQLite WAL corruption in Claude Code), pre-flight fingerprint validation, rapid restart loop prevention, cross-process file locking — not called from orch-go code but improve beads reliability orch-go depends on.
+**Infrastructure improvements (implicit dependency):** SQLite + JSONL dual storage (beads.db alongside issues.jsonl), sandbox detection (prevents SQLite WAL corruption in Claude Code), pre-flight fingerprint validation, rapid restart loop prevention, cross-process file locking, `no-push: true` safety config (added 2026-03-06 after agent code pushed unreviewed via bd sync) — not called from orch-go code but improve beads reliability orch-go depends on.
 
 **Implication:** When beads has bugs (e.g., the pre-commit hook deadlock), the fix is in the fork, not a report upstream.
 
@@ -498,6 +498,16 @@ Beads tracking logic moved from `pkg/orch/extraction.go` to `pkg/orch/spawn_bead
 
 **Key insight:** Extraction follows the codebase's accretion boundary pattern (files >1500 lines should be split). The split preserves the same public API while making each file focused on a single concern.
 
+### Phase 8: Reject Command + Friction Accumulator Removal (Mar 2026)
+
+**What changed:**
+- `cmd/orch/reject_cmd.go` added — 1-step quality rejection verb with 4 direct `exec.Command("bd")` calls (reopen, comment, label add x2)
+- `pkg/daemon/friction_accumulator.go` deleted from main tree (previously 2 direct bd calls)
+- Beads storage now uses SQLite (`beads.db`) alongside JSONL (`issues.jsonl`), not JSONL-only
+- `no-push: true` added to `.beads/config.yaml` after incident where `bd sync` pushed agent code unreviewed (2026-03-06)
+
+**Key insight:** The reject command deliberately uses direct `exec.Command` rather than the `pkg/beads` interface, continuing the pattern of aspirational-not-enforced encapsulation. Net exec.Command count increased from 12 to 14.
+
 ---
 
 ## References
@@ -526,9 +536,10 @@ Beads tracking logic moved from `pkg/orch/extraction.go` to `pkg/orch/spawn_bead
 - `pkg/beads/cli_client.go` - CLIClient implementation (bd CLI subprocess)
 - `pkg/beads/interface.go` - BeadsClient interface definition
 - `pkg/beads/mock_client.go` - MockClient for testing (434 lines)
-- `pkg/beads/types.go` - Issue, Comment, Stats types and RPC protocol types
-- `pkg/orch/spawn_beads.go` - SetupBeadsTracking and CreateBeadsIssue
+- `pkg/beads/types.go` - Issue, Comment, Stats types and RPC protocol types (407 lines)
+- `pkg/orch/spawn_beads.go` - SetupBeadsTracking and CreateBeadsIssue (229 lines)
 - `cmd/orch/spawn_cmd.go` - Spawn command with --no-track, --issue flags
+- `cmd/orch/reject_cmd.go` - Rejection workflow with direct bd CLI calls (reopen, comment, label)
 
 **Primary Evidence (Verified 2026-03-19):**
 - `pkg/beads/client.go` - RPC client with JSON-over-socket protocol (NewClient, FindSocketPath, execute)
@@ -536,7 +547,7 @@ Beads tracking logic moved from `pkg/orch/extraction.go` to `pkg/orch/spawn_bead
 - `pkg/beads/client_fallback.go` - Fallback functions + BdPath resolution for launchd environments
 - `pkg/beads/cli_client.go` - CLIClient struct implementing BeadsClient via bd CLI
 - `pkg/beads/interface.go` - BeadsClient interface (Ready, Show, List, Create, AddComment, CloseIssue, etc.)
-- `.beads/bd.sock` - Per-project Unix socket for RPC communication (ephemeral, only exists when daemon running)
+- `.beads/bd.sock` - Per-project Unix socket for RPC communication (ephemeral, only exists when daemon running; currently absent — daemon may use beads.db directly)
 - `cmd/orch/spawn_cmd.go` - Auto-tracking implementation with --no-track opt-out
 - `.beads/issues.jsonl` - Authoritative issue storage showing beads ID format
 
