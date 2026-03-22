@@ -80,6 +80,30 @@ The experimental findings generalize into four structural primitives required fo
 - McEntire: 100% (single/0 missing) → 64% (hierarchical/~1.5 missing) → 32% (swarm/~3 missing) → 0% (pipeline/~4 missing)
 - DeepMind: 17.2x error amplification (independent/no primitives) → 4.4x (centralized/+Route+Sequence)
 
+### Control Theory Mapping (Structural Homology)
+
+The four primitives map onto control theory components. The mapping is structural homology (qualitative insights transfer) not isomorphism (quantitative formal tools do not transfer).
+
+| Primitive | Control Component | Mapping Quality | Notes |
+|-----------|------------------|-----------------|-------|
+| **Route** | Actuator (directs work) | Good (primary match) | FM-2.5 has sensor bleed but primary is actuator |
+| **Sequence** | Reference signal (target trajectory) | Weak (1/3 clean) | Sequence failures almost always involve sensing position on trajectory |
+| **Throttle** | Controller (regulates rate) | Weak (single example, messy) | Premature termination involves both controller and sensor |
+| **Align** | Sensor (observes correctness) | Strong (6/7 clean) | One exception: FM-2.6 (reasoning-action mismatch) maps to actuator, not sensor |
+
+**Sensor bleed pattern:** 4 of 5 non-clean mappings share a structure: sensor components appear in failures mapped to non-sensor primitives. Control theory explains this: when the sensor fails, other components appear to fail because they depend on feedback. This gives theoretical grounding to "Align is the meta-primitive" — sensors are load-bearing for all other components.
+
+**Sensor involvement across all MAST modes:** 11/14 (79%) involve sensors. This converges with the open-loop thread's independent finding that 14/16 (87.5%) of orch-go system failures are missing sensors. Two independent scopes, same structural finding: most failures are observation failures.
+
+**What transfers from control theory:**
+- Sensor dominance: removing the sensor (opening the loop) is the most catastrophic failure
+- Loop closure: every effective system needs closed feedback
+- Sensor cascade: many "actuator" or "controller" failures are caused by bad sensor data
+
+**What does NOT transfer:** Stability analysis (Bode/Nyquist), optimal control (LQR/MPC), formal controllability/observability — these require quantitative transfer functions that agent coordination doesn't have.
+
+**Evidence:** Probe 2026-03-22, mapping all 14 MAST failure modes to control components. See `.kb/models/coordination/probes/2026-03-22-probe-control-theory-component-mapping.md`.
+
 ---
 
 ## Boundaries
@@ -109,6 +133,7 @@ The experimental findings generalize into four structural primitives required fo
 | 2026-03-10 | 4-condition experiment (N=80) | Placement 20/20 success, all other conditions 60/60 conflict, 160/160 individual 6/6 |
 | 2026-03-18 | Decay verification probe | All 4 claims confirmed current. Experiment data intact. Framework references updated (AutoGen → deprecated). Production architecture validates structural approach. |
 | 2026-03-22 | External framework validation probe | All 4 claims confirmed as general (not orch-go-specific). 14 MAST failure modes map to 4 primitives. McEntire experiment shows monotonic degradation. DeepMind scaling paper confirms centralized coordination reduces error amplification. Align identified as dominant/neglected primitive (50% of failures). |
+| 2026-03-22 | Control theory component mapping probe | Primitives map to control components (Route→Actuator, Sequence→Reference, Throttle→Controller, Align→Sensor) with 64% clean mapping. Sensor bleed pattern: 11/14 MAST modes involve sensors (79%), converging with open-loop thread's 87.5%. Structural homology, not isomorphism. |
 
 ---
 
