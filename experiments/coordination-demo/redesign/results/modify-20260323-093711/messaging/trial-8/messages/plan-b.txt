@@ -1,0 +1,42 @@
+## Plan B: Refactor Truncate and TruncateWithPadding (Unicode-aware)
+
+### Functions to Modify
+1. **Truncate** (lines 14-19 in display.go)
+   - Change: Use []rune instead of byte indexing
+   - Current: `if len(s) <= maxLen` (byte length)
+   - New: Convert to runes, count runes, truncate to (maxLen-3) runes + "..."
+   - Impact: Lines 14-19
+
+2. **TruncateWithPadding** (lines 23-28 in display.go)
+   - Change: Use []rune for character counting
+   - Current: Checks `len(s) > maxLen` (byte length) and pads with spaces
+   - New: Convert to runes, count runes for truncation logic, keep space padding
+   - Keep return length in bytes same (padding still uses spaces)
+   - Impact: Lines 23-28
+
+### Test Updates
+1. **TestTruncate** (lines 8-26 in display_test.go)
+   - Keep all existing test cases (must pass with identical output)
+   - Add new test cases:
+     - Multi-byte UTF-8 emoji: "hello 🌍", maxLen=8 → should truncate appropriately
+     - CJK characters: "你好世界", maxLen=5 → should handle 4 CJK chars + "..."
+     - Mixed ASCII/multi-byte: "hi🌍world", maxLen=6 → test proper rune counting
+     - Exact boundary: string exactly maxLen runes
+
+2. **TestTruncateWithPadding** (lines 28-47 in display_test.go)
+   - Keep all existing test cases (must pass with identical output)
+   - Add new test cases for multi-byte characters with padding
+   - Verify output length is still exactly maxLen (in bytes, with space padding)
+
+### No Changes to
+- FormatDuration (agent A is handling this)
+- ShortID
+- StripANSI
+- FormatDurationShort
+
+### Expected File Changes
+- pkg/display/display.go: Modify Truncate (5 lines) and TruncateWithPadding (5 lines)
+- pkg/display/display_test.go: Add test cases to TestTruncate and TestTruncateWithPadding
+
+### No Merge Conflicts Expected
+Agent A is only touching FormatDuration and TestFormatDuration. Agent B is only touching Truncate/TruncateWithPadding and their tests. No overlap.

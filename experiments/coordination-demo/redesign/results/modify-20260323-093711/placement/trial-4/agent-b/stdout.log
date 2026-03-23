@@ -1,0 +1,10 @@
+## ✅ Task Complete
+
+Refactored `Truncate` and `TruncateWithPadding` functions in `pkg/display/` to be Unicode-aware:
+
+- **Functions now use `[]rune`** for proper multi-byte character handling
+- **`maxLen` now represents rune count**, not bytes
+- **Updated tests** to verify rune length and added comprehensive Unicode coverage (emoji, accented characters, mixed ASCII/Unicode)
+- **All 6 display tests pass**, including new Unicode test cases and existing ASCII tests with identical output
+
+Commit: `96c1df201`

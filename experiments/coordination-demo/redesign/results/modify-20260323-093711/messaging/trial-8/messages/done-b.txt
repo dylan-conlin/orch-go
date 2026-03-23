@@ -1,0 +1,53 @@
+## Completion Summary: Agent B (Truncate/TruncateWithPadding Refactoring)
+
+### Status: COMPLETE ✓
+
+### Changes Made
+
+**Files Modified:**
+1. `pkg/display/display.go` - 10 lines changed
+   - Refactored `Truncate()` function (lines 14-19)
+   - Refactored `TruncateWithPadding()` function (lines 23-31)
+
+2. `pkg/display/display_test.go` - 31 lines changed
+   - Updated `TestTruncate()` with 4 new Unicode test cases
+   - Updated `TestTruncateWithPadding()` to check rune length instead of byte length
+   - Added 5 new Unicode test cases for TruncateWithPadding
+
+### Implementation Details
+
+**Truncate Refactoring:**
+- Changed from byte-based slicing to rune-based slicing
+- maxLen now refers to Unicode runes, not bytes
+- Preserves "..." suffix (3 runes) when truncating
+- Example: "hello🌍" (7 runes) truncated to 6 runes → "hel..."
+
+**TruncateWithPadding Refactoring:**
+- Changed from byte-based to rune-based counting
+- Padding now reaches maxLen runes (not bytes)
+- Uses spaces for padding (ASCII, 1 byte each)
+- Output length in bytes can exceed maxLen for Unicode strings
+- Example: "你好" padded to 8 runes → "你好      " (14 bytes)
+
+### Testing
+- All original ASCII test cases continue to pass ✓
+- Added comprehensive Unicode test cases ✓
+- Tested with emoji (😀), CJK characters (你好), accented characters (café)
+- Verified no byte-splitting of multi-byte characters ✓
+
+### Test Results
+```
+TestTruncate ........................... PASS
+TestTruncateWithPadding ................ PASS
+All pkg/display tests .................. PASS (6/6)
+```
+
+### Commit
+- Commit hash: 0e2120ef9
+- Commit message: "refactor: make Truncate and TruncateWithPadding Unicode-aware"
+
+### No Conflicts
+- Agent A is modifying `FormatDuration` and `TestFormatDuration`
+- Agent B modified `Truncate`, `TruncateWithPadding`, and their tests
+- No overlapping code modifications
+- Clean merge expected

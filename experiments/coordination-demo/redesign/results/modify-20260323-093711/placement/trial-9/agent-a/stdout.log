@@ -1,0 +1,6 @@
+✅ **Phase: Complete** — Completion status reported to beads.
+
+The refactoring task is finished:
+- `FormatDuration` now uses a threshold-based approach with week support
+- All 20 tests pass (15 existing + 5 new)
+- Changes committed and ready

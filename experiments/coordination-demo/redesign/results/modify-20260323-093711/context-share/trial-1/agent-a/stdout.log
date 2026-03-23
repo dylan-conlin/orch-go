@@ -1,0 +1,8 @@
+**Phase: Complete** ✅
+
+Reported to beads. Task successfully delivered:
+- `FormatDuration` refactored with threshold-based approach
+- Week support added (7+ days format as weeks)  
+- All 15 existing test cases pass + 5 new week test cases
+- Commit: `62bba1a6d`
+- No merge conflicts with concurrent `Truncate`/`TruncateWithPadding` refactoring

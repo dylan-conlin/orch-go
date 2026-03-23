@@ -1,0 +1,1 @@
+**Phase: Complete** — Refactored `FormatDuration` with a cleaner threshold-based approach and added week support for durations 7+ days. All tests pass with no regressions, and the parallel agent's work remains unaffected.

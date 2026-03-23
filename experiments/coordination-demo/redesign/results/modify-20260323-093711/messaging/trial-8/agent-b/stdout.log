@@ -1,0 +1,3 @@
+**Phase: Complete** ✓
+
+Refactoring of `Truncate` and `TruncateWithPadding` is complete and committed. Both functions are now Unicode-aware, with comprehensive test coverage for emoji, CJK characters, and accented text. All 6 tests in pkg/display pass with no regressions.

@@ -1,0 +1,28 @@
+COMPLETION SUMMARY: Unicode-Aware Truncate and TruncateWithPadding
+===================================================================
+
+Changes Made:
+- pkg/display/display.go:
+  * Truncate (lines 14-19): Refactored to use []rune for Unicode support
+  * TruncateWithPadding (lines 23-28): Refactored to use []rune for Unicode support
+
+- pkg/display/display_test.go:
+  * TestTruncate (lines 8-38): Updated with Unicode test cases
+  * TestTruncateWithPadding (lines 40-68): Updated with Unicode test cases
+
+Implementation Details:
+1. Both functions now convert input string to []rune for character-aware indexing
+2. maxLen parameter now refers to rune count instead of bytes
+3. Truncate preserves "..." suffix (3 runes) when truncated
+4. TruncateWithPadding outputs exactly maxLen runes
+5. All existing ASCII test cases continue to pass with identical output
+6. Added comprehensive Unicode test coverage (accented chars, CJK, mixed scripts)
+
+Test Results:
+✓ TestTruncate: PASS (11 test cases including 6 Unicode)
+✓ TestTruncateWithPadding: PASS (9 test cases including 5 Unicode)
+✓ All other display tests: PASS (no regressions)
+
+Verification: go test ./pkg/display/ -v
+
+No changes to FormatDuration or other functions - clean merge with parallel refactoring work.

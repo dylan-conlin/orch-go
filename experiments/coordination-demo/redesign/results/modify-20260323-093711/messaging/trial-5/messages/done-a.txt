@@ -1,0 +1,29 @@
+## FormatDuration Refactoring - COMPLETED
+
+### What Was Modified
+
+1. **pkg/display/display.go** - FormatDuration function (lines 47-81)
+   - Replaced cascading if/else chains with a threshold-based approach
+   - Added a units slice with (name, duration) pairs in descending order
+   - New units include: weeks (w), days (d), hours (h), minutes (m), seconds (s)
+   - Extracts up to 2 non-zero units from largest to smallest
+   - Week calculation: 7 * 24 * time.Hour
+
+2. **pkg/display/display_test.go** - TestFormatDuration (lines 87-123)
+   - Added 5 new test cases for week support:
+     - 7d → "1w"
+     - 8d 5h → "1w 1d"
+     - 14d → "2w"
+     - 15d 12h → "2w 1d"
+     - 30d → "4w 2d"
+   - All 15 existing test cases still pass (no regressions)
+
+### Test Results
+- TestFormatDuration: PASS (20 test cases)
+- All display package tests: PASS
+- No regressions in other test functions
+
+### Coordination Status
+- Plan coordination in place ✓
+- No overlap with Agent B (Truncate/TruncateWithPadding changes) ✓
+- Ready for merge with Agent B's changes ✓

@@ -1,0 +1,28 @@
+DONE-B: Refactor Truncate and TruncateWithPadding (Unicode-aware)
+
+COMPLETED:
+✓ Modified Truncate (display.go, lines 14-21)
+  - Converted to use []rune for character counting
+  - maxLen now refers to rune count, not byte count
+  - Preserves "..." suffix (counts as 3 runes)
+
+✓ Modified TruncateWithPadding (display.go, lines 23-32)
+  - Converted to use []rune for character counting
+  - Updated padding calculation to use rune count
+  - Returns original string + spaces (no change to padding type)
+
+✓ Updated TestTruncate (display_test.go, lines 8-28)
+  - Added test cases for: emoji (😀😁😂), CJK characters (你好世界), mixed ASCII/Unicode
+  - All ASCII tests pass with identical output (backward compatible)
+
+✓ Updated TestTruncateWithPadding (display_test.go, lines 30-65)
+  - Added test cases for: emoji, CJK characters, mixed ASCII/Unicode
+  - Modified length check to only apply to pure ASCII inputs
+  - All tests pass; ASCII tests retain original byte-length validation
+
+TESTING:
+✓ go test ./pkg/display/ -v -run "TestTruncate|TestTruncateWithPadding" — PASS
+✓ go test ./pkg/display/ -v — PASS (all tests in package)
+
+READY FOR MERGE:
+No conflicts with Agent A's FormatDuration changes (lines 49-82).

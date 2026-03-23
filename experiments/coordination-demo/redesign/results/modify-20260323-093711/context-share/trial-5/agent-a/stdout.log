@@ -1,0 +1,10 @@
+**Phase: Complete** ✓
+
+I've successfully refactored the `FormatDuration` function in `pkg/display/display.go` with the following deliverables:
+
+1. **Refactored implementation** - Replaced cascading if/else logic with a cleaner threshold-based approach using a unit slice
+2. **Week support** - Added support for displaying durations of 7+ days as weeks (e.g., `"1w"`, `"1w 1d"`, `"2w"`)
+3. **Test coverage** - All 21 test cases pass (15 existing + 6 new cases for weeks, exact boundaries, and large values)
+4. **Committed** - Changes committed as `5b3fd94d2` with no merge conflicts with the other agent's work on Truncate/TruncateWithPadding
+
+Completion status reported to beads issue orch-go-47kes.

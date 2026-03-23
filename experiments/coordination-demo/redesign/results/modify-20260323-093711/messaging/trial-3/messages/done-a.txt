@@ -1,0 +1,35 @@
+## Done A: FormatDuration Refactor Complete
+
+**Status:** ✓ All tests passing
+
+**Changes Made:**
+
+1. **pkg/display/display.go (FormatDuration function, lines 47-82)**
+   - Replaced cascading if/else with unit-threshold approach
+   - Added week support (7+ days display as weeks)
+   - New unit slice: weeks, days, hours, minutes, seconds
+   - Cleaner logic: iterate through units, accumulate non-zero parts
+   - Output: shows first two non-zero units (e.g., "1w 1d", "2h 15m")
+
+2. **pkg/display/display_test.go (TestFormatDuration, lines 87-121)**
+   - Kept all 15 existing test cases (all passing with same output)
+   - Added 6 new test cases:
+     * 7d → "1w"
+     * 8d → "1w 1d"
+     * 14d → "2w"
+     * 15d → "2w 1d"
+     * 15d 12h → "2w 1d"
+     * 30d → "4w 2d"
+
+**Test Results:**
+- TestFormatDuration: PASS
+- All display package tests: PASS (no regressions)
+
+**Commit:**
+- Hash: 9936ccf17
+- Message: "refactor: add week support to FormatDuration with threshold-based approach"
+
+**No Conflicts:**
+- Agent B modifications (Truncate, TruncateWithPadding, lines 14-47) are completely separate
+- This work only touches FormatDuration (lines 47-82) and its test
+- Ready for merge with Agent B's changes

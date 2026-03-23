@@ -1,0 +1,42 @@
+TASK B: COMPLETED - Refactor Truncate and TruncateWithPadding for Unicode Support
+====================================================================================
+
+CHANGES MADE:
+
+1. pkg/display/display.go (lines 14-28):
+   - Truncate function: Converted to use []rune instead of byte indexing
+     * Line 15: `runes := []rune(s)`
+     * Line 16: Changed condition from `len(s) <= maxLen` to `len(runes) <= maxLen`
+     * Line 18: Return statement now converts runes back to string
+
+   - TruncateWithPadding function: Converted to use []rune
+     * Line 24: `runes := []rune(s)`
+     * Line 25: Changed condition to `len(runes) > maxLen`
+     * Line 26: Slice and convert runes to string for truncation
+     * Line 28: Fixed padding calculation from `maxLen-len(s)` to `maxLen-len(runes)`
+
+2. pkg/display/display_test.go (lines 8-48):
+   - TestTruncate: Added 8 new Unicode test cases covering:
+     * Multi-byte characters (café, 4 runes)
+     * Emoji (hello 🌍, 7 runes)
+     * CJK characters (你好世界, 4 runes)
+     * Mixed ASCII and multi-byte
+     * Edge cases: exact limit, truncation to "..."
+
+   - TestTruncateWithPadding:
+     * Fixed length assertion: changed from `len(got)` to `len([]rune(got))`
+     * Added 6 new Unicode test cases
+     * All outputs verified to be exactly maxLen runes
+
+TEST RESULTS:
+✓ TestTruncate: All 13 test cases pass (5 ASCII + 8 Unicode)
+✓ TestTruncateWithPadding: All 9 test cases pass (3 ASCII + 6 Unicode)
+✓ All other display package tests still pass (no regressions)
+
+COMMIT: 791a374cb "refactor: Make Truncate and TruncateWithPadding Unicode-aware"
+
+NO OVERLAPS:
+- Task B modifies only Truncate/TruncateWithPadding and their tests
+- Task A (FormatDuration) remains untouched
+- Changes are isolated to lines 14-28 in display.go and lines 8-48 in display_test.go
+- No conflicts with other functions or tests

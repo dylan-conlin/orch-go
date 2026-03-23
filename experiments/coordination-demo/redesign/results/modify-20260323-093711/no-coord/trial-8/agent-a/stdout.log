@@ -1,0 +1,1 @@
+**Phase: Complete** — Refactored `FormatDuration` with a cleaner threshold-based approach and added week support. All 20 test cases pass (15 original + 5 new).

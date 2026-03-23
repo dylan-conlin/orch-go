@@ -1,0 +1,17 @@
+PLAN-B: Refactor Truncate and TruncateWithPadding (Unicode-aware)
+
+Functions to modify:
+1. Truncate (lines 14-19 in display.go)
+2. TruncateWithPadding (lines 23-28 in display.go)
+3. TestTruncate (lines 8-26 in display_test.go)
+4. TestTruncateWithPadding (lines 28-47 in display_test.go)
+
+Changes:
+- Convert string to []rune to count characters instead of bytes
+- maxLen now refers to rune count, not byte count
+- Truncate: if rune length > maxLen, return first (maxLen-3) runes + "..."
+- TruncateWithPadding: similar logic but also pad with spaces
+- Update tests to add Unicode test cases (emoji, CJK, mixed ASCII/multi-byte)
+- Verify output length is in runes (or bytes for padding validation)
+
+No overlap with FormatDuration (Agent A's task) - different functions entirely.

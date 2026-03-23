@@ -1,0 +1,30 @@
+PLAN-A: FormatDuration Refactor
+================================
+
+SCOPE: pkg/display/display.go lines 49-82 (FormatDuration function)
+        pkg/display/display_test.go lines 87-114 (TestFormatDuration function)
+
+CHANGES:
+1. FormatDuration refactor (lines 49-82):
+   - Replace cascading if/else chain with threshold-based approach
+   - Add week support: 7+ days displayed as "Xw" format
+   - Calculation order: weeks → days → hours → minutes → seconds
+   - Output format: "1w", "1w 1d", "2w", "2w 1d 5h", etc.
+   - Preserve special handling for 0 duration
+
+2. TestFormatDuration additions (after line 106):
+   - 7 * time.Hour (7 days) → "1w"
+   - 8 * time.Hour (8 days) + 5*time.Hour → "1w 1d 5h"
+   - 14 * time.Hour (14 days) → "2w"
+   - 15 * time.Hour (15 days) + 12*time.Hour → "2w 1d 12h"
+   - 30 * time.Hour (30 days) → "4w 2d"
+
+IMPLEMENTATION APPROACH:
+- Use slice of time unit thresholds with labels
+- Define threshold units as: weeks, days, hours, minutes, seconds
+- Calculate each unit in descending order, subtract from remainder
+- Format output conditionally based on which units are present
+
+NO OTHER FILES MODIFIED
+NO NEW EXPORTED FUNCTIONS
+NO NEW DEPENDENCIES

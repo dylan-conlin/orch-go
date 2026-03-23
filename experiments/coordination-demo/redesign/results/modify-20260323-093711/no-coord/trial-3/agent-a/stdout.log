@@ -1,0 +1,8 @@
+**Phase: Complete** ✅
+
+Refactoring task finished:
+- ✓ FormatDuration refactored with threshold-based approach
+- ✓ Week support added (7+ days → "Xw" format)
+- ✓ All 21 test cases passing (15 original + 6 new week tests)
+- ✓ No regressions — all other display functions unmodified
+- ✓ Changes committed

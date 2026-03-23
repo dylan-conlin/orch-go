@@ -1,0 +1,38 @@
+DONE-B: Unicode-aware Truncate and TruncateWithPadding
+
+COMPLETED CHANGES:
+
+1. pkg/display/display.go:
+   - Modified Truncate (lines 14-19 -> 14-24):
+     * Convert to []rune for Unicode-aware character counting
+     * maxLen now refers to runes, not bytes
+     * Handle edge case where maxLen < 3 (no room for "..." suffix)
+
+   - Modified TruncateWithPadding (lines 23-28 -> 27-40):
+     * Convert to []rune for Unicode-aware character counting
+     * Ensure padding with spaces reaches exactly maxLen runes
+     * Handle edge case where maxLen < 3
+
+2. pkg/display/display_test.go:
+   - TestTruncate (lines 8-26 -> 8-50):
+     * Preserved all existing ASCII test cases
+     * Added comprehensive Unicode test cases:
+       - Accented characters (café)
+       - Combining diacritical marks (cafe\u0301)
+       - CJK characters (你好世界)
+       - Emoji (😀😁😂, 🌍)
+       - Mixed ASCII and multi-byte
+       - Edge cases for small maxLen values
+
+   - TestTruncateWithPadding (lines 28-47 -> 52-81):
+     * Preserved all existing ASCII test cases
+     * Added comprehensive Unicode test cases
+     * Verified rune count in result matches maxLen exactly
+
+TEST RESULTS:
+✓ All existing tests pass (TestShortID, TestStripANSI, TestFormatDuration, TestFormatDurationShort)
+✓ New Unicode tests pass
+✓ TestTruncate: 23 cases (passing)
+✓ TestTruncateWithPadding: 18 cases (passing)
+
+NO CONFLICTS with plan-a.txt (FormatDuration refactoring is separate, different functions modified).

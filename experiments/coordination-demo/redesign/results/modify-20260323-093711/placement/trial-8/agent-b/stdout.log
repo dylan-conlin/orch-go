@@ -1,0 +1,3 @@
+**Phase: Complete** ✅
+
+Refactored `Truncate` and `TruncateWithPadding` functions to be Unicode-aware using rune-based character counting. All existing ASCII test cases pass unchanged, plus added 12 new Unicode test cases covering emoji, CJK characters, combining characters, and edge cases. Commit: `192f4607c`.

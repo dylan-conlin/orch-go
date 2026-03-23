@@ -1,0 +1,1 @@
+**Phase: Complete** — Refactored `Truncate` and `TruncateWithPadding` to be Unicode-aware using `[]rune` for character counting instead of byte indexing. All existing ASCII tests pass unchanged, comprehensive Unicode test cases added for emoji/CJK/combining accents, and all tests verified passing. Commit created: `82c5970a7`.

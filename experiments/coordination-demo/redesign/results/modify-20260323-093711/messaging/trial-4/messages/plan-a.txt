@@ -1,0 +1,33 @@
+PLAN-A: FormatDuration Refactor
+================================
+
+FUNCTION: FormatDuration in pkg/display/display.go (lines 49-82)
+
+CHANGES:
+1. Add week support: durations >= 7 days display as weeks
+   - 7d → "1w"
+   - 8d 5h → "1w 1d"
+   - 14d → "2w"
+   - 15d 12h → "2w 1d"
+
+2. Refactor cascading if/else with threshold-based approach:
+   - Create a slice of {unit name, duration threshold}
+   - Iterate from largest (weeks) to smallest (seconds)
+   - Calculate quantity and remainder for each unit
+
+3. Preserve existing behavior:
+   - All current test cases (lines 92-107) must pass with identical output
+   - Output format: "0s", "45s", "3m 12s", "2h 15m", "3d 5h"
+
+TEST CHANGES (lines 87-114):
+- Add test cases:
+  - {7 * 24 * time.Hour, "1w"} (exact week boundary)
+  - {14 * 24 * time.Hour, "2w"} (two weeks)
+  - {7*24*time.Hour + 5*time.Hour, "1w 5h"} (week with hours)
+  - {8*24*time.Hour + 5*time.Hour, "1w 1d 5h"} (week with days and hours)
+  - {30 * 24 * time.Hour, "4w 2d"} (large value)
+
+CONFLICT CHECK:
+- This task modifies ONLY FormatDuration and TestFormatDuration
+- The other agent (plan-b.txt) works on Truncate and TruncateWithPadding
+- NO OVERLAP expected

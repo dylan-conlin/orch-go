@@ -1,0 +1,33 @@
+## Plan A: Refactor FormatDuration with Week Support
+
+**Functions Modified:**
+- `FormatDuration` (pkg/display/display.go, lines 49-82)
+- `TestFormatDuration` (pkg/display/display_test.go, lines 87-114)
+
+**Changes:**
+1. Refactor FormatDuration to replace cascading if/else with a cleaner threshold-based approach
+2. Add week support: durations >= 7 days display as weeks
+3. Update to format: "Xw Yd" for weeks with remainder, "Xw" for exact weeks, etc.
+
+**Expected Line Changes:**
+- display.go lines 49-82: Complete function rewrite to use threshold slice
+- display_test.go lines 87-114: Keep existing cases, add new cases for weeks (7d, 14d, 15d 12h, 30d+)
+
+**Other Functions Untouched:**
+- Truncate (lines 14-19)
+- TruncateWithPadding (lines 23-28)
+- ShortID (lines 32-37)
+- StripANSI (lines 43-45)
+- FormatDurationShort (lines 86-94)
+
+**Other Tests Untouched:**
+- TestTruncate
+- TestTruncateWithPadding
+- TestShortID
+- TestStripANSI
+- TestFormatDurationShort
+
+**No Merge Conflicts Expected:**
+Agent B modifies Truncate and TruncateWithPadding (lines 14-28).
+Agent A modifies FormatDuration and its test (lines 49-82 and test section).
+No overlap in modified functions.

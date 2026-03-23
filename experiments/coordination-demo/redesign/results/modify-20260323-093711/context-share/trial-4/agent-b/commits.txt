@@ -1,0 +1,1 @@
+b9a70df2d refactor(display): make Truncate and TruncateWithPadding Unicode-aware

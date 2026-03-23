@@ -1,0 +1,53 @@
+PLAN-B: Refactor Truncate and TruncateWithPadding (Unicode-aware)
+================================================================
+
+TARGET FUNCTIONS:
+- Truncate (pkg/display/display.go, lines 14-19)
+- TruncateWithPadding (pkg/display/display.go, lines 23-28)
+- TestTruncate (pkg/display/display_test.go, lines 8-26)
+- TestTruncateWithPadding (pkg/display/display_test.go, lines 28-47)
+
+CHANGES:
+1. Truncate (lines 14-19):
+   - Convert string to []rune for character counting
+   - maxLen now refers to rune count, not byte count
+   - Preserve "..." suffix (counts as 3 runes)
+   - Keep existing behavior for ASCII inputs
+
+2. TruncateWithPadding (lines 23-28):
+   - Convert string to []rune for character counting
+   - Padding still uses ASCII spaces
+   - Result length in runes (not bytes) equals maxLen
+   - Keep existing behavior for ASCII inputs
+
+3. TestTruncate (lines 8-26):
+   - Keep all existing test cases (must pass unchanged)
+   - Add Unicode test cases:
+     * Multi-byte UTF-8 characters (emoji, CJK)
+     * Mixed ASCII and multi-byte strings
+     * String exactly at maxLen limit
+
+4. TestTruncateWithPadding (lines 28-47):
+   - Keep all existing test cases (must pass unchanged)
+   - Add Unicode test cases:
+     * Multi-byte UTF-8 characters
+     * Mixed ASCII and multi-byte strings
+     * Verify result length in runes, not bytes
+
+NO CHANGES TO:
+- ShortID function
+- StripANSI function
+- FormatDuration function
+- FormatDurationShort function
+- Any other test functions
+
+EXPECTED LINE CHANGES:
+- Truncate: ~7 lines (2-3 new lines for rune conversion)
+- TruncateWithPadding: ~8 lines (2-3 new lines for rune conversion)
+- TestTruncate: +5-10 lines for Unicode test cases
+- TestTruncateWithPadding: +5-10 lines for Unicode test cases
+
+NO CONFLICTS WITH AGENT-A:
+- Agent-A is modifying FormatDuration (lines 49-82)
+- Agent-A is modifying TestFormatDuration (lines 87-114)
+- No overlap with my target functions

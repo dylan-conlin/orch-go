@@ -1,0 +1,27 @@
+DONE-A: FormatDuration Refactor Complete
+==========================================
+
+MODIFIED FILES:
+1. pkg/display/display.go
+   - Lines 47-82: Refactored FormatDuration function
+   - Replaced cascading if/else chain with threshold-based approach
+   - Added week unit support (7 days = 1w, 14 days = 2w, etc.)
+   - Implemented 2-unit display limit for readability
+   - Uses unit struct with name/duration pairs
+
+2. pkg/display/display_test.go
+   - Lines 87-121: Updated TestFormatDuration test function
+   - Added 5 new test cases:
+     * 7 days → "1w" (exact week boundary)
+     * 14 days → "2w" (multiple weeks)
+     * 8 days → "1w 1d" (week with remainder)
+     * 15 days → "2w 1d" (weeks with remainder)
+     * 30 days → "4w 2d" (large value)
+   - All existing test cases continue to pass
+
+VERIFICATION:
+- go test ./pkg/display/ -v -run TestFormatDuration: PASS
+- go test ./pkg/display/ -v: PASS (all tests)
+
+NO CONFLICTS with agent B (who modified lines 14-28 for Unicode support)
+READY TO MERGE

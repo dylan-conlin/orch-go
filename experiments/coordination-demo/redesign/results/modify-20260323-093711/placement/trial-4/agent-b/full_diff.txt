@@ -1,0 +1,74 @@
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 1a699243d..36580e817 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -10,21 +10,23 @@ import (
+ 	"time"
+ )
+ 
+-// Truncate truncates s to maxLen characters, appending "..." if truncated.
++// Truncate truncates s to maxLen characters (runes), appending "..." if truncated.
+ func Truncate(s string, maxLen int) string {
+-	if len(s) <= maxLen {
++	runes := []rune(s)
++	if len(runes) <= maxLen {
+ 		return s
+ 	}
+-	return s[:maxLen-3] + "..."
++	return string(runes[:maxLen-3]) + "..."
+ }
+ 
+-// TruncateWithPadding truncates s to maxLen (with "...") or right-pads with
+-// spaces to ensure the returned string is exactly maxLen characters.
++// TruncateWithPadding truncates s to maxLen runes (with "...") or right-pads with
++// spaces to ensure the returned string is exactly maxLen runes.
+ func TruncateWithPadding(s string, maxLen int) string {
+-	if len(s) > maxLen {
+-		return s[:maxLen-3] + "..."
++	runes := []rune(s)
++	if len(runes) > maxLen {
++		return string(runes[:maxLen-3]) + "..."
+ 	}
+-	return s + strings.Repeat(" ", maxLen-len(s))
++	return s + strings.Repeat(" ", maxLen-len(runes))
+ }
+ 
+ // ShortID returns the first 12 characters of an ID string for display.
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index fcd3fa61c..6c8e502b1 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -16,6 +16,11 @@ func TestTruncate(t *testing.T) {
+ 		{"hello world", 8, "hello..."},
+ 		{"abcdefghij", 6, "abc..."},
+ 		{"", 5, ""},
++		// Unicode test cases
++		{"🌍🌎🌏", 6, "🌍🌎🌏"},
++		{"🌍🌎hello", 7, "🌍🌎hello"},
++		{"🌍🌎hello", 5, "🌍🌎..."},
++		{"hello🌍world", 8, "hello..."},
+ 	}
+ 	for _, tt := range tests {
+ 		got := Truncate(tt.input, tt.maxLen)
+@@ -34,14 +39,19 @@ func TestTruncateWithPadding(t *testing.T) {
+ 		{"hello", 10, "hello     "},
+ 		{"hello world", 8, "hello..."},
+ 		{"exact", 5, "exact"},
++		// Unicode test cases
++		{"🌍", 10, "🌍         "},
++		{"hello🌍", 10, "hello🌍    "},
++		{"🌍🌎hello", 5, "🌍🌎..."},
++		{"café", 10, "café      "},
+ 	}
+ 	for _, tt := range tests {
+ 		got := TruncateWithPadding(tt.input, tt.maxLen)
+ 		if got != tt.want {
+ 			t.Errorf("TruncateWithPadding(%q, %d) = %q, want %q", tt.input, tt.maxLen, got, tt.want)
+ 		}
+-		if len(got) != tt.maxLen {
+-			t.Errorf("TruncateWithPadding(%q, %d) length = %d, want %d", tt.input, tt.maxLen, len(got), tt.maxLen)
++		if len([]rune(got)) != tt.maxLen {
++			t.Errorf("TruncateWithPadding(%q, %d) rune length = %d, want %d", tt.input, tt.maxLen, len([]rune(got)), tt.maxLen)
+ 		}
+ 	}
+ }

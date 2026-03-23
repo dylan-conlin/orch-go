@@ -1,0 +1,52 @@
+DONE-B: Unicode-Aware Truncate and TruncateWithPadding Refactoring
+====================================================================
+
+COMPLETION SUMMARY:
+Successfully refactored Truncate and TruncateWithPadding functions to be Unicode-aware.
+
+CHANGES MADE:
+
+1. pkg/display/display.go:
+   - Truncate function (lines 14-19):
+     * Convert string to []rune for proper character counting
+     * Changed maxLen check from len(s) to len(runes)
+     * Updated truncation logic to slice runes then convert back to string
+     * "..." suffix now correctly counted as 3 runes
+
+   - TruncateWithPadding function (lines 23-30):
+     * Convert string to []rune for character counting
+     * Check len(runes) > maxLen for truncation decision
+     * For truncation: slice runes, convert to string, append "..."
+     * For padding: calculate paddingLen = maxLen - len(runes), use spaces
+     * Padding now correctly based on rune count, not byte count
+
+2. pkg/display/display_test.go:
+   - TestTruncate (lines 8-33):
+     * Added 6 new test cases for Unicode:
+       - "café" (multi-byte UTF-8) fits
+       - "café" truncated to "..."
+       - Emoji "🎉🎊🎈" fits and truncated
+       - Mixed ASCII and emoji
+       - Multi-byte with space
+     * All existing ASCII tests still pass unchanged
+
+   - TestTruncateWithPadding (lines 36-63):
+     * Added 4 new Unicode test cases:
+       - "café" with padding
+       - Emoji with padding
+       - "café café" truncated
+       - Only ellipsis fits
+     * All existing ASCII tests still pass unchanged
+     * Added wantLen field to verify rune count (not byte count)
+
+TEST RESULTS:
+✓ All TestTruncate cases pass
+✓ All TestTruncateWithPadding cases pass
+✓ All other tests in pkg/display pass (ShortID, StripANSI, FormatDuration, FormatDurationShort)
+✓ No regressions detected
+
+COORDINATION NOTES:
+- Agent A (FormatDuration) plan reviewed: no conflicts
+- Changes are isolated to Truncate/TruncateWithPadding functions
+- FormatDuration function untouched, ready for Agent A to modify independently
+- Ready to merge with Agent A's changes

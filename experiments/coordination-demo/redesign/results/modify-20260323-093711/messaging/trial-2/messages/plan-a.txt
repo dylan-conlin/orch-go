@@ -1,0 +1,39 @@
+PLAN-A: FormatDuration Refactor with Week Support
+
+TARGET FUNCTIONS:
+- FormatDuration (pkg/display/display.go, lines 47-82)
+- TestFormatDuration (pkg/display/display_test.go, lines 87-114)
+
+CHANGES TO MAKE:
+
+1. Refactor FormatDuration (lines 49-82):
+   - Replace cascading if/else chain with threshold-based approach
+   - Add week threshold: 7 days (168 hours)
+   - New logic flow:
+     a. If 0, return "0s"
+     b. If >= 7 days: extract weeks, then days, format "Xw [Xd]"
+     c. If >= 1 day: extract days, then hours, format "Xd [Xh]"
+     d. If >= 1 hour: extract hours, then minutes, format "Xh [Xm]"
+     e. If >= 1 minute: extract minutes, then seconds, format "Xm [Xs]"
+     f. Otherwise: format seconds "Xs"
+
+2. Add test cases to TestFormatDuration (lines 87-114):
+   - Exact week boundaries: 7*24h → "1w", 14*24h → "2w"
+   - Weeks with remainder days: 8*24h → "1w 1d", 15*24h + 12h → "2w 1d"
+   - Large values: 30*24h → "4w 2d"
+
+EXPECTED CHANGES:
+- FormatDuration function: ~35 lines (cleaner structure)
+- TestFormatDuration: ~5-6 new test cases added
+- No changes to other functions
+- No imports added
+- All existing test cases must pass unchanged
+
+LINES AFFECTED:
+- display.go: 49-82 (entire FormatDuration function)
+- display_test.go: 87-114 (TestFormatDuration test, will extend)
+
+NO IMPACT ON:
+- Truncate, TruncateWithPadding (other agent's responsibility)
+- ShortID, StripANSI, FormatDurationShort functions
+- Any other test functions

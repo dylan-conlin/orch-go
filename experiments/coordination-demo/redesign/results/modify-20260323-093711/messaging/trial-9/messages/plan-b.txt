@@ -1,0 +1,33 @@
+PLAN: Refactor Truncate and TruncateWithPadding for Unicode Support
+==================================================================
+
+Functions to Modify:
+- Truncate (lines 14-19)
+- TruncateWithPadding (lines 23-28)
+- TestTruncate (lines 8-26)
+- TestTruncateWithPadding (lines 28-47)
+
+Changes:
+1. Truncate:
+   - Convert input string to []rune for character-aware indexing
+   - maxLen refers to rune count, not bytes
+   - Preserve "..." suffix (3 runes)
+   - Return s unchanged if len([]rune) <= maxLen
+   - Otherwise: s[:maxLen-3] + "..."
+
+2. TruncateWithPadding:
+   - Convert to []rune for character counting
+   - Truncate logic: if rune count > maxLen, truncate with "..."
+   - Padding logic: pad with spaces to reach maxLen bytes (not runes!)
+   - Output length must be maxLen runes, not maxLen bytes
+
+3. Tests:
+   - Keep all existing test cases (ASCII compatibility)
+   - Add multi-byte UTF-8 tests (emoji, accented chars)
+   - Add exact-length edge case
+
+Lines Expected to Change:
+- display.go: 14-28 (both functions)
+- display_test.go: 8-47 (both test functions)
+
+No overlap with FormatDuration changes (lines 47-82).

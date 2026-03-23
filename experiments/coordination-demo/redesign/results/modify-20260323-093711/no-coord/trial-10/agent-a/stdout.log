@@ -1,0 +1,7 @@
+Completion reported to beads. The refactoring task is done:
+
+- ✅ `FormatDuration` refactored with threshold-based approach instead of cascading if/else
+- ✅ Week support added (7+ days display as weeks)
+- ✅ All existing tests pass with identical output
+- ✅ 5 new test cases added for week boundaries and large values
+- ✅ Changes committed

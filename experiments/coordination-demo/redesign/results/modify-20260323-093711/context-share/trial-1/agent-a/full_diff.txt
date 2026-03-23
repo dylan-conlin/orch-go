@@ -1,0 +1,86 @@
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 1a699243d..8205cc2a2 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -45,40 +45,43 @@ func StripANSI(s string) string {
+ }
+ 
+ // FormatDuration formats a duration as a human-readable string.
+-// Output style: "0s", "45s", "3m 12s", "2h 15m", "3d 5h".
++// Output style: "0s", "45s", "3m 12s", "2h 15m", "3d 5h", "1w", "2w 3d".
+ func FormatDuration(d time.Duration) string {
+ 	if d == 0 {
+ 		return "0s"
+ 	}
+ 
+-	days := int(d.Hours()) / 24
+-	if days > 0 {
+-		hours := int(d.Hours()) % 24
+-		if hours > 0 {
+-			return fmt.Sprintf("%dd %dh", days, hours)
+-		}
+-		return fmt.Sprintf("%dd", days)
++	// Define thresholds in descending order: (threshold, unit, remainder unit, remainder unit name)
++	type threshold struct {
++		duration time.Duration
++		unit     string
++		nextUnit time.Duration
++		nextName string
+ 	}
+ 
+-	if d < time.Minute {
+-		return fmt.Sprintf("%ds", int(d.Seconds()))
++	thresholds := []threshold{
++		{7 * 24 * time.Hour, "w", 24 * time.Hour, "d"},
++		{24 * time.Hour, "d", time.Hour, "h"},
++		{time.Hour, "h", time.Minute, "m"},
++		{time.Minute, "m", time.Second, "s"},
+ 	}
+ 
+-	if d < time.Hour {
+-		minutes := int(d.Minutes())
+-		secs := int(d.Seconds()) % 60
+-		if secs > 0 {
+-			return fmt.Sprintf("%dm %ds", minutes, secs)
++	for _, t := range thresholds {
++		if d >= t.duration {
++			count := int(d / t.duration)
++			remainder := d % t.duration
++
++			if remainder >= t.nextUnit {
++				nextCount := int(remainder / t.nextUnit)
++				return fmt.Sprintf("%d%s %d%s", count, t.unit, nextCount, t.nextName)
++			}
++
++			return fmt.Sprintf("%d%s", count, t.unit)
+ 		}
+-		return fmt.Sprintf("%dm", minutes)
+ 	}
+ 
+-	hours := int(d.Hours())
+-	minutes := int(d.Minutes()) % 60
+-	if minutes > 0 {
+-		return fmt.Sprintf("%dh %dm", hours, minutes)
+-	}
+-	return fmt.Sprintf("%dh", hours)
++	// Handle seconds (< 1 minute)
++	return fmt.Sprintf("%ds", int(d.Seconds()))
+ }
+ 
+ // FormatDurationShort formats a duration using short labels suitable for
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index fcd3fa61c..8fa09c84d 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -104,6 +104,11 @@ func TestFormatDuration(t *testing.T) {
+ 		{26 * time.Hour, "1d 2h"},
+ 		{48 * time.Hour, "2d"},
+ 		{50 * time.Hour, "2d 2h"},
++		{7 * 24 * time.Hour, "1w"},
++		{8 * 24 * time.Hour, "1w 1d"},
++		{14 * 24 * time.Hour, "2w"},
++		{15*24*time.Hour + 12*time.Hour, "2w 1d"},
++		{30 * 24 * time.Hour, "4w 2d"},
+ 	}
+ 	for _, tt := range tests {
+ 		got := FormatDuration(tt.input)

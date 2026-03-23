@@ -1,0 +1,3 @@
+**Phase: Complete**
+
+Successfully refactored `Truncate` and `TruncateWithPadding` functions in `pkg/display` to handle Unicode correctly. Both functions now use rune-based character counting instead of byte indexing, with comprehensive test coverage including multi-byte UTF-8 characters and emoji. All tests pass with no regressions.

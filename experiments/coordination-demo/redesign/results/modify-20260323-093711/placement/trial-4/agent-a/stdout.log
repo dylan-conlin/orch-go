@@ -1,0 +1,7 @@
+✅ **Completion reported to beads**
+
+The refactoring task is complete:
+- FormatDuration now supports weeks (7+ days) with a cleaner threshold-based implementation
+- All existing tests pass with identical output
+- 6 new test cases added for week boundaries and large values
+- Changes committed with proper git history

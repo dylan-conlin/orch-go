@@ -1,0 +1,84 @@
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 1a699243d..7d198419e 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -10,21 +10,23 @@ import (
+ 	"time"
+ )
+ 
+-// Truncate truncates s to maxLen characters, appending "..." if truncated.
++// Truncate truncates s to maxLen characters (runes), appending "..." if truncated.
+ func Truncate(s string, maxLen int) string {
+-	if len(s) <= maxLen {
++	runes := []rune(s)
++	if len(runes) <= maxLen {
+ 		return s
+ 	}
+-	return s[:maxLen-3] + "..."
++	return string(runes[:maxLen-3]) + "..."
+ }
+ 
+ // TruncateWithPadding truncates s to maxLen (with "...") or right-pads with
+-// spaces to ensure the returned string is exactly maxLen characters.
++// spaces to ensure the returned string is exactly maxLen runes.
+ func TruncateWithPadding(s string, maxLen int) string {
+-	if len(s) > maxLen {
+-		return s[:maxLen-3] + "..."
++	runes := []rune(s)
++	if len(runes) > maxLen {
++		return string(runes[:maxLen-3]) + "..."
+ 	}
+-	return s + strings.Repeat(" ", maxLen-len(s))
++	return s + strings.Repeat(" ", maxLen-len(runes))
+ }
+ 
+ // ShortID returns the first 12 characters of an ID string for display.
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index fcd3fa61c..c61d9f647 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -11,11 +11,18 @@ func TestTruncate(t *testing.T) {
+ 		maxLen int
+ 		want   string
+ 	}{
++		// ASCII cases (existing)
+ 		{"hello", 10, "hello"},
+ 		{"hello", 5, "hello"},
+ 		{"hello world", 8, "hello..."},
+ 		{"abcdefghij", 6, "abc..."},
+ 		{"", 5, ""},
++		// Unicode cases
++		{"café", 10, "café"},                      // fits within limit (4 runes < 10)
++		{"café😀", 4, "c..."},                     // 5 runes > 4, keep 1 + ellipsis
++		{"🎉hello", 5, "🎉h..."},                  // 6 runes > 5, keep 2 + ellipsis
++		{"你好世界界", 4, "你..."},                 // 5 runes > 4, keep 1 + ellipsis
++		{"hello🎉world", 10, "hello🎉w..."},       // 11 runes > 10, keep 7 + ellipsis
+ 	}
+ 	for _, tt := range tests {
+ 		got := Truncate(tt.input, tt.maxLen)
+@@ -31,17 +38,23 @@ func TestTruncateWithPadding(t *testing.T) {
+ 		maxLen int
+ 		want   string
+ 	}{
++		// ASCII cases (existing)
+ 		{"hello", 10, "hello     "},
+ 		{"hello world", 8, "hello..."},
+ 		{"exact", 5, "exact"},
++		// Unicode cases
++		{"café", 8, "café    "},                  // 4 runes + 4 spaces = 8 runes
++		{"🎉", 5, "🎉    "},                     // 1 rune (emoji) + 4 spaces = 5 runes
++		{"你好", 5, "你好   "},                  // 2 runes + 3 spaces = 5 runes
++		{"hello🎉world", 10, "hello🎉w..."},   // 11 runes total, maxLen=10, so keep 7 runes + ellipsis
+ 	}
+ 	for _, tt := range tests {
+ 		got := TruncateWithPadding(tt.input, tt.maxLen)
+ 		if got != tt.want {
+ 			t.Errorf("TruncateWithPadding(%q, %d) = %q, want %q", tt.input, tt.maxLen, got, tt.want)
+ 		}
+-		if len(got) != tt.maxLen {
+-			t.Errorf("TruncateWithPadding(%q, %d) length = %d, want %d", tt.input, tt.maxLen, len(got), tt.maxLen)
++		if len([]rune(got)) != tt.maxLen {
++			t.Errorf("TruncateWithPadding(%q, %d) rune length = %d, want %d", tt.input, tt.maxLen, len([]rune(got)), tt.maxLen)
+ 		}
+ 	}
+ }

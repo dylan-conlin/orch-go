@@ -1,0 +1,43 @@
+verification:
+  type: experiment
+  issue: orch-go-47kes
+
+  automated_checks:
+    - name: "Results directory exists"
+      command: "ls experiments/coordination-demo/redesign/results/modify-20260323-093711/metadata.json"
+      expected: "exits 0"
+
+    - name: "40 trials completed"
+      command: "find experiments/coordination-demo/redesign/results/modify-20260323-093711 -name merge_result.csv | wc -l"
+      expected: "40"
+
+    - name: "All trials SUCCESS"
+      command: "grep -c '^success' experiments/coordination-demo/redesign/results/modify-20260323-093711/*/trial-*/merge_result.csv | tail -1"
+      expected: "40"
+
+    - name: "Zero conflicts"
+      command: "grep -c '^conflict' experiments/coordination-demo/redesign/results/modify-20260323-093711/*/trial-*/merge_result.csv 2>/dev/null || echo 0"
+      expected: "0"
+
+    - name: "Probe file exists"
+      command: "ls .kb/models/coordination/probes/2026-03-23-probe-modification-task-experiment.md"
+      expected: "exits 0"
+
+    - name: "Model updated with modification boundary"
+      command: "grep -c 'Modification-task boundary' .kb/models/coordination/model.md"
+      expected: ">0"
+
+    - name: "Open question marked answered"
+      command: "grep -c 'Answered 2026-03-23.*modification' .kb/models/coordination/model.md"
+      expected: ">0"
+
+  manual_checks:
+    - "Review analysis.md in results directory for full condition breakdown"
+    - "Verify diff hunk analysis shows non-overlapping regions per agent"
+    - "Confirm probe verdict (extends) is appropriate given the results"
+
+  key_outcomes:
+    - "40/40 SUCCESS across all 4 conditions confirms modification tasks are self-coordinating"
+    - "Claim 1 scoped to additive tasks with gravitational convergence"
+    - "Claim 4 gains modification-task boundary note"
+    - "Model open question answered with empirical evidence"

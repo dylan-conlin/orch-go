@@ -1,0 +1,33 @@
+PLAN-B: Unicode-aware Truncate and TruncateWithPadding
+
+FUNCTIONS TO MODIFY:
+- pkg/display/display.go: Truncate (lines 14-19)
+- pkg/display/display.go: TruncateWithPadding (lines 23-28)
+- pkg/display/display_test.go: TestTruncate (lines 8-26)
+- pkg/display/display_test.go: TestTruncateWithPadding (lines 28-47)
+
+CHANGES:
+1. Truncate:
+   - Convert to []rune for character counting
+   - maxLen now refers to runes, not bytes
+   - Preserve "..." suffix (3 runes) when truncating
+   - Handle edge case where available space < 3 runes
+
+2. TruncateWithPadding:
+   - Convert to []rune for character counting
+   - Return result as string from rune slice
+   - Padding with spaces must use rune count to ensure exact length
+
+3. Tests:
+   - Add test cases for UTF-8 multi-byte characters (emoji, CJK)
+   - Add test cases for mixed ASCII and multi-byte
+   - Add test case for exact maxLen fit
+   - Verify all existing ASCII test cases still pass
+
+EXPECTED CHANGES:
+- ~5-10 lines changed in Truncate
+- ~5-10 lines changed in TruncateWithPadding
+- ~10-15 new test cases added to TestTruncate
+- ~10-15 new test cases added to TestTruncateWithPadding
+
+NO OVERLAP with plan-a.txt (FormatDuration) - different functions.
