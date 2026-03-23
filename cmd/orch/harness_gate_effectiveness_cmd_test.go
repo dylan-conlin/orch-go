@@ -65,9 +65,6 @@ func TestBuildGateEffectiveness_CohortClassification(t *testing.T) {
 		{Type: "agent.completed", Timestamp: now - 50, Data: map[string]interface{}{
 			"beads_id": "agent-d", "verification_passed": true,
 		}},
-		{Type: "accretion.delta", Timestamp: now - 49, Data: map[string]interface{}{
-			"beads_id": "agent-d", "net_delta": float64(150), "risk_files": float64(2),
-		}},
 	}
 
 	result := buildGateEffectiveness(events, 1)
@@ -142,51 +139,6 @@ func TestBuildGateEffectiveness_CohortClassification(t *testing.T) {
 	// Verdict should exist
 	if result.Verdict == "" {
 		t.Error("expected non-empty verdict")
-	}
-}
-
-func TestBuildGateEffectiveness_AccretionCorrelation(t *testing.T) {
-	now := time.Now().Unix()
-
-	events := []StatsEvent{
-		{Type: "session.spawned", SessionID: "s1", Timestamp: now - 100, Data: map[string]interface{}{
-			"beads_id": "a1", "skill": "feature-impl", "workspace": "ws-1",
-		}},
-		{Type: "spawn.gate_decision", Timestamp: now - 99, Data: map[string]interface{}{
-			"beads_id": "a1", "gate_name": "triage", "decision": "allow",
-		}},
-		{Type: "agent.completed", Timestamp: now - 50, Data: map[string]interface{}{
-			"beads_id": "a1", "verification_passed": true,
-		}},
-		{Type: "accretion.delta", Timestamp: now - 49, Data: map[string]interface{}{
-			"beads_id": "a1", "net_delta": float64(200), "risk_files": float64(3),
-		}},
-
-		{Type: "session.spawned", SessionID: "s2", Timestamp: now - 100, Data: map[string]interface{}{
-			"beads_id": "a2", "skill": "feature-impl", "workspace": "ws-2",
-		}},
-		{Type: "spawn.gate_decision", Timestamp: now - 99, Data: map[string]interface{}{
-			"beads_id": "a2", "gate_name": "triage", "decision": "bypass",
-		}},
-		{Type: "agent.completed", Timestamp: now - 50, Data: map[string]interface{}{
-			"beads_id": "a2", "verification_passed": true,
-		}},
-		{Type: "accretion.delta", Timestamp: now - 49, Data: map[string]interface{}{
-			"beads_id": "a2", "net_delta": float64(500), "risk_files": float64(5),
-		}},
-	}
-
-	result := buildGateEffectiveness(events, 1)
-
-	// Enforced agent should have lower accretion
-	if result.Overall.Enforced.AvgNetDelta != 200 {
-		t.Errorf("enforced avg delta: expected 200, got %.0f", result.Overall.Enforced.AvgNetDelta)
-	}
-	if result.Overall.Bypassed.AvgNetDelta != 500 {
-		t.Errorf("bypassed avg delta: expected 500, got %.0f", result.Overall.Bypassed.AvgNetDelta)
-	}
-	if result.Overall.Enforced.RiskFilesTouched != 3 {
-		t.Errorf("enforced risk files: expected 3, got %d", result.Overall.Enforced.RiskFilesTouched)
 	}
 }
 

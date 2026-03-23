@@ -314,7 +314,7 @@ func TestBuildGateAudit_DeadSignal_ZeroEventsOverManyCompletions(t *testing.T) {
 			Data: map[string]interface{}{"beads_id": fmt.Sprintf("test-%d", i)},
 		})
 	}
-	// No verification.failed, verification.bypassed, accretion.delta,
+	// No verification.failed, verification.bypassed,
 	// duplication.detected, or spawn.gate_decision events at all.
 
 	result := buildGateAudit(events, 30)
@@ -334,7 +334,7 @@ func TestBuildGateAudit_DeadSignal_ZeroEventsOverManyCompletions(t *testing.T) {
 		}
 	}
 
-	for _, ch := range []string{"verification", "accretion", "duplication"} {
+	for _, ch := range []string{"verification", "duplication"} {
 		if !channelsSeen[ch] {
 			t.Errorf("expected dead signal for channel %q", ch)
 		}

@@ -30,7 +30,6 @@ Quality signals per cohort:
   - Completion rate, verification pass rate
   - Abandonment rate
   - Mean duration (minutes)
-  - Accretion impact (net line delta, risk files touched)
 
 Also produces an overall verdict comparing "enforced" (blocked+allowed)
 vs "bypassed" cohorts across all gates.
@@ -82,9 +81,6 @@ type GateEffCohort struct {
 	VerificationPassed int     `json:"verification_passed"`
 	VerificationRate   float64 `json:"verification_rate"`
 	AvgDurationMin     float64 `json:"avg_duration_min,omitempty"`
-	NetAccretion       int     `json:"net_accretion"`       // total net line delta
-	RiskFilesTouched   int     `json:"risk_files_touched"`  // files >800 lines modified
-	AvgNetDelta        float64 `json:"avg_net_delta"`       // per-agent average
 }
 
 // GateEffOverall compares enforced (blocked+allowed) vs bypassed across all gates.
@@ -132,8 +128,6 @@ type agentRecord struct {
 	abandoned          bool
 	verificationPassed bool
 	completionTime     int64
-	netAccretion       int
-	riskFiles          int
 	// per-gate decisions: gate_name -> decision
 	gateDecisions map[string]string
 }
@@ -175,7 +169,7 @@ func buildGateEffectiveness(events []StatsEvent, days int) *GateEffResult {
 		}
 	}
 
-	// Second pass: enrich with gate decisions, completions, accretion
+	// Second pass: enrich with gate decisions and completions
 	for _, e := range events {
 		if e.Timestamp < cutoff || e.Data == nil {
 			continue
@@ -229,22 +223,6 @@ func buildGateEffectiveness(events []StatsEvent, days int) *GateEffResult {
 			}
 			if rec, ok := agents[beadsID]; ok {
 				rec.abandoned = true
-			}
-
-		case "accretion.delta":
-			beadsID, _ := e.Data["beads_id"].(string)
-			if beadsID == "" {
-				continue
-			}
-			rec, ok := agents[beadsID]
-			if !ok {
-				continue
-			}
-			if nd, ok := e.Data["net_delta"].(float64); ok {
-				rec.netAccretion += int(nd)
-			}
-			if rf, ok := e.Data["risk_files"].(float64); ok {
-				rec.riskFiles += int(rf)
 			}
 		}
 	}
@@ -413,8 +391,6 @@ func buildCohort(agents []*agentRecord) GateEffCohort {
 		if rec.abandoned {
 			c.Abandonments++
 		}
-		c.NetAccretion += rec.netAccretion
-		c.RiskFilesTouched += rec.riskFiles
 	}
 
 	c.CompletionRate = float64(c.Completions) / float64(c.Count) * 100
@@ -429,7 +405,6 @@ func buildCohort(agents []*agentRecord) GateEffCohort {
 		c.AvgDurationMin = total / float64(len(durations))
 	}
 	if c.Count > 0 {
-		c.AvgNetDelta = float64(c.NetAccretion) / float64(c.Count)
 	}
 
 	return c
@@ -521,14 +496,6 @@ func generateVerdict(overall GateEffOverall, perGate []GateEffPerGate, totalSpaw
 			-delta, enfRate, bypRate, enfVerif, bypVerif)
 	}
 
-	// Add accretion insight
-	enfAccretion := overall.Enforced.AvgNetDelta
-	bypAccretion := overall.Bypassed.AvgNetDelta
-	if enfAccretion > 0 || bypAccretion > 0 {
-		verdict += fmt.Sprintf(" Accretion: enforced avg %.0f lines/agent vs bypassed %.0f lines/agent.",
-			enfAccretion, bypAccretion)
-	}
-
 	return verdict, caveats
 }
 
@@ -541,9 +508,9 @@ func formatGateEffText(result *GateEffResult) string {
 	// Per-gate tables
 	for _, pg := range result.PerGate {
 		fmt.Fprintf(&b, "── %s (%d evaluations) ──\n", strings.ToUpper(pg.Gate), pg.Total)
-		fmt.Fprintf(&b, "  %-10s %6s %6s %6s %8s %8s %8s %10s\n",
-			"Cohort", "N", "Comp", "Aband", "Comp%", "Verif%", "AvgDur", "AvgDelta")
-		fmt.Fprintf(&b, "  %s\n", strings.Repeat("─", 72))
+		fmt.Fprintf(&b, "  %-10s %6s %6s %6s %8s %8s %8s\n",
+			"Cohort", "N", "Comp", "Aband", "Comp%", "Verif%", "AvgDur")
+		fmt.Fprintf(&b, "  %s\n", strings.Repeat("─", 60))
 
 		for _, entry := range []struct {
 			label string
@@ -560,18 +527,18 @@ func formatGateEffText(result *GateEffResult) string {
 			if entry.c.AvgDurationMin > 0 {
 				durStr = fmt.Sprintf("%.0fm", entry.c.AvgDurationMin)
 			}
-			fmt.Fprintf(&b, "  %-10s %6d %6d %6d %7.1f%% %7.1f%% %8s %+10.0f\n",
+			fmt.Fprintf(&b, "  %-10s %6d %6d %6d %7.1f%% %7.1f%% %8s\n",
 				entry.label, entry.c.Count, entry.c.Completions, entry.c.Abandonments,
-				entry.c.CompletionRate, entry.c.VerificationRate, durStr, entry.c.AvgNetDelta)
+				entry.c.CompletionRate, entry.c.VerificationRate, durStr)
 		}
 		fmt.Fprintln(&b)
 	}
 
 	// Overall comparison
 	fmt.Fprintln(&b, "── OVERALL: ENFORCED vs BYPASSED ──")
-	fmt.Fprintf(&b, "  %-10s %6s %6s %6s %8s %8s %8s %10s %8s\n",
-		"Cohort", "N", "Comp", "Aband", "Comp%", "Verif%", "AvgDur", "AvgDelta", "RiskFiles")
-	fmt.Fprintf(&b, "  %s\n", strings.Repeat("─", 82))
+	fmt.Fprintf(&b, "  %-10s %6s %6s %6s %8s %8s %8s\n",
+		"Cohort", "N", "Comp", "Aband", "Comp%", "Verif%", "AvgDur")
+	fmt.Fprintf(&b, "  %s\n", strings.Repeat("─", 60))
 
 	for _, entry := range []struct {
 		label string
@@ -584,10 +551,9 @@ func formatGateEffText(result *GateEffResult) string {
 		if entry.c.AvgDurationMin > 0 {
 			durStr = fmt.Sprintf("%.0fm", entry.c.AvgDurationMin)
 		}
-		fmt.Fprintf(&b, "  %-10s %6d %6d %6d %7.1f%% %7.1f%% %8s %+10.0f %8d\n",
+		fmt.Fprintf(&b, "  %-10s %6d %6d %6d %7.1f%% %7.1f%% %8s\n",
 			entry.label, entry.c.Count, entry.c.Completions, entry.c.Abandonments,
-			entry.c.CompletionRate, entry.c.VerificationRate, durStr,
-			entry.c.AvgNetDelta, entry.c.RiskFilesTouched)
+			entry.c.CompletionRate, entry.c.VerificationRate, durStr)
 	}
 	fmt.Fprintln(&b)
 

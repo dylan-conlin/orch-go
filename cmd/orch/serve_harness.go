@@ -203,13 +203,6 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 			continue
 		}
 
-		// Track accretion delta events for collection status
-		if event.Type == "accretion.delta" {
-			if firstAccretionEvent == 0 || event.Timestamp < firstAccretionEvent {
-				firstAccretionEvent = event.Timestamp
-			}
-		}
-
 		// Other events filtered by time window
 		if event.Timestamp < cutoff {
 			continue

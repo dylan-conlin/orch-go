@@ -124,8 +124,8 @@ func TestAccretionGate_CollectingStatus(t *testing.T) {
 	now := time.Now().Unix() - 3600
 	events := []StatsEvent{
 		{Type: "session.spawned", Timestamp: now},
-		{Type: "accretion.delta", Timestamp: now, Data: map[string]interface{}{
-			"beads_id": "test-123", "net_delta": 50.0,
+		{Type: "accretion.snapshot", Timestamp: now, Data: map[string]interface{}{
+			"total_lines": float64(5000), "directory": "pkg/",
 		}},
 	}
 

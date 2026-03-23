@@ -1,6 +1,6 @@
 // Package main provides post-lifecycle helper functions used after the completion
 // pipeline's lifecycle transition. These handle cache invalidation, auto-rebuild,
-// telemetry collection, transcript export, and accretion delta analysis.
+// telemetry collection, and transcript export.
 // Extracted from complete_actions.go to keep each file focused.
 package main
 
@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
-	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/kbmetrics"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -463,172 +462,6 @@ func collectCompletionTelemetry(workspacePath string, forced bool, verificationP
 	}
 
 	return durationSeconds, tokensInput, tokensOutput, outcome
-}
-
-// collectAccretionDelta collects file growth/shrinkage metrics from git diff.
-// Uses the agent's git baseline (commit SHA at spawn time) to compute the net
-// diff between spawn and HEAD. Falls back to --since=<spawnTime> when no baseline.
-func collectAccretionDelta(projectDir, workspacePath string) *events.AccretionDeltaData {
-	if workspacePath == "" {
-		fmt.Fprintf(os.Stderr, "accretion.delta skipped: no workspace path\n")
-		return nil
-	}
-
-	manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
-
-	// Primary: use git baseline for precise diff
-	if manifest.GitBaseline != "" {
-		return collectAccretionFromBaseline(projectDir, manifest.GitBaseline)
-	}
-
-	// Fallback: use spawn time with git log (no path filter)
-	spawnTime := manifest.ParseSpawnTime()
-	if spawnTime.IsZero() {
-		fmt.Fprintf(os.Stderr, "accretion.delta skipped: no git baseline or spawn time\n")
-		return nil
-	}
-
-	return collectAccretionFromSpawnTime(projectDir, spawnTime)
-}
-
-// collectAccretionFromBaseline uses git diff --numstat <baseline>..HEAD to get
-// the net file changes since the agent was spawned.
-func collectAccretionFromBaseline(projectDir, baseline string) *events.AccretionDeltaData {
-	cmd := exec.Command("git", "diff", "--numstat", baseline+"..HEAD")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "accretion.delta skipped: git diff baseline failed: %v\n", err)
-		return nil
-	}
-
-	return parseNumstatOutput(projectDir, string(output))
-}
-
-// collectAccretionFromSpawnTime uses git log --since to find commits and aggregate
-// their numstat. This is the fallback when no git baseline is available.
-func collectAccretionFromSpawnTime(projectDir string, spawnTime time.Time) *events.AccretionDeltaData {
-	sinceStr := spawnTime.UTC().Format("2006-01-02T15:04:05Z")
-
-	// Find all commits since spawn time (no path filter — captures all agent work)
-	cmd := exec.Command("git", "log", "--since="+sinceStr, "--format=%H")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
-	if err != nil || len(strings.TrimSpace(string(output))) == 0 {
-		fmt.Fprintf(os.Stderr, "accretion.delta skipped: no commits since %s\n", sinceStr)
-		return nil
-	}
-
-	commitHashes := strings.Split(strings.TrimSpace(string(output)), "\n")
-
-	fileDeltas := make(map[string]*events.FileDelta)
-
-	for _, hash := range commitHashes {
-		if hash == "" {
-			continue
-		}
-
-		cmd := exec.Command("git", "show", "--numstat", "--format=", hash)
-		cmd.Dir = projectDir
-		showOutput, err := cmd.Output()
-		if err != nil {
-			continue
-		}
-
-		parseNumstatLines(string(showOutput), fileDeltas)
-	}
-
-	return buildAccretionResult(projectDir, fileDeltas)
-}
-
-// parseNumstatOutput parses git diff --numstat output into accretion data.
-func parseNumstatOutput(projectDir, output string) *events.AccretionDeltaData {
-	fileDeltas := make(map[string]*events.FileDelta)
-	parseNumstatLines(output, fileDeltas)
-	return buildAccretionResult(projectDir, fileDeltas)
-}
-
-// parseNumstatLines parses numstat-formatted lines into a file delta map.
-func parseNumstatLines(output string, fileDeltas map[string]*events.FileDelta) {
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		parts := strings.Split(line, "\t")
-		if len(parts) < 3 {
-			continue
-		}
-
-		filePath := parts[2]
-
-		added := 0
-		removed := 0
-		if parts[0] != "-" {
-			var n int
-			_, err := fmt.Sscanf(parts[0], "%d", &n)
-			if err == nil {
-				added = n
-			}
-		}
-		if parts[1] != "-" {
-			var n int
-			_, err := fmt.Sscanf(parts[1], "%d", &n)
-			if err == nil {
-				removed = n
-			}
-		}
-
-		if existing, ok := fileDeltas[filePath]; ok {
-			existing.LinesAdded += added
-			existing.LinesRemoved += removed
-			existing.NetDelta = existing.LinesAdded - existing.LinesRemoved
-		} else {
-			fileDeltas[filePath] = &events.FileDelta{
-				Path:         filePath,
-				LinesAdded:   added,
-				LinesRemoved: removed,
-				NetDelta:     added - removed,
-			}
-		}
-	}
-}
-
-// buildAccretionResult converts a file delta map into AccretionDeltaData.
-func buildAccretionResult(projectDir string, fileDeltas map[string]*events.FileDelta) *events.AccretionDeltaData {
-	var totalAdded, totalRemoved, riskFiles int
-	var deltas []events.FileDelta
-
-	for _, delta := range fileDeltas {
-		fullPath := filepath.Join(projectDir, delta.Path)
-		if lineCount, err := countFileLines(fullPath); err == nil {
-			delta.TotalLines = lineCount
-			delta.IsAccretionRisk = lineCount > 800
-
-			if delta.IsAccretionRisk && delta.NetDelta > 0 {
-				riskFiles++
-			}
-		}
-
-		totalAdded += delta.LinesAdded
-		totalRemoved += delta.LinesRemoved
-		deltas = append(deltas, *delta)
-	}
-
-	if len(deltas) == 0 {
-		return nil
-	}
-
-	return &events.AccretionDeltaData{
-		FileDeltas:   deltas,
-		TotalFiles:   len(deltas),
-		TotalAdded:   totalAdded,
-		TotalRemoved: totalRemoved,
-		NetDelta:     totalAdded - totalRemoved,
-		RiskFiles:    riskFiles,
-	}
 }
 
 // countFileLines counts the number of lines in a file.

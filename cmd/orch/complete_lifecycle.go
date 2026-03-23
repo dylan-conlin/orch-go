@@ -67,11 +67,6 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 		durationSecs, tokensIn, tokensOut, telemetryOutcome = collectCompletionTelemetry(target.WorkspacePath, completeForce, outcome.Passed)
 	}
 
-	// Collect accretion delta before archival (same reason as telemetry above)
-	var accretionData *events.AccretionDeltaData
-	if target.WorkspacePath != "" && target.WorkProjectDir != "" {
-		accretionData = collectAccretionDelta(target.WorkProjectDir, target.WorkspacePath)
-	}
 
 	// Capture change-scope classification before archival (needs workspace for git baseline)
 	if target.WorkspacePath != "" && target.WorkProjectDir != "" && !target.IsOrchestratorSession {
@@ -327,23 +322,6 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	// Log accretion delta metrics (collected pre-lifecycle above)
-	if accretionData != nil {
-		accretionData.BeadsID = target.BeadsID
-		accretionData.Workspace = target.AgentName
-		accretionData.Skill = outcome.SkillName
-		// Populate model from agent manifest for model-comparative analysis (HE-08)
-		if target.WorkspacePath != "" {
-			m := spawn.ReadAgentManifestWithFallback(target.WorkspacePath)
-			accretionData.Model = m.Model
-		}
-
-		if err := logger.LogAccretionDelta(*accretionData); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to log accretion delta: %v\n", err)
-		}
-	}
-
-	// Invalidate orch serve cache
 	invalidateServeCache()
 
 	return lifecycleCleanedUp, nil

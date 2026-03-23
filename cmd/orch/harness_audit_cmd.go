@@ -61,7 +61,7 @@ type GateAuditResult struct {
 // Zero events + many completions = channel is likely dead (broken/disconnected),
 // not clean (nothing to report).
 type DeadSignalEntry struct {
-	Channel     string `json:"channel"`     // e.g. "verification", "accretion", "duplication"
+	Channel     string `json:"channel"`     // e.g. "verification", "duplication"
 	Events      int    `json:"events"`      // event count in window (always 0 for dead signals)
 	Completions int    `json:"completions"` // completions in window
 	Description string `json:"description"` // what event types feed this channel
@@ -292,8 +292,6 @@ var knownFeedbackChannels = []feedbackChannel{
 		description: "verification.failed + verification.bypassed + verification.auto_skipped",
 	},
 	{
-		name:        "accretion",
-		eventTypes:  []string{"accretion.delta"},
 		description: "accretion.delta (file growth/shrinkage per agent)",
 	},
 	{
