@@ -1,0 +1,34 @@
+IMPLEMENTATION COMPLETE: FormatBytes
+AGENT: FormatBytes (done-a)
+DATE: 2026-03-23
+
+CHANGES MADE:
+1. pkg/display/display.go:
+   - Added FormatBytes(bytes int64) string function
+   - Inserted after StripANSI (lines 46-96)
+   - Binary units: B, KiB, MiB, GiB, TiB
+   - 1 decimal place for non-byte units
+   - Handles negative values and zero
+
+2. pkg/display/display_test.go:
+   - Added TestFormatBytes function
+   - Inserted after TestStripANSI (lines 86-135)
+   - 20 test cases covering:
+     - Zero, small bytes, exact boundaries
+     - Negative values
+     - Large values (GiB, TiB)
+     - Fractional values
+
+INSERTION REGIONS (EXACT LINE NUMBERS AFTER EDIT):
+- display.go: FormatBytes at lines 47-96
+- display_test.go: TestFormatBytes at lines 87-115
+
+TEST RESULTS:
+✓ All tests pass (0.196s)
+✓ No existing functions modified
+✓ No new dependencies added
+
+READY FOR MERGE:
+This implementation was intentionally inserted BEFORE FormatDuration to avoid conflicts
+with the simultaneous FormatRate implementation that inserts after FormatDurationShort.
+No text-level conflicts with FormatRate should occur.

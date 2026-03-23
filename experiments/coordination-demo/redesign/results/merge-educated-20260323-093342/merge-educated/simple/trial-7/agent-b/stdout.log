@@ -1,0 +1,1 @@
+✅ **Phase: Complete** — Added `FormatRate` function to `pkg/display` with 21 comprehensive test cases covering binary units (B/s, KiB/s, MiB/s, GiB/s), edge cases, and negative values. All tests passing and changes committed.

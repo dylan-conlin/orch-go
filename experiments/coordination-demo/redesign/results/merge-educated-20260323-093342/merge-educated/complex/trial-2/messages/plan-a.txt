@@ -1,0 +1,32 @@
+# Plan for VisualWidth and PadToWidth Implementation
+
+## Files to Modify
+- pkg/display/display.go
+- pkg/display/display_test.go
+
+## Implementation Plan
+
+### display.go Changes
+- **Insertion point:** After line 45 (after StripANSI function, BEFORE FormatDuration)
+- **Expected line range:** ~46-80 (estimated 35 lines for two functions with doc comments)
+- **Functions to add:**
+  1. VisualWidth(s string) int — returns visual display width ignoring ANSI codes
+  2. PadToWidth(s string, width int) string — right-pads to visual width
+
+### display_test.go Changes
+- **Insertion point:** After existing StripANSI tests, BEFORE FormatDuration tests
+- **Tests to add:**
+  1. TestVisualWidth — covering ASCII, ANSI codes, Unicode, empty strings, edge cases
+  2. TestPadToWidth — covering plain strings, ANSI codes, Unicode, empty strings, edge cases
+
+## Conflict Avoidance
+- Agent B (FormatTable) is using lines 95-180 in display.go (after FormatDurationShort)
+- Agent A (this plan) will use lines 46-80 in display.go (after StripANSI, before FormatDuration)
+- NO OVERLAP — these insertion regions are separated by 15+ lines
+- This avoids the CRITICAL merge conflict that would occur if both agents tried to insert at line 95
+
+## Implementation Notes
+- Both functions use the existing StripANSI function (no new dependencies)
+- Will NOT modify any existing functions
+- All public functions have doc comments
+- Follows existing code style

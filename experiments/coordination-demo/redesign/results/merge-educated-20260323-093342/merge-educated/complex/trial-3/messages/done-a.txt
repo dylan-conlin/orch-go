@@ -1,0 +1,35 @@
+Agent A Implementation Complete: VisualWidth and PadToWidth
+
+Files Modified:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+Implementation Details:
+
+display.go:
+- INSERTION LOCATION: Lines 47-63 (after StripANSI, before FormatDuration)
+- VisualWidth (lines 47-51): Returns visual width of string, ignoring ANSI codes
+  * Uses StripANSI to strip codes, then counts runes for correct Unicode handling
+- PadToWidth (lines 53-63): Right-pads string to visual width
+  * Preserves ANSI codes while padding with spaces
+  * Returns unchanged if already wider than target width
+
+display_test.go:
+- INSERTION LOCATION: Lines 136-211 (after TestFormatDurationShort)
+- TestVisualWidth (lines 136-166): 13 test cases covering:
+  * Plain ASCII, ANSI codes, Unicode (CJK), emoji, mixed ANSI+Unicode
+  * Empty string edge cases
+- TestPadToWidth (lines 168-211): 15 test cases covering:
+  * Plain ASCII, ANSI preservation, Unicode, emoji
+  * Edge cases: already at width, wider than target, width 0, negative width
+
+Test Results:
+✓ All tests passing (8 existing tests + 2 new test functions)
+✓ go test ./pkg/display/ -v: ok
+
+Key Design Decisions:
+- VisualWidth counts runes (not bytes) for proper Unicode support
+- PadToWidth uses VisualWidth internally, ensuring consistency
+- Both functions have complete doc comments
+- No new dependencies added (stdlib only)
+- Insertion placed before FormatDuration (TOP location) to avoid conflicts

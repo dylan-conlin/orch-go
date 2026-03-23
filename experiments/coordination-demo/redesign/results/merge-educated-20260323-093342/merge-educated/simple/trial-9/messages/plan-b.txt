@@ -1,0 +1,27 @@
+AGENT B: FormatRate Implementation Plan (REVISED)
+==================================================
+
+FILES TO MODIFY:
+- pkg/display/display.go
+- pkg/display/display_test.go
+
+CONFLICT RESOLUTION:
+Agent A is inserting FormatBytes after FormatDurationShort (lines 96-125).
+Agent B (this agent) will insert FormatRate at TOP of file to avoid conflict.
+
+DISPLAY.GO INSERTION POINT:
+- Insert FormatRate function AFTER StripANSI (after line 45)
+- There's a blank line at 46, FormatDuration starts at 47
+- Expected insertion region: lines 46-80 (approximately 35 lines for the function)
+- This avoids Agent A's insertion point (lines 96-125 after FormatDurationShort)
+- Clear separation: ~15 lines between end of FormatRate and start of FormatDuration
+
+DISPLAY_TEST.GO INSERTION POINT:
+- Insert TestFormatRate test AT THE END of the file (after TestFormatDurationShort)
+- Current file ends at line 134
+- Expected insertion region: lines 136-185+ (approximately 50 lines for comprehensive tests)
+
+SEPARATION GUARANTEE:
+- Agent A: FormatBytes at lines 96-125 (bottom)
+- Agent B: FormatRate at lines 46-80 (top)
+- NO OVERLAP - clear separation in file structure

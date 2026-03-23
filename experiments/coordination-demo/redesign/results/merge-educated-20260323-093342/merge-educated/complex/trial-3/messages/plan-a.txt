@@ -1,0 +1,24 @@
+Agent A: VisualWidth and PadToWidth Implementation
+
+Files to modify:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+Insertion Plan:
+
+display.go:
+- INSERTION POINT: After line 45 (after StripANSI function, before FormatDuration)
+- LINE RANGE: 46-75 (estimated ~30 lines)
+- FUNCTIONS TO ADD:
+  * VisualWidth(s string) int - returns visual display width, ignoring ANSI codes
+  * PadToWidth(s string, width int) string - right-pads string to visual width
+- NOTE: VisualWidth placed early because it may be used by other functions (FormatTable, etc)
+
+display_test.go:
+- INSERTION POINT: After line 134 (after TestFormatDurationShort function)
+- LINE RANGE: 135-210 (estimated ~75 lines)
+- TESTS TO ADD:
+  * TestVisualWidth - covers ASCII, ANSI colors, Unicode, empty strings, edge cases
+  * TestPadToWidth - covers padding, ANSI preservation, width edge cases
+
+Key constraint: Using existing StripANSI function for width calculation, NOT reimplementing ANSI stripping.

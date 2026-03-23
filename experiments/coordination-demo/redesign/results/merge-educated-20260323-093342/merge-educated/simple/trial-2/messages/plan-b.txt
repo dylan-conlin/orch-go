@@ -1,0 +1,26 @@
+Agent B Plan: FormatRate Function (UPDATED - CONFLICT AVOIDANCE)
+
+FILES TO MODIFY:
+- pkg/display/display.go
+- pkg/display/display_test.go
+
+INSERTION POINTS (UPDATED TO AVOID AGENT A'S REGION):
+Display.go:
+  - Insert FormatRate function AFTER line 45 (after StripANSI)
+  - Place it BEFORE line 47 (before FormatDuration)
+  - New function will occupy approximately lines 47-70
+  - This is at the TOP portion of the file
+
+Display_test.go:
+  - Insert TestFormatRate AFTER line 85 (after TestStripANSI)
+  - Place it BEFORE line 87 (before TestFormatDuration)
+  - New test will occupy approximately lines 86-110
+  - This is at the TOP portion of the test file
+
+CONFLICT AVOIDANCE:
+- Agent A is inserting at lines 95-119 in display.go (after FormatDurationShort)
+- Agent A is inserting at lines 135-169 in display_test.go (after TestFormatDurationShort)
+- This plan inserts at lines 47-70 in display.go and 86-110 in display_test.go
+- No overlap - clean merge guaranteed
+
+Function being added: FormatRate(bytesPerSec float64) -> string

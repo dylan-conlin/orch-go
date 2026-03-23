@@ -1,0 +1,31 @@
+Plan B: FormatRate Implementation
+==================================
+
+Task: Add FormatRate(bytesPerSec float64) string to pkg/display
+
+Files to modify:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+Insertion points:
+- display.go: INSERT AFTER line 94 (after FormatDurationShort function ends)
+  - Lines 95-130 approximately for FormatRate function (36 lines)
+
+- display_test.go: INSERT AFTER line 134 (after TestFormatDurationShort function ends)
+  - Lines 135-165 approximately for TestFormatRate function (31 lines)
+
+Function behavior:
+- Signature: func FormatRate(bytesPerSec float64) string
+- Binary units: B/s, KiB/s, MiB/s, GiB/s
+- 1 decimal place for non-B/s units
+- Handle zero, negative, fractional values
+
+Tests will cover:
+- Zero value
+- Small values (512 B/s)
+- Exact boundaries (1024, 1048576, 1073741824)
+- Fractional values (1.5 KiB/s)
+- Negative values
+- Large values (GiB/s)
+
+Status: Ready to implement

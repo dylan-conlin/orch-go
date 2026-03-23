@@ -1,0 +1,37 @@
+Agent B Plan: FormatTable Implementation
+
+FILES TO MODIFY:
+- pkg/display/display.go
+- pkg/display/display_test.go
+
+INSERTION POINTS:
+
+display.go:
+  - Insert FormatTable function after line 94 (after FormatDurationShort)
+  - New lines: 95-180 (approximately 85 lines for function implementation)
+  - Function dependencies: uses existing StripANSI function
+
+display_test.go:
+  - Insert TestFormatTable function after line 134 (after TestFormatDurationShort)
+  - New lines: 135-220 (approximately 85 lines for test cases)
+
+DESIGN CHOICES:
+- Use pipe (|) separator: | col1 | col2 | col3 |
+- Use dash separator line between headers and data rows
+- Column padding: 1 space on each side of content
+- Handle ANSI colors by stripping for width calculation, preserving in output
+- Row handling: skip nil rows, pad rows with fewer columns with empty strings
+
+FUNCTION TO ADD:
+- FormatTable(headers []string, rows [][]string) string
+  - Calculates column widths using StripANSI for visual width
+  - Renders formatted table with header separator
+  - Returns complete table as string with newlines
+
+TEST COVERAGE:
+- Basic table (headers + 3 rows)
+- Headers only (no rows)
+- ANSI colored content alignment
+- Rows with fewer columns than headers
+- Single-column table
+- Wide content (long strings)

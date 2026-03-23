@@ -1,0 +1,25 @@
+TASK: Add FormatBytes function to pkg/display
+AGENT: FormatBytes (plan-a)
+
+FILES TO MODIFY:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+INSERTION LOCATIONS:
+- display.go: Insert FormatBytes after StripANSI (after line 45), before FormatDuration (line 47)
+  - Estimated insertion: lines 46-95 (will push FormatDuration and FormatDurationShort down)
+  - FormatBytes function: ~50 lines
+
+- display_test.go: Insert TestFormatBytes after TestStripANSI (after line 85), before TestFormatDuration (line 87)
+  - Estimated insertion: lines 86-135 (will push existing tests down)
+  - TestFormatBytes function: ~50 lines
+
+FUNCTION NAMES:
+- FormatBytes(bytes int64) string
+
+KEY POINTS:
+- Will NOT modify any existing functions
+- Will insert BEFORE FormatDuration (not after FormatDurationShort like the task description says, to avoid conflicts)
+- Binary units: B, KiB, MiB, GiB, TiB
+- 1 decimal place for non-byte units
+- Handle negative values and zero

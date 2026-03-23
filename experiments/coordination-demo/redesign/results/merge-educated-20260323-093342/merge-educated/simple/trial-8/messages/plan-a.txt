@@ -1,0 +1,26 @@
+AGENT A: FormatBytes Implementation Plan
+
+Files to modify:
+- pkg/display/display.go
+- pkg/display/display_test.go
+
+Function to add:
+- FormatBytes(bytes int64) string
+
+Insertion locations:
+- display.go: INSERT between FormatDuration and FormatDurationShort (after line 82, before line 83)
+  Exact position: lines 84-125 (approximately 42 lines for function + docstring + blank lines)
+  Placing here groups format utility functions logically and avoids conflict with Agent B at line 96+
+
+- display_test.go: INSERT after line 114 (end of TestFormatDuration function)
+  Exact position: lines 116-180 (approximately 65 lines for comprehensive test cases)
+  This keeps FormatBytes tests before FormatDurationShort tests
+
+Function behavior:
+- Binary units: B, KiB, MiB, GiB, TiB (1024-based)
+- 1 decimal place for non-byte units
+- Handle negative values with "-" prefix
+- Return "0 B" for zero
+
+Agent B can safely insert FormatRate starting at line 96+ in display.go (after FormatDurationShort).
+No line region overlap.

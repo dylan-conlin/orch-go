@@ -1,0 +1,19 @@
+AGENT B: FormatRate Implementation Plan (REVISED)
+
+CONFLICT DETECTED: Agent A is inserting after line 94.
+RESOLUTION: Moving FormatRate to insert after StripANSI (before FormatDuration)
+
+Files to modify:
+1. pkg/display/display.go
+   - Insert FormatRate function after StripANSI (line 45)
+   - Insert before FormatDuration (line 47)
+   - Insertion point: line 46 area
+   - Function: FormatRate(bytesPerSec float64) string
+
+2. pkg/display/display_test.go
+   - Add TestFormatRate test function
+   - Insert in separate area from Agent A's tests
+
+Insertion region: Lines 46-75 in display.go (after StripANSI, before FormatDuration)
+
+This avoids Agent A's insertion at lines 96-130.

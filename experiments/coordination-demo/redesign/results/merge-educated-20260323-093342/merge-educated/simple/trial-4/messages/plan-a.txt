@@ -1,0 +1,31 @@
+Agent A: FormatBytes Implementation Plan
+
+## Files to modify:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+## Insertion points (REVISED to avoid conflict with Agent B):
+- display.go: Insert FormatBytes AFTER FormatDurationShort (line 93), AFTER current EOF (line 95)
+  - Inserting new lines after line 94
+  - Agent B is inserting BEFORE FormatDuration (lines 47-66), so this is in a completely different region - NO CONFLICT
+
+- display_test.go: Insert TestFormatBytes AFTER TestFormatDurationShort (line 134), AFTER current EOF (line 135)
+  - Inserting new lines after line 135
+  - Agent B is inserting BEFORE TestFormatDuration (lines 85-125), so this is in a completely different region - NO CONFLICT
+
+## Function signature:
+func FormatBytes(bytes int64) string
+
+## Implementation details:
+- Binary units: B, KiB, MiB, GiB, TiB (1024-based)
+- 1 decimal place for non-byte units
+- Handle negatives with "-" prefix
+- Handle zero: "0 B"
+
+## Test cases covered:
+- Zero value
+- Small bytes (<1024)
+- Exact boundaries (1024, 1048576, etc.)
+- Between boundaries (1536 = 1.5 KiB)
+- Large values (GiB, TiB)
+- Negative values

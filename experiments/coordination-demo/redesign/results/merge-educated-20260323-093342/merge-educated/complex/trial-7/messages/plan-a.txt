@@ -1,0 +1,34 @@
+PLAN-A: VisualWidth and PadToWidth Implementation
+
+Task: Add VisualWidth and PadToWidth functions to pkg/display/display.go
+
+Files to modify:
+- pkg/display/display.go (insertion after FormatDurationShort)
+- pkg/display/display_test.go (add new test functions)
+
+Code insertion point in display.go:
+- Current file ends at line 94 (FormatDurationShort function + empty line)
+- Will insert new functions starting at line 96 (after the empty line at 95)
+- Expected lines used: 96-145 (approximately 50 lines total)
+
+Functions to add:
+1. VisualWidth(s string) int
+   - Returns visual display width of a string, ignoring ANSI escape codes
+   - Uses existing StripANSI function
+   - Counts runes, not bytes
+   - Approximately 8-12 lines
+
+2. PadToWidth(s string, width int) string
+   - Right-pads a string with spaces to reach target visual width
+   - ANSI codes preserved but don't count toward width
+   - Returns unchanged if already wider than target
+   - Approximately 15-20 lines
+
+Tests to add to display_test.go:
+- TestVisualWidth covering: ASCII, ANSI codes, Unicode, empty strings, edge cases
+- TestPadToWidth covering: ASCII, ANSI codes, Unicode, edge cases, already at width
+
+Coordination note:
+- Will insert in lines 96-145 range (AFTER FormatDurationShort)
+- Other agent (FormatTable) should avoid inserting in this line range
+- Recommend FormatTable insert at lines 150+ or earlier (before FormatDurationShort)

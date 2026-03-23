@@ -1,0 +1,29 @@
+Agent A Plan: FormatBytes Implementation
+
+FILES TO MODIFY:
+- pkg/display/display.go
+- pkg/display/display_test.go
+
+DISPLAY.GO INSERTION:
+- Location: BEFORE FormatDuration (after StripANSI)
+- Exact region: Lines 46-80 (inserting 35 lines)
+- Will insert after blank line at line 45, pushing FormatDuration down from line 47
+- Function: FormatBytes(bytes int64) string
+
+DISPLAY_TEST.GO INSERTION:
+- Location: BEFORE TestFormatDuration (after TestStripANSI)
+- Exact region: Lines 87-135 (inserting ~49 lines)
+- Will insert after TestStripANSI, pushing TestFormatDuration down from line 87
+- Test: TestFormatBytes
+
+CONFLICT AVOIDANCE:
+- Agent B is inserting at lines 96+ in display.go (after FormatDurationShort)
+- Agent A is inserting at lines 46-80 in display.go (before FormatDuration)
+- These regions are >15 lines apart, no conflict
+- Same separation in display_test.go: A inserts at 87+, B inserts at 136+
+
+Function details:
+- Name: FormatBytes
+- Binary units: B, KiB, MiB, GiB, TiB
+- 1 decimal place for non-byte units
+- Handles zero and negative values

@@ -1,0 +1,28 @@
+AGENT B IMPLEMENTATION PLAN: FormatRate (UPDATED - CONFLICT AVOIDANCE)
+
+CONFLICT DETECTED: Agent A is inserting FormatBytes at lines 96-130 in display.go
+RESOLUTION: Agent B moving to different insertion point per coordination rules
+
+Files to modify:
+- pkg/display/display.go
+- pkg/display/display_test.go
+
+INSERTION POINTS (REVISED):
+
+1. display.go:
+   - Location: AFTER line 45 (StripANSI function) and BEFORE line 47 (FormatDuration comment)
+   - Insert FormatRate function at lines ~47-76 (approximately 30 lines)
+   - This places FormatRate BEFORE FormatDuration, avoiding Agent A's insertion at lines 96-130
+   - Function signature: func FormatRate(bytesPerSec float64) string
+   - Behavior: Format transfer rates (B/s, KiB/s, MiB/s, GiB/s) with 1 decimal place for non-byte units
+
+2. display_test.go:
+   - Location: AFTER line 85 (TestStripANSI function) and BEFORE line 87 (TestFormatDuration function)
+   - Insert TestFormatRate test function at lines ~87-126 (approximately 40 lines)
+   - This places TestFormatRate before Agent A's TestFormatBytes insertion
+   - Test cases: zero, small values, exact boundaries, negative values, large values, fractional values
+
+CONFLICT RESOLUTION:
+- Agent A (FormatBytes): lines 96-130 in display.go, lines 136+ in display_test.go
+- Agent B (FormatRate): lines 47-76 in display.go, lines 87-126 in display_test.go
+- NO OVERLAP - both agents using different line regions

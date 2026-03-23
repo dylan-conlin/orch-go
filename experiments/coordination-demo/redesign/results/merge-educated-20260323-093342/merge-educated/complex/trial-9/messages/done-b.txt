@@ -1,0 +1,38 @@
+Task: Add FormatTable to pkg/display
+Agent: B
+Status: COMPLETED
+
+Implementation Summary:
+
+Added to pkg/display/display.go:
+1. FormatTable(headers []string, rows [][]string) string
+   - Lines: 96-165 (after FormatDurationShort, line 94)
+   - Renders text table with auto-sized columns
+   - Uses StripANSI for width calculation (handles ANSI colors correctly)
+   - Supports: empty rows, mismatched column counts, nil rows
+   - Design: Pipe separators, dashes for header separator, 1 space padding per side
+
+2. formatTableRow(cells []string, colWidths []int) string (helper)
+   - Lines: 167-184
+   - Formats individual rows with proper padding and column alignment
+   - Accounts for ANSI codes when calculating padding
+
+Added to pkg/display/display_test.go:
+- TestFormatTable (lines 137-243)
+- 9 test cases covering:
+  * Basic table (multiple rows/columns)
+  * Headers only (empty rows, nil rows)
+  * Single column table
+  * ANSI colored content
+  * Mismatched column counts (fewer columns than headers)
+  * Wide content
+  * Empty headers
+  * Row with extra columns (ignored)
+
+All tests pass: go test ./pkg/display/ -v ✓
+
+Conflict avoidance:
+- Inserted after FormatDurationShort (line 94)
+- ~90 lines of new code, well separated from existing functions
+- No modifications to existing functions
+- No new dependencies (standard library only)

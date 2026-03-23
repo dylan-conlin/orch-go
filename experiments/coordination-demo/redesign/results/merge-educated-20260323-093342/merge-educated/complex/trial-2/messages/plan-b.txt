@@ -1,0 +1,25 @@
+Agent B Plan: FormatTable Implementation
+
+Task: Add FormatTable function to pkg/display
+
+COORDINATION: Agent A is inserting VisualWidth and PadToWidth at lines 95-130.
+Agent B (this agent) will insert AFTER Agent A's code to avoid conflicts.
+
+Files to modify:
+1. pkg/display/display.go
+   - Insert FormatTable function at line 131+ (AFTER Agent A's functions)
+   - Expected region: lines 131-220 (approximately 90 lines for function + comprehensive implementation)
+   - Function: FormatTable(headers []string, rows [][]string) string
+   - Handles auto-sizing columns, ANSI colors, edge cases
+
+2. pkg/display/display_test.go
+   - Insert TestFormatTable test at line 135+ (AFTER existing tests)
+   - Expected region: lines 200+ (after Agent A's tests, which will be ~135-165)
+   - Test function: TestFormatTable covering all requirements
+
+SEPARATION STRATEGY:
+- Agent A: lines 95-130 (display.go), ~135-165 (display_test.go)
+- Agent B: lines 131+ (display.go), ~200+ (display_test.go)
+- Gap: 1+ line between Agent A and Agent B ensures clean merge
+
+This layout guarantees NO merge conflicts when both branches are merged to master.

@@ -1,0 +1,36 @@
+verification:
+  type: experiment
+  issue: orch-go-y4o3s
+
+  experiment_design:
+    hypothesis: "Git merge education will reduce conflict rate below messaging baseline of 100%"
+    baseline: "messaging condition from 20260310-174045: 20/20 CONFLICT (0% success)"
+    treatment: "Same messaging protocol + ~200 words git merge education"
+    model: claude-haiku-4-5-20251001
+    trials: 20 (10 simple + 10 complex)
+
+  results:
+    simple_success: 4/10
+    complex_success: 2/10
+    total_success: 6/20
+    success_rate: "30%"
+    fisher_exact_p_one_sided: 0.010
+    fisher_exact_p_two_sided: 0.020
+    wilson_ci_95: "[14.5%, 51.9%]"
+    individual_agent_scores: "40/40 scored 6/6"
+
+  reproducibility:
+    script: experiments/coordination-demo/redesign/run-merge-educated.sh
+    results_dir: experiments/coordination-demo/redesign/results/merge-educated-20260323-093342/
+    command: "./run-merge-educated.sh --trials 10"
+
+  artifacts:
+    probe: .kb/models/coordination/probes/2026-03-23-probe-merge-educated-messaging-experiment.md
+    model_updated: .kb/models/coordination/model.md
+    synthesis: .orch/workspace/og-inv-experiment-git-merge-23mar-0141/SYNTHESIS.md
+
+  manual_verification:
+    - "Verify results directory contains 20 trial directories with merge_result.csv files"
+    - "Verify probe file has all 4 required sections (Question, What I Tested, What I Observed, Model Impact)"
+    - "Verify model.md Claim 1 mentions merge-educated messaging results"
+    - "Verify model.md open question about git-merge-aware messaging is marked answered"

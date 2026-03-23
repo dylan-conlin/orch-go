@@ -1,0 +1,31 @@
+Agent B Plan: FormatRate Implementation
+========================================
+
+Files to modify:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+Insertion points:
+- display.go: INSERT AFTER line 94 (after FormatDurationShort function ends)
+  Function to add: FormatRate(bytesPerSec float64) string
+  Estimated lines: ~25 lines
+  Exact region: lines 95-120 (approximate)
+
+- display_test.go: INSERT AFTER line 134 (after TestFormatDurationShort function ends)
+  Function to add: TestFormatRate
+  Estimated lines: ~20 lines
+  Exact region: lines 135-155 (approximate)
+
+Function signature:
+  func FormatRate(bytesPerSec float64) string
+
+Test coverage:
+  - Zero value: "0 B/s"
+  - Small values: "512 B/s"
+  - Boundary: "1.0 KiB/s", "1.0 MiB/s"
+  - Fractional: "1.5 KiB/s"
+  - Negative: "-1.0 KiB/s"
+  - Large: GiB/s range
+
+CRITICAL: Will use DIFFERENT insertion location than FormatBytes
+(inserting AFTER existing FormatDurationShort, not at the top near StripANSI)

@@ -1,0 +1,26 @@
+FORMATBYTES IMPLEMENTATION PLAN - UPDATED
+==========================================
+
+AGENT: A (FormatBytes)
+TASK: Add FormatBytes function to pkg/display
+
+CONFLICT AVOIDANCE:
+Agent B is inserting FormatRate after line 94. To avoid merge conflict,
+Agent A will insert FormatBytes BEFORE FormatDurationShort instead.
+
+FILES TO MODIFY:
+1. pkg/display/display.go
+   - Insert FormatBytes AFTER line 82 (after FormatDuration function ends)
+   - BEFORE line 84 (before FormatDurationShort starts)
+   - Will add ~25 lines of code
+   - Exact insertion region: lines 83-107
+   - This is 11 lines away from Agent B's region (95-119)
+
+2. pkg/display/display_test.go
+   - Insert TestFormatBytes AFTER line 114 (after TestFormatDuration ends)
+   - BEFORE line 116 (before TestFormatDurationShort starts)
+   - Will add ~35 lines of test code
+   - Exact insertion region: lines 115-149
+   - This is 20 lines away from Agent B's region (135-160+)
+
+RESULT: Clean merge - no overlapping text regions

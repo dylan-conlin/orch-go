@@ -1,0 +1,37 @@
+FormatTable Implementation Plan (ADJUSTED TO AVOID CONFLICT)
+
+Files to modify:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+Code insertion points (ADJUSTED based on conflict with plan-a.txt):
+- display.go: Insert FormatTable function after line 45 (after StripANSI)
+  - New lines: 46-100 (approximately 55 lines for implementation)
+  - This leaves buffer before Agent A's insertion point (line 96+)
+
+- display_test.go: Insert TestFormatTable after line 85 (after TestStripANSI)
+  - New lines: 86-150+ (comprehensive test coverage with multiple scenarios)
+  - This leaves buffer before Agent A's test insertion point
+
+Functions to add:
+- FormatTable(headers []string, rows [][]string) string
+
+Test coverage:
+- TestFormatTable with subtests for:
+  - Basic table (headers + rows)
+  - Empty table (headers only)
+  - ANSI-colored content alignment
+  - Mismatched column counts
+  - Single-column table
+  - Wide content
+
+Design choices:
+- Use pipe separators (| ) for columns
+- Single space padding on each side of content
+- Dash separator line under headers
+- Handle ANSI codes via StripANSI for width calculations
+
+Coordination:
+- Moved insertion point from after FormatDurationShort to after StripANSI
+- This ensures Agent A (VisualWidth/PadToWidth at lines 96-150) and Agent B (FormatTable at lines 46-100) will merge cleanly
+- Clear text buffer between insertions prevents merge conflicts

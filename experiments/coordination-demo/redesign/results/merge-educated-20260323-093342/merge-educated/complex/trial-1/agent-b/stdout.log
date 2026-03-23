@@ -1,0 +1,3 @@
+**Phase: Complete** ✅
+
+Implemented `FormatTable(headers []string, rows [][]string) string` with full test coverage. The function renders aligned text tables with auto-sized columns, correctly handles ANSI colors using the existing `StripANSI` function, and all 16 tests pass. Coordinated insertion point with Agent A to avoid git merge conflicts—Task B's code inserted after `StripANSI` while Agent A's code will insert after `FormatDurationShort`, ensuring clean merge.

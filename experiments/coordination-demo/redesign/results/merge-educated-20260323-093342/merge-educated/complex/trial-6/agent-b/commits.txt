@@ -1,0 +1,1 @@
+3c9432534 feat(display): add FormatTable function for text table formatting

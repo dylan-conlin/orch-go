@@ -1,0 +1,1 @@
+d37f8acf1 display: add FormatRate function for human-readable transfer rates

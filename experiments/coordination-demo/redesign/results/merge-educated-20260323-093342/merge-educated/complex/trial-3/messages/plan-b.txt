@@ -1,0 +1,29 @@
+Agent B: FormatTable Implementation Plan (REVISED)
+==================================================
+
+CONFLICT RESOLUTION:
+Agent A is inserting after line 94 (FormatDurationShort).
+Agent B (me) will insert BEFORE FormatDuration, after StripANSI.
+
+Files to modify:
+- pkg/display/display.go
+- pkg/display/display_test.go
+
+Insertion point for display.go:
+- Location: After StripANSI function (line 45), before FormatDuration (line 47)
+- Inserting approximately 40 lines starting at line 46
+- Functions: FormatTable(headers []string, rows [][]string) string
+- LINE RANGE: 46-85 (estimated)
+
+Insertion point for display_test.go:
+- After existing tests (will determine exact location when reading file)
+- Adding TestFormatTable with ~50-60 lines of test cases
+
+Implementation approach:
+- Use StripANSI for ANSI-aware width calculation
+- Use pipe separators and space padding
+- Handle edge cases: empty rows, mismatched column counts
+- Column width = max of header width and any row width
+
+Estimated total lines added to display.go: 40 lines
+Estimated total lines added to display_test.go: 60 lines

@@ -1,0 +1,28 @@
+AGENT A PLAN: VisualWidth & PadToWidth Functions
+
+TARGET FILES:
+- pkg/display/display.go
+- pkg/display/display_test.go
+
+FUNCTION IMPLEMENTATIONS:
+1. VisualWidth(s string) int - lines 96-105 (estimated)
+   - Returns visual display width ignoring ANSI codes
+   - Uses existing StripANSI function
+   - Counts runes for Unicode support
+
+2. PadToWidth(s string, width int) string - lines 107-120 (estimated)
+   - Right-pads string to visual width
+   - Preserves ANSI codes
+   - Returns unchanged if already wider
+
+INSERTION LOCATION - display.go:
+- INSERT AFTER: FormatDurationShort function (currently ends at line 94)
+- INSERT AT: Lines 96 onwards
+- ESTIMATED END: ~Line 120
+
+INSERTION LOCATION - display_test.go:
+- INSERT AFTER: TestFormatDurationShort (currently ends at line 134)
+- INSERT AT: Lines 136 onwards
+- Will add TestVisualWidth and TestPadToWidth
+
+EXPECTED CONFLICTS: None if other agent inserts after line 120+ or before line 95

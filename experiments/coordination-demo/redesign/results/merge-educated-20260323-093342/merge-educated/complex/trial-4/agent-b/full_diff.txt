@@ -1,0 +1,208 @@
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 1a699243d..82087501e 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -44,6 +44,83 @@ func StripANSI(s string) string {
+ 	return ansiRegex.ReplaceAllString(s, "")
+ }
+ 
++// FormatTable renders headers and rows as an aligned text table.
++// It auto-sizes each column based on the widest content in that column
++// (including the header). The header is separated from data rows with a
++// line of dashes. ANSI color codes are preserved in the output but do not
++// affect column width calculations. Handles edge cases: empty rows, rows
++// with fewer columns than headers, and nil rows.
++func FormatTable(headers []string, rows [][]string) string {
++	if len(headers) == 0 {
++		return ""
++	}
++
++	// Calculate column widths based on headers and rows
++	colWidths := make([]int, len(headers))
++	for i, header := range headers {
++		colWidths[i] = len(StripANSI(header))
++	}
++
++	for _, row := range rows {
++		for i := 0; i < len(headers) && i < len(row); i++ {
++			width := len(StripANSI(row[i]))
++			if width > colWidths[i] {
++				colWidths[i] = width
++			}
++		}
++	}
++
++	// Build the table
++	var buf strings.Builder
++	padding := 1
++
++	// Format header row
++	buf.WriteString("| ")
++	for i, header := range headers {
++		width := colWidths[i]
++		paddedHeader := header + strings.Repeat(" ", width-len(StripANSI(header)))
++		buf.WriteString(paddedHeader)
++		if i < len(headers)-1 {
++			buf.WriteString(" | ")
++		} else {
++			buf.WriteString(" |")
++		}
++	}
++	buf.WriteString("\n")
++
++	// Format separator line
++	buf.WriteString("|")
++	for i := range headers {
++		width := colWidths[i]
++		buf.WriteString(strings.Repeat("-", width+2*padding))
++		buf.WriteString("|")
++	}
++	buf.WriteString("\n")
++
++	// Format data rows
++	for _, row := range rows {
++		buf.WriteString("| ")
++		for i := 0; i < len(headers); i++ {
++			var cell string
++			if i < len(row) {
++				cell = row[i]
++			}
++			width := colWidths[i]
++			visualWidth := len(StripANSI(cell))
++			paddedCell := cell + strings.Repeat(" ", width-visualWidth)
++			buf.WriteString(paddedCell)
++			if i < len(headers)-1 {
++				buf.WriteString(" | ")
++			} else {
++				buf.WriteString(" |")
++			}
++		}
++		buf.WriteString("\n")
++	}
++
++	return buf.String()
++}
++
+ // FormatDuration formats a duration as a human-readable string.
+ // Output style: "0s", "45s", "3m 12s", "2h 15m", "3d 5h".
+ func FormatDuration(d time.Duration) string {
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index fcd3fa61c..c8fd8b379 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -84,6 +84,115 @@ func TestStripANSI(t *testing.T) {
+ 	}
+ }
+ 
++func TestFormatTable(t *testing.T) {
++	tests := []struct {
++		name    string
++		headers []string
++		rows    [][]string
++		want    string
++	}{
++		{
++			name:    "basic table",
++			headers: []string{"Name", "Age", "City"},
++			rows: [][]string{
++				{"Alice", "30", "NYC"},
++				{"Bob", "25", "LA"},
++			},
++			want: "| Name  | Age | City |\n|-------|-----|------|\n| Alice | 30  | NYC  |\n| Bob   | 25  | LA   |\n",
++		},
++		{
++			name:    "headers only",
++			headers: []string{"Col1", "Col2"},
++			rows:    [][]string{},
++			want:    "| Col1 | Col2 |\n|------|------|\n",
++		},
++		{
++			name:    "single column",
++			headers: []string{"Name"},
++			rows: [][]string{
++				{"Alice"},
++				{"Bob"},
++			},
++			want: "| Name  |\n|-------|\n| Alice |\n| Bob   |\n",
++		},
++		{
++			name:    "wide content",
++			headers: []string{"Short", "VeryLongColumnName"},
++			rows: [][]string{
++				{"A", "X"},
++				{"LongerValue", "Y"},
++			},
++			want: "| Short       | VeryLongColumnName |\n|-------------|--------------------|\n| A           | X                  |\n| LongerValue | Y                  |\n",
++		},
++		{
++			name:    "ANSI colored content",
++			headers: []string{"Status", "Message"},
++			rows: [][]string{
++				{"\x1b[32mOK\x1b[0m", "All good"},
++				{"\x1b[31mFAIL\x1b[0m", "Error occurred"},
++			},
++			want: "| Status | Message        |\n|--------|----------------|\n| \x1b[32mOK\x1b[0m     | All good       |\n| \x1b[31mFAIL\x1b[0m   | Error occurred |\n",
++		},
++		{
++			name:    "fewer columns in row",
++			headers: []string{"Col1", "Col2", "Col3"},
++			rows: [][]string{
++				{"A", "B"},
++				{"X", "Y", "Z"},
++			},
++			want: "| Col1 | Col2 | Col3 |\n|------|------|------|\n| A    | B    |      |\n| X    | Y    | Z    |\n",
++		},
++		{
++			name:    "empty headers",
++			headers: []string{},
++			rows:    [][]string{},
++			want:    "",
++		},
++		{
++			name:    "single row single column",
++			headers: []string{"X"},
++			rows: [][]string{
++				{"Y"},
++			},
++			want: "| X |\n|---|\n| Y |\n",
++		},
++		{
++			name:    "all cells same width",
++			headers: []string{"A", "B"},
++			rows: [][]string{
++				{"1", "2"},
++				{"3", "4"},
++			},
++			want: "| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n",
++		},
++		{
++			name:    "header longer than content",
++			headers: []string{"VeryLongHeader", "H"},
++			rows: [][]string{
++				{"a", "b"},
++			},
++			want: "| VeryLongHeader | H |\n|----------------|---|\n| a              | b |\n",
++		},
++		{
++			name:    "ANSI in header",
++			headers: []string{"\x1b[1;36mHeader1\x1b[0m", "Header2"},
++			rows: [][]string{
++				{"data", "info"},
++			},
++			want: "| \x1b[1;36mHeader1\x1b[0m | Header2 |\n|---------|---------|\n| data    | info    |\n",
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			got := FormatTable(tt.headers, tt.rows)
++			if got != tt.want {
++				t.Errorf("FormatTable() = %q, want %q", got, tt.want)
++			}
++		})
++	}
++}
++
+ func TestFormatDuration(t *testing.T) {
+ 	tests := []struct {
+ 		input time.Duration
