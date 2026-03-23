@@ -25,7 +25,13 @@ Mapped Route/Sequence/Throttle/Align against four established coordination taxon
 3. **MAST/Cemri et al. (2025)** — 14 failure modes from 150+ MAS tasks across 5 frameworks (already in model)
 4. **Distributed systems** — CAP theorem, consensus protocols, Kubernetes scheduling
 
-Sources: Web search for Malone & Crowston coordination theory, Mintzberg five coordination mechanisms, MAST paper (arxiv.org/html/2503.13657v1). MAST mapping already in model from prior probe.
+Additionally mapped against:
+
+5. **Thompson (1967)** — Organizational interdependence types (pooled, sequential, reciprocal)
+6. **Gerkey & Mataric (2004)** — Multi-robot task allocation taxonomy
+7. **Rico et al. (2008) / Marks et al. (2001)** — Team coordination theory (implicit/explicit coordination, shared mental models)
+
+Sources: Web search for Malone & Crowston coordination theory, Mintzberg five coordination mechanisms, MAST paper (arxiv.org/html/2503.13657v1), Thompson organizational interdependence, multi-robot coordination surveys, team coordination theory. MAST mapping already in model from prior probe.
 
 ---
 
@@ -85,15 +91,50 @@ The model already maps all 14 MAST failure modes to the four primitives + contro
 
 2. **Consistency model choice** — In distributed systems, you choose HOW MUCH coordination you need (strong consistency = full Align, eventual = relaxed Align). This meta-choice isn't a primitive but determines which primitives are required.
 
+### Mapping 5: Thompson (1967) — Organizational Interdependence
+
+Thompson's reciprocal interdependence (A's output is B's input AND vice versa) has no clean R/S/T/A mapping. Sequence is unidirectional. Bidirectional/iterative coordination requires feedback loops not modeled as a primitive.
+
+### Mapping 6: Robotics (Gerkey & Mataric 2004)
+
+Task allocation maps to Route. Formation control maps to Route + Sequence. But **multi-robot tasks** (requiring joint execution by multiple agents) break Route's isolation assumption. Real-time replanning (reactive coordination) requires runtime adaptation that R/S/T/A classifies as failed gates.
+
+### Mapping 7: Team Coordination Theory (Rico et al. 2008)
+
+Shared mental models map to Align. But **interpersonal coordination** (conflict management, trust, motivation), **backup behavior** (agent taking over for failing agent), and **adaptive coordination** (shifting strategy under stress) have no R/S/T/A equivalents.
+
+### Falsification Evidence
+
+**(a) Coordination failures that don't map to any primitive:**
+- **Deadlock** (circular wait) — not Route, Sequence, Throttle, or Align; a resource lifecycle ordering problem
+- **Livelock** (active but no progress) — agents are running, rates are fine, work is routed, alignment exists, but system makes no progress
+- **Reasoning-action mismatch** (MAST FM-2.6) — agent reasons correctly but acts incorrectly; an execution fidelity problem outside coordination
+- **Reciprocal interdependence** (Thompson) — bidirectional dependencies not captured by unidirectional Sequence
+
+**(b) Working systems that omit primitives:**
+- **Stigmergy-based systems** (ant colonies, pheromone trails) — no explicit Route, Sequence, or Throttle; coordination emerges from environment modification with only arguable Align
+- **Kubernetes HPA** (Horizontal Pod Autoscaler) — pure Throttle; no Route (pods interchangeable), no Sequence (reactive scaling), no Align (pods don't need shared models)
+
+**(c) Fundamentally different decompositions:**
+- **Malone/Crowston** decompose by *dependency type* (shared resource, producer-consumer, fit) — orthogonal to R/S/T/A's functional decomposition
+- **Thompson** decomposes by *interdependence pattern* (pooled, sequential, reciprocal) — a reciprocal problem requires all four primitives simultaneously
+- **Mintzberg** decomposes by *mechanism type* — three of five mechanisms map to Align alone, suggesting **Align is overloaded** (doing 3-5 different jobs across taxonomies)
+
 ### Synthesis: What the four primitives miss
 
-Three coordination concerns found across established taxonomies that DON'T map to Route/Sequence/Throttle/Align:
+Five coordination concerns found across 7 taxonomies that DON'T map to Route/Sequence/Throttle/Align:
 
 1. **Decomposition** (Malone & Crowston) — dividing work into coordinatable units. Prerequisite to Route. The model assumes work is pre-decomposed.
 
 2. **Recovery** (Distributed systems) — what happens when coordination fails. The model focuses on prevention, not recovery. In practice, some coordination failures are inevitable and systems need graceful degradation.
 
-3. **Meta-coordination** (Mintzberg, distributed systems) — choosing which coordination strategy to apply. When do you use Route vs Sequence? When do you relax Align? This is coordination ABOUT coordination.
+3. **Meta-coordination** (Mintzberg, team theory) — choosing which coordination strategy to apply. When do you use Route vs Sequence? When do you relax Align? This is coordination ABOUT coordination.
+
+4. **Reciprocal/feedback coordination** (Thompson) — bidirectional dependencies where A feeds B and B feeds A. Sequence handles unidirectional ordering but not iterative loops.
+
+5. **Interpersonal/social coordination** (team theory) — conflict management, trust, backup behavior. Less relevant for current LLM agents but essential for "any multi-agent system" including human teams.
+
+**Novel contribution:** Throttle is genuinely original — most external taxonomies lack an equivalent. The insight that verification bandwidth is a coordination constraint is the model's most distinctive contribution.
 
 ---
 
@@ -113,13 +154,14 @@ Three coordination concerns found across established taxonomies that DON'T map t
 - Complementary (not contradictory) to Mintzberg's mechanisms
 - Cover 14/14 MAST failure modes in the LLM domain
 - Clean mapping to 5/7 distributed systems concerns
+- Throttle is a genuinely novel contribution most other taxonomies lack
 
 **What "general to any multi-agent system" overclaims:**
-- Missing decomposition (how to divide work)
-- Missing recovery (how to handle coordination failure)
-- Missing meta-coordination (choosing the right strategy)
-- Throttle may be domain-specific (computational agents, not physical organizations)
+- Missing decomposition, recovery, meta-coordination, reciprocal feedback, and social coordination (5 gaps across 7 taxonomies)
+- Align is overloaded (absorbs 3 of 5 Mintzberg mechanisms)
+- Stigmergy-based systems work with arguably 0 of 4 primitives
 - Evidence is from LLM multi-agent systems only — no robotics, no human teams
+- The gate/attractor distinction is biased toward design-time coordination; runtime adaptive coordination works in other domains
 
 ---
 
@@ -128,3 +170,13 @@ Three coordination concerns found across established taxonomies that DON'T map t
 The four primitives are a useful and well-structured taxonomy for their domain. The problem is the scope claim, not the primitives themselves. "General to multi-agent software engineering with merge-based integration" is supportable from the evidence. "General to any multi-agent system" is not.
 
 The most interesting gap is **recovery**: orch-go's production system handles this implicitly (if an agent fails, the issue goes back to the daemon queue), but the model doesn't formalize it. In distributed systems, recovery is often the most important coordination primitive because you can't guarantee other primitives always hold.
+
+## Sources
+
+- [Malone & Crowston 1994 — The Interdisciplinary Study of Coordination](https://dl.acm.org/doi/10.1145/174666.174668)
+- [Crowston 1997 — A Taxonomy of Organizational Dependencies](http://ccs.mit.edu/papers/ccswp174.html)
+- [Mintzberg 1979 — Coordination Mechanisms](https://structureinfives.weebly.com/coordinating-mechanisms.html)
+- [Gerkey & Mataric 2004 — Task Allocation in Multi-Robot Systems](https://journals.sagepub.com/doi/10.1177/0278364904045564)
+- [Rico et al. 2008 — Team Implicit Coordination Processes](https://journals.aom.org/doi/10.5465/amr.2008.27751276)
+- [Marks et al. 2001 — Taxonomy of Team Processes](https://journals.aom.org/doi/10.5465/amr.2001.4845785)
+- [Cemri et al. 2025 — Why Do Multi-Agent LLM Systems Fail? (MAST)](https://arxiv.org/abs/2503.13657)
