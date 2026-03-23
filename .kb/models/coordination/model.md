@@ -57,15 +57,15 @@ Across 80 trials (160 agents total), all agents achieved 6/6 individual scores r
 
 **Evidence quality:** Observed (160 agents across 80 trials in one experiment family; capability-coordination separation not tested with harder tasks where individual scores might vary).
 
-### Claim 4: Coordination failure pattern is consistent across two tested task complexities
+### Claim 4: Coordination failure pattern is consistent across two additive task complexities
 
-Both simple tasks (FormatBytes + FormatRate, ~40s each) and complex tasks (VisualWidth + FormatTable, 50-170s each) showed identical coordination patterns in the tested scenarios: conflicts without placement, success with placement.
+Both simple tasks (FormatBytes + FormatRate, ~40s each) and complex tasks (VisualWidth + FormatTable, 50-170s each) showed identical coordination patterns in the tested scenarios: conflicts without placement, success with placement. Both task families share the same structural coordination challenge: agents add new functions to a shared file with a gravitational insertion point (end-of-file / after FormatDurationShort).
 
 **Test:** Run same 4 conditions on simple and complex task pairs
-**Evidence:** Identical results across both task types in all conditions
-**Status:** Observed in two task families (not sufficient to claim complexity-independence generally)
+**Evidence:** Identical results across both task types in all conditions. However, the anticipatory placement experiment (2026-03-22) showed task-type sensitivity with a different mechanism: 20% success for simple tasks vs 100% success for complex tasks, driven by semantic congruence between task and placement.
+**Status:** Observed in two task families sharing the same gravitational-convergence structure. The anticipatory experiment shows the pattern IS task-dependent when the coordination mechanism changes.
 
-**Evidence quality:** Working-hypothesis (two task families in one repo; the pattern may not hold for qualitatively different task types such as cross-file refactors, schema changes, or multi-language tasks).
+**Evidence quality:** Working-hypothesis (two additive task families in one repo sharing the same gravitational insertion point structure; "task complexity" varies implementation difficulty but not coordination challenge structure; modification tasks, refactoring, and cross-file tasks have different coordination structures and are untested).
 
 ### Claim 5: Post-hoc self-checking (one tested gate design) does not prevent conflicts
 
@@ -117,9 +117,9 @@ This explains why autoresearch succeeds with radical simplicity — it eliminate
 
 *Supported by experiments and literature review but not independently reproduced. These are useful frameworks for reasoning about coordination, with evidence from one experiment family (N=139) plus analysis of 6 external frameworks. They may need revision as more evidence accumulates.*
 
-## Four Coordination Primitives
+## Four Coordination Primitives (Multi-Agent SE)
 
-The experimental findings suggest four structural primitives for multi-agent coordination. Literature review of 6 external frameworks (2026-03-22) is consistent with these primitives applying beyond orch-go, though independent reproduction in other contexts is needed to confirm generality.
+The experimental findings suggest four structural primitives for multi-agent coordination in software engineering. Literature review of 6 external LLM frameworks (2026-03-22) is consistent with these primitives applying beyond orch-go. Mapping against Malone & Crowston (1994) and Mintzberg (1979) coordination theories shows the primitives are consistent with but narrower than established coordination theory: they address coordination requirements for parallel work integration but do not cover decomposition (upstream of Route), recovery (post-failure), or meta-coordination (choosing strategy). The claim of generality "to any multi-agent system" is overclaimed — the primitives are well-evidenced for multi-agent SE with merge-based integration but untested in robotics, distributed computing, or human organizations.
 
 - **Route** — Agents don't collide: work is assigned to non-overlapping regions. orch-go implements this via structural placement, file-level routing, and issue-level separation. Literature observation: CrewAI's core failure involves broken routing (GitHub #4783); DeepMind found centralized routing reduces error amplification from 17.2x to 4.4x.
 
@@ -226,9 +226,9 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 
 ## Implications (Extrapolated)
 
-1. **In the tested scenarios and across 6 reviewed frameworks, messaging-based coordination did not produce coordination outcomes.** CrewAI, LangGraph, Claude Agent SDK, OpenAI Agents SDK, and similar systems that assume agents can coordinate through communication showed coordination failures in the reviewed literature. In our experiments (N=80), communication did not fail — the agents communicated effectively. The coordination still failed. Whether richer messaging protocols or stronger planning could overcome this is an open question. (Note: AutoGen, originally cited here, entered maintenance mode by Mar 2026, succeeded by Microsoft Agent Framework.)
+1. **In the tested scenarios, single-round messaging without merge-mechanics education did not produce coordination outcomes for additive same-file tasks.** CrewAI, LangGraph, Claude Agent SDK, OpenAI Agents SDK, and similar systems that assume agents can coordinate through communication showed coordination failures in the reviewed literature. In our experiments (N=40 messaging + gate trials), communication did not fail — agents communicated effectively, wrote accurate plans, and correctly identified each other's work. The coordination still failed. The specific failure mechanism: agents have a false model of git merge conflicts, believing that additions at the same file position with different function names will merge cleanly. This false model persists even through explicit self-checking (gate condition). Whether git-merge-aware messaging, multi-round negotiation, or tool-augmented conflict detection could overcome this is untested. (Note: AutoGen, originally cited here, entered maintenance mode by Mar 2026, succeeded by Microsoft Agent Framework.)
 
-**Evidence quality:** Working-hypothesis (extrapolated from same-file experiment N=80 + literature review of 6 frameworks; not directly reproduced across diverse coordination scenarios).
+**Evidence quality:** Working-hypothesis (extrapolated from same-file experiment N=40 messaging+gate + literature review of 6 frameworks; the specific failure mechanism — false merge model + gravitational convergence — is observed but whether it generalizes beyond additive same-file tasks is untested).
 
 ---
 
@@ -295,6 +295,10 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 - What is the minimum number of natural insertion points needed per agent? (Automated discovery relies on function boundaries as candidate points. With 6 functions and 2 agents, alternatives were plentiful. What about 6+ agents?)
 - Would a stronger placement model (Opus vs Haiku) produce better anticipatory placements? The simple-task failures are arguably a reasoning failure — the LLM picks adjacent functions as "different" without understanding git merge proximity. A model with better spatial reasoning might avoid this.
 - Can anticipatory placement be improved by injecting git-merge-specific knowledge into the placement prompt? (e.g., "adjacent functions produce conflicts even if they are different functions")
+- ~~Do the primitives apply to non-LLM multi-agent systems?~~ **Partially answered 2026-03-22:** Mapping against Malone & Crowston, Mintzberg, and distributed systems shows the four primitives are consistent with but narrower than established coordination theory. They apply well to multi-agent SE but miss decomposition, recovery, and meta-coordination found in broader coordination theory. See `probes/2026-03-22-probe-claim9-primitives-generality.md`.
+- Does the coordination pattern hold for modification/refactoring tasks (as opposed to additive tasks)? In modification tasks, agents are anchored to the function they're modifying — no gravitational insertion point. Messaging about "what I'm modifying" may be sufficient because agents produce non-overlapping diffs by construction.
+- Would git-merge-aware messaging (educating agents about merge mechanics) change the messaging condition results? Analysis shows agents have a false model of merge conflicts — they believe same-point additions with different function names merge cleanly. Correcting this false model is the cheapest untested intervention.
+- Should decomposition (pre-Route) and recovery (post-failure) be added as coordination primitives, or are they outside the model's scope?
 
 ---
 
@@ -317,6 +321,9 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 | 2026-03-22 | Automated attractor discovery experiment (N=10) | System automatically discovered effective placement constraints from 2 observed collisions. Phase 1: 2/3 CONFLICT (gravitational point: FormatDurationShort). Phase 2: 7/7 SUCCESS with auto-generated constraints. Zero human intervention in constraint generation. Closed loop validated: observe failures -> extract constraints -> inject constraints -> prevent failures. |
 | 2026-03-22 | Attractor decay experiment (N=9) | Stale attractors do NOT degrade coordination. 9/9 SUCCESS across 3 mutation types (rename, reorganize, add alternatives) with original stale placement prompts. Agents adapt through semantic resolution and anchor redundancy. Region separation is the load-bearing property, not anchor accuracy. Hypothesis of cliff-edge failure disproved. |
 | 2026-03-22 | Anticipatory placement experiment (N=20) | LLM-generated placements achieve 60% overall (12/20): 100% for complex tasks (semantically congruent placements), 20% for simple tasks (adjacent/gravitational placements). Static analysis without failure data is insufficient — the placement LLM exhibits the same gravitational bias as agents. Semantic congruence between task and placement determines agent compliance. |
+| 2026-03-22 | Claim 4 task-type scope probe | Both tested task families share the same gravitational-convergence structure (additive, same file, same insertion point). "Task complexity" varies implementation difficulty but not coordination challenge structure. Anticipatory experiment already shows task-type sensitivity with a different mechanism. Claim scoped to additive tasks. |
+| 2026-03-22 | Claim 6 messaging scope probe | Analysis of 40 messaging+gate trial plans reveals specific failure mechanism: agents have a false model of git merge conflicts. They believe same-point additions with different function names merge cleanly. This false model persists through explicit self-checking. Messaging fails specifically for gravitational-convergence tasks, not "fundamentally." |
+| 2026-03-22 | Claim 9 primitives generality probe | Mapped against Malone & Crowston (1994), Mintzberg (1979), MAST, and distributed systems. 4 primitives are consistent with but narrower than established coordination theory. Missing: decomposition (pre-Route), recovery (post-failure), meta-coordination. Scoped from "any multi-agent system" to "multi-agent SE with merge-based integration." |
 
 ## Key Experiment: 4-Condition Redesign (2026-03-10)
 
@@ -415,8 +422,12 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 - Sequential execution patterns (one agent after another)
 - Human-in-the-loop coordination
 - Non-git merge strategies (e.g., semantic merge tools)
-- Tasks where agents naturally edit different regions
+- Tasks where agents naturally edit different regions (modification/refactoring tasks)
 - Quantitative control theory (stability analysis, optimal control, formal observability)
+- Coordination decomposition (how to divide work into agent-assignable units)
+- Coordination recovery (what happens when coordination fails)
+- Meta-coordination (choosing which coordination strategy to apply)
+- Non-LLM multi-agent systems (robotics, distributed computing, human organizations)
 
 ---
 
@@ -451,3 +462,7 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 **Delta:** Communication (context sharing, active messaging) produces zero improvement over no coordination. Only structural placement instructions prevent conflicts. 80 trials, 160 agents, all individually 6/6.
 **Evidence:** See Key Experiment section above.
 **Knowledge:** Coordination is a structural problem, not a communication problem. Agents comply with coordination instructions without producing coordination outcomes.
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-22-inv-audit-coordination-model-epistemic-legitimacy.md

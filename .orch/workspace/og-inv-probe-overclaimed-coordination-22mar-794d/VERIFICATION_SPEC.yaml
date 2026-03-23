@@ -1,0 +1,42 @@
+verification:
+  type: investigation
+  issue: orch-go-dotqm
+
+  probe_files:
+    - path: .kb/models/coordination/probes/2026-03-22-probe-claim4-task-type-scope.md
+      claim: COORD-04
+      verdict: scopes
+      required_sections: [Question, What I Tested, What I Observed, Model Impact]
+
+    - path: .kb/models/coordination/probes/2026-03-22-probe-claim6-messaging-scope.md
+      claim: COORD-06
+      verdict: scopes
+      required_sections: [Question, What I Tested, What I Observed, Model Impact]
+
+    - path: .kb/models/coordination/probes/2026-03-22-probe-claim9-primitives-generality.md
+      claim: COORD-09
+      verdict: scopes
+      required_sections: [Question, What I Tested, What I Observed, Model Impact]
+
+  model_updates:
+    file: .kb/models/coordination/model.md
+    changes:
+      - section: "Claim 4"
+        change: "Title narrowed from 'two tested task complexities' to 'two additive task complexities'; scope qualified"
+      - section: "Implications (Implication 1)"
+        change: "Messaging language narrowed from general to 'single-round messaging without merge-mechanics education'; false merge model mechanism identified"
+      - section: "Four Coordination Primitives"
+        change: "Title narrowed from 'Generalized Framework' to 'Multi-Agent SE'; scope paragraph added noting missing decomposition/recovery/meta-coordination"
+      - section: "Evidence table"
+        change: "Three new entries for claim 4/6/9 probes"
+      - section: "Open Questions"
+        change: "Four new questions added; one existing question partially answered"
+      - section: "Boundaries"
+        change: "Four new out-of-scope items added (decomposition, recovery, meta-coordination, non-LLM systems)"
+
+  investigation_file:
+    path: .kb/investigations/2026-03-22-inv-probe-overclaimed-coordination-model-claims.md
+    status: Complete
+    dekn_filled: true
+
+  manual_verification: none_required
