@@ -1,0 +1,68 @@
+verification:
+  experiment_execution:
+    command: "ls experiments/coordination-demo/redesign/results/20260322-162206/anticipatory/{simple,complex}/trial-{1..10}/merge_result.csv | wc -l"
+    expected: "20 trial result files"
+    status: passed
+
+  placement_generation:
+    command: "ls experiments/coordination-demo/redesign/results/20260322-162206/anticipatory/{simple,complex}/trial-{1..10}/placement/placement_parsed.json | wc -l"
+    expected: "20 placement files with parsed LLM output"
+    status: passed
+
+  raw_results:
+    simple_conflict: 8
+    simple_build_fail: 2
+    complex_conflict: 0
+    complex_build_fail: 10
+    total_success: 0
+    status: passed
+
+  confound_identification:
+    description: "All BUILD_FAIL results caused by stale .go files in experiments/coordination-demo/redesign/results/20260322-154258/"
+    evidence: "git ls-files shows 7 .go files tracked, go.mod NOT tracked"
+    status: verified
+
+  manual_replay_verification:
+    trials_replayed:
+      - "complex/trial-2: clean merge, clean build, tests pass"
+      - "simple/trial-4: clean merge, clean build, tests pass"
+      - "simple/trial-8: clean merge, clean build, tests pass"
+    status: passed
+
+  corrected_results:
+    simple_success: 2
+    simple_total: 10
+    simple_rate: "20%"
+    complex_success: 10
+    complex_total: 10
+    complex_rate: "100%"
+    overall_success: 12
+    overall_total: 20
+    overall_rate: "60%"
+    status: verified
+
+  probe_file:
+    path: ".kb/models/coordination/probes/2026-03-22-probe-anticipatory-placement-static-analysis.md"
+    required_sections:
+      - Question: present
+      - What_I_Tested: present
+      - What_I_Observed: present
+      - Model_Impact: present
+    status: Complete
+
+  model_updated:
+    path: ".kb/models/coordination/model.md"
+    changes:
+      - "Evidence table: added anticipatory placement row"
+      - "Key Experiment section: added Anticipatory Placement (2026-03-22)"
+      - "Attractor mechanism section: added anticipatory limitation note"
+      - "Open Questions: added 2 new questions about stronger models and git-specific prompts"
+      - "Source metadata: updated trial count 119→139, probe count 5→6"
+    status: verified
+
+  synthesis_file:
+    path: ".orch/workspace/og-inv-experiment-anticipatory-placement-22mar-35a7/SYNTHESIS.md"
+    plain_language_summary: present
+    status: complete
+
+manual_steps_required: none

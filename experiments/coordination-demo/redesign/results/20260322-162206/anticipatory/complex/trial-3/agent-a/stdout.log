@@ -1,0 +1,16 @@
+Done! I've successfully added `VisualWidth` and `PadToWidth` functions to `pkg/display`:
+
+**VisualWidth:**
+- Returns the visual display width of a string, excluding ANSI escape codes
+- Uses the existing `StripANSI` function to remove codes, then counts runes for proper Unicode handling
+
+**PadToWidth:**
+- Right-pads strings with spaces to reach a target visual width
+- Preserves ANSI codes (they don't count toward width)
+- Returns unchanged if already at or wider than target
+
+**Tests cover:**
+- Plain ASCII, ANSI codes, Unicode (CJK/emoji), empty strings
+- Edge cases: already at width, wider than target, mixed ANSI+Unicode
+
+All 8 tests pass (both new and existing). Functions are placed after `StripANSI` with proper doc comments per your constraints.

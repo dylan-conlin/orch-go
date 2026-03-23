@@ -1,0 +1,25 @@
+Done! I've successfully implemented `FormatTable` and added comprehensive tests. Here's what was added:
+
+## Implementation Summary
+
+**Function: `FormatTable`**
+- Renders aligned text tables with pipe separators and dash-separated header rows
+- Auto-sizes columns based on content width using the existing `StripANSI` function
+- Handles ANSI color codes correctly—visual width is calculated without ANSI escape sequences
+- Gracefully handles edge cases: empty headers, missing columns, empty cells
+
+**Helper Function: `padRight`** (unexported)
+- Pads strings to a given visual width while preserving ANSI codes
+- Uses `StripANSI` to calculate true visual width
+
+**Test Coverage:**
+- ✅ Basic multi-column tables
+- ✅ Headers-only tables
+- ✅ Single-column tables
+- ✅ ANSI color code alignment
+- ✅ Rows with missing columns (padded with spaces)
+- ✅ Wide content with varying widths
+- ✅ Empty headers and cells
+- ✅ All 13 display package tests pass
+
+The code follows existing style conventions (table-driven tests, concise implementation, standard library only) and all tests pass. Changes committed to `exp/antic-complex-b-t2-14456`.

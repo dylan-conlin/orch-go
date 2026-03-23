@@ -1,0 +1,16 @@
+Done! I've successfully added the `FormatRate` function to `pkg/display` with comprehensive tests. Here's what was implemented:
+
+**Function:** `FormatRate(bytesPerSec float64) string`
+- Formats transfer rates into human-readable binary units (B/s, KiB/s, MiB/s, GiB/s)
+- Shows 1 decimal place for non-byte rates
+- Handles zero, negative values, and large rates correctly
+- Placed immediately after `FormatDurationShort` as requested
+
+**Tests:** 18 test cases covering:
+- Zero and small values
+- Exact unit boundaries (1024, 1048576, 1073741824)
+- Fractional values in each unit
+- Large GiB/s rates
+- Negative values
+
+All tests pass ✓

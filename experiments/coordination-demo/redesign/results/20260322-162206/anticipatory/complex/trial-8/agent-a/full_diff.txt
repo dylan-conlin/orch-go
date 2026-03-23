@@ -1,0 +1,91 @@
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 1a699243d..44d5d7c3e 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -44,6 +44,25 @@ func StripANSI(s string) string {
+ 	return ansiRegex.ReplaceAllString(s, "")
+ }
+ 
++// VisualWidth returns the visual display width of a string, ignoring ANSI escape codes.
++// It counts runes (Unicode characters) rather than bytes.
++func VisualWidth(s string) int {
++	stripped := StripANSI(s)
++	return len([]rune(stripped))
++}
++
++// PadToWidth right-pads a string with spaces to reach the target visual width.
++// ANSI escape codes are preserved but do not count toward the visual width.
++// If the string is already at or wider than the target width, it is returned unchanged.
++func PadToWidth(s string, width int) string {
++	currentWidth := VisualWidth(s)
++	if currentWidth >= width {
++		return s
++	}
++	padding := width - currentWidth
++	return s + strings.Repeat(" ", padding)
++}
++
+ // FormatDuration formats a duration as a human-readable string.
+ // Output style: "0s", "45s", "3m 12s", "2h 15m", "3d 5h".
+ func FormatDuration(d time.Duration) string {
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index fcd3fa61c..69cd964e3 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -84,6 +84,56 @@ func TestStripANSI(t *testing.T) {
+ 	}
+ }
+ 
++func TestVisualWidth(t *testing.T) {
++	tests := []struct {
++		input string
++		want  int
++	}{
++		{"hello", 5},
++		{"\x1b[31mred\x1b[0m", 3},
++		{"\x1b[1;32mbold green\x1b[0m", 10},
++		{"", 0},
++		{"你好", 2},
++		{"emoji😀test", 10},
++		{"a\x1b[35mb\x1b[0mc", 3},
++	}
++	for _, tt := range tests {
++		got := VisualWidth(tt.input)
++		if got != tt.want {
++			t.Errorf("VisualWidth(%q) = %d, want %d", tt.input, got, tt.want)
++		}
++	}
++}
++
++func TestPadToWidth(t *testing.T) {
++	tests := []struct {
++		input  string
++		width  int
++		want   string
++		desc   string
++	}{
++		{"hello", 10, "hello     ", "pad plain string"},
++		{"hello", 5, "hello", "already at width"},
++		{"hello", 3, "hello", "wider than target"},
++		{"", 5, "     ", "empty string"},
++		{"\x1b[31mred\x1b[0m", 10, "\x1b[31mred\x1b[0m       ", "pad string with ANSI codes"},
++		{"\x1b[1;32mbold green\x1b[0m", 15, "\x1b[1;32mbold green\x1b[0m     ", "pad bold green with ANSI"},
++		{"你好", 4, "你好  ", "pad unicode"},
++		{"a\x1b[35mb\x1b[0mc", 5, "a\x1b[35mb\x1b[0mc  ", "pad mixed ASCII and ANSI"},
++	}
++	for _, tt := range tests {
++		got := PadToWidth(tt.input, tt.width)
++		if got != tt.want {
++			t.Errorf("PadToWidth(%q, %d) [%s] = %q, want %q", tt.input, tt.width, tt.desc, got, tt.want)
++		}
++		// Verify that visual width of padded result matches or exceeds target
++		visualWidth := VisualWidth(got)
++		if tt.width > VisualWidth(tt.input) && visualWidth != tt.width {
++			t.Errorf("PadToWidth(%q, %d) visual width = %d, want %d", tt.input, tt.width, visualWidth, tt.width)
++		}
++	}
++}
++
+ func TestFormatDuration(t *testing.T) {
+ 	tests := []struct {
+ 		input time.Duration

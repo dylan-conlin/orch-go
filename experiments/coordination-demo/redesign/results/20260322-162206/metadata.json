@@ -1,0 +1,16 @@
+{
+  "experiment": "anticipatory-placement",
+  "timestamp": "20260322-162206",
+  "baseline_commit": "d691eb1671052f274aceeab183d0d7e1344d453a",
+  "agent_model": "haiku",
+  "agent_model_full": "claude-haiku-4-5-20251001",
+  "placement_model": "haiku",
+  "placement_model_full": "claude-haiku-4-5-20251001",
+  "trials": 10,
+  "task_types": [
+  "simple",
+  "complex"
+],
+  "condition": "anticipatory",
+  "timeout_minutes": 10
+}

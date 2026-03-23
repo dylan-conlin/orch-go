@@ -1,0 +1,1 @@
+87ae4e8de feat: add FormatTable function with comprehensive tests

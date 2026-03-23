@@ -1,0 +1,22 @@
+✓ **Complete!** I've successfully added `VisualWidth` and `PadToWidth` functions to the display package with comprehensive tests.
+
+## Summary
+
+**Added functions:**
+- `VisualWidth(s string) int` — Returns visual display width, ignoring ANSI codes and correctly handling Unicode via rune counting
+- `PadToWidth(s string, width int) string` — Right-pads strings to target width while preserving ANSI codes
+
+**Test coverage:**
+- Plain ASCII strings
+- ANSI color codes (verified to be stripped from width calculation)
+- Unicode: CJK characters (你好, こんにちは) and emoji (😀)
+- Empty strings
+- Edge cases: strings already at/exceeding target width
+
+**Key implementation details:**
+- Both functions use the existing `StripANSI` function for ANSI stripping
+- Width is calculated via `len([]rune(s))` for proper Unicode handling
+- PadToWidth preserves ANSI codes in output (they don't count toward width)
+- All tests pass ✓
+
+Commit: `60ab33b77` — "feat: add VisualWidth and PadToWidth functions to display package"

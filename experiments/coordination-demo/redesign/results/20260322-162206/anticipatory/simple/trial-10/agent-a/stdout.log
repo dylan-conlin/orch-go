@@ -1,0 +1,19 @@
+Done! I've successfully added the `FormatBytes` function to `pkg/display/display.go` with comprehensive tests.
+
+**Summary:**
+
+✅ **Function Implementation** (`display.go` lines 96-155):
+- Formats byte counts using binary units (B, KiB, MiB, GiB, TiB)
+- Shows 1 decimal place for non-byte units
+- Handles negative values with "-" prefix
+- Returns "0 B" for zero
+
+✅ **Comprehensive Tests** (`display_test.go` lines 136-183):
+- 32 test cases covering:
+  - Zero and small bytes
+  - Exact boundaries (1024, 1048576, 1073741824, 1099511627776)
+  - Decimal values (1.5 MiB, 1.5 GiB, etc.)
+  - Negative values across all units
+  - Large values (TiB range)
+
+✅ **All tests pass** — verified with `go test ./pkg/display/ -v`

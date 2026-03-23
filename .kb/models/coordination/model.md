@@ -3,7 +3,7 @@
 **Created:** 2026-03-09
 **Updated:** 2026-03-22
 **Status:** Active
-**Source:** Synthesized from 4 investigation(s) + 4 controlled experiments (119 trials) + external validation (6 independent sources) + 5 probe extensions (control theory, mechanism dimension, Align falsification, automated attractor discovery, attractor decay resilience)
+**Source:** Synthesized from 4 investigation(s) + 5 controlled experiments (139 trials) + external validation (6 independent sources) + 6 probe extensions (control theory, mechanism dimension, Align falsification, automated attractor discovery, attractor decay resilience, anticipatory placement)
 
 ## What This Is
 
@@ -152,6 +152,8 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 
 **Why attractors work:** Coordination decisions are made at design time. Anthropic's lead agent defines work regions before subagents start. orch-go's `.kb/models/*/probes/` directory reduces orphans not by checking at commit time (gate — bypassed 100%) but by making the model directory the natural destination for probe output (attractor — orphan rate halved). Crucially, attractor placement can be *discovered automatically* from failure data (see Key Experiment: Automated Attractor Discovery) — the system parses collision diffs, identifies gravitational insertion points, and generates non-overlapping constraints with zero human intervention. Gate logic, by contrast, requires human judgment about what runtime checks to perform.
 
+**Anticipatory placement limitation (2026-03-22):** LLM-generated placements from static analysis alone (no failure data) achieve 60% success (12/20). The LLM exhibits the same gravitational bias as agents — it picks adjacent functions as "different" without understanding git merge proximity. Success depends on **semantic congruence**: when the assigned location is the natural home for the new code (e.g., VisualWidth after StripANSI), agents follow it (100% complex). When arbitrary (e.g., FormatRate after FormatDuration), agents revert to the gravitational point (20% simple). Failure-data-driven discovery (100%) remains more reliable than static analysis (60%). See `probes/2026-03-22-probe-anticipatory-placement-static-analysis.md`.
+
 **Attractor resilience (2026-03-22):** Attractors tolerate stale anchors. 9/9 trials succeeded with original placement prompts after codebase mutations (renames, file reorganization, competing insertion points). Agents adapt through two mechanisms: (1) **semantic adaptation** — when an anchor function is renamed, agents find the semantically equivalent function; (2) **anchor redundancy** — placement instructions with multiple anchors ("after X, BEFORE Y") survive losing one anchor. The load-bearing property is **region separation** (agents assigned to different file regions), not anchor name accuracy. See `probes/2026-03-22-probe-attractor-decay-degradation-curve.md`.
 
 **Practical design principle:** Use attractors for the heavy-load primitives (Route, Align) where agents must get coordination right consistently. Gates are acceptable for lighter primitives (Throttle, Sequence) that tolerate occasional failure.
@@ -216,6 +218,7 @@ This explains why autoresearch succeeds with radical simplicity — it eliminate
 | 2026-03-22 | Gate/attractor external validation probe | 6/6 external frameworks show perfect correlation: gate-based coordination fails (CrewAI, LangGraph, OpenAI Agents SDK), attractor-based works (Anthropic production, autoresearch). McEntire degradation tracks gate/attractor gradient: pure attractor 100% → attractor+gates 64% → pure gates 32% → max gates 0%. |
 | 2026-03-22 | Automated attractor discovery experiment (N=10) | System automatically discovered effective placement constraints from 2 observed collisions. Phase 1: 2/3 CONFLICT (gravitational point: FormatDurationShort). Phase 2: 7/7 SUCCESS with auto-generated constraints. Zero human intervention in constraint generation. Closed loop validated: observe failures → extract constraints → inject constraints → prevent failures. |
 | 2026-03-22 | Attractor decay experiment (N=9) | Stale attractors do NOT degrade coordination. 9/9 SUCCESS across 3 mutation types (rename, reorganize, add alternatives) with original stale placement prompts. Agents adapt through semantic resolution and anchor redundancy. Region separation is the load-bearing property, not anchor accuracy. Hypothesis of cliff-edge failure disproved. |
+| 2026-03-22 | Anticipatory placement experiment (N=20) | LLM-generated placements achieve 60% overall (12/20): 100% for complex tasks (semantically congruent placements), 20% for simple tasks (adjacent/gravitational placements). Static analysis without failure data is insufficient — the placement LLM exhibits the same gravitational bias as agents. Semantic congruence between task and placement determines agent compliance. |
 
 ---
 
@@ -277,6 +280,37 @@ This explains why autoresearch succeeds with radical simplicity — it eliminate
 
 ---
 
+## Key Experiment: Anticipatory Placement (2026-03-22)
+
+**Design:** 1 condition (anticipatory) × 2 task types × N=10 = 20 trials, 40 agent invocations + 20 placement LLM calls
+**Model:** claude-haiku-4-5 (placement model, both agents)
+**Tasks:** Same as 4-condition experiment
+**Question:** Can an LLM predict non-overlapping insertion points from static code analysis alone, without any failure data?
+
+| Condition | Mechanism | Simple | Complex |
+|-----------|-----------|:------:|:-------:|
+| anticipatory | LLM-generated placement from code + task analysis | **2/10 SUCCESS** | **10/10 SUCCESS** |
+
+**Corrected from raw results:** Raw experiment reported 0/20 SUCCESS because 12 trials were falsely classified as BUILD_FAIL due to stale `.go` files in experiment results directories. Manual replay of 3 trials confirmed all BUILD_FAIL merges were actually clean + passing.
+
+**Why complex succeeds (100%):** The LLM picked StripANSI for VisualWidth's placement 9/10 times because VisualWidth *uses* StripANSI. Semantic congruence between task and placement → agents follow the instruction. FormatTable got FormatDurationShort (semantically neutral but distant from StripANSI). Both placements produce non-overlapping diffs.
+
+**Why simple fails (80%):** FormatBytes and FormatRate have no semantic relationship to any existing function. The LLM picks FormatDuration/FormatDurationShort as "different" functions 8/10 times — they ARE different functions but are adjacent (13 lines apart), and agents override the "after FormatDuration" instruction because the base prompt says "after FormatDurationShort." The gravitational pull to end-of-file dominates.
+
+**Key finding: Semantic congruence requirement.** LLM-generated placements work when the assigned location is the natural semantic home for the new code. When placement is arbitrary relative to the task's dependencies, agents revert to the gravitational insertion point. This means static-analysis-based attractor generation requires understanding task-code semantic relationships, not just spatial separation.
+
+**Comparison across attractor generation methods:**
+
+| Method | Success Rate | Requires Failure Data? | Key Advantage |
+|--------|-------------|----------------------|---------------|
+| Human-designed | 20/20 (100%) | No | Understands both space and semantics |
+| Failure-data-driven (Exp B) | 7/7 (100%) | Yes (1 collision) | Identifies actual collision point |
+| Anticipatory/static (Exp C) | 12/20 (60%) | No | Zero-shot, no prior failures needed |
+
+**Results:** `experiments/coordination-demo/redesign/results/20260322-162206/`
+
+---
+
 ## Open Questions
 
 ### Answered
@@ -300,6 +334,8 @@ This explains why autoresearch succeeds with radical simplicity — it eliminate
 - ~~Can attractor-based coordination degrade? (What happens when structural destinations become stale or misaligned with evolving requirements?)~~ **Answered 2026-03-22:** Not for incremental codebase changes. 9/9 SUCCESS with stale attractors across renames, file reorganization, and competing insertion points. Agents adapt through semantic resolution and anchor redundancy. Region separation (not anchor accuracy) is the load-bearing property. Untested: wholesale restructuring. See `probes/2026-03-22-probe-attractor-decay-degradation-curve.md`.
 - Does automated attractor discovery work for complex tasks? (Multi-file, ambiguous requirements may produce collision patterns harder to parse or requiring more nuanced constraint generation.)
 - What is the minimum number of natural insertion points needed per agent? (Automated discovery relies on function boundaries as candidate points. With 6 functions and 2 agents, alternatives were plentiful. What about 6+ agents?)
+- Would a stronger placement model (Opus vs Haiku) produce better anticipatory placements? The simple-task failures are arguably a reasoning failure — the LLM picks adjacent functions as "different" without understanding git merge proximity. A model with better spatial reasoning might avoid this.
+- Can anticipatory placement be improved by injecting git-merge-specific knowledge into the placement prompt? (e.g., "adjacent functions produce conflicts even if they are different functions")
 
 ## Source Investigations
 

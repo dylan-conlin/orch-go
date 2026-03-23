@@ -1,0 +1,10 @@
+Done! I've successfully added the `FormatRate` function to the display package with comprehensive tests.
+
+**Summary:**
+- ✅ Added `FormatRate(bytesPerSec float64) string` function to `pkg/display/display.go` after `FormatDurationShort`
+- ✅ Implemented all requirements: binary units (B/s, KiB/s, MiB/s, GiB/s), 1 decimal place for non-byte units, 0 for B/s, handles zero and negative values
+- ✅ Added `TestFormatRate` to `pkg/display/display_test.go` after `TestFormatDurationShort` with 18 test cases covering boundaries, negatives, and large values
+- ✅ All tests pass
+- ✅ Committed with message: "feat: add FormatRate function to display package"
+
+The function follows the existing code style and patterns in the package.

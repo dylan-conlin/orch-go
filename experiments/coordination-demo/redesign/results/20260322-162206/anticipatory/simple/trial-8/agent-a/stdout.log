@@ -1,0 +1,19 @@
+✅ **Done.** Added `FormatBytes` function to `pkg/display/display.go` with comprehensive tests in `pkg/display/display_test.go`.
+
+**Implementation:**
+- Function signature: `func FormatBytes(bytes int64) string`
+- Formats bytes using binary units: B, KiB, MiB, GiB, TiB
+- Shows 1 decimal place for non-byte units (e.g., "1.5 MiB")
+- Handles negative values with "-" prefix (e.g., "-1.0 KiB")
+- Special case: returns "0 B" for zero
+
+**Tests (20 cases):**
+- Zero and small bytes (< 1 KiB)
+- Exact boundaries (1024, 1048576, etc.)
+- Between-boundary values (e.g., 1.5 KiB, 1.5 MiB)
+- Large values (GiB, TiB)
+- Negative values across all units
+
+**Result:** All tests pass ✓
+
+Commit: `dea26ca43`

@@ -1,0 +1,116 @@
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 1a699243d..4caf3fbcf 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -81,6 +81,57 @@ func FormatDuration(d time.Duration) string {
+ 	return fmt.Sprintf("%dh", hours)
+ }
+ 
++// FormatBytes formats a byte count into a human-readable string.
++// Output style: "0 B", "512 B", "1.5 KiB", "2.3 MiB".
++// Uses binary units (B, KiB, MiB, GiB, TiB) with 1 decimal place for non-byte units.
++func FormatBytes(bytes int64) string {
++	if bytes == 0 {
++		return "0 B"
++	}
++
++	negative := bytes < 0
++	if negative {
++		bytes = -bytes
++	}
++
++	const (
++		B   = 1
++		KiB = 1024 * B
++		MiB = 1024 * KiB
++		GiB = 1024 * MiB
++		TiB = 1024 * GiB
++	)
++
++	var value float64
++	var unit string
++
++	switch {
++	case bytes < KiB:
++		// Return as bytes (no decimal)
++		if negative {
++			return fmt.Sprintf("-%d B", bytes)
++		}
++		return fmt.Sprintf("%d B", bytes)
++	case bytes < MiB:
++		value = float64(bytes) / float64(KiB)
++		unit = "KiB"
++	case bytes < GiB:
++		value = float64(bytes) / float64(MiB)
++		unit = "MiB"
++	case bytes < TiB:
++		value = float64(bytes) / float64(GiB)
++		unit = "GiB"
++	default:
++		value = float64(bytes) / float64(TiB)
++		unit = "TiB"
++	}
++
++	if negative {
++		return fmt.Sprintf("-%.1f %s", value, unit)
++	}
++	return fmt.Sprintf("%.1f %s", value, unit)
++}
++
+ // FormatDurationShort formats a duration using short labels suitable for
+ // dashboard/status output: "just now", "3m", "2h".
+ func FormatDurationShort(d time.Duration) string {
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index fcd3fa61c..97f02a75e 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -113,6 +113,49 @@ func TestFormatDuration(t *testing.T) {
+ 	}
+ }
+ 
++func TestFormatBytes(t *testing.T) {
++	tests := []struct {
++		input int64
++		want  string
++	}{
++		// Zero
++		{0, "0 B"},
++		// Bytes (< 1 KiB)
++		{1, "1 B"},
++		{512, "512 B"},
++		{1023, "1023 B"},
++		// KiB boundary
++		{1024, "1.0 KiB"},
++		{1536, "1.5 KiB"},
++		{2048, "2.0 KiB"},
++		{2560, "2.5 KiB"},
++		// MiB boundary
++		{1048576, "1.0 MiB"},
++		{1048576 + 524288, "1.5 MiB"},
++		{2097152, "2.0 MiB"},
++		// GiB boundary
++		{1073741824, "1.0 GiB"},
++		{1073741824 + 536870912, "1.5 GiB"},
++		// TiB boundary
++		{1099511627776, "1.0 TiB"},
++		{1099511627776 + 549755813888, "1.5 TiB"},
++		// Negative values
++		{-1, "-1 B"},
++		{-512, "-512 B"},
++		{-1024, "-1.0 KiB"},
++		{-1536, "-1.5 KiB"},
++		{-1048576, "-1.0 MiB"},
++		{-1073741824, "-1.0 GiB"},
++		{-1099511627776, "-1.0 TiB"},
++	}
++	for _, tt := range tests {
++		got := FormatBytes(tt.input)
++		if got != tt.want {
++			t.Errorf("FormatBytes(%d) = %q, want %q", tt.input, got, tt.want)
++		}
++	}
++}
++
+ func TestFormatDurationShort(t *testing.T) {
+ 	tests := []struct {
+ 		input time.Duration

@@ -1,0 +1,16 @@
+Done! I've successfully added `VisualWidth` and `PadToWidth` to `pkg/display`:
+
+**Summary of changes:**
+
+1. **`VisualWidth(s string) int`** — Returns the visual display width of a string in runes, ignoring ANSI escape codes. Uses the existing `StripANSI` function and counts runes for proper Unicode handling.
+
+2. **`PadToWidth(s string, width int) string`** — Right-pads a string with spaces to reach the target visual width. Preserves ANSI codes while calculating width correctly. Returns the string unchanged if already at or wider than the target width.
+
+3. **Comprehensive tests** — Added `TestVisualWidth` and `TestPadToWidth` covering:
+   - Plain ASCII strings
+   - ANSI color codes (single and multi-attribute)
+   - Unicode characters (CJK, emoji)
+   - Empty strings and edge cases
+   - Mixed ANSI codes with Unicode
+
+All tests pass, and the changes are committed.

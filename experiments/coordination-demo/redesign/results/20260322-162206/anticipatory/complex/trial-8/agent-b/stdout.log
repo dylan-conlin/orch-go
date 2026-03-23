@@ -1,0 +1,26 @@
+Perfect! ✅ I've successfully implemented the `FormatTable` function with comprehensive tests.
+
+## Summary
+
+**Added to `pkg/display/display.go`:**
+- `FormatTable(headers []string, rows [][]string) string` function that:
+  - Auto-sizes columns based on the widest content (using `StripANSI` for width calculation)
+  - Renders aligned text tables with `|` separators and `-+-` column dividers
+  - Handles ANSI-colored content correctly
+  - Pads short rows with empty strings
+  - Separates headers from data with a dash line
+
+**Added to `pkg/display/display_test.go`:**
+- `TestFormatTable` with 8 test cases covering:
+  - Basic two-column tables
+  - Headers-only tables
+  - Single-column tables
+  - ANSI-colored content alignment
+  - Mismatched column counts
+  - Wide content
+  - Empty headers
+  - Empty cells
+
+**Test Results:**
+- All 14 tests pass (6 existing + 8 new)
+- Changes committed with commit message: `feat: add FormatTable function to pkg/display`

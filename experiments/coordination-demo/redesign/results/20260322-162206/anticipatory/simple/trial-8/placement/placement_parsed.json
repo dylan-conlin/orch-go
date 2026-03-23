@@ -1,0 +1,7 @@
+{
+  "agent_a_code_after": "FormatDuration",
+  "agent_a_test_after": "TestFormatDuration",
+  "agent_b_code_after": "FormatDurationShort",
+  "agent_b_test_after": "TestFormatDurationShort",
+  "placements_different": true
+}

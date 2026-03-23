@@ -1,0 +1,18 @@
+Done! I've successfully added the `FormatRate` function to `pkg/display` with comprehensive tests. Here's what was implemented:
+
+**Function Features:**
+- Formats transfer rates with binary units: B/s, KiB/s, MiB/s, GiB/s
+- 1 decimal place for non-byte units (e.g., "1.5 MiB/s")
+- Handles zero, negative, and large values correctly
+- Placed immediately after `FormatDurationShort` as specified
+
+**Test Coverage:**
+- Zero and small values
+- Exact boundaries (1024, 1048576, 1073741824)
+- Fractional values (1.5 KiB/s, 1.5 MiB/s, etc.)
+- Negative values
+- Large values (up to GiB/s)
+
+**Verification:**
+- ✅ All tests pass (`TestFormatRate` and all other display tests)
+- ✅ Commit created: `8d4742a07`
