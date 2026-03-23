@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for how `orch spawn` creates and configures agents. Read this before debugging spawn issues.
 
-**Last verified:** Feb 26, 2026
+**Last verified:** Mar 23, 2026
 
 ---
 
@@ -337,6 +337,30 @@ Default tier is determined by skill:
 | `--architect-ref <id>` | Beads ID of prior architect review (required with `--force-hotspot`) |
 | `--bypass-verification` | Override verification gate (requires `--bypass-reason`) |
 | `--bypass-reason <text>` | Reason for bypassing verification gate |
+
+### Exploration Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--explore` | Exploration mode: decompose into parallel subproblems, judge, synthesize (investigation/architect only) |
+| `--explore-breadth <n>` | Max parallel subproblem workers (default 3) |
+| `--explore-depth <n>` | Max iteration depth (1=single pass, N=up to N-1 re-explorations) |
+| `--explore-judge-model <alias>` | Model for judge agent (cross-model judging, e.g., `sonnet` when workers use `opus`) |
+
+### Verification & Review Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--verify-level <level>` | Verification level override: `V0` (acknowledge), `V1` (artifacts), `V2` (evidence), `V3` (behavioral) |
+| `--review-tier <tier>` | Review tier override: `auto` (minimal), `scan` (quick), `review` (full), `deep` (behavioral) |
+| `--reason <text>` | Reason for override flags like `--bypass-triage` (min 10 chars) |
+
+### Integration Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--design-workspace <name>` | Design workspace handoff from ui-design-session to feature-impl |
+| `--settings <path>` | Path to settings.json for Claude CLI worker hook isolation |
 
 ### Context Quality Flags
 

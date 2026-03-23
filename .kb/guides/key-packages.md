@@ -2,7 +2,7 @@
 
 **Purpose:** Descriptions of key orch-go packages — their responsibilities, main types, and APIs.
 
-**Last verified:** 2026-03-22
+**Last verified:** 2026-03-23
 
 ---
 
@@ -10,7 +10,7 @@
 
 - Uses Cobra framework for CLI structure
 - Global `--server` flag for OpenCode URL
-- Subcommand groups: `account`, `daemon`, `doctor`, `harness`, `plan`, `control`, `focus`, `hook`, `thread`, `audit`, `backlog`, `settings`, `kb`, `port`, `review`, `patterns`, `session`, `session-history`, `servers`, `learn`, `config`, `docs`, `precommit`, `model`, `logs`, `transcript`, `serve`, `stats`, `automation`, `decisions`, `comprehension`, `debrief`, `orient`
+- 70+ subcommands registered across cmd/orch/*.go (see `.kb/guides/cli.md` for full reference)
 
 ## pkg/opencode/ (OpenCode Client)
 
@@ -23,7 +23,7 @@
 
 - `Resolve(spec)` maps aliases to full provider/model format
 - Aliases: `opus`, `sonnet`, `haiku` (Anthropic), `flash`, `pro` (Gemini)
-- Default: `google/gemini-3-flash-preview` (Opus restricted to Claude Code as of Jan 2026)
+- Default: `anthropic/claude-sonnet-4-5-20250929` (Sonnet; Flash has TPM limits that make it unusable)
 
 ## pkg/account/ (Account Management)
 
@@ -151,6 +151,9 @@
 - Claims-per-model extraction
 - Knowledge base health analysis
 - Quality scoring for spawn context
+- Evidence-tier classification (`drift.go`): classifies claim annotations into tiers (assumed → validated)
+- Tier-drift and scope-drift detection: flags overclaim language that exceeds declared evidence tier
+- Provenance tracking for KB claim sources
 
 ## pkg/debrief/ (Session Debriefs)
 
@@ -189,6 +192,11 @@
 
 - Project-level configuration (`orch.yaml`)
 - Backend selection, model defaults, spawn settings
+
+## pkg/scaling/ (Scaling Utilities)
+
+- Numeric and string scaling utilities for N>2 agent experiments
+- `Normalize()`, `Clamp()`, `Wrap()` helpers
 
 ## pkg/userconfig/ (User Config)
 

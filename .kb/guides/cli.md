@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for the orch-go CLI. Read this before debugging CLI issues or adding new commands.
 
-**Last verified:** Mar 22, 2026
+**Last verified:** Mar 23, 2026
 
 **Supersedes:** 16 CLI investigations from Dec 19 - Jan 4 (see History section)
 
@@ -66,11 +66,13 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 
 | Command | Purpose |
 |---------|---------|
+| `orch kb` | Knowledge base inline queries and artifact management |
 | `orch debrief` | Generate session debrief with auto-populated sections |
 | `orch thread` | Living threads — mid-session comprehension capture |
 | `orch comprehension` | Manage comprehension queue (pending review items) |
 | `orch decisions` | Decision lifecycle management (staleness, budgets) |
 | `orch plan` | Coordination plan management |
+| `orch stats` | Show aggregated agent statistics from events.jsonl |
 
 ### Infrastructure Commands
 
@@ -84,6 +86,46 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `orch init` | Initialize orch scaffolding in current directory |
 | `orch port` | Manage port allocations for projects |
 
+### Agent Operations Commands
+
+| Command | Purpose |
+|---------|---------|
+| `orch attach` | Attach to existing OpenCode session via workspace lookup |
+| `orch resume` | Resume a paused agent with continuation prompt |
+| `orch reconcile` | Detect in_progress issues with no active agent |
+| `orch handoff` | Generate session handoff document |
+| `orch swarm` | Spawn multiple agents in parallel with concurrency control |
+
+### Analysis & Reporting Commands
+
+| Command | Purpose |
+|---------|---------|
+| `orch hotspot` | Analyze git history for areas needing architect attention |
+| `orch dupdetect` | Scan Go source for structurally similar functions (AST) |
+| `orch entropy` | Aggregate signals from git, events, bloat, duplication |
+| `orch health` | Display composite harness health score (0-100) |
+| `orch history` | Show agent history with skill usage analytics |
+| `orch tokens` | Show detailed token usage for sessions |
+| `orch transcript` | Convert OpenCode JSON export to readable markdown |
+| `orch tree` | Display knowledge lineage tree visualization |
+| `orch sync` | Analyze recent drift events for stale artifacts |
+
+### Configuration & System Commands
+
+| Command | Purpose |
+|---------|---------|
+| `orch config` | Get/set project configuration values |
+| `orch model` | Model resolution and management |
+| `orch mode` | Switch between development and operations mode |
+| `orch servers` | Show server status across all projects |
+| `orch doctor` | Diagnostics and health checks |
+| `orch precommit` | Pre-commit duplicate detection for staged Go files |
+| `orch guarded` | List files with modification protocols enforced |
+| `orch context` | Show combined context from SessionStart hooks |
+| `orch emit` | Emit event to orchestration event log |
+| `orch deploy` | Deploy changes atomically |
+| `orch logs` | Show daemon logs |
+
 ### Utility Commands
 
 | Command | Purpose |
@@ -92,9 +134,13 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `orch send` / `orch ask` | Send message to agent |
 | `orch account` | Manage Claude accounts |
 | `orch usage` | Show Claude Max usage for all accounts |
-| `orch hotspot` | Detect areas needing architect attention |
 | `orch backlog` | Backlog maintenance (surface stale issues) |
 | `orch automation` | Manage orch automation (launchd jobs) |
+| `orch fetchmd` | Fetch web page and convert to markdown |
+| `orch learn` | Manage gap tracking history |
+| `orch changelog` | Aggregated changelog across ecosystem repos |
+| `orch session` | Validate SESSION_HANDOFF.md quality |
+| `orch sessions` | List untracked OpenCode sessions |
 | `orch version` | Print version information |
 
 ---
@@ -128,6 +174,12 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `--bypass-triage` | Acknowledge manual spawn bypasses daemon triage |
 | `--mcp` | MCP server preset (e.g., `playwright`) |
 | `--intent` | Declared outcome type: `experience`, `produce`, `build`, `investigate`, etc. |
+| `--explore` | Exploration mode: parallel subproblem decomposition (investigation/architect only) |
+| `--verify-level` | Verification level override (V0-V3) |
+| `--review-tier` | Review tier override (auto/scan/review/deep) |
+| `--reason` | Reason for override flags (min 10 chars) |
+| `--design-workspace` | Design workspace handoff from ui-design-session |
+| `--settings` | Path to settings.json for worker hook isolation |
 
 ### Model Selection
 
