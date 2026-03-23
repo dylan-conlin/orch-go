@@ -1,0 +1,54 @@
+verification:
+  type: investigation
+  issue: orch-go-2oiy3
+  workspace: og-inv-investigate-orch-go-23mar-c290
+
+claims:
+  - id: V1
+    claim: "All 4 coordination primitives (Route, Sequence, Throttle, Align) map to OpenClaw plugin hooks"
+    evidence: "Type-level analysis of src/plugins/types.ts — before_tool_call for Route, before_prompt_build for Align, subagent_spawning for Throttle, registerService() for Sequence"
+    verified: true
+    method: "Read actual TypeScript type definitions from plugin SDK"
+
+  - id: V2
+    claim: "before_tool_call hook can enforce file-level routing"
+    evidence: "PluginHookBeforeToolCallEvent has params: Record<string, unknown> (file paths accessible), PluginHookBeforeToolCallResult has block?: boolean (src/plugins/types.ts:1721-1734)"
+    verified: true
+    method: "Read type definitions"
+
+  - id: V3
+    claim: "before_prompt_build hook enables skill injection"
+    evidence: "PluginHookBeforePromptBuildResult has prependSystemContext?: string for cacheable injection (src/plugins/types.ts:1512-1525)"
+    verified: true
+    method: "Read type definitions"
+
+  - id: V4
+    claim: "Fork is impractical"
+    evidence: "12,598 commits in ~47 days (~267/day), 42MB TypeScript in /src/"
+    verified: true
+    method: "git log count and directory size measurement"
+
+  - id: V5
+    claim: "Skill protocols are convention-dependent, not model-dependent"
+    evidence: "Phase reporting is bash commands, SYNTHESIS.md is markdown template, probe methodology is structured sections — all convention, not model capability"
+    verified: true
+    method: "Protocol analysis against model dependency criteria"
+
+gaps:
+  - id: G1
+    description: "before_tool_call file path availability for native OpenClaw tools unverified"
+    impact: "If file paths aren't in params, Route enforcement needs prompt-only approach"
+    risk: low
+    mitigation: "Structural placement (attractors) via before_prompt_build is the primary mechanism; runtime enforcement is secondary"
+
+  - id: G2
+    description: "No actual plugin code written"
+    impact: "Type-level mapping may not account for runtime behavior"
+    risk: medium
+    mitigation: "Proof-of-concept plugin recommended as next step"
+
+manual_verification:
+  - step: "Review investigation file at .kb/investigations/2026-03-23-inv-investigate-orch-go-coordination-primitives-port.md"
+    what_to_check: "D.E.K.N. summary is filled, 6 findings with evidence, synthesis section answers the question"
+  - step: "Verify hook signatures in OpenClaw SDK"
+    what_to_check: "Read ~/Documents/personal/clawdbot/src/plugins/types.ts lines 1402-1456 for hook names, 1721-1734 for before_tool_call, 1505-1532 for before_prompt_build"
