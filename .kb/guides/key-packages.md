@@ -23,7 +23,7 @@
 
 - `Resolve(spec)` maps aliases to full provider/model format
 - Aliases: `opus`, `sonnet`, `haiku` (Anthropic), `flash`, `pro` (Gemini)
-- Default: `anthropic/claude-sonnet-4-5-20250929` (Sonnet; Flash has TPM limits that make it unusable)
+- Code fallback: `anthropic/claude-sonnet-4-5-20250929`; effective default is Opus via project config
 
 ## pkg/account/ (Account Management)
 

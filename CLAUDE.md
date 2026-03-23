@@ -127,7 +127,7 @@ See `.kb/guides/event-tracking.md` for the full event type table and beads close
 ## Gotchas
 
 - **Window targeting**: Use workspace name, not window index
-- **Model default**: Sonnet (`anthropic/claude-sonnet-4-5-20250929`); Flash has TPM limits that make it unusable
+- **Model default**: Opus (Max subscription), not Gemini (pay-per-token)
 - **SSE parsing**: Event type is inside JSON data, not `event:` prefix
 - **Beads integration**: Shells out to `bd` CLI, doesn't use API directly
 - **OpenCode auth**: Reads from `~/.local/share/opencode/auth.json`
