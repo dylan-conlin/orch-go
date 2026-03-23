@@ -20,7 +20,7 @@ type IssueUpdater interface {
 
 // Spawner spawns agent work.
 type Spawner interface {
-	SpawnWork(beadsID, model, workdir, account string) error
+	SpawnWork(beadsID, skill, model, workdir, account string) error
 }
 
 // CompletionFinder finds completed agents.
@@ -114,8 +114,8 @@ func (u *defaultIssueUpdater) UpdateStatus(beadsID, status string) error {
 // defaultSpawner is the production Spawner.
 type defaultSpawner struct{}
 
-func (s *defaultSpawner) SpawnWork(beadsID, model, workdir, account string) error {
-	return SpawnWork(beadsID, model, workdir, account)
+func (s *defaultSpawner) SpawnWork(beadsID, skill, model, workdir, account string) error {
+	return SpawnWork(beadsID, skill, model, workdir, account)
 }
 
 // defaultCompletionFinder is the production CompletionFinder.

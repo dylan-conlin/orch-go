@@ -18,7 +18,8 @@ import (
 
 var (
 	// Work command flags
-	workInline bool // Run inline (blocking) with TUI
+	workInline bool   // Run inline (blocking) with TUI
+	workSkill  string // Pre-inferred skill from daemon (overrides local inference)
 
 	// spawnOrientationFrame holds separate context from the task title.
 	// Set by runWork from the beads issue description, rendered as
@@ -60,6 +61,7 @@ Examples:
 
 func init() {
 	workCmd.Flags().BoolVar(&workInline, "inline", false, "Run inline (blocking) with TUI")
+	workCmd.Flags().StringVar(&workSkill, "skill", "", "Pre-inferred skill from daemon (skips local inference)")
 	workCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet) or provider/model format")
 	workCmd.Flags().StringVar(&spawnWorkdir, "workdir", "", "Target project directory (for cross-project work)")
 	workCmd.Flags().StringVar(&spawnAccount, "account", "", "Account name for Claude CLI spawns (e.g., 'work', 'personal')")
@@ -169,10 +171,18 @@ func runWork(serverURL, beadsID string, inline bool) error {
 		return fmt.Errorf("failed to get beads issue: %w", err)
 	}
 
-	// Infer skill and browser tool from issue (labels, title pattern, then type)
-	// Use beads.Issue which has Labels for full skill/browser tool inference
+	// Use daemon-provided skill if available (--skill flag).
+	// This ensures the daemon's label-aware inference (skill:* labels > title > type)
+	// is preserved through the spawn chain, avoiding re-inference failures when
+	// beads connection fails for cross-project issues.
 	var skillName string
 	var browserTool string
+	if workSkill != "" {
+		skillName = workSkill
+	}
+
+	// Infer skill and browser tool from issue (labels, title pattern, then type)
+	// Use beads.Issue which has Labels for full skill/browser tool inference
 	socketPath, connErr := beads.FindSocketPath(workProjectDir)
 	if connErr == nil {
 		beadsClient := beads.NewClient(socketPath)
@@ -180,12 +190,14 @@ func runWork(serverURL, beadsID string, inline bool) error {
 			defer beadsClient.Close()
 			beadsIssue, showErr := beadsClient.Show(beadsID)
 			if showErr == nil {
-				skillName = inferSkillFromBeadsIssue(beadsIssue)
+				if skillName == "" {
+					skillName = inferSkillFromBeadsIssue(beadsIssue)
+				}
 				browserTool = inferBrowserToolFromBeadsIssue(beadsIssue)
 			}
 		}
 	}
-	// Fall back to type-only inference if beads fails
+	// Fall back to type-only inference if beads fails and no daemon skill
 	if skillName == "" {
 		skillName, err = InferSkillFromIssueType(issue.IssueType)
 		if err != nil {

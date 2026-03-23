@@ -425,11 +425,16 @@ func FindInProgressByTitleForProject(title, projectDir string) *Issue {
 
 // SpawnWork spawns work on a beads issue using orch work command.
 // This is the default implementation that shells out to orch.
+// If skill is non-empty, it passes --skill to orch work so the daemon's
+// label-aware inference is used instead of re-inferring from beads.
 // If model is non-empty, it passes --model to orch work for model-aware routing.
 // If workdir is non-empty, it passes --workdir for cross-project spawning.
 // If account is non-empty, it passes --account for group-based account routing.
-func SpawnWork(beadsID, model, workdir, account string) error {
+func SpawnWork(beadsID, skill, model, workdir, account string) error {
 	args := []string{"work"}
+	if skill != "" {
+		args = append(args, "--skill", skill)
+	}
 	if model != "" {
 		args = append(args, "--model", model)
 	}

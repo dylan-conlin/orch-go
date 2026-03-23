@@ -259,7 +259,7 @@ func TestDecide_SkipSet(t *testing.T) {
 func TestAct_SpawnsIssue(t *testing.T) {
 	spawnCalled := false
 	d := &Daemon{
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			spawnCalled = true
 			return nil
 		}},
@@ -311,7 +311,7 @@ func TestAct_NoSpawnWhenBlocked(t *testing.T) {
 
 func TestAct_PropagatesExtractionMetadata(t *testing.T) {
 	d := &Daemon{
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			return nil
 		}},
 		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
@@ -356,7 +356,7 @@ func TestOODA_FullCycle_SpawnsIssue(t *testing.T) {
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			spawnCalled = true
 			return nil
 		}},
@@ -446,7 +446,7 @@ func TestOODA_BehavioralEquivalence(t *testing.T) {
 			Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 				return makeIssues(), nil
 			}},
-			Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				return nil
 			}},
 			StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
@@ -480,5 +480,66 @@ func TestOODA_BehavioralEquivalence(t *testing.T) {
 	}
 	if result1.Skill != result2.Skill {
 		t.Errorf("Skill: OnceExcluding=%s, OODA=%s", result1.Skill, result2.Skill)
+	}
+}
+
+// TestOODA_SkillLabelOverridesTypeInference verifies that skill:* labels take
+// precedence over type-based inference in the full OODA spawn chain.
+// Reproduces: orch-go-z5uck — daemon ignored skill:architect label for task-typed
+// issues from led-totem-toppers, routing them as feature-impl instead.
+func TestOODA_SkillLabelOverridesTypeInference(t *testing.T) {
+	var spawnedSkill string
+
+	d := &Daemon{
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{
+					ID:        "ltt-svc",
+					Title:     "Design LED totem topper service architecture",
+					Priority:  2,
+					IssueType: "task",                                     // type inference → feature-impl
+					Labels:    []string{"skill:architect", "triage:ready"}, // label → architect
+					Status:    "open",
+				},
+			}, nil
+		}},
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
+			spawnedSkill = skill
+			return nil
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID, status string) error {
+			return nil
+		}},
+	}
+
+	// Full OODA cycle
+	sense := d.Sense(nil)
+	orient := d.Orient(sense)
+	decision := d.Decide(orient, nil)
+
+	// Verify Decide inferred architect from label, not feature-impl from type
+	if decision.Skill != "architect" {
+		t.Errorf("Decide() Skill = %q, want %q (skill:architect label should override task type)", decision.Skill, "architect")
+	}
+	if decision.Model != "opus" {
+		t.Errorf("Decide() Model = %q, want %q (architect → opus)", decision.Model, "opus")
+	}
+
+	result, err := d.Act(decision)
+	if err != nil {
+		t.Fatalf("Act() error: %v", err)
+	}
+	if !result.Processed {
+		t.Fatalf("Act() Processed = false; message: %s", result.Message)
+	}
+
+	// Verify result reflects the correct skill
+	if result.Skill != "architect" {
+		t.Errorf("result.Skill = %q, want %q (skill:architect label should override task type)", result.Skill, "architect")
+	}
+
+	// Verify the skill was passed through to SpawnWork (the core fix)
+	if spawnedSkill != "architect" {
+		t.Errorf("SpawnWork received skill = %q, want %q (daemon must pass inferred skill to orch work)", spawnedSkill, "architect")
 	}
 }

@@ -117,7 +117,7 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 	if spawner == nil {
 		spawner = &defaultSpawner{}
 	}
-	if err := spawner.SpawnWork(issue.ID, inferredModel, workdir, account); err != nil {
+	if err := spawner.SpawnWork(issue.ID, skill, inferredModel, workdir, account); err != nil {
 		// Check if this is a "Phase: Complete but not closed" error.
 		// This happens with cross-repo issues where the agent completed work
 		// but the issue was never closed (e.g., orphaned cross-project issues).

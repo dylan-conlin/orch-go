@@ -195,7 +195,7 @@ func TestDaemon_OnceMarksSpawned(t *testing.T) {
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				spawnCount++
 				return nil
 			},
@@ -236,7 +236,7 @@ func TestDaemon_OnceUnmarksOnFailure(t *testing.T) {
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				if !tracker.IsSpawned(beadsID) {
 					t.Error("issue should be marked as spawned during Spawner call")
 				}
@@ -356,7 +356,7 @@ func TestDaemon_ContentDedupSkipsDuplicateTitle(t *testing.T) {
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				spawnCount++
 				return nil
 			},
@@ -523,7 +523,7 @@ func TestDaemon_ContentDedupAllowsDifferentTitle(t *testing.T) {
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				spawnCount++
 				return nil
 			},
@@ -564,7 +564,7 @@ func TestDaemon_SpawnIssueRejectsRecentlySpawned(t *testing.T) {
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				spawnCount++
 				return nil
 			},
@@ -702,7 +702,7 @@ func TestDaemon_OrphanDetectionPreservesSpawnCache(t *testing.T) {
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				spawnCount++
 				return nil
 			},
@@ -1009,7 +1009,7 @@ func TestDaemon_PreventsDuplicateSpawns(t *testing.T) {
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				spawnCount++
 				return nil
 			},

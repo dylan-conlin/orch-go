@@ -22,7 +22,7 @@ func TestDaemon_Once_FreshStatusCheck_SkipsInProgressIssue(t *testing.T) {
 				return "in_progress", nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			spawnCalled = true
 			return nil
 		}},
@@ -56,7 +56,7 @@ func TestDaemon_Once_FreshStatusCheck_AllowsOpenIssue(t *testing.T) {
 				return "open", nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			spawnCalled = true
 			return nil
 		}},
@@ -90,7 +90,7 @@ func TestDaemon_Once_FreshStatusCheck_FailOpenOnError(t *testing.T) {
 				return "", fmt.Errorf("beads daemon unavailable")
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			spawnCalled = true
 			return nil
 		}},
@@ -119,7 +119,7 @@ func TestDaemon_Once_FreshStatusCheck_NilFunc(t *testing.T) {
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			spawnCalled = true
 			return nil
 		}},
@@ -160,7 +160,7 @@ func TestDaemon_ConcurrentDaemonDedup(t *testing.T) {
 					return issueStatus, nil
 				},
 			},
-			Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				spawnCount++
 				return nil
 			}},

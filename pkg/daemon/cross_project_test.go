@@ -28,7 +28,7 @@ func TestDaemon_Once_CrossProject_UsesProjectDir(t *testing.T) {
 				return "open", nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			capturedWorkdir = workdir
 			return nil
 		}},
@@ -68,7 +68,7 @@ func TestDaemon_Once_LocalProject_NoWorkdir(t *testing.T) {
 				return "open", nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			capturedWorkdir = workdir
 			return nil
 		}},
@@ -197,7 +197,7 @@ func TestSpawnIssue_UsesRegistryCurrentDirForLocalIssues(t *testing.T) {
 	// error message mentions the project dir, not a CWD-based error.
 	d := &Daemon{
 		Issues: &mockIssueQuerier{},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			return nil
 		}},
 		StatusUpdater: &defaultIssueUpdater{},

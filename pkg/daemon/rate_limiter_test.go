@@ -173,7 +173,7 @@ func TestDaemon_OnceExcluding_RateLimited(t *testing.T) {
 				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner:       &mockSpawner{SpawnWorkFunc: func(id, model, workdir, account string) error { return nil }},
+		Spawner:       &mockSpawner{SpawnWorkFunc: func(id, skill, model, workdir, account string) error { return nil }},
 		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
 			return nil // Mock: always succeed
 		}},

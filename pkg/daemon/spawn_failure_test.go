@@ -10,7 +10,7 @@ func TestDaemon_SpawnIssue_StatusUpdateFailureReleasesSlot(t *testing.T) {
 	spawnCalled := false
 	d := &Daemon{
 		Pool: pool,
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			spawnCalled = true
 			return nil
 		}},
@@ -71,7 +71,7 @@ func TestOnceExcluding_NonErrorSkip_ContinuesToNextIssue(t *testing.T) {
 				return "open", nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			spawnedIDs = append(spawnedIDs, beadsID)
 			return nil
 		}},
@@ -128,7 +128,7 @@ func TestOnceExcluding_SpawnFailure_RetriedWithFreshSkipMap(t *testing.T) {
 				}, nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			callCount++
 			if callCount == 1 {
 				return fmt.Errorf("transient spawn failure")
@@ -183,7 +183,7 @@ func TestSpawnIssue_PhaseCompleteError_AttemptsAutoComplete(t *testing.T) {
 				}, nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			return fmt.Errorf("failed to spawn work: exit status 1: issue %s has Phase: Complete but is not closed. Run 'orch complete %s' first", beadsID, beadsID)
 		}},
 		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
@@ -243,7 +243,7 @@ func TestSpawnIssue_PhaseCompleteError_AutoCompleteFails_FallsBack(t *testing.T)
 				}, nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			return fmt.Errorf("failed to spawn work: exit status 1: issue %s has Phase: Complete but is not closed", beadsID)
 		}},
 		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
@@ -288,7 +288,7 @@ func TestSpawnIssue_PhaseCompleteError_NoAutoCompleter_SkipsGracefully(t *testin
 				}, nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			return fmt.Errorf("failed to spawn work: exit status 1: issue %s has Phase: Complete but is not closed", beadsID)
 		}},
 		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {

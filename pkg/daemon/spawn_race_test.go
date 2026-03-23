@@ -36,7 +36,7 @@ func TestConcurrentOnce_SameIssue(t *testing.T) {
 		SpawnedIssues: tracker,
 		Issues:        issues,
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				spawnCount.Add(1)
 				time.Sleep(10 * time.Millisecond)
 				return nil
@@ -104,7 +104,7 @@ func TestConcurrentSpawnIssue_DirectCall(t *testing.T) {
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				spawnCount.Add(1)
 				time.Sleep(5 * time.Millisecond)
 				return nil
@@ -165,7 +165,7 @@ func TestConcurrentSpawnIssue_FreshStatusSerializes(t *testing.T) {
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				spawnCount.Add(1)
 				return nil
 			},
@@ -267,7 +267,7 @@ func TestSequentialOnce_PreventsDuplicate(t *testing.T) {
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				spawnCount.Add(1)
 				return nil
 			},
@@ -342,7 +342,7 @@ func TestSpawnIssue_SequentialBlocksSecondCall(t *testing.T) {
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				spawnCount.Add(1)
 				return nil
 			},

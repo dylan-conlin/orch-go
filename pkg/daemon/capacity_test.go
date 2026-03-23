@@ -230,7 +230,7 @@ func TestDaemon_Once_WithPool_AcquiresSlot(t *testing.T) {
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			return nil
 		}},
 		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
@@ -262,7 +262,7 @@ func TestDaemon_Once_WithPool_AtCapacity(t *testing.T) {
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			t.Error("spawnFunc should not be called when at capacity")
 			return nil
 		}},
@@ -289,7 +289,7 @@ func TestDaemon_Once_WithPool_ReleasesSlotOnError(t *testing.T) {
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			return fmt.Errorf("spawn failed")
 		}},
 	}
@@ -317,7 +317,7 @@ func TestDaemon_OnceWithSlot_ReturnsSlot(t *testing.T) {
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			spawnCount++
 			return nil
 		}},
@@ -354,7 +354,7 @@ func TestDaemon_OnceWithSlot_NoPool(t *testing.T) {
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			return nil
 		}},
 		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {

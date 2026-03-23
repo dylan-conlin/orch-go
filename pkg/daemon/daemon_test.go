@@ -32,7 +32,7 @@ func TestDaemon_Once_ProcessesOneIssue(t *testing.T) {
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			spawnCalled = true
 			if beadsID != "proj-1" {
 				t.Errorf("spawnFunc called with %q, want 'proj-1'", beadsID)
@@ -91,7 +91,7 @@ func TestDaemon_Run_ProcessesAllIssues(t *testing.T) {
 			remaining := issues[callCount:]
 			return remaining, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			callCount++
 			return nil
 		}},
@@ -120,7 +120,7 @@ func TestDaemon_Run_RespectsMaxIterations(t *testing.T) {
 				{ID: "proj-1", Title: "Infinite", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 			callCount++
 			return nil
 		}},

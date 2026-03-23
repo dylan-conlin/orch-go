@@ -107,7 +107,7 @@ func TestSpawnIssue_PassesAccountToSpawner(t *testing.T) {
 		},
 		StatusUpdater: &mockIssueUpdater{},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				capturedAccount = account
 				return nil
 			},
@@ -152,7 +152,7 @@ func TestSpawnIssue_NoAccountForLocalProject(t *testing.T) {
 		},
 		StatusUpdater: &mockIssueUpdater{},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
+			SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
 				capturedAccount = account
 				return nil
 			},
