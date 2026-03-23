@@ -37,6 +37,7 @@
 - `GenerateContext()` creates SPAWN_CONTEXT.md content
 - Embeds skill content, task description, beads issue context
 - Spawn gates in `pkg/spawn/gates/` (governance-protected)
+- OPSEC enforcement (`opsec.go`): proxy health check, env injection, settings merge/unmerge for network sandboxing
 
 ## pkg/verify/ (Completion Verification)
 
@@ -192,6 +193,7 @@
 
 - Project-level configuration (`orch.yaml`)
 - Backend selection, model defaults, spawn settings
+- `OpsecConfig`: network sandbox settings (sandbox enable, proxy port, blocked domains)
 
 ## pkg/scaling/ (Scaling Utilities)
 

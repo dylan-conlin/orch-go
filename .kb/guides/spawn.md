@@ -30,7 +30,7 @@ orch spawn <skill> "task"
 ┌─────────────────────────────────────────────────────────────────┐
 │  3. PREFLIGHT GATES (all hard gates — fail-fast)                │
 │     Triage bypass → Concurrency → Rate limit →                  │
-│     Verification → Hotspot                                      │
+│     Verification → Hotspot → OPSEC                              │
 │     Any gate failure aborts spawn before side effects            │
 └─────────────────────────────────────────────────────────────────┘
          │
@@ -149,6 +149,7 @@ Gates run in this order (all must pass):
 | **Rate limit** | Account usage < 95% | `ORCH_USAGE_BLOCK_THRESHOLD=100` |
 | **Verification** | No unverified Tier 1 work exists | `--bypass-verification` + `--bypass-reason` |
 | **Hotspot** | Target files not CRITICAL (>1500 lines) for blocking skills | `--force-hotspot` + `--architect-ref` |
+| **OPSEC** | Proxy running when `opsec.sandbox: true` in project config | `orch opsec start` |
 
 ### Hotspot Gate Details
 

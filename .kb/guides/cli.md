@@ -84,6 +84,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `orch settings` | Modify ~/.claude/settings.json programmatically |
 | `orch audit` | Randomized completion audit selection |
 | `orch init` | Initialize orch scaffolding in current directory |
+| `orch opsec` | Manage OPSEC proxy infrastructure (install, uninstall, start, stop, status, test) |
 | `orch port` | Manage port allocations for projects |
 
 ### Agent Operations Commands

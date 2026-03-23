@@ -23,6 +23,8 @@ orch account switch work                                  # Switch accounts
 orch wait proj-123 --timeout 30m                          # Wait for completion
 orch complete proj-123                                    # Verify and close
 orch clean                                                # Clean up finished agents
+orch opsec status                                         # Check OPSEC proxy health
+orch opsec install                                        # Install OPSEC as environmental enforcement
 ```
 
 ## Development
@@ -139,6 +141,7 @@ See `.kb/guides/event-tracking.md` for the full event type table and beads close
 - **Skill sources**: Live in `orch-go/skills/src/`, deployed via `skillc deploy` to `~/.claude/skills/`
 - **URL-to-markdown**: Use `scrape <url>` CLI, NOT the web-to-markdown MCP tools (`mcp__web-to-markdown__*`). `scrape` auto-selects the best extraction strategy (API, Playwright, screenshot+vision, HTML, PDF, YouTube) per URL type. The MCP is a dumb HTML fetcher with no strategy selection.
 - **Playwright CLI**: Default for visual verification (1 bash call, ~1s). MCP only for interactive page exploration. On SSE-heavy pages, use `domcontentloaded` + `waitForSelector`, not `networkidle`.
+- **OPSEC proxy**: When `opsec.sandbox: true` in project config, spawns require the local proxy on port 8199. Run `orch opsec start` or `orch opsec install` for persistent enforcement via LaunchAgent.
 
 ## Tab-Indented File Editing
 
