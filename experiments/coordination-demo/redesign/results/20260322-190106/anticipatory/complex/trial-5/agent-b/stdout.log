@@ -1,0 +1,32 @@
+Done! I've successfully added the `FormatTable` function to `pkg/display/display.go` with comprehensive tests. Here's what was implemented:
+
+**Function:** `FormatTable(headers []string, rows [][]string) string`
+
+**Features:**
+- Auto-sizes columns based on the widest content (including header)
+- Separates headers from data rows with a line of dashes
+- Uses `StripANSI` for correct width calculation with ANSI-colored content
+- Handles edge cases:
+  - Empty headers → returns empty string
+  - Nil/empty rows → shows headers only
+  - Rows with fewer columns → pads with empty cells
+  - Rows with more columns → ignores extra columns
+
+**Format:**
+```
+ Name  | Age 
+-------+-----
+ Alice | 30  
+ Bob   | 25  
+```
+
+**Tests:** 9 comprehensive test cases covering all requirements:
+- ✅ Basic tables
+- ✅ Headers only
+- ✅ Single column
+- ✅ ANSI colored content preservation
+- ✅ Mismatched column counts
+- ✅ Wide content
+- ✅ Edge cases (empty headers, nil rows)
+
+All existing and new tests pass. Changes committed.

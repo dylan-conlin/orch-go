@@ -1,0 +1,34 @@
+Excellent! ✅ **Task completed successfully.**
+
+## Summary
+
+I've added the `FormatTable` function to `pkg/display/display.go` with comprehensive tests in `pkg/display/display_test.go`.
+
+### Implementation Details
+
+**Function:** `FormatTable(headers []string, rows [][]string) string`
+- Auto-sizes each column based on the widest content using `StripANSI` for correct visual width calculation
+- Formats with pipe separators (`|`) and 1-space padding on each side
+- Separates headers from data rows with a dashed line
+- Handles edge cases: empty rows (headers only), rows shorter than headers (padded with empty cells), and ANSI-colored content
+
+### Test Coverage
+
+Added 8 comprehensive test cases:
+- ✅ Basic table with multiple columns
+- ✅ Empty table (headers only)
+- ✅ Single-column table
+- ✅ ANSI-colored content alignment
+- ✅ Mismatched column counts
+- ✅ Wide content
+- ✅ Three-column table
+- ✅ Empty cell values
+
+### Verification
+
+All tests pass (14 tests total, including existing functions):
+```
+PASS ok github.com/dylan-conlin/orch-go/pkg/display (cached)
+```
+
+Changes committed to branch `exp/antic-complex-b-t7-83539` with commit `4c272ce3f`.

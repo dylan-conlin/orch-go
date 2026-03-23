@@ -1,0 +1,24 @@
+Perfect! I've successfully implemented the `FormatBytes` function and comprehensive tests. Here's what was done:
+
+## Implementation Summary
+
+**Added to `pkg/display/display.go`:**
+- `FormatBytes(bytes int64) string` function that:
+  - Returns `"0 B"` for zero
+  - Formats using binary units (B, KiB, MiB, GiB, TiB)
+  - Shows 1 decimal place for non-byte units (e.g., "1.5 MiB")
+  - Handles negative values with "-" prefix
+  - Stops at TiB (largest unit)
+
+**Added to `pkg/display/display_test.go`:**
+- `TestFormatBytes` with 24 test cases covering:
+  - Zero and small bytes (< 1 KiB)
+  - Exact boundaries (1024, 1048576, 1073741824, 1099511627776)
+  - In-between values with decimals
+  - Negative values
+  - Large values up to TiB
+
+**Test Results:** ✅ All tests passing
+**Commit:** `bfa32b65e` - Properly formatted and committed with co-author line
+
+The function is now ready for use and properly placed after `FormatDurationShort` as requested.

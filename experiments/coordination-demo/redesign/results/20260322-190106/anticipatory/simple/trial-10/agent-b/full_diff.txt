@@ -1,0 +1,117 @@
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 1a699243d..ab5a832f3 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -81,6 +81,46 @@ func FormatDuration(d time.Duration) string {
+ 	return fmt.Sprintf("%dh", hours)
+ }
+ 
++// FormatRate formats a transfer rate in bytes per second as a human-readable string.
++// Output uses binary units with "/s" suffix: B/s, KiB/s, MiB/s, GiB/s.
++// Non-byte-per-sec units show 1 decimal place (e.g., "1.5 MiB/s").
++// Negative rates are prefixed with "-".
++func FormatRate(bytesPerSec float64) string {
++	if bytesPerSec == 0 {
++		return "0 B/s"
++	}
++
++	negative := false
++	if bytesPerSec < 0 {
++		negative = true
++		bytesPerSec = -bytesPerSec
++	}
++
++	// Binary units: 1 KiB = 1024 B, 1 MiB = 1024 KiB, 1 GiB = 1024 MiB
++	const (
++		kib = 1024
++		mib = 1024 * 1024
++		gib = 1024 * 1024 * 1024
++	)
++
++	var result string
++	if bytesPerSec >= gib {
++		result = fmt.Sprintf("%.1f GiB/s", bytesPerSec/gib)
++	} else if bytesPerSec >= mib {
++		result = fmt.Sprintf("%.1f MiB/s", bytesPerSec/mib)
++	} else if bytesPerSec >= kib {
++		result = fmt.Sprintf("%.1f KiB/s", bytesPerSec/kib)
++	} else {
++		// For B/s, show as integer
++		result = fmt.Sprintf("%.0f B/s", bytesPerSec)
++	}
++
++	if negative {
++		return "-" + result
++	}
++	return result
++}
++
+ // FormatDurationShort formats a duration using short labels suitable for
+ // dashboard/status output: "just now", "3m", "2h".
+ func FormatDurationShort(d time.Duration) string {
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index fcd3fa61c..a2cbb4469 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -113,6 +113,61 @@ func TestFormatDuration(t *testing.T) {
+ 	}
+ }
+ 
++func TestFormatRate(t *testing.T) {
++	tests := []struct {
++		input float64
++		want  string
++	}{
++		// Zero
++		{0, "0 B/s"},
++		// Small values (B/s range)
++		{1, "1 B/s"},
++		{512, "512 B/s"},
++		{1023, "1023 B/s"},
++		// Exact boundary: 1 KiB
++		{1024, "1.0 KiB/s"},
++		// Fractional KiB
++		{1536, "1.5 KiB/s"},
++		{2048, "2.0 KiB/s"},
++		{2560, "2.5 KiB/s"},
++		// KiB range
++		{10240, "10.0 KiB/s"},
++		{102400, "100.0 KiB/s"},
++		// Boundary to MiB
++		{1048575, "1024.0 KiB/s"},
++		{1048576, "1.0 MiB/s"},
++		// Fractional MiB
++		{1572864, "1.5 MiB/s"},
++		{2097152, "2.0 MiB/s"},
++		{5242880, "5.0 MiB/s"},
++		// MiB range
++		{10485760, "10.0 MiB/s"},
++		{104857600, "100.0 MiB/s"},
++		// Boundary to GiB
++		{1073741823, "1024.0 MiB/s"},
++		{1073741824, "1.0 GiB/s"},
++		// Fractional GiB
++		{1610612736, "1.5 GiB/s"},
++		{2147483648, "2.0 GiB/s"},
++		// Large GiB values
++		{10737418240, "10.0 GiB/s"},
++		{107374182400, "100.0 GiB/s"},
++		// Negative values
++		{-1, "-1 B/s"},
++		{-512, "-512 B/s"},
++		{-1024, "-1.0 KiB/s"},
++		{-1536, "-1.5 KiB/s"},
++		{-1048576, "-1.0 MiB/s"},
++		{-1073741824, "-1.0 GiB/s"},
++	}
++	for _, tt := range tests {
++		got := FormatRate(tt.input)
++		if got != tt.want {
++			t.Errorf("FormatRate(%g) = %q, want %q", tt.input, got, tt.want)
++		}
++	}
++}
++
+ func TestFormatDurationShort(t *testing.T) {
+ 	tests := []struct {
+ 		input time.Duration

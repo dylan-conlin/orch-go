@@ -1,0 +1,1 @@
+aa6d40d6a feat: add FormatTable function for aligned text tables

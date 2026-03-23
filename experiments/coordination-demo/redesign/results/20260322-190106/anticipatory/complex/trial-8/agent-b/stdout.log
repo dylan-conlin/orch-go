@@ -1,0 +1,24 @@
+Perfect! I've successfully implemented the `FormatTable` function. Here's a summary of what was done:
+
+## Summary
+
+✅ **Function Implementation** (`FormatTable`)
+- Renders headers and rows as an aligned text table
+- Auto-sizes columns based on the widest content (including headers)
+- Separates header from data rows with a dashes line
+- Uses the existing `StripANSI` function to correctly measure ANSI-colored content
+- Handles edge cases: empty rows, mismatched column counts, nil rows
+
+## Test Coverage
+Added `TestFormatTable` with comprehensive tests covering:
+- ✅ Basic table with multiple rows
+- ✅ Headers-only table (no data rows)
+- ✅ Single-column table
+- ✅ ANSI-colored content alignment
+- ✅ Rows with fewer columns than headers (padded with empty cells)
+- ✅ Rows with more columns than headers (extra columns ignored)
+- ✅ Wide content with long strings
+- ✅ Empty headers (returns empty string)
+- ✅ Nil rows
+
+All existing tests continue to pass. The commit has been created successfully.

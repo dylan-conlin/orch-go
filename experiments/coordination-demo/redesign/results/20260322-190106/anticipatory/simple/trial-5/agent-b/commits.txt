@@ -1,0 +1,1 @@
+1166b6a1d feat: add FormatRate function for human-readable transfer rate formatting

@@ -1,0 +1,20 @@
+Done! I've successfully added the `FormatBytes` function to `pkg/display/display.go` and comprehensive tests to `pkg/display/display_test.go`.
+
+**Summary:**
+
+✅ **Function implementation** — Added `FormatBytes(bytes int64) string` with:
+- Binary units: B, KiB, MiB, GiB, TiB
+- 1 decimal place for non-byte values
+- Negative value handling (prefixes with "-")
+- Zero handling (returns "0 B")
+
+✅ **Test coverage** — 20 test cases covering:
+- Zero and small bytes
+- Exact boundaries (1024, 1048576, etc.)
+- Values between boundaries
+- Large values (GiB, TiB)
+- Negative values across all units
+
+✅ **All tests pass** — Run complete with no failures
+
+✅ **Committed** — Changes committed as `ca976231e`

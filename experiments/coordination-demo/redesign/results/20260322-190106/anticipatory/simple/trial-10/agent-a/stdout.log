@@ -1,0 +1,18 @@
+Done! I've successfully added the `FormatBytes` function to `pkg/display` with comprehensive tests.
+
+**What was implemented:**
+
+1. **`FormatBytes(bytes int64) string`** — Formats byte counts into human-readable strings using binary units (B, KiB, MiB, GiB, TiB) with 1 decimal place for non-byte units
+   - Handles zero: returns "0 B"
+   - Handles negative values: prefixes with "-"
+   - Placed immediately after `FormatDurationShort` as required
+
+2. **`TestFormatBytes`** — Comprehensive test coverage with 26 test cases covering:
+   - Zero and small bytes (0, 1, 512, 1023)
+   - Exact boundaries (1024, 1048576, 1073741824, 1099511627776)
+   - Values between boundaries (1.5 KiB, 5 MiB, 10 GiB, etc.)
+   - Negative values across all units
+   - Large values (up to 5 TiB)
+
+**Tests:** ✅ All passing  
+**Commit:** `1dc63cc87` with proper message and co-authorship tag

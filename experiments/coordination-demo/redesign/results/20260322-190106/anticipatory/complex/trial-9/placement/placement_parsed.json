@@ -1,0 +1,7 @@
+{
+  "agent_a_code_after": "FormatDurationShort",
+  "agent_a_test_after": "TestStripANSI",
+  "agent_b_code_after": "StripANSI",
+  "agent_b_test_after": "TestFormatDurationShort",
+  "placements_different": true
+}

@@ -1,0 +1,17 @@
+Done! I've successfully added both functions to `pkg/display` with comprehensive tests:
+
+**Implementation:**
+- **`VisualWidth(s string) int`** — Returns the visual display width of a string, excluding ANSI escape codes. Uses the existing `StripANSI` function and correctly counts Unicode runes.
+- **`PadToWidth(s string, width int) string`** — Right-pads strings with spaces to reach the target visual width, preserving ANSI codes but not counting them toward width. Returns unchanged if already at or wider than target.
+
+**Test Coverage:**
+- Plain ASCII strings
+- ANSI color codes (single and multiple)
+- Unicode (CJK characters and emoji)
+- Empty strings
+- Edge cases (already at width, wider than target, only ANSI codes)
+
+✅ All tests pass
+✅ Functions placed immediately after `StripANSI` 
+✅ Tests placed immediately after `TestStripANSI`
+✅ Changes committed to `exp/antic-complex-a-t6-83539` branch

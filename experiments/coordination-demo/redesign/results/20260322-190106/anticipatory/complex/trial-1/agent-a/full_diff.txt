@@ -1,0 +1,127 @@
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 1a699243d..c5b6cd454 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -92,3 +92,22 @@ func FormatDurationShort(d time.Duration) string {
+ 	}
+ 	return fmt.Sprintf("%dh", int(d.Hours()))
+ }
++
++// VisualWidth returns the visual display width of a string, excluding ANSI
++// escape codes. It counts runes, not bytes, for accurate Unicode width.
++func VisualWidth(s string) int {
++	stripped := StripANSI(s)
++	return len([]rune(stripped))
++}
++
++// PadToWidth right-pads a string with spaces to reach the target visual width.
++// ANSI codes are preserved but don't count toward width. If the string is
++// already at or wider than width, it is returned unchanged.
++func PadToWidth(s string, width int) string {
++	currentWidth := VisualWidth(s)
++	if currentWidth >= width {
++		return s
++	}
++	padding := width - currentWidth
++	return s + strings.Repeat(" ", padding)
++}
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index fcd3fa61c..68bc4ff59 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -113,6 +113,95 @@ func TestFormatDuration(t *testing.T) {
+ 	}
+ }
+ 
++func TestVisualWidth(t *testing.T) {
++	tests := []struct {
++		input string
++		want  int
++	}{
++		// Plain ASCII strings
++		{"", 0},
++		{"hello", 5},
++		{"hello world", 11},
++		{"a", 1},
++
++		// Strings with ANSI color codes (codes shouldn't count)
++		{"\x1b[31mred\x1b[0m", 3},
++		{"\x1b[1;32mbold green\x1b[0m", 10},
++		{"\x1b[31mhi\x1b[0m\x1b[32mbye\x1b[0m", 5},
++
++		// Unicode strings (emoji, CJK)
++		{"hello🌟", 6},        // 5 ASCII + 1 emoji rune = 6 total runes
++		{"你好", 2},           // 2 CJK characters
++		{"🎯🎪", 2},           // 2 emoji runes
++		{"café", 4},           // accented character (é is 1 rune)
++		{"こんにちは", 5},     // 5 Japanese hiragana characters
++
++		// Mixed: ANSI codes with Unicode
++		{"\x1b[31m你好\x1b[0m", 2},
++		{"\x1b[32m🎯\x1b[0m", 1},
++
++		// Edge cases
++		{"  ", 2},           // spaces
++		{"\t", 1},           // tab counts as 1 rune
++	}
++	for _, tt := range tests {
++		got := VisualWidth(tt.input)
++		if got != tt.want {
++			t.Errorf("VisualWidth(%q) = %d, want %d", tt.input, got, tt.want)
++		}
++	}
++}
++
++func TestPadToWidth(t *testing.T) {
++	tests := []struct {
++		input             string
++		width             int
++		want              string
++		checkVisualWidth  bool // only check visual width when we actually padded
++	}{
++		// Plain ASCII
++		{"hello", 10, "hello     ", true},
++		{"hi", 5, "hi   ", true},
++		{"test", 4, "test", true},
++
++		// Already at target width
++		{"hello", 5, "hello", true},
++
++		// Already wider than target (should return unchanged)
++		{"hello world", 5, "hello world", false},
++		{"longer", 3, "longer", false},
++
++		// Empty string
++		{"", 5, "     ", true},
++		{"", 0, "", true},
++
++		// With ANSI codes (codes don't count toward width, but are preserved)
++		{"\x1b[31mred\x1b[0m", 5, "\x1b[31mred\x1b[0m  ", true}, // "red" is 3 chars, pad to 5 = 2 spaces
++		{"\x1b[32mhi\x1b[0m", 4, "\x1b[32mhi\x1b[0m  ", true},   // "hi" is 2 chars, pad to 4 = 2 spaces
++
++		// Unicode strings
++		{"hello", 7, "hello  ", true},
++		{"你好", 4, "你好  ", true},  // 2 CJK chars, pad to 4 = 2 spaces
++		{"🎯", 3, "🎯  ", true},      // 1 emoji, pad to 3 = 2 spaces
++
++		// Mixed ANSI and Unicode
++		{"\x1b[31m你好\x1b[0m", 4, "\x1b[31m你好\x1b[0m  ", true}, // visual width is 2, pad to 4
++	}
++	for _, tt := range tests {
++		got := PadToWidth(tt.input, tt.width)
++		if got != tt.want {
++			t.Errorf("PadToWidth(%q, %d) = %q, want %q", tt.input, tt.width, got, tt.want)
++		}
++		// Verify visual width is correct (only when we expect padding)
++		if tt.checkVisualWidth {
++			visualWidth := VisualWidth(got)
++			if visualWidth != tt.width {
++				t.Errorf("PadToWidth(%q, %d) visual width = %d, want %d", tt.input, tt.width, visualWidth, tt.width)
++			}
++		}
++	}
++}
++
+ func TestFormatDurationShort(t *testing.T) {
+ 	tests := []struct {
+ 		input time.Duration

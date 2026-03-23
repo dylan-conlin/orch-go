@@ -1,0 +1,18 @@
+Done! I've successfully added `VisualWidth` and `PadToWidth` functions to `pkg/display` with comprehensive tests.
+
+## Summary
+
+**Functions added:**
+- `VisualWidth(s string) int` — Returns visual display width ignoring ANSI codes, using `StripANSI` and counting runes
+- `PadToWidth(s string, width int) string` — Right-pads strings to target width while preserving ANSI codes
+
+**Tests added (all passing):**
+- `TestVisualWidth` — 14 test cases covering ASCII, ANSI codes, Unicode, emoji, and mixed content
+- `TestPadToWidth` — 16 test cases covering padding behavior, ANSI preservation, Unicode, and edge cases
+
+**Key details:**
+- Both functions correctly handle multi-byte Unicode characters
+- Functions use standard library only (no new dependencies)
+- Proper doc comments on all public functions
+- Placed immediately after `FormatDurationShort` as requested
+- All existing tests continue to pass

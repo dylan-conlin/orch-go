@@ -1,0 +1,16 @@
+Done! I've successfully implemented `FormatBytes` and comprehensive tests. Here's what was added:
+
+**Function:** `FormatBytes(bytes int64) string`
+- Formats byte counts with binary units (B, KiB, MiB, GiB, TiB)
+- Shows integers for bytes, 1 decimal place for larger units
+- Handles negative values with "-" prefix
+- Returns "0 B" for zero
+
+**Tests:** 19 test cases covering:
+- Zero and small values
+- Exact boundaries (1024, 1048576, etc.)
+- Values between boundaries
+- Negative values
+- Large values (GiB, TiB range)
+
+All tests pass, and the commit has been created (06e81f49).

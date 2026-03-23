@@ -1,0 +1,13 @@
+Done! I've successfully added `VisualWidth` and `PadToWidth` functions to `pkg/display`:
+
+**VisualWidth** — calculates visual display width of a string by stripping ANSI codes and counting runes (handles Unicode correctly).
+
+**PadToWidth** — right-pads strings to a target visual width while preserving ANSI codes.
+
+**Tests added** cover:
+- Plain ASCII, Unicode (emoji/CJK), empty strings
+- ANSI color codes (single and multiple)
+- Edge cases (already at width, wider than target)
+- Verification that visual width is correct after padding
+
+All 7 tests in the display package pass. Changes committed.

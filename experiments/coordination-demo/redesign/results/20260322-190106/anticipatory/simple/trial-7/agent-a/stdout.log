@@ -1,0 +1,15 @@
+Done! I've successfully added the `FormatBytes` function to `pkg/display/display.go` and comprehensive tests to `pkg/display/display_test.go`.
+
+**Summary of changes:**
+
+✅ **FormatBytes function:**
+- Converts byte counts to human-readable strings using binary units (B, KiB, MiB, GiB, TiB)
+- Shows 1 decimal place for non-byte units
+- Handles zero, negative values, and large values up to TiB
+- Placed immediately after `FormatDurationShort` as instructed
+
+✅ **TestFormatBytes function:**
+- 19 test cases covering: zero, bytes, KiB/MiB/GiB/TiB boundaries, in-between values, and negative values
+- Placed immediately after `TestFormatDurationShort` as instructed
+
+✅ **All tests pass** and code committed with message referencing the feature addition.

@@ -1,0 +1,1 @@
+e1a509140 feat: add FormatRate function to pkg/display

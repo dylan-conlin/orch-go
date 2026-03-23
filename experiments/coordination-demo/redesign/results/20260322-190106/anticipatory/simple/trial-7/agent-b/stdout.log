@@ -1,0 +1,18 @@
+Done! I've successfully implemented the `FormatRate` function with comprehensive tests:
+
+**Changes made:**
+- **Added `FormatRate` function** to `pkg/display/display.go` (after `FormatDurationShort`)
+  - Formats transfer rates with binary units (B/s, KiB/s, MiB/s, GiB/s)
+  - Shows 1 decimal place for non-byte units
+  - Handles zero and negative values correctly
+
+- **Added `TestFormatRate`** to `pkg/display/display_test.go` (after `TestFormatDurationShort`)
+  - 16 test cases covering:
+    - Zero, small values, boundary conditions
+    - All unit levels (B/s, KiB/s, MiB/s, GiB/s)
+    - Negative values
+    - Fractional values
+
+**Test results:** ✓ All tests pass (16/16)
+
+**Commit:** `35e55ce85` — feat: add FormatRate function to pkg/display
