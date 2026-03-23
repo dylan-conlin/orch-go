@@ -9,26 +9,21 @@
 
 A framework for multi-agent coordination in software engineering tasks. Describes when and why parallel agents produce individually correct work that cannot be merged, which coordination mechanisms prevent versus fail to prevent these failures, and how to implement coordination that works.
 
-Three layers:
-1. **Primitives** (Route, Sequence, Throttle, Align) — WHAT coordination requires
+This document is organized by epistemic tier — how well each claim is supported:
 
-**Evidence quality:** Working-hypothesis (proposed taxonomy from one experiment family + literature review of 6 frameworks).
-
-2. **Mechanisms** (gate vs attractor) — HOW to implement each primitive
-
-**Evidence quality:** Working-hypothesis (proposed taxonomy from experiments N=100 + literature review of 6 frameworks).
-
-3. **Scope** (N>1 boundary) — WHEN coordination is needed at all
-
-**Evidence quality:** Observed (N=1 degenerate case directly observed; N>1 boundary validated across 100 trials).
+1. **Battle-Tested Findings** — Directly observed and replicated in controlled experiments. These are engineering facts within the tested scenarios.
+2. **Working Hypotheses** — Supported by experiments and literature review, but not independently reproduced. Useful frameworks that may need revision.
+3. **Open Frontiers** — Extrapolations beyond tested scenarios, framework-level verdicts, and untested claims. Treat as directional, not authoritative.
 
 The core insight, observed across 100 trials in same-file parallel-edit scenarios: **communication did not produce coordination.** Agents understood each other's work, discussed plans, and acknowledged potential conflicts — yet still produced unmergeable code. Only structural constraints (explicit placement instructions) prevented conflicts. This challenges the premise of frameworks like CrewAI, AutoGen, and LangGraph that assume agent-to-agent messaging solves coordination.
 
-The implementation insight, observed in our experiments and across 6 reviewed external frameworks: **gate-based coordination failed, attractor-based coordination succeeded.** Runtime coordination decisions (gates) were bypassed or produced wrong answers. Design-time structural coordination (attractors) succeeded because no runtime decision was required. Across 6 reviewed frameworks, every failing system used gates and every working system used attractors.
-
 ---
 
-## Core Claims (Testable)
+# Part I: Battle-Tested Findings
+
+*Directly observed in controlled experiments. These claims are supported by quantitative evidence from 139+ trials across 5 experiments. Treat as reliable engineering guidance within the tested domain (same-file parallel edits, software engineering tasks, Claude models).*
+
+## Core Claims
 
 ### Claim 1: Communication is insufficient for coordination in same-file parallel edits
 
@@ -84,29 +79,45 @@ In the tested gate design, giving agents a mandatory post-implementation verific
 
 **Why this gate failed:** The self-check is itself subject to the same bias as the original insertion — agents evaluate "is my insertion point correct?" rather than "is my insertion point non-conflicting?" The semantically correct location beats the coordination-safe location at every decision point, including the verification step. This mirrors the orch-go production finding that blocking gates are bypassed 100% of the time (`.kb/decisions/2026-03-17-accretion-gates-advisory-not-blocking.md`).
 
----
+## Directly Observed Patterns
 
-## Implications
-
-1. **In the tested scenarios and across 6 reviewed frameworks, messaging-based coordination did not produce coordination outcomes.** CrewAI, LangGraph, Claude Agent SDK, OpenAI Agents SDK, and similar systems that assume agents can coordinate through communication showed coordination failures in the reviewed literature. In our experiments (N=80), communication did not fail — the agents communicated effectively. The coordination still failed. Whether richer messaging protocols or stronger planning could overcome this is an open question. (Note: AutoGen, originally cited here, entered maintenance mode by Mar 2026, succeeded by Microsoft Agent Framework.)
-
-**Evidence quality:** Working-hypothesis (extrapolated from same-file experiment N=80 + literature review of 6 frameworks; not directly reproduced across diverse coordination scenarios).
-
-2. **In the tested scenarios, effective coordination came from structural constraints, not communication.** The harness (orchestrator) assigned non-overlapping work regions, framing coordination as a scheduling/allocation problem rather than a communication problem. **Production validation (2026-03-18):** orch-go's daemon, swarm, and exploration mode implement structural separation — routing agents to different issues/files rather than coordinating within shared files. The production architecture is consistent with this claim.
-
-**Evidence quality:** Working-hypothesis (supported by experiments N=100 + production architecture design; not tested across diverse coordination scenarios or alternative approaches).
-
-3. **The compliance/coordination distinction was directly observed.** Across 80 trials, agents complied with individual task requirements (6/6 in all trials). They even complied with coordination instructions ("avoid conflicts"). But compliance was not coordination — understanding the goal did not produce the behavior.
+**The compliance/coordination distinction was directly observed.** Across 80 trials, agents complied with individual task requirements (6/6 in all trials). They even complied with coordination instructions ("avoid conflicts"). But compliance was not coordination — understanding the goal did not produce the behavior.
 
 **Evidence quality:** Observed (directly measured across 80 trials in one experiment family).
 
-4. **Agents chose the "correct" location over the "non-conflicting" location.** In messaging trials, both agents chose to insert "after FormatDurationShort" because that's the semantically correct location per the task. Even when told about the other agent's identical plan, they did not deviate. The task instruction was stronger than the coordination instruction in 18/20 trials.
+**Agents chose the "correct" location over the "non-conflicting" location.** In messaging trials, both agents chose to insert "after FormatDurationShort" because that's the semantically correct location per the task. Even when told about the other agent's identical plan, they did not deviate. The task instruction was stronger than the coordination instruction in 18/20 trials.
 
 **Evidence quality:** Observed (18/20 messaging trials in one experiment family; generality to other task structures untested).
 
+**Automated attractor discovery works.** A 2-phase experiment showed that structural coordination constraints can be generated automatically from failure data. Phase 1 collected collisions; Phase 2 injected auto-generated constraints and achieved 7/7 SUCCESS with zero human intervention. Only 1 collision was needed. See Key Experiment: Automated Attractor Discovery below.
+
+**Evidence quality:** Observed (N=10, one task family; complex task types with multi-file ambiguous requirements untested).
+
+**Anticipatory placement has a semantic congruence requirement.** LLM-generated placements from static analysis achieve 60% success (12/20): 100% for complex tasks (semantically congruent placements), 20% for simple tasks (adjacent/gravitational placements). The LLM exhibits the same gravitational bias as agents. Failure-data-driven discovery (100%) remains more reliable than static analysis (60%). See Key Experiment: Anticipatory Placement below.
+
+**Evidence quality:** Observed (N=20, one task family; one model).
+
+## Boundary Condition: N=1
+
+When N=1 (single agent), all four coordination primitives are trivially satisfied:
+- **Route:** Only one agent — no collision possible
+- **Sequence:** Only one agent — ordering is implicit
+- **Throttle:** Only one agent — velocity = verification bandwidth
+- **Align:** Only one agent — model of correctness is self-consistent
+
+This explains why autoresearch succeeds with radical simplicity — it eliminates coordination rather than solving it. The coordination framework's scope begins at N>1, where the action surface exceeds one agent's capacity.
+
+**Implication:** The first architectural decision is not "which primitives to implement" but "can the work be structured so N=1 per work region?" If yes, coordination is free. orch-go's daemon implements this: each agent gets its own issue, avoiding coordination entirely. The 80-trial experiment shows what happens when N>1 without structural separation in same-file scenarios — 100% conflict rate.
+
+**Evidence quality:** Observed (N=1 degenerate case directly observed; N>1 boundary validated across 100 trials).
+
 ---
 
-## Four Coordination Primitives (Generalized Framework)
+# Part II: Working Hypotheses
+
+*Supported by experiments and literature review but not independently reproduced. These are useful frameworks for reasoning about coordination, with evidence from one experiment family (N=139) plus analysis of 6 external frameworks. They may need revision as more evidence accumulates.*
+
+## Four Coordination Primitives
 
 The experimental findings suggest four structural primitives for multi-agent coordination. Literature review of 6 external frameworks (2026-03-22) is consistent with these primitives applying beyond orch-go, though independent reproduction in other contexts is needed to confirm generality.
 
@@ -126,13 +137,17 @@ The experimental findings suggest four structural primitives for multi-agent coo
 
 **Evidence quality:** Working-hypothesis (MAST failure mode analysis + orch-go production observation; no controlled experiment isolating align as a variable).
 
-**Key insight:** Align appears to be the highest-leverage primitive and a validity condition for the other three. Route/Sequence/Throttle can mechanically operate without Align (messages get delivered, steps get ordered, velocity gets limited), but their coordination value degrades proportionally to Align quality. McEntire's data is consistent: partial Align correlates with 64% success, zero Align with 0%. This is a multiplier relationship, not a substrate dependency — 5 cases show Route/Sequence/Throttle mechanically holding while Align is broken (see probes/2026-03-22-probe-falsify-align-as-substrate.md). External evidence is consistent with: agents communicating while maintaining divergent models of correctness is a dominant failure pattern.
-
 **Degenerate case:** When N=1 (single agent), all four primitives are trivially satisfied. This explains why autoresearch succeeds with radical simplicity — it eliminates coordination rather than solving it.
 
 **Quantitative relationship (from literature):** Success degrades monotonically with missing primitives in McEntire's data:
 - McEntire: 100% (single/0 missing) -> 64% (hierarchical/~1.5 missing) -> 32% (swarm/~3 missing) -> 0% (pipeline/~4 missing)
 - DeepMind: 17.2x error amplification (independent/no primitives) -> 4.4x (centralized/+Route+Sequence)
+
+### Align as Validity Condition
+
+**Key insight:** Align appears to be the highest-leverage primitive and a validity condition for the other three. Route/Sequence/Throttle can mechanically operate without Align (messages get delivered, steps get ordered, velocity gets limited), but their coordination value degrades proportionally to Align quality. McEntire's data is consistent: partial Align correlates with 64% success, zero Align with 0%. This is a multiplier relationship, not a substrate dependency — 5 cases show Route/Sequence/Throttle mechanically holding while Align is broken (see probes/2026-03-22-probe-falsify-align-as-substrate.md). External evidence is consistent with: agents communicating while maintaining divergent models of correctness is a dominant failure pattern.
+
+**Evidence quality:** Working-hypothesis (MAST failure mode analysis + falsification probe; the multiplier model is a qualitative description, not a quantitatively validated equation).
 
 ### Control Theory Mapping (Structural Homology)
 
@@ -167,7 +182,7 @@ The four primitives map onto control theory components. The mapping is structura
 
 **Evidence:** Probe 2026-03-22, mapping all 14 MAST failure modes to control components. See `.kb/models/coordination/probes/2026-03-22-probe-control-theory-component-mapping.md`.
 
-### Mechanism Dimension: Gates vs Attractors
+## Mechanism Dimension: Gates vs Attractors
 
 The four primitives describe WHAT coordination requires. The mechanism dimension describes HOW to implement it. Two mechanism types exist, and they are not interchangeable:
 
@@ -175,7 +190,55 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 
 **Attractor (structural destination):** Coordination embedded in the system's shape at design time. The structure itself routes work — no runtime decision required. Cannot be "bypassed" because there is no alternative path; the structure IS the coordination.
 
-**Evidence from 6 reviewed external frameworks:** In the reviewed literature, gate-based coordination correlated with failure and attractor-based coordination correlated with success across all 6 frameworks examined.
+**In the tested scenarios, effective coordination came from structural constraints, not communication.** The harness (orchestrator) assigned non-overlapping work regions, framing coordination as a scheduling/allocation problem rather than a communication problem. **Production validation (2026-03-18):** orch-go's daemon, swarm, and exploration mode implement structural separation — routing agents to different issues/files rather than coordinating within shared files. The production architecture is consistent with this claim.
+
+**Evidence quality:** Working-hypothesis (supported by experiments N=100 + production architecture design; not tested across diverse coordination scenarios or alternative approaches).
+
+**Why gates failed in our experiments:** They required correct runtime decisions by LLMs. Each decision point was a failure opportunity. CrewAI's manager must correctly route tasks. LangGraph's edges must correctly evaluate state. In our 20-trial gate condition (Claim 5), agents performed self-checks but did not change behavior — the semantically correct answer beat the coordination-correct answer at every decision point.
+
+**Why attractors worked in our experiments:** Coordination decisions were made at design time. Anthropic's lead agent defines work regions before subagents start. orch-go's `.kb/models/*/probes/` directory reduces orphans not by checking at commit time (gate — bypassed 100%) but by making the model directory the natural destination for probe output (attractor — orphan rate halved). Attractor placement can be *discovered automatically* from failure data (see Key Experiment: Automated Attractor Discovery) — the system parses collision diffs, identifies gravitational insertion points, and generates non-overlapping constraints with zero human intervention. Gate logic, by contrast, requires human judgment about what runtime checks to perform.
+
+**Anticipatory placement limitation (2026-03-22):** LLM-generated placements from static analysis alone (no failure data) achieve 60% success (12/20). The LLM exhibits the same gravitational bias as agents — it picks adjacent functions as "different" without understanding git merge proximity. Success depends on **semantic congruence**: when the assigned location is the natural home for the new code (e.g., VisualWidth after StripANSI), agents follow it (100% complex). When arbitrary (e.g., FormatRate after FormatDuration), agents revert to the gravitational point (20% simple). Failure-data-driven discovery (100%) remains more reliable than static analysis (60%). See `probes/2026-03-22-probe-anticipatory-placement-static-analysis.md`.
+
+**Attractor resilience (2026-03-22):** Attractors tolerate stale anchors. 9/9 trials succeeded with original placement prompts after codebase mutations (renames, file reorganization, competing insertion points). Agents adapt through two mechanisms: (1) **semantic adaptation** — when an anchor function is renamed, agents find the semantically equivalent function; (2) **anchor redundancy** — placement instructions with multiple anchors ("after X, BEFORE Y") survive losing one anchor. The load-bearing property is **region separation** (agents assigned to different file regions), not anchor name accuracy. See `probes/2026-03-22-probe-attractor-decay-degradation-curve.md`.
+
+### Per-Primitive Mechanism Recommendations
+
+**Practical design principle:** Based on our experiments and literature review, attractors appear better suited for the heavy-load primitives (Route, Align) where agents must get coordination right consistently. Gates appear acceptable for lighter primitives (Throttle, Sequence) that tolerate occasional failure.
+
+- **Route** — Recommended mechanism: attractor (structural assignment). In reviewed literature, runtime LLM routing decisions failed (CrewAI #4783).
+
+**Evidence quality:** Working-hypothesis (one experiment family + literature mapping; recommendation based on pattern, not controlled comparison of mechanisms per primitive).
+
+- **Align** — Recommended mechanism: attractor (output formats, shared knowledge). In McEntire's data, correctness checks in pipeline architecture produced 87% false rejections.
+
+**Evidence quality:** Working-hypothesis (literature mapping + production experience; no controlled experiment comparing gate vs attractor for alignment specifically).
+
+- **Throttle** — Gate acceptable (rate limits, scaling rules). Binary check with low ambiguity.
+
+**Evidence quality:** Working-hypothesis (design reasoning from gate/attractor framework; no controlled experiment testing gate-based throttle failure rates).
+
+- **Sequence** — Gate acceptable (dependency ordering). Ordering is mechanically enforceable.
+
+**Evidence quality:** Working-hypothesis (design reasoning from gate/attractor framework; no controlled experiment testing gate-based sequence failure rates).
+
+**Evidence:** Probe 2026-03-22, gate/attractor validation across 6 frameworks. See `.kb/models/knowledge-accretion/probes/2026-03-22-probe-validate-gate-attractor-external-frameworks.md`. Also: orch-go production data from `.kb/models/knowledge-accretion/probes/2026-03-20-probe-intervention-effectiveness-audit.md`.
+
+## Implications (Extrapolated)
+
+1. **In the tested scenarios and across 6 reviewed frameworks, messaging-based coordination did not produce coordination outcomes.** CrewAI, LangGraph, Claude Agent SDK, OpenAI Agents SDK, and similar systems that assume agents can coordinate through communication showed coordination failures in the reviewed literature. In our experiments (N=80), communication did not fail — the agents communicated effectively. The coordination still failed. Whether richer messaging protocols or stronger planning could overcome this is an open question. (Note: AutoGen, originally cited here, entered maintenance mode by Mar 2026, succeeded by Microsoft Agent Framework.)
+
+**Evidence quality:** Working-hypothesis (extrapolated from same-file experiment N=80 + literature review of 6 frameworks; not directly reproduced across diverse coordination scenarios).
+
+---
+
+# Part III: Open Frontiers
+
+*Extrapolations beyond tested scenarios, framework-level assessments based on literature review (not reproduction), and untested claims. Treat as directional signals, not established findings.*
+
+## Framework Assessments (Literature Review Only)
+
+**Evidence from 6 reviewed external frameworks:** In the reviewed literature, gate-based coordination correlated with failure and attractor-based coordination correlated with success across all 6 frameworks examined. These assessments are based on documentation and published reports, not independent reproduction.
 
 - **CrewAI** — Does not work. Primary mechanism: gate (manager LLM routing).
 
@@ -207,70 +270,37 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 - Swarm (pure gates): 32%
 - Pipeline (maximum gates): 0%
 
-**Why gates failed in our experiments:** They required correct runtime decisions by LLMs. Each decision point was a failure opportunity. CrewAI's manager must correctly route tasks. LangGraph's edges must correctly evaluate state. In our 20-trial gate condition (Claim 5), agents performed self-checks but did not change behavior — the semantically correct answer beat the coordination-correct answer at every decision point.
+## Open Questions
 
-**Why attractors worked in our experiments:** Coordination decisions were made at design time. Anthropic's lead agent defines work regions before subagents start. orch-go's `.kb/models/*/probes/` directory reduces orphans not by checking at commit time (gate — bypassed 100%) but by making the model directory the natural destination for probe output (attractor — orphan rate halved). Attractor placement can be *discovered automatically* from failure data (see Key Experiment: Automated Attractor Discovery) — the system parses collision diffs, identifies gravitational insertion points, and generates non-overlapping constraints with zero human intervention. Gate logic, by contrast, requires human judgment about what runtime checks to perform.
+### Answered
 
-**Anticipatory placement limitation (2026-03-22):** LLM-generated placements from static analysis alone (no failure data) achieve 60% success (12/20). The LLM exhibits the same gravitational bias as agents — it picks adjacent functions as "different" without understanding git merge proximity. Success depends on **semantic congruence**: when the assigned location is the natural home for the new code (e.g., VisualWidth after StripANSI), agents follow it (100% complex). When arbitrary (e.g., FormatRate after FormatDuration), agents revert to the gravitational point (20% simple). Failure-data-driven discovery (100%) remains more reliable than static analysis (60%). See `probes/2026-03-22-probe-anticipatory-placement-static-analysis.md`.
+- ~~Does a stronger coordination instruction ("you MUST choose a different insertion point than the other agent") change behavior?~~ **Answered 2026-03-22:** No. Gate condition with mandatory check-and-revise step: 20/20 CONFLICT. Even explicit self-verification doesn't overcome semantic-correctness bias.
+- ~~Is Align a substrate (other primitives can't function without it)?~~ **Answered 2026-03-22:** No — "substrate" overclaims. 5 cases show Route/Sequence/Throttle mechanically holding while Align is broken. Align is a multiplier/validity condition with proportional (not binary) impact. See `probes/2026-03-22-probe-falsify-align-as-substrate.md`.
+- ~~Does the control theory mapping (Route->Actuator, Sequence->Reference, Throttle->Controller, Align->Sensor) hold?~~ **Answered 2026-03-22:** Structural homology, not isomorphism. 64% clean mapping with systematic sensor bleed pattern. Qualitative insights transfer; formal tools do not. See `probes/2026-03-22-probe-control-theory-component-mapping.md`.
+- ~~Does the gate/attractor mechanism distinction generalize beyond orch-go?~~ **Answered 2026-03-22:** Literature review of 6 frameworks is consistent with the distinction. Gate-based coordination correlated with failure, attractor-based with success. McEntire degradation tracks gate/attractor gradient monotonically. See `.kb/models/knowledge-accretion/probes/2026-03-22-probe-validate-gate-attractor-external-frameworks.md`.
+- ~~Can structural attractors be discovered automatically from collision patterns?~~ **Answered 2026-03-22:** Yes. 2-phase experiment: system parsed conflict diffs, identified gravitational insertion point, generated non-overlapping constraints, achieved 7/7 success with zero human intervention. 1 collision is sufficient for effective constraint generation. See `probes/2026-03-22-probe-automated-attractor-discovery.md`.
 
-**Attractor resilience (2026-03-22):** Attractors tolerate stale anchors. 9/9 trials succeeded with original placement prompts after codebase mutations (renames, file reorganization, competing insertion points). Agents adapt through two mechanisms: (1) **semantic adaptation** — when an anchor function is renamed, agents find the semantically equivalent function; (2) **anchor redundancy** — placement instructions with multiple anchors ("after X, BEFORE Y") survive losing one anchor. The load-bearing property is **region separation** (agents assigned to different file regions), not anchor name accuracy. See `probes/2026-03-22-probe-attractor-decay-degradation-curve.md`.
+### Open
 
-**Practical design principle:** Based on our experiments and literature review, attractors appear better suited for the heavy-load primitives (Route, Align) where agents must get coordination right consistently. Gates appear acceptable for lighter primitives (Throttle, Sequence) that tolerate occasional failure.
-
-- **Route** — Recommended mechanism: attractor (structural assignment). In reviewed literature, runtime LLM routing decisions failed (CrewAI #4783).
-
-**Evidence quality:** Working-hypothesis (one experiment family + literature mapping; recommendation based on pattern, not controlled comparison of mechanisms per primitive).
-
-- **Align** — Recommended mechanism: attractor (output formats, shared knowledge). In McEntire's data, correctness checks in pipeline architecture produced 87% false rejections.
-
-**Evidence quality:** Working-hypothesis (literature mapping + production experience; no controlled experiment comparing gate vs attractor for alignment specifically).
-
-- **Throttle** — Gate acceptable (rate limits, scaling rules). Binary check with low ambiguity.
-
-**Evidence quality:** Working-hypothesis (design reasoning from gate/attractor framework; no controlled experiment testing gate-based throttle failure rates).
-
-- **Sequence** — Gate acceptable (dependency ordering). Ordering is mechanically enforceable.
-
-**Evidence quality:** Working-hypothesis (design reasoning from gate/attractor framework; no controlled experiment testing gate-based sequence failure rates).
-
-**Evidence:** Probe 2026-03-22, gate/attractor validation across 6 frameworks. See `.kb/models/knowledge-accretion/probes/2026-03-22-probe-validate-gate-attractor-external-frameworks.md`. Also: orch-go production data from `.kb/models/knowledge-accretion/probes/2026-03-20-probe-intervention-effectiveness-audit.md`.
+- Does placement work when the number of agents exceeds the number of natural insertion points?
+- Can iterative messaging (multi-round negotiation) produce different results than single-shot plan exchange?
+- At what task granularity does structural placement become impractical?
+- Should Align decompose into sub-primitives? **Evidence supports yes (2026-03-22):** 80-trial messaging condition shows task alignment defeating coordination alignment in 18/20 trials. At minimum three sub-components: task alignment (agent understands its own task), state alignment (agent knows system state), coordination alignment (agent adjusts behavior for multi-agent context). Needs formal decomposition and separate testing.
+- Do the four primitives have ordering dependencies? (Must Route precede Sequence?)
+- How do primitives interact with task type? (DeepMind found coordination strategy is task-dependent — financial reasoning favors centralized, web navigation favors decentralized)
+- Do the primitives apply to non-LLM multi-agent systems? (robotics, distributed computing, human organizations)
+- Does the multiplier model (Coordination_value = Route x Sequence x Throttle x Align) hold quantitatively, or is the interaction more complex? McEntire's 64% hierarchical result is consistent, but no controlled experiment isolates each factor.
+- ~~Can attractor-based coordination degrade? (What happens when structural destinations become stale or misaligned with evolving requirements?)~~ **Answered 2026-03-22:** Not for incremental codebase changes. 9/9 SUCCESS with stale attractors across renames, file reorganization, and competing insertion points. Agents adapt through semantic resolution and anchor redundancy. Region separation (not anchor accuracy) is the load-bearing property. Untested: wholesale restructuring. See `probes/2026-03-22-probe-attractor-decay-degradation-curve.md`.
+- Does automated attractor discovery work for complex tasks? (Multi-file, ambiguous requirements may produce collision patterns harder to parse or requiring more nuanced constraint generation.)
+- What is the minimum number of natural insertion points needed per agent? (Automated discovery relies on function boundaries as candidate points. With 6 functions and 2 agents, alternatives were plentiful. What about 6+ agents?)
+- Would a stronger placement model (Opus vs Haiku) produce better anticipatory placements? The simple-task failures are arguably a reasoning failure — the LLM picks adjacent functions as "different" without understanding git merge proximity. A model with better spatial reasoning might avoid this.
+- Can anticipatory placement be improved by injecting git-merge-specific knowledge into the placement prompt? (e.g., "adjacent functions produce conflicts even if they are different functions")
 
 ---
 
-## Boundary Condition: N=1
+# Appendix: Experiments and Evidence
 
-When N=1 (single agent), all four coordination primitives are trivially satisfied:
-- **Route:** Only one agent — no collision possible
-- **Sequence:** Only one agent — ordering is implicit
-- **Throttle:** Only one agent — velocity = verification bandwidth
-- **Align:** Only one agent — model of correctness is self-consistent
-
-This explains why autoresearch succeeds with radical simplicity — it eliminates coordination rather than solving it. The coordination framework's scope begins at N>1, where the action surface exceeds one agent's capacity.
-
-**Implication:** The first architectural decision is not "which primitives to implement" but "can the work be structured so N=1 per work region?" If yes, coordination is free. orch-go's daemon implements this: each agent gets its own issue, avoiding coordination entirely. The 80-trial experiment shows what happens when N>1 without structural separation in same-file scenarios — 100% conflict rate.
-
----
-
-## Boundaries
-
-**What this model covers:**
-- Multi-agent coordination failure and prevention in software engineering tasks
-- Four coordination primitives (Route, Sequence, Throttle, Align) proposed from 100 trials + literature review of 6 external sources
-- Mechanism dimension: gate (runtime) vs attractor (structural) implementation
-- Control theory structural homology (qualitative insights, not formal tools)
-- Scope boundary: N>1 (single agent trivially satisfies all primitives)
-
-**What this model does NOT cover:**
-- Cross-file coordination (agents editing entirely different files)
-- Sequential execution patterns (one agent after another)
-- Human-in-the-loop coordination
-- Non-git merge strategies (e.g., semantic merge tools)
-- Tasks where agents naturally edit different regions
-- Quantitative control theory (stability analysis, optimal control, formal observability)
-
----
-
-## Evidence
+## Evidence Summary
 
 | Date | Source | Finding |
 |------|--------|---------|
@@ -287,8 +317,6 @@ This explains why autoresearch succeeds with radical simplicity — it eliminate
 | 2026-03-22 | Automated attractor discovery experiment (N=10) | System automatically discovered effective placement constraints from 2 observed collisions. Phase 1: 2/3 CONFLICT (gravitational point: FormatDurationShort). Phase 2: 7/7 SUCCESS with auto-generated constraints. Zero human intervention in constraint generation. Closed loop validated: observe failures -> extract constraints -> inject constraints -> prevent failures. |
 | 2026-03-22 | Attractor decay experiment (N=9) | Stale attractors do NOT degrade coordination. 9/9 SUCCESS across 3 mutation types (rename, reorganize, add alternatives) with original stale placement prompts. Agents adapt through semantic resolution and anchor redundancy. Region separation is the load-bearing property, not anchor accuracy. Hypothesis of cliff-edge failure disproved. |
 | 2026-03-22 | Anticipatory placement experiment (N=20) | LLM-generated placements achieve 60% overall (12/20): 100% for complex tasks (semantically congruent placements), 20% for simple tasks (adjacent/gravitational placements). Static analysis without failure data is insufficient — the placement LLM exhibits the same gravitational bias as agents. Semantic congruence between task and placement determines agent compliance. |
-
----
 
 ## Key Experiment: 4-Condition Redesign (2026-03-10)
 
@@ -307,8 +335,6 @@ This explains why autoresearch succeeds with radical simplicity — it eliminate
 
 **Results:** `experiments/coordination-demo/redesign/results/20260310-174045/`
 
----
-
 ## Key Experiment: Gate Condition Extension (2026-03-22)
 
 **Design:** 1 condition (gate) x 2 task types (simple + complex) x N=10 = 20 trials, 40 agent invocations
@@ -324,8 +350,6 @@ This explains why autoresearch succeeds with radical simplicity — it eliminate
 **Duration comparison:** Gate condition agents averaged 105s (simple) and 144-251s (complex), comparable to context-share condition, suggesting agents didn't spend significant extra time on the verification step.
 
 **Results:** `experiments/coordination-demo/redesign/results/20260322-124035/`
-
----
 
 ## Key Experiment: Automated Attractor Discovery (2026-03-22)
 
@@ -345,8 +369,6 @@ This explains why autoresearch succeeds with radical simplicity — it eliminate
 **Implication for attractors:** This strengthens the attractor mechanism. Not only do attractors work better than gates (in our experiments), but attractor placement can be *discovered automatically* from failure data. Gate logic requires human judgment about what to check; attractor placement can be derived algorithmically from the structure of observed failures.
 
 **Results:** `experiments/coordination-demo/redesign/results/attractor-20260322-154220/`
-
----
 
 ## Key Experiment: Anticipatory Placement (2026-03-22)
 
@@ -379,31 +401,24 @@ This explains why autoresearch succeeds with radical simplicity — it eliminate
 
 ---
 
-## Open Questions
+## Boundaries
 
-### Answered
+**What this model covers:**
+- Multi-agent coordination failure and prevention in software engineering tasks
+- Four coordination primitives (Route, Sequence, Throttle, Align) proposed from 100 trials + literature review of 6 external sources
+- Mechanism dimension: gate (runtime) vs attractor (structural) implementation
+- Control theory structural homology (qualitative insights, not formal tools)
+- Scope boundary: N>1 (single agent trivially satisfies all primitives)
 
-- ~~Does a stronger coordination instruction ("you MUST choose a different insertion point than the other agent") change behavior?~~ **Answered 2026-03-22:** No. Gate condition with mandatory check-and-revise step: 20/20 CONFLICT. Even explicit self-verification doesn't overcome semantic-correctness bias.
-- ~~Is Align a substrate (other primitives can't function without it)?~~ **Answered 2026-03-22:** No — "substrate" overclaims. 5 cases show Route/Sequence/Throttle mechanically holding while Align is broken. Align is a multiplier/validity condition with proportional (not binary) impact. See `probes/2026-03-22-probe-falsify-align-as-substrate.md`.
-- ~~Does the control theory mapping (Route->Actuator, Sequence->Reference, Throttle->Controller, Align->Sensor) hold?~~ **Answered 2026-03-22:** Structural homology, not isomorphism. 64% clean mapping with systematic sensor bleed pattern. Qualitative insights transfer; formal tools do not. See `probes/2026-03-22-probe-control-theory-component-mapping.md`.
-- ~~Does the gate/attractor mechanism distinction generalize beyond orch-go?~~ **Answered 2026-03-22:** Literature review of 6 frameworks is consistent with the distinction. Gate-based coordination correlated with failure, attractor-based with success. McEntire degradation tracks gate/attractor gradient monotonically. See `.kb/models/knowledge-accretion/probes/2026-03-22-probe-validate-gate-attractor-external-frameworks.md`.
-- ~~Can structural attractors be discovered automatically from collision patterns?~~ **Answered 2026-03-22:** Yes. 2-phase experiment: system parsed conflict diffs, identified gravitational insertion point, generated non-overlapping constraints, achieved 7/7 success with zero human intervention. 1 collision is sufficient for effective constraint generation. See `probes/2026-03-22-probe-automated-attractor-discovery.md`.
+**What this model does NOT cover:**
+- Cross-file coordination (agents editing entirely different files)
+- Sequential execution patterns (one agent after another)
+- Human-in-the-loop coordination
+- Non-git merge strategies (e.g., semantic merge tools)
+- Tasks where agents naturally edit different regions
+- Quantitative control theory (stability analysis, optimal control, formal observability)
 
-### Open
-
-- Does placement work when the number of agents exceeds the number of natural insertion points?
-- Can iterative messaging (multi-round negotiation) produce different results than single-shot plan exchange?
-- At what task granularity does structural placement become impractical?
-- Should Align decompose into sub-primitives? **Evidence supports yes (2026-03-22):** 80-trial messaging condition shows task alignment defeating coordination alignment in 18/20 trials. At minimum three sub-components: task alignment (agent understands its own task), state alignment (agent knows system state), coordination alignment (agent adjusts behavior for multi-agent context). Needs formal decomposition and separate testing.
-- Do the four primitives have ordering dependencies? (Must Route precede Sequence?)
-- How do primitives interact with task type? (DeepMind found coordination strategy is task-dependent — financial reasoning favors centralized, web navigation favors decentralized)
-- Do the primitives apply to non-LLM multi-agent systems? (robotics, distributed computing, human organizations)
-- Does the multiplier model (Coordination_value = Route x Sequence x Throttle x Align) hold quantitatively, or is the interaction more complex? McEntire's 64% hierarchical result is consistent, but no controlled experiment isolates each factor.
-- ~~Can attractor-based coordination degrade? (What happens when structural destinations become stale or misaligned with evolving requirements?)~~ **Answered 2026-03-22:** Not for incremental codebase changes. 9/9 SUCCESS with stale attractors across renames, file reorganization, and competing insertion points. Agents adapt through semantic resolution and anchor redundancy. Region separation (not anchor accuracy) is the load-bearing property. Untested: wholesale restructuring. See `probes/2026-03-22-probe-attractor-decay-degradation-curve.md`.
-- Does automated attractor discovery work for complex tasks? (Multi-file, ambiguous requirements may produce collision patterns harder to parse or requiring more nuanced constraint generation.)
-- What is the minimum number of natural insertion points needed per agent? (Automated discovery relies on function boundaries as candidate points. With 6 functions and 2 agents, alternatives were plentiful. What about 6+ agents?)
-- Would a stronger placement model (Opus vs Haiku) produce better anticipatory placements? The simple-task failures are arguably a reasoning failure — the LLM picks adjacent functions as "different" without understanding git merge proximity. A model with better spatial reasoning might avoid this.
-- Can anticipatory placement be improved by injecting git-merge-specific knowledge into the placement prompt? (e.g., "adjacent functions produce conflicts even if they are different functions")
+---
 
 ## Source Investigations
 

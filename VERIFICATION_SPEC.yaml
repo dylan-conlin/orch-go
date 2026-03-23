@@ -1,34 +1,16 @@
-task: Add evidence-tier annotations to coordination model.md
-issue: orch-go-gtx22
-date: 2026-03-22
-
 verification:
-  automated:
-    - command: "go run ./cmd/orch kb audit provenance --model coordination --verbose"
-      expectations:
-        - "0 drift flags (achieved: 0)"
-        - "30/48 claims annotated (62.5%)"
-        - "All 18 unannotated items are evidence/experiment data table rows"
-        - "0 orphan contradictions"
-
-  coverage_gap_explanation: >
-    Coverage is 62.5% not >80% because the scanner counts 18 evidence and
-    experiment data table rows as claims. These are raw data (dates, findings,
-    phase results, method comparisons), not epistemic claims. All 30 actual
-    claims are annotated. Future improvement: add Evidence/Key Experiment
-    sections to the scanner skip list.
-
-changes_summary:
-  annotations_added: 30
-  tiers_used:
-    observed: 12
-    working-hypothesis: 18
-  prose_rewritten:
-    - "Claim 1: scoped to 'same-file parallel edits'"
-    - "Claim 2: 'completely' and '100% reliability' removed"
-    - "Claim 4: 'complexity-independent' -> 'consistent across two tested complexities'"
-    - "Claim 5: scoped to 'one tested gate design'"
-    - "Implication 1: 'fundamentally flawed' removed, scoped to tested + reviewed"
-    - "Primitives intro: 'general to any' removed"
-  tables_restructured:
-    - "Primitives, Control Theory, External Frameworks, Mechanism Recommendations: table -> bold-bullet list for per-claim annotation"
+  type: structural-review
+  commands_run:
+    - "Read full model.md (439 lines)"
+  expectations:
+    - "All original claims preserved (no deletions)"
+    - "Evidence citations intact with probe references"
+    - "Document organized into 3 epistemic tiers: Battle-Tested, Working Hypotheses, Open Frontiers"
+    - "Part I contains Claims 1-5, directly observed patterns, N=1 boundary"
+    - "Part II contains four primitives, control theory mapping, gate/attractor mechanism, Align validity condition"
+    - "Part III contains framework assessments (literature-only), open questions"
+    - "Appendix preserves all experiments and evidence table"
+    - "Document reads as coherent narrative, not graded exam"
+  manual_verification:
+    - "Review document flow — does it read naturally with the tier separation?"
+    - "Verify no claims were dropped during reorganization"
