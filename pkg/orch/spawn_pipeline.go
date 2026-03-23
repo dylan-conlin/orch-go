@@ -346,6 +346,8 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp, browserT
 		ExploreParentSkill: ctx.ExploreParentSkill,
 		ExploreJudgeModel:  ctx.ExploreJudgeModel,
 		DisallowTools:      disallowTools,
+		OpsecSandbox:       ctx.OpsecSandbox,
+		OpsecPort:          ctx.OpsecPort,
 	}
 }
 

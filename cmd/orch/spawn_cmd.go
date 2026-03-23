@@ -492,6 +492,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		ExploreDepth:       spawnExploreDepth,
 		ExploreParentSkill: exploreParentSkill,
 		ExploreJudgeModel:  spawnExploreJudgeModel,
+		OpsecSandbox:       projectCfg != nil && projectCfg.Opsec.Sandbox,
+		OpsecPort:          resolveOpsecPort(projectCfg),
 	}
 
 	// 11. Build spawn config
@@ -501,6 +503,11 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	if spawnBypassTriage && !daemonDriven {
 		cfg.GatesBypassed = append(cfg.GatesBypassed, "triage")
 	}
+	// 12b. OPSEC gate: verify proxy is running before allowing sandboxed spawns
+	if err := spawn.CheckOpsecProxy(cfg.OpsecSandbox, cfg.OpsecPort); err != nil {
+		return fmt.Errorf("spawn blocked: %w", err)
+	}
+
 	// 13. Validate and write context (atomic spawn Phase 1: beads tag + workspace)
 	minimalPrompt, rollback, err := orch.ValidateAndWriteContext(cfg, spawnForce)
 	if err != nil {

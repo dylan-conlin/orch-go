@@ -432,7 +432,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp, tt.configDir, tt.beadsDir, tt.beadsID, "", 0, "", "", tt.disallowTools)
+			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp, tt.configDir, tt.beadsDir, tt.beadsID, "", 0, "", "", tt.disallowTools, false, 0)
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {
@@ -481,7 +481,7 @@ func TestBuildClaudeLaunchCommandMaxTurns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", tt.maxTurns, "", "", "")
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", tt.maxTurns, "", "", "", false, 0)
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {
@@ -537,7 +537,7 @@ func TestBuildClaudeLaunchCommandEffort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", tt.effort, 0, "", "", "")
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", tt.effort, 0, "", "", "", false, 0)
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {
@@ -591,7 +591,7 @@ func TestBuildClaudeLaunchCommandSystemPromptFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, "", tt.systemPromptFile, "")
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, "", tt.systemPromptFile, "", false, 0)
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {
@@ -722,7 +722,69 @@ func TestBuildClaudeLaunchCommandSettings(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, tt.settings, "", "")
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, tt.settings, "", "", false, 0)
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(cmd, want) {
+					t.Errorf("command missing %q\nGot: %s", want, cmd)
+				}
+			}
+			for _, exclude := range tt.wantExcludes {
+				if strings.Contains(cmd, exclude) {
+					t.Errorf("command should not contain %q\nGot: %s", exclude, cmd)
+				}
+			}
+		})
+	}
+}
+
+// TestBuildClaudeLaunchCommandOpsec tests OPSEC sandbox env var injection.
+func TestBuildClaudeLaunchCommandOpsec(t *testing.T) {
+	tests := []struct {
+		name         string
+		opsec        bool
+		opsecPort    int
+		settings     string
+		wantContains []string
+		wantExcludes []string
+	}{
+		{
+			name:         "opsec disabled omits vars",
+			opsec:        false,
+			opsecPort:    8199,
+			wantExcludes: []string{"OPSEC_SANDBOX", "HTTP_PROXY", "opsec"},
+		},
+		{
+			name:      "opsec enabled injects env vars and settings",
+			opsec:     true,
+			opsecPort: 8199,
+			wantContains: []string{
+				"OPSEC_SANDBOX=1",
+				"HTTP_PROXY=http://127.0.0.1:8199",
+				"HTTPS_PROXY=http://127.0.0.1:8199",
+				"ALL_PROXY=http://127.0.0.1:8199",
+				"--settings",
+				"opsec/worker-settings.json",
+			},
+		},
+		{
+			name:      "opsec enabled with explicit settings keeps explicit",
+			opsec:     true,
+			opsecPort: 8199,
+			settings:  "/custom/settings.json",
+			wantContains: []string{
+				"OPSEC_SANDBOX=1",
+				"/custom/settings.json",
+			},
+			wantExcludes: []string{
+				"opsec/worker-settings.json",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, tt.settings, "", "", tt.opsec, tt.opsecPort)
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {

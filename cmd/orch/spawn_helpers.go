@@ -229,3 +229,11 @@ func buildConcurrencyCheck() gates.ConcurrencyCheck {
 	}
 }
 
+// resolveOpsecPort returns the configured proxy port, defaulting to 8199.
+func resolveOpsecPort(projectCfg *config.Config) int {
+	if projectCfg != nil && projectCfg.Opsec.ProxyPort > 0 {
+		return projectCfg.Opsec.ProxyPort
+	}
+	return spawn.DefaultOpsecPort
+}
+

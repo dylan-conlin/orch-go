@@ -368,6 +368,15 @@ type Config struct {
 
 	// Populated when the beads issue has a "claim:XX-NN" label, providing the probe agent
 	// with claim text, falsification condition, and existing evidence.
+
+	// OpsecSandbox enables network sandboxing for spawned agents.
+	// When true, exports OPSEC_SANDBOX=1, HTTP_PROXY, HTTPS_PROXY, ALL_PROXY
+	// pointing to the local opsec-proxy, and sets worker-settings.json with
+	// sandbox-exec PreToolUse hook and competitor domain deny rules.
+	OpsecSandbox bool
+
+	// OpsecPort is the port for the local OPSEC proxy (default 8199).
+	OpsecPort int
 }
 
 // UsageInfo contains account usage data at spawn time.

@@ -69,6 +69,8 @@ type SpawnContext struct {
 	ExploreDepth       int
 	ExploreParentSkill string
 	ExploreJudgeModel  string
+	OpsecSandbox       bool
+	OpsecPort          int
 }
 
 // ResolvedSpawnResult holds resolved spawn settings and the parsed model spec.

@@ -291,9 +291,17 @@ func runRework(beadsID, feedback string) error {
 		HotspotArea:          hotspotResult != nil && hotspotResult.HasHotspots,
 		HotspotFiles:         hotspotFilesFromResult(hotspotResult),
 		HotspotDefectClasses: DefectClassesForHotspots(hotspotFilesFromResult(hotspotResult)),
+		OpsecSandbox:         projectCfg != nil && projectCfg.Opsec.Sandbox,
+		OpsecPort:            resolveOpsecPort(projectCfg),
 	}
 
 	cfg := orch.BuildSpawnConfig(ctx, "", resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, resolved.Settings.BrowserTool.Value, false, false, "")
+
+	// OPSEC gate: verify proxy is running before allowing sandboxed spawns
+	if err := spawn.CheckOpsecProxy(cfg.OpsecSandbox, cfg.OpsecPort); err != nil {
+		return fmt.Errorf("rework blocked: %w", err)
+	}
+
 	minimalPrompt, rollback, err := orch.ValidateAndWriteContext(cfg, false)
 	if err != nil {
 		return err
