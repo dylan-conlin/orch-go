@@ -130,8 +130,12 @@ func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsD
 		maxTurnsFlag = fmt.Sprintf(" --max-turns %d", maxTurns)
 	}
 
-	// OPSEC sandbox: when enabled, inject proxy env vars and override settings
-	// to use opsec worker-settings.json with sandbox-exec hook + deny rules.
+	// OPSEC sandbox: when enabled, inject proxy env vars as defense-in-depth
+	// and override settings to worker-settings.json with deny rules.
+	//
+	// When OPSEC is globally installed (orch opsec install), the global settings
+	// already have the sandbox hook and deny rules, making the settings override
+	// redundant but harmless (defense-in-depth layering).
 	opsecPrefix := OpsecEnvPrefix(opsecSandbox, opsecPort)
 	if opsecSandbox && settings == "" {
 		settings = OpsecSettingsPath

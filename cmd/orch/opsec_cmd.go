@@ -19,15 +19,17 @@ import (
 var opsecCmd = &cobra.Command{
 	Use:   "opsec",
 	Short: "Manage OPSEC proxy infrastructure",
-	Long: `Manage the local OPSEC proxy that prevents spawned agents from reaching
-competitor domains directly. The proxy runs on localhost:8199 and enforces
-a domain blocklist via tinyproxy.
+	Long: `Manage the local OPSEC proxy and sandbox enforcement that prevents all Claude
+sessions from reaching competitor domains. The proxy runs on localhost:8199
+and enforces a domain blocklist via tinyproxy.
 
 Commands:
-  start   - Start tinyproxy on localhost:8199
-  stop    - Stop tinyproxy
-  status  - Check proxy health + show config
-  test    - Run sandbox-exec + proxy verification tests`,
+  install   - Install OPSEC as environmental enforcement (global settings + LaunchAgent)
+  uninstall - Remove OPSEC from global settings and unload LaunchAgent
+  start     - Start tinyproxy on localhost:8199
+  stop      - Stop tinyproxy
+  status    - Check proxy health, enforcement scope, and config
+  test      - Run sandbox-exec + proxy verification tests`,
 }
 
 var opsecStartCmd = &cobra.Command{
@@ -62,7 +64,40 @@ var opsecTestCmd = &cobra.Command{
 	},
 }
 
+var opsecInstallCmd = &cobra.Command{
+	Use:   "install",
+	Short: "Install OPSEC as environmental enforcement (all Claude sessions)",
+	Long: `Installs OPSEC enforcement at the harness level:
+1. Merges sandbox-bash.sh hook into ~/.claude/settings.json (global)
+2. Merges WebFetch/WebSearch competitor deny rules into global settings
+3. Creates and loads a LaunchAgent plist for auto-starting tinyproxy
+4. Starts the proxy immediately
+
+After install, ALL Claude sessions on this machine are protected —
+not just spawned agents.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runOpsecInstall()
+	},
+}
+
+var opsecUninstallCmd = &cobra.Command{
+	Use:   "uninstall",
+	Short: "Remove OPSEC from global settings and unload LaunchAgent",
+	Long: `Removes OPSEC enforcement from the harness level:
+1. Removes sandbox-bash.sh hook from ~/.claude/settings.json
+2. Removes WebFetch/WebSearch competitor deny rules from global settings
+3. Unloads and removes the LaunchAgent plist
+
+After uninstall, OPSEC reverts to spawn-only enforcement
+(active only when OPSEC_SANDBOX=1 is set by orch spawn).`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runOpsecUninstall()
+	},
+}
+
 func init() {
+	opsecCmd.AddCommand(opsecInstallCmd)
+	opsecCmd.AddCommand(opsecUninstallCmd)
 	opsecCmd.AddCommand(opsecStartCmd)
 	opsecCmd.AddCommand(opsecStopCmd)
 	opsecCmd.AddCommand(opsecStatusCmd)
@@ -77,6 +112,118 @@ func opsecConfigDir() string {
 
 func opsecPidFile() string {
 	return filepath.Join(opsecConfigDir(), "tinyproxy.pid")
+}
+
+func globalSettingsPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".claude", "settings.json")
+}
+
+func launchAgentDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "Library", "LaunchAgents")
+}
+
+func launchAgentPlistPath() string {
+	return filepath.Join(launchAgentDir(), spawn.OpsecLaunchAgentLabel+".plist")
+}
+
+func runOpsecInstall() error {
+	configDir := opsecConfigDir()
+	confPath := filepath.Join(configDir, "tinyproxy.conf")
+	settingsPath := globalSettingsPath()
+
+	// Verify prerequisites
+	if _, err := os.Stat(confPath); os.IsNotExist(err) {
+		return fmt.Errorf("tinyproxy.conf not found at %s — OPSEC config files must exist first", confPath)
+	}
+	if _, err := os.Stat(filepath.Join(configDir, "sandbox-bash.sh")); os.IsNotExist(err) {
+		return fmt.Errorf("sandbox-bash.sh not found at %s/sandbox-bash.sh", configDir)
+	}
+	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
+		return fmt.Errorf("global settings not found at %s", settingsPath)
+	}
+
+	// Step 1: Merge OPSEC into global settings
+	fmt.Print("Merging OPSEC into global settings... ")
+	if err := spawn.MergeOpsecIntoSettings(settingsPath); err != nil {
+		return fmt.Errorf("failed to merge settings: %w", err)
+	}
+	fmt.Println("OK")
+
+	// Step 2: Create and load LaunchAgent
+	fmt.Print("Installing LaunchAgent... ")
+	plistContent := spawn.GenerateLaunchAgentPlist(confPath)
+	plistPath := launchAgentPlistPath()
+
+	if err := os.MkdirAll(launchAgentDir(), 0755); err != nil {
+		return fmt.Errorf("failed to create LaunchAgents dir: %w", err)
+	}
+	if err := os.WriteFile(plistPath, []byte(plistContent), 0644); err != nil {
+		return fmt.Errorf("failed to write plist: %w", err)
+	}
+
+	// Unload first in case it's already loaded (ignore errors)
+	exec.Command("launchctl", "unload", plistPath).Run()
+
+	if err := exec.Command("launchctl", "load", plistPath).Run(); err != nil {
+		fmt.Printf("WARNING: launchctl load failed: %v\n", err)
+		fmt.Println("  You may need to load manually: launchctl load " + plistPath)
+	} else {
+		fmt.Println("OK")
+	}
+
+	// Step 3: Verify proxy is running (LaunchAgent should have started it)
+	time.Sleep(1 * time.Second)
+	if err := spawn.CheckOpsecProxy(true, spawn.DefaultOpsecPort); err != nil {
+		fmt.Println("Proxy not yet running — starting manually...")
+		if startErr := runOpsecStart(); startErr != nil {
+			return fmt.Errorf("proxy start failed: %w", startErr)
+		}
+	} else {
+		fmt.Printf("Proxy running on localhost:%d\n", spawn.DefaultOpsecPort)
+	}
+
+	fmt.Println()
+	fmt.Println("OPSEC installed as environmental enforcement.")
+	fmt.Println("All Claude sessions on this machine are now protected.")
+	return nil
+}
+
+func runOpsecUninstall() error {
+	settingsPath := globalSettingsPath()
+
+	// Step 1: Remove OPSEC from global settings
+	fmt.Print("Removing OPSEC from global settings... ")
+	if err := spawn.UnmergeOpsecFromSettings(settingsPath); err != nil {
+		fmt.Printf("WARNING: %v\n", err)
+	} else {
+		fmt.Println("OK")
+	}
+
+	// Step 2: Unload and remove LaunchAgent
+	plistPath := launchAgentPlistPath()
+	fmt.Print("Unloading LaunchAgent... ")
+	if _, err := os.Stat(plistPath); err == nil {
+		exec.Command("launchctl", "unload", plistPath).Run()
+		os.Remove(plistPath)
+		fmt.Println("OK")
+	} else {
+		fmt.Println("not installed")
+	}
+
+	// Step 3: Stop proxy
+	fmt.Print("Stopping proxy... ")
+	if err := spawn.CheckOpsecProxy(true, spawn.DefaultOpsecPort); err == nil {
+		runOpsecStop()
+	} else {
+		fmt.Println("not running")
+	}
+
+	fmt.Println()
+	fmt.Println("OPSEC uninstalled from environmental enforcement.")
+	fmt.Println("Spawn-only enforcement remains available via orch spawn --opsec.")
+	return nil
 }
 
 func runOpsecStart() error {
@@ -160,15 +307,32 @@ func runOpsecStop() error {
 func runOpsecStatus() error {
 	configDir := opsecConfigDir()
 	port := spawn.DefaultOpsecPort
+	settingsPath := globalSettingsPath()
 
 	fmt.Println("OPSEC Status")
 	fmt.Println(strings.Repeat("-", 50))
+
+	// Enforcement scope
+	isGlobal := spawn.IsOpsecInstalled(settingsPath)
+	if isGlobal {
+		fmt.Println("Scope:    ENVIRONMENTAL (all Claude sessions)")
+	} else {
+		fmt.Println("Scope:    SPAWN-ONLY (only orch spawn --opsec)")
+	}
 
 	// Check proxy health
 	if err := spawn.CheckOpsecProxy(true, port); err != nil {
 		fmt.Printf("Proxy:    NOT RUNNING (port %d)\n", port)
 	} else {
 		fmt.Printf("Proxy:    RUNNING on localhost:%d\n", port)
+	}
+
+	// Check LaunchAgent
+	plistPath := launchAgentPlistPath()
+	if _, err := os.Stat(plistPath); err == nil {
+		fmt.Println("AutoStart: LaunchAgent installed")
+	} else {
+		fmt.Println("AutoStart: not configured (manual start required)")
 	}
 
 	// Check config files
@@ -210,6 +374,11 @@ func runOpsecStatus() error {
 		fmt.Println("sandbox-exec:  NOT FOUND")
 	} else {
 		fmt.Println("sandbox-exec:  available")
+	}
+
+	if !isGlobal {
+		fmt.Println()
+		fmt.Println("Run 'orch opsec install' to enable environmental enforcement.")
 	}
 
 	return nil
