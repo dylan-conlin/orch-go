@@ -20,6 +20,7 @@ type ProvenanceReport struct {
 	UnannotatedClaims    []UnannotatedClaim    `json:"unannotated_claims,omitempty"`
 	LowConfidenceClaims  []LowConfidenceClaim  `json:"low_confidence_claims,omitempty"`
 	OrphanContradictions []OrphanContradiction `json:"orphan_contradictions,omitempty"`
+	DriftFlags           []DriftFlag           `json:"drift_flags,omitempty"`
 }
 
 // UnannotatedClaim is a claim missing an **Evidence quality:** annotation.
@@ -165,6 +166,30 @@ func analyzeModelProvenance(name, path, content string) ProvenanceReport {
 	if report.TotalClaims > 0 {
 		report.CoveragePercent = float64(report.AnnotatedClaims) / float64(report.TotalClaims) * 100
 	}
+
+	// Drift detection: check if claim prose exceeds declared tier
+	var driftInputs []DriftInput
+	for i, claim := range claims {
+		nextClaimLine := len(strings.Split(content, "\n")) + 1
+		if i+1 < len(claims) {
+			nextClaimLine = claims[i+1].Line
+		}
+
+		for _, el := range evidenceLines {
+			if el.line > claim.Line && el.line < nextClaimLine {
+				tier := ClassifyTier(el.text)
+				if tier != TierUnclassified {
+					driftInputs = append(driftInputs, DriftInput{
+						ClaimText: claim.Text,
+						Tier:      tier,
+						ClaimLine: claim.Line,
+					})
+				}
+				break
+			}
+		}
+	}
+	report.DriftFlags = DetectDrift(driftInputs)
 
 	return report
 }
@@ -362,12 +387,14 @@ func FormatProvenanceText(reports []ProvenanceReport) string {
 	totalClaims := 0
 	totalAnnotated := 0
 	totalOrphans := 0
+	totalDrifts := 0
 	modelsWithGaps := 0
 
 	for _, r := range reports {
 		totalClaims += r.TotalClaims
 		totalAnnotated += r.AnnotatedClaims
 		totalOrphans += len(r.OrphanContradictions)
+		totalDrifts += len(r.DriftFlags)
 		if r.CoveragePercent < 100 && r.TotalClaims > 0 {
 			modelsWithGaps++
 		}
@@ -382,7 +409,8 @@ func FormatProvenanceText(reports []ProvenanceReport) string {
 	b.WriteString(strings.Repeat("=", 55) + "\n\n")
 	b.WriteString(fmt.Sprintf("Overall coverage:      %.1f%% (%d/%d annotated)\n", overallCoverage, totalAnnotated, totalClaims))
 	b.WriteString(fmt.Sprintf("Models with gaps:      %d\n", modelsWithGaps))
-	b.WriteString(fmt.Sprintf("Orphan contradictions: %d\n\n", totalOrphans))
+	b.WriteString(fmt.Sprintf("Orphan contradictions: %d\n", totalOrphans))
+	b.WriteString(fmt.Sprintf("Drift flags:           %d\n\n", totalDrifts))
 
 	for _, r := range reports {
 		if r.TotalClaims == 0 {
@@ -422,6 +450,18 @@ func FormatProvenanceText(reports []ProvenanceReport) string {
 					text = text[:80] + "..."
 				}
 				b.WriteString(fmt.Sprintf("    L%-4d %s\n", uc.Line, text))
+			}
+		}
+
+		if len(r.DriftFlags) > 0 {
+			b.WriteString(fmt.Sprintf("  Drift: %d claims exceed declared tier\n", len(r.DriftFlags)))
+			for _, df := range r.DriftFlags {
+				text := df.Claim
+				if len(text) > 60 {
+					text = text[:60] + "..."
+				}
+				b.WriteString(fmt.Sprintf("    L%-4d [%s] %s (triggers: %s)\n",
+					df.Line, df.Tier, text, strings.Join(df.Triggers, ", ")))
 			}
 		}
 

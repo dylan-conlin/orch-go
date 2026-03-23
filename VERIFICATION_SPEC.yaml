@@ -1,29 +1,34 @@
-issue: orch-go-dg375
-title: Artifact sync - update drifted documentation
+issue: orch-go-u8bbz
+title: Evidence-tier annotation standard for KB model claims
 tier: light
 
 verification:
-  - name: accretion.delta removed from event-tracking.md
-    type: grep
-    check: "grep 'accretion.delta' .kb/guides/event-tracking.md returns nothing"
-    result: PASS
+  automated:
+    - command: "go test ./pkg/kbmetrics/ -run TestClassifyTier -v"
+      expect: "PASS"
+      what: "Tier classification from annotation strings (including legacy mappings)"
+    - command: "go test ./pkg/kbmetrics/ -run TestDetectDrift -v"
+      expect: "7 PASS (all drift scenarios)"
+      what: "Drift detection: overclaim language flagged at lower tiers, allowed at higher tiers"
+    - command: "go test ./pkg/kbmetrics/ -run TestAuditProvenance_DriftDetection -v"
+      expect: "PASS"
+      what: "Integration: drift detection runs as part of provenance audit"
+    - command: "go test ./pkg/kbmetrics/ -count=1"
+      expect: "ok (all existing tests still pass)"
+      what: "No regressions in existing provenance/claim tests"
 
-  - name: "--no-track noted as deprecated in spawn.md"
-    type: grep
-    check: "grep 'no-track' .kb/guides/spawn.md shows deprecation notes"
-    result: PASS
+  manual:
+    - step: "Review .kb/guides/evidence-tier-standard.md"
+      verify: "Tier definitions are clear, language calibration table makes sense, overclaim indicators match audit findings"
 
-  - name: "--no-track references updated in beads-integration.md"
-    type: grep
-    check: "grep 'no-track' .kb/guides/beads-integration.md shows deprecation context"
-    result: PASS
-
-  - name: "--no-track removed from agent-lifecycle.md diagram"
-    type: grep
-    check: "grep 'no-track' .kb/guides/agent-lifecycle.md returns nothing"
-    result: PASS
-
-  - name: "--no-track updated in headless.md"
-    type: grep
-    check: "grep 'no-track' .kb/guides/headless.md shows deprecation context"
-    result: PASS
+deliverables:
+  - path: "pkg/kbmetrics/drift.go"
+    what: "EvidenceTier type, ClassifyTier(), DetectDrift() — core drift detection"
+  - path: "pkg/kbmetrics/drift_test.go"
+    what: "7 test cases covering tier classification and drift detection scenarios"
+  - path: "pkg/kbmetrics/provenance.go"
+    what: "DriftFlags field added to ProvenanceReport, wired into audit + formatting"
+  - path: "pkg/kbmetrics/provenance_test.go"
+    what: "Integration test: TestAuditProvenance_DriftDetection"
+  - path: ".kb/guides/evidence-tier-standard.md"
+    what: "Evidence-tier standard: tier definitions, language calibration, overclaim indicators, rewrite guidelines"

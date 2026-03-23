@@ -326,6 +326,47 @@ Paragraph without evidence quality.
 	}
 }
 
+func TestAuditProvenance_DriftDetection(t *testing.T) {
+	dir := t.TempDir()
+	kbDir := filepath.Join(dir, ".kb")
+	modelDir := filepath.Join(kbDir, "models", "test-model")
+	os.MkdirAll(filepath.Join(modelDir, "probes"), 0755)
+
+	// Claim marked "observed" but uses overclaim language
+	modelContent := `# Model: Test
+
+## Core Claims
+
+### Claim 1: Communication fundamentally cannot produce coordination
+
+Messaging-based frameworks are fundamentally flawed in all cases.
+
+**Evidence quality:** Observed (single experiment, N=10).
+
+### Claim 2: Placement works in tested scenarios
+
+In the tested same-file scenarios, structural placement prevented conflicts.
+
+**Evidence quality:** Observed (single experiment, N=10).
+`
+	os.WriteFile(filepath.Join(modelDir, "model.md"), []byte(modelContent), 0644)
+
+	reports, err := AuditProvenance(kbDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := reports[0]
+	// Claim 1 should trigger drift (fundamentally + all at observed tier)
+	// Claim 2 should NOT trigger drift (scoped language)
+	if len(r.DriftFlags) == 0 {
+		t.Fatal("expected at least one drift flag for overclaimed language at observed tier")
+	}
+	if len(r.DriftFlags) > 1 {
+		t.Errorf("expected 1 drift flag (only claim 1), got %d", len(r.DriftFlags))
+	}
+}
+
 func TestFormatProvenanceText_Output(t *testing.T) {
 	reports := []ProvenanceReport{
 		{
