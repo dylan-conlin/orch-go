@@ -1,34 +1,34 @@
-issue: orch-go-u8bbz
-title: Evidence-tier annotation standard for KB model claims
-tier: light
+task: Add evidence-tier annotations to coordination model.md
+issue: orch-go-gtx22
+date: 2026-03-22
 
 verification:
   automated:
-    - command: "go test ./pkg/kbmetrics/ -run TestClassifyTier -v"
-      expect: "PASS"
-      what: "Tier classification from annotation strings (including legacy mappings)"
-    - command: "go test ./pkg/kbmetrics/ -run TestDetectDrift -v"
-      expect: "7 PASS (all drift scenarios)"
-      what: "Drift detection: overclaim language flagged at lower tiers, allowed at higher tiers"
-    - command: "go test ./pkg/kbmetrics/ -run TestAuditProvenance_DriftDetection -v"
-      expect: "PASS"
-      what: "Integration: drift detection runs as part of provenance audit"
-    - command: "go test ./pkg/kbmetrics/ -count=1"
-      expect: "ok (all existing tests still pass)"
-      what: "No regressions in existing provenance/claim tests"
+    - command: "go run ./cmd/orch kb audit provenance --model coordination --verbose"
+      expectations:
+        - "0 drift flags (achieved: 0)"
+        - "30/48 claims annotated (62.5%)"
+        - "All 18 unannotated items are evidence/experiment data table rows"
+        - "0 orphan contradictions"
 
-  manual:
-    - step: "Review .kb/guides/evidence-tier-standard.md"
-      verify: "Tier definitions are clear, language calibration table makes sense, overclaim indicators match audit findings"
+  coverage_gap_explanation: >
+    Coverage is 62.5% not >80% because the scanner counts 18 evidence and
+    experiment data table rows as claims. These are raw data (dates, findings,
+    phase results, method comparisons), not epistemic claims. All 30 actual
+    claims are annotated. Future improvement: add Evidence/Key Experiment
+    sections to the scanner skip list.
 
-deliverables:
-  - path: "pkg/kbmetrics/drift.go"
-    what: "EvidenceTier type, ClassifyTier(), DetectDrift() — core drift detection"
-  - path: "pkg/kbmetrics/drift_test.go"
-    what: "7 test cases covering tier classification and drift detection scenarios"
-  - path: "pkg/kbmetrics/provenance.go"
-    what: "DriftFlags field added to ProvenanceReport, wired into audit + formatting"
-  - path: "pkg/kbmetrics/provenance_test.go"
-    what: "Integration test: TestAuditProvenance_DriftDetection"
-  - path: ".kb/guides/evidence-tier-standard.md"
-    what: "Evidence-tier standard: tier definitions, language calibration, overclaim indicators, rewrite guidelines"
+changes_summary:
+  annotations_added: 30
+  tiers_used:
+    observed: 12
+    working-hypothesis: 18
+  prose_rewritten:
+    - "Claim 1: scoped to 'same-file parallel edits'"
+    - "Claim 2: 'completely' and '100% reliability' removed"
+    - "Claim 4: 'complexity-independent' -> 'consistent across two tested complexities'"
+    - "Claim 5: scoped to 'one tested gate design'"
+    - "Implication 1: 'fundamentally flawed' removed, scoped to tested + reviewed"
+    - "Primitives intro: 'general to any' removed"
+  tables_restructured:
+    - "Primitives, Control Theory, External Frameworks, Mechanism Recommendations: table -> bold-bullet list for per-claim annotation"
