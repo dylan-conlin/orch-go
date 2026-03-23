@@ -1,0 +1,52 @@
+verification:
+  type: investigation
+  issue: orch-go-uzx15
+  workspace: og-inv-investigate-revisit-opencode-23mar-fc58
+
+deliverables:
+  investigation_file:
+    path: .kb/investigations/2026-03-23-inv-investigate-revisit-opencode-model-routing.md
+    status: complete
+    sections:
+      - DEKN_summary: filled
+      - prior_work: 3 related investigations cited
+      - findings: 6 findings with evidence and sources
+      - synthesis: complete with answer to investigation question
+      - structured_uncertainty: 5 tested, 4 untested, 3 falsifiability criteria
+      - implementation_recommendations: 3-phase staged approach with authority classification
+      - references: files examined, commands run, external documentation with hyperlinks
+
+  synthesis_file:
+    path: .orch/workspace/og-inv-investigate-revisit-opencode-23mar-fc58/SYNTHESIS.md
+    status: complete
+    sections:
+      - plain_language_summary: filled
+      - delta: listed
+      - evidence: detailed observations
+      - next: spawn-follow-up with 2 recommended issues
+
+verification_commands:
+  - description: "Verify investigation file exists and has content"
+    command: "wc -l .kb/investigations/2026-03-23-inv-investigate-revisit-opencode-model-routing.md"
+    expected: "> 200 lines"
+
+  - description: "Verify SYNTHESIS.md exists"
+    command: "test -f .orch/workspace/og-inv-investigate-revisit-opencode-23mar-fc58/SYNTHESIS.md && echo exists"
+    expected: "exists"
+
+key_findings:
+  - "OpenCode already supports OpenAI via @ai-sdk/openai with Codex OAuth — no architectural changes needed"
+  - "GPT-5.4 requires only alias addition (model.go) + whitelist update (codex.ts allowedModels)"
+  - "Anthropic/OpenAI subscription asymmetry: OpenAI allows OAuth in 3rd party, Anthropic bans it"
+  - "GPT-5.4 pricing: $2.50/$15 per MTok (50% cheaper than Opus on input)"
+  - "GPT-5.4 stall rate is untested — prior data (67.5% for GPT-5.2) may not apply"
+  - "Codex OAuth endpoint fix already present in OpenCode fork"
+
+manual_verification:
+  - "Orchestrator reviews strategic recommendation: dual-subscription routing strategy"
+  - "Dylan decides whether to get ChatGPT Pro subscription for testing"
+
+risks:
+  - "GPT-5.4 may still have high stall rates on worker-base protocol (untested)"
+  - "ChatGPT subscription tier required for Codex GPT-5.4 access is unclear"
+  - "OpenAI could restrict GPT-5.4 from Codex OAuth at any time"
