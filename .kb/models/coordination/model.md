@@ -3,7 +3,7 @@
 **Created:** 2026-03-09
 **Updated:** 2026-03-23
 **Status:** Active
-**Source:** Synthesized from 4 investigation(s) + 7 controlled experiments (289 trials) + external validation (6 independent sources) + 8 probe extensions (control theory, mechanism dimension, Align falsification, automated attractor discovery, attractor decay resilience, anticipatory placement, merge-educated messaging, agent scaling)
+**Source:** Synthesized from 4 investigation(s) + 8 controlled experiments (329 trials) + external validation (6 independent sources) + 9 probe extensions (control theory, mechanism dimension, Align falsification, automated attractor discovery, attractor decay resilience, anticipatory placement, merge-educated messaging, agent scaling, modification task)
 
 ## What This Is
 
@@ -33,7 +33,9 @@ In the tested same-file parallel-edit scenarios, giving agents awareness of each
 **Evidence:** context-share 20/20 CONFLICT, messaging 20/20 CONFLICT, merge-educated messaging 14/20 CONFLICT (6/20 SUCCESS, p=0.02 vs messaging baseline). Placement 20/20 SUCCESS for comparison.
 **Status:** Confirmed with nuance (N=100 messaging/context trials + N=20 merge-educated trials; communication achieves partial coordination with correct merge models but remains insufficient for reliable coordination)
 
-**Evidence quality:** Observed (single experiment family, N=120, same-file same-repo tasks; not yet tested across repos, languages, or task types).
+**Evidence quality:** Observed (single experiment family, N=120, same-file same-repo additive tasks; not yet tested across repos, languages, or task types).
+
+**Task-type boundary (2026-03-23):** This claim is specific to additive tasks with gravitational convergence. A modification-task experiment (N=40, same 4 conditions) produced 40/40 SUCCESS including 10/10 no-coord — modification tasks are structurally self-coordinating because agents are anchored to their target functions. Communication is neither necessary nor beneficial for modification tasks. See `probes/2026-03-23-probe-modification-task-experiment.md`.
 
 **Merge-educated messaging (2026-03-23):** Adding explicit git merge education (~200 words explaining textual merge mechanics and providing concrete conflict examples) reduced conflicts from 100% to 70% (Fisher's exact p=0.010 one-sided, p=0.020 two-sided). Simple tasks coordinated better (40% success) than complex tasks (20% success). The false merge model was a contributing factor (~30% of outcomes) but not the sole mechanism. Five distinct failure patterns persist even with education: mutual convergence on "safe" position, plan misreading, self-contradiction, gap overestimation, and sequential messaging lag. See `probes/2026-03-23-probe-merge-educated-messaging-experiment.md`.
 
@@ -69,7 +71,9 @@ Both simple tasks (FormatBytes + FormatRate, ~40s each) and complex tasks (Visua
 **Evidence:** Identical results across both task types in all conditions. However, the anticipatory placement experiment (2026-03-22) showed task-type sensitivity with a different mechanism: 20% success for simple tasks vs 100% success for complex tasks, driven by semantic congruence between task and placement.
 **Status:** Observed in two task families sharing the same gravitational-convergence structure. The anticipatory experiment shows the pattern IS task-dependent when the coordination mechanism changes.
 
-**Evidence quality:** Working-hypothesis (two additive task families in one repo sharing the same gravitational insertion point structure; "task complexity" varies implementation difficulty but not coordination challenge structure; modification tasks, refactoring, and cross-file tasks have different coordination structures and are untested).
+**Evidence quality:** Working-hypothesis (two additive task families in one repo sharing the same gravitational insertion point structure; "task complexity" varies implementation difficulty but not coordination challenge structure; cross-file tasks have different coordination structures and are untested).
+
+**Modification-task boundary (2026-03-23):** Modification tasks do NOT exhibit this coordination failure pattern. A 4-condition x N=10 experiment with modification tasks (Agent A: refactor FormatDuration, Agent B: refactor Truncate/TruncateWithPadding) produced 40/40 SUCCESS including 10/10 no-coord. The coordination challenge is specific to tasks with gravitational convergence (additive), not all same-file work. See `probes/2026-03-23-probe-modification-task-experiment.md`.
 
 ### Claim 5: Post-hoc self-checking (one tested gate design) does not prevent conflicts
 
@@ -305,7 +309,7 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 - Would a stronger placement model (Opus vs Haiku) produce better anticipatory placements? The simple-task failures are arguably a reasoning failure — the LLM picks adjacent functions as "different" without understanding git merge proximity. A model with better spatial reasoning might avoid this.
 - Can anticipatory placement be improved by injecting git-merge-specific knowledge into the placement prompt? (e.g., "adjacent functions produce conflicts even if they are different functions")
 - ~~Do the primitives apply to non-LLM multi-agent systems?~~ **Partially answered 2026-03-22:** Mapping against Malone & Crowston, Mintzberg, and distributed systems shows the four primitives are consistent with but narrower than established coordination theory. They apply well to multi-agent SE but miss decomposition, recovery, and meta-coordination found in broader coordination theory. See `probes/2026-03-22-probe-claim9-primitives-generality.md`.
-- Does the coordination pattern hold for modification/refactoring tasks (as opposed to additive tasks)? In modification tasks, agents are anchored to the function they're modifying — no gravitational insertion point. Messaging about "what I'm modifying" may be sufficient because agents produce non-overlapping diffs by construction.
+- ~~Does the coordination pattern hold for modification/refactoring tasks (as opposed to additive tasks)?~~ **Answered 2026-03-23:** No — the coordination failure pattern does NOT hold for modification tasks. 40/40 SUCCESS across all 4 conditions (including no-coord). Modification tasks are structurally self-coordinating: agents are anchored to their target functions and produce non-overlapping diffs by construction. The coordination problem is specific to additive tasks with gravitational convergence, not a general property of same-file parallel work. See `probes/2026-03-23-probe-modification-task-experiment.md`.
 - ~~Would git-merge-aware messaging (educating agents about merge mechanics) change the messaging condition results?~~ **Answered 2026-03-23:** Yes, partially. Adding ~200 words of git merge education reduced conflicts from 100% to 70% (6/20 SUCCESS, p=0.02). The false merge model suppressed ~30% of coordination capacity. Five failure patterns persist: mutual convergence, plan misreading, self-contradiction, gap overestimation, and messaging lag. Communication ceiling ~30%, well below structural placement (100%). See `probes/2026-03-23-probe-merge-educated-messaging-experiment.md`.
 - Should decomposition (pre-Route) and recovery (post-failure) be added as coordination primitives, or are they outside the model's scope?
 
@@ -333,6 +337,7 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 | 2026-03-22 | Claim 4 task-type scope probe | Both tested task families share the same gravitational-convergence structure (additive, same file, same insertion point). "Task complexity" varies implementation difficulty but not coordination challenge structure. Anticipatory experiment already shows task-type sensitivity with a different mechanism. Claim scoped to additive tasks. |
 | 2026-03-22 | Claim 6 messaging scope probe | Analysis of 40 messaging+gate trial plans reveals specific failure mechanism: agents have a false model of git merge conflicts. They believe same-point additions with different function names merge cleanly. This false model persists through explicit self-checking. Messaging fails specifically for gravitational-convergence tasks, not "fundamentally." |
 | 2026-03-22 | Claim 9 primitives generality probe | Mapped against Malone & Crowston (1994), Mintzberg (1979), MAST, and distributed systems. 4 primitives are consistent with but narrower than established coordination theory. Missing: decomposition (pre-Route), recovery (post-failure), meta-coordination. Scoped from "any multi-agent system" to "multi-agent SE with merge-based integration." |
+| 2026-03-23 | Modification task experiment (N=40) | 40/40 SUCCESS across all 4 conditions (including no-coord 10/10). Modification tasks are structurally self-coordinating — agents anchored to different functions produce non-overlapping diffs by construction. Coordination failure is specific to additive tasks with gravitational convergence. Messaging overhead (~35% slower) with zero benefit for modification tasks. |
 | 2026-03-23 | Merge-educated messaging experiment (N=20) | Git merge education reduced conflicts from 100% to 70% (6/20 SUCCESS, p=0.02). False merge model was a contributing factor (~30%) but not sole mechanism. Five failure patterns identified: mutual convergence, plan misreading, self-contradiction, gap overestimation, messaging lag. Simple tasks 40% success, complex 20%. Communication ceiling ~30% vs placement 100%. |
 
 ## Key Experiment: 4-Condition Redesign (2026-03-10)
@@ -438,13 +443,35 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 
 **Results:** `experiments/coordination-demo/redesign/results/merge-educated-20260323-093342/`
 
+## Key Experiment: Modification Task (2026-03-23)
+
+**Design:** 4 conditions x N=10 = 40 trials, 80 agent invocations
+**Model:** claude-haiku-4-5 (both agents)
+**Tasks:** Agent A refactors FormatDuration (add week support, threshold-based approach). Agent B refactors Truncate + TruncateWithPadding (Unicode-aware with runes). Both modify same file but different functions.
+**Question:** Does the coordination failure pattern hold for modification tasks (no gravitational insertion point)?
+
+| Condition | Result |
+|-----------|:------:|
+| no-coord | **10/10 SUCCESS** |
+| placement | **10/10 SUCCESS** |
+| context-share | **10/10 SUCCESS** |
+| messaging | **10/10 SUCCESS** |
+
+**Complete inversion of additive results.** Additive tasks: no-coord 20/20 CONFLICT. Modification tasks: no-coord 10/10 SUCCESS.
+
+**Why it works:** Modification tasks anchor agents to their target functions. Agent A's hunks land at lines ~45-85 (FormatDuration), Agent B's at lines ~10-47 (Truncate). No overlapping hunks in any trial. The task structure IS the coordination mechanism — modification targets function as implicit structural attractors.
+
+**Messaging overhead:** Messaging agents averaged 80s (Agent A) and 148s (Agent B) vs no-coord's 56s and 113s — ~35% slower with zero benefit.
+
+**Results:** `experiments/coordination-demo/redesign/results/modify-20260323-093711/`
+
 ---
 
 ## Boundaries
 
 **What this model covers:**
 - Multi-agent coordination failure and prevention in software engineering tasks
-- Four coordination primitives (Route, Sequence, Throttle, Align) proposed from 159 trials across 6 experiments + literature review of 6 external sources
+- Four coordination primitives (Route, Sequence, Throttle, Align) proposed from 329 trials across 8 experiments + literature review of 6 external sources
 - Mechanism dimension: gate (runtime) vs attractor (structural) implementation
 - Control theory structural homology (qualitative insights, not formal tools)
 - Scope boundary: N>1 (single agent trivially satisfies all primitives)
@@ -454,7 +481,7 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 - Sequential execution patterns (one agent after another)
 - Human-in-the-loop coordination
 - Non-git merge strategies (e.g., semantic merge tools)
-- Tasks where agents naturally edit different regions (modification/refactoring tasks)
+- Tasks where agents naturally edit different regions (modification/refactoring tasks — tested 2026-03-23, these are structurally self-coordinating and don't need the model's coordination mechanisms)
 - Quantitative control theory (stability analysis, optimal control, formal observability)
 - Coordination decomposition (how to divide work into agent-assignable units)
 - Coordination recovery (what happens when coordination fails)
