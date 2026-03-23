@@ -1,0 +1,63 @@
+verification:
+  type: investigation
+  question: "Can orch-go drive OpenClaw agents programmatically like it drives OpenCode?"
+  answer: "Yes — OpenClaw's WebSocket RPC API is a superset of OpenCode's HTTP API"
+
+evidence:
+  source_files_examined:
+    - path: "~/Documents/personal/clawdbot/src/gateway/server-methods/agent.ts"
+      lines: "197-870"
+      finding: "agent method accepts message/provider/model/sessionKey/extraSystemPrompt; agent.wait polls completion"
+    - path: "~/Documents/personal/clawdbot/src/gateway/server-methods/sessions.ts"
+      lines: "625-800"
+      finding: "sessions.create/sessions.send/sessions.list provide full session lifecycle"
+    - path: "~/Documents/personal/clawdbot/src/plugins/runtime/types.ts"
+      lines: "8-66"
+      finding: "Plugin subagent API provides in-process agent control"
+    - path: "~/Documents/personal/clawdbot/src/agents/cli-backends.ts"
+      lines: "40-108"
+      finding: "Claude CLI backend uses same claude -p --output-format json invocation"
+    - path: "~/Documents/personal/clawdbot/fly.toml"
+      finding: "Headless deployment confirmed — no messaging channels required"
+    - path: "~/Documents/personal/clawdbot/src/gateway/server-http.ts"
+      lines: "1-80"
+      finding: "HTTP endpoints at /v1/chat/completions, /hooks/agent, /api/sessions/kill"
+
+  operation_mapping:
+    create_session:
+      opencode: "HTTP POST to OpenCode API"
+      openclaw: "WebSocket agent method or sessions.create"
+    send_prompt:
+      opencode: "opencode.SendPrompt()"
+      openclaw: "WebSocket agent method with message param"
+    monitor_progress:
+      opencode: "SSE stream parsing"
+      openclaw: "WebSocket agent.wait (polling) — eliminates SSE fragility"
+    check_status:
+      opencode: "HTTP GET"
+      openclaw: "WebSocket sessions.list or HTTP health endpoints"
+    cleanup:
+      opencode: "HTTP DELETE"
+      openclaw: "WebSocket sessions.abort / sessions.delete"
+    inject_context:
+      opencode: "SPAWN_CONTEXT.md file writing"
+      openclaw: "extraSystemPrompt param — no file needed"
+
+  architecture_recommendation:
+    primary: "Option A — orch-go drives OpenClaw via WebSocket RPC"
+    rationale: "Preserves orch-go daemon/coordination/beads; replaces SSE with agent.wait; gains multi-model routing"
+    implementation_size: "~300-400 LoC Go WebSocket client"
+
+manual_verification:
+  - step: "Confirm OpenClaw gateway starts in headless mode"
+    command: "openclaw gateway --allow-unconfigured --port 18789 --bind loopback"
+    expected: "Gateway starts and serves WebSocket on port 18789"
+  - step: "Verify agent method works via WebSocket"
+    expected: "Connect, send agent RPC, receive runId response"
+  - step: "Verify agent.wait returns terminal status"
+    expected: "Poll with runId, receive status: ok/error/timeout"
+
+notes:
+  - "No runtime tests performed — investigation was source code analysis only"
+  - "OpenClaw not running locally; manual verification steps above needed before implementation"
+  - "Authority level: strategic — choosing OpenClaw as execution backend is irreversible platform commitment"
