@@ -91,7 +91,7 @@ Agent discovery uses a strict two-lane architecture (replaced the old registry +
   4. Batch-check session liveness from OpenCode
   5. Join with explicit reason codes (`MissingBinding`, `MissingSession`, `MissingPhase`)
 
-**Lane 2: Untracked sessions** (orchestrators, `--no-track`, ad-hoc)
+**Lane 2: Untracked sessions** (orchestrators, ad-hoc)
 - Source of truth: OpenCode session list
 - Orchestrators explicitly skip beads tracking
 
@@ -300,8 +300,8 @@ issue, err := client.Create(beads.CreateArgs{
 
 **Possible causes:**
 
-1. **Untracked spawn** - `--no-track` creates placeholder IDs that don't exist in DB
-   - Expected behavior, not a bug
+1. **Legacy untracked spawn** - old `--no-track` created placeholder IDs that didn't exist in DB
+   - `--no-track` is now deprecated and creates a real lightweight issue (use `--light`)
 
 2. **Wrong directory** - Running `bd` from different repo than where issue exists
    - Fix: Use `--workdir` or `cd` to correct repo
@@ -314,7 +314,7 @@ issue, err := client.Create(beads.CreateArgs{
 **Cause:** Agent spawned with `--workdir /other/repo` but beads issue is in orchestrator's repo.
 
 **Solutions:**
-1. Use `--no-track` for cross-repo work, track manually
+1. Use `--light` for cross-repo work, track manually
 2. Create issue in target repo first, use `--issue`
 
 ### "Issue shows open but agent is done"

@@ -1,44 +1,29 @@
-issue: orch-go-c34r2
-title: Update coordination model with mechanism dimension, Align-as-substrate, control theory, boundary condition
+issue: orch-go-dg375
+title: Artifact sync - update drifted documentation
 tier: light
 
 verification:
-  - name: Mechanism dimension (gate vs attractor) added
-    type: manual
-    check: model.md contains "Mechanism Dimension Gates vs Attractors" section with framework table and design principle table
+  - name: accretion.delta removed from event-tracking.md
+    type: grep
+    check: "grep 'accretion.delta' .kb/guides/event-tracking.md returns nothing"
     result: PASS
 
-  - name: Align-as-substrate language corrected
-    type: manual
-    check: model.md uses multiplier/validity condition not substrate/meta-primitive (already done by prior session, verified intact)
+  - name: "--no-track noted as deprecated in spawn.md"
+    type: grep
+    check: "grep 'no-track' .kb/guides/spawn.md shows deprecation notes"
     result: PASS
 
-  - name: Control theory mapping present
-    type: manual
-    check: model.md contains Control Theory Mapping section with component table and sensor bleed pattern (already done by prior session, verified intact)
+  - name: "--no-track references updated in beads-integration.md"
+    type: grep
+    check: "grep 'no-track' .kb/guides/beads-integration.md shows deprecation context"
     result: PASS
 
-  - name: Boundary condition formalized
-    type: manual
-    check: model.md contains "Boundary Condition N=1" section with per-primitive explanation and architectural implication
+  - name: "--no-track removed from agent-lifecycle.md diagram"
+    type: grep
+    check: "grep 'no-track' .kb/guides/agent-lifecycle.md returns nothing"
     result: PASS
 
-  - name: Open questions updated
-    type: manual
-    check: model.md Open Questions split into Answered (4 questions with probe refs) and Open (9 questions including 2 new)
-    result: PASS
-
-  - name: Evidence table updated
-    type: manual
-    check: model.md Evidence table includes gate/attractor external validation probe entry
-    result: PASS
-
-  - name: Model intro updated
-    type: manual
-    check: What This Is section describes three-layer framework (primitives mechanisms scope) and includes implementation insight
-    result: PASS
-
-  - name: Probe-to-model merge complete
-    type: manual
-    check: All three dependency probes (control theory, Align falsification, gate/attractor) findings integrated into model sections
+  - name: "--no-track updated in headless.md"
+    type: grep
+    check: "grep 'no-track' .kb/guides/headless.md shows deprecation context"
     result: PASS

@@ -118,11 +118,9 @@ The `orch wait` command polls beads comments. The `orch monitor` and daemon use 
 ---
 
 ### Issue: bd comment fails with "issue not found"
-**Symptom:** Agent spawned with `--no-track` can't report phases.
+**Symptom:** Agent spawned with legacy `--no-track` can't report phases.
 
-**Cause:** Untracked spawns generate placeholder IDs (e.g., `orch-go-untracked-*`) that don't exist in beads.
-
-**This is expected.** Untracked spawns intentionally skip beads tracking. Agent should still create artifacts in workspace.
+**Cause:** Old `--no-track` generated placeholder IDs that didn't exist in beads. `--no-track` is now deprecated and creates a real lightweight issue instead (use `--light`).
 
 **Source:** `.kb/investigations/archived/2025-12-22-inv-test-headless-mode.md`
 

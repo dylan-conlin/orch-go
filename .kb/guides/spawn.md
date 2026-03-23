@@ -36,7 +36,7 @@ orch spawn <skill> "task"
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  4. BEADS ISSUE CREATION (unless --no-track)                    │
+│  4. BEADS ISSUE CREATION                                        │
 │     bd create "{task}" --type {inferred-from-skill}             │
 │     Returns beads ID → transitions to in_progress               │
 └─────────────────────────────────────────────────────────────────┘
@@ -290,7 +290,7 @@ Active count excludes:
 | Flag | Purpose |
 |------|---------|
 | `--issue <id>` | Spawn for existing beads issue (don't create new) |
-| `--no-track` | Skip beads issue creation (ad-hoc work) |
+| `--no-track` | **Deprecated:** creates lightweight beads issue instead (use `--light`) |
 | `--model <alias>` | Model selection: opus, sonnet, haiku, flash, pro. Triggers model-aware backend routing. |
 | `--backend <name>` | Force backend: `claude` or `opencode`. Overrides model-aware routing. |
 | `--mcp <server>` | Add MCP server (e.g., `--mcp playwright`) |
@@ -455,9 +455,7 @@ This matters because daemon uses issue type to infer skill when auto-spawning.
 
 ### "bd comment fails with 'issue not found'"
 
-**Cause:** Using `--no-track` creates placeholder beads IDs (e.g., `orch-go-untracked-*`) that don't exist in the database.
-
-**This is expected.** Untracked spawns can't report phases via beads. The agent should still create artifacts in the workspace.
+**Cause:** Legacy `--no-track` usage created placeholder beads IDs (e.g., `orch-go-untracked-*`) that didn't exist in the database. `--no-track` is now deprecated and creates a real lightweight beads issue instead (use `--light`).
 
 ### "Agent doesn't have the context it needs"
 
@@ -511,7 +509,7 @@ orch spawn feature-impl "add feature" --workdir ~/Documents/personal/kb-cli
 - Beads issue created in CURRENT directory (orchestrator's repo)
 - Workspace created in target's `.orch/workspace/`
 
-**Gotcha:** `bd comment` from the agent uses target directory, but issue is in orchestrator's repo. This can cause "issue not found" errors. Use `--no-track` for cross-repo work, or manually track.
+**Gotcha:** `bd comment` from the agent uses target directory, but issue is in orchestrator's repo. This can cause "issue not found" errors. Use `--light` for cross-repo work, or manually track.
 
 ---
 

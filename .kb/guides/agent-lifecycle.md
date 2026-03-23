@@ -44,7 +44,7 @@ orch spawn                    bd comment "Phase: Complete"           orch comple
      ▼                                    ▼                                ▼
   Creates:                           Agent reports:                   Orchestrator:
   - OpenCode session                 - bd comment with phase          - Verifies work
-  - Beads issue (unless --no-track)  - SYNTHESIS.md (full tier)       - Closes beads issue
+  - Beads issue                      - SYNTHESIS.md (full tier)       - Closes beads issue
   - Workspace directory              - Git commits                    - Rebuilds if needed
 ```
 

@@ -59,7 +59,6 @@
 | `daemon.lightweight_cleanup` | daemon periodic | Lightweight workspace cleanup |
 | `daemon.audit_select` | daemon periodic | Random quality audit selection |
 | `decision.made` | daemon | Decision with classification tier |
-| `accretion.delta` | completion | File growth/shrinkage during session |
 | `accretion.snapshot` | periodic | Directory-level line counts |
 | `duplication.detected` | dupdetect | Similar function pairs found |
 | `duplication.suppressed` | dupdetect | Allowlist-suppressed pairs (precision tracking) |
