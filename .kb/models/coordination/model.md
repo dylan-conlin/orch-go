@@ -1,9 +1,9 @@
 # Model: Coordination
 
 **Created:** 2026-03-09
-**Updated:** 2026-03-22
+**Updated:** 2026-03-23
 **Status:** Active
-**Source:** Synthesized from 4 investigation(s) + 5 controlled experiments (139 trials) + external validation (6 independent sources) + 6 probe extensions (control theory, mechanism dimension, Align falsification, automated attractor discovery, attractor decay resilience, anticipatory placement)
+**Source:** Synthesized from 4 investigation(s) + 7 controlled experiments (289 trials) + external validation (6 independent sources) + 8 probe extensions (control theory, mechanism dimension, Align falsification, automated attractor discovery, attractor decay resilience, anticipatory placement, merge-educated messaging, agent scaling)
 
 ## What This Is
 
@@ -15,7 +15,7 @@ This document is organized by epistemic tier — how well each claim is supporte
 2. **Working Hypotheses** — Supported by experiments and literature review, but not independently reproduced. Useful frameworks that may need revision.
 3. **Open Frontiers** — Extrapolations beyond tested scenarios, framework-level verdicts, and untested claims. Treat as directional, not authoritative.
 
-The core insight, observed across 100 trials in same-file parallel-edit scenarios: **communication did not produce coordination.** Agents understood each other's work, discussed plans, and acknowledged potential conflicts — yet still produced unmergeable code. Only structural constraints (explicit placement instructions) prevented conflicts. This challenges the premise of frameworks like CrewAI, AutoGen, and LangGraph that assume agent-to-agent messaging solves coordination.
+The core insight, observed across 120 trials in same-file parallel-edit scenarios: **communication alone did not reliably produce coordination.** Agents understood each other's work, discussed plans, and acknowledged potential conflicts — yet mostly produced unmergeable code. Adding git merge education improved outcomes from 0% to 30% success, confirming the false merge model as a contributing factor but revealing that communication has a ceiling (~30%) well below structural placement (100%). Five distinct communication failure patterns persist even with correct merge knowledge. This challenges the premise of frameworks like CrewAI, LangGraph, and similar systems that assume agent-to-agent messaging solves coordination.
 
 ---
 
@@ -25,15 +25,17 @@ The core insight, observed across 100 trials in same-file parallel-edit scenario
 
 ## Core Claims
 
-### Claim 1: Communication is insufficient for coordination in same-file parallel edits
+### Claim 1: Communication is insufficient for reliable coordination in same-file parallel edits
 
-In the tested same-file parallel-edit scenarios, giving agents awareness of each other's work — whether through context sharing or active messaging — did not reduce merge conflict rates. Agents acknowledged potential conflicts in their plans but did not change their behavior to avoid them.
+In the tested same-file parallel-edit scenarios, giving agents awareness of each other's work — whether through context sharing or active messaging — did not reliably reduce merge conflict rates. Without merge-mechanics education, agents acknowledged potential conflicts but did not change behavior (0/20 success). With explicit git merge education, agents achieved partial coordination (6/20 success, 30%), but this remains far below structural placement (20/20 success, 100%).
 
-**Test:** 4-condition experiment x N=10: no-coord, placement, context-share, messaging
-**Evidence:** context-share 20/20 CONFLICT, messaging 20/20 CONFLICT (despite 18/20 trials with both plans written)
-**Status:** Confirmed (p=1.0, N=80 trials, one experiment family, same-file same-repo tasks)
+**Test:** 4-condition experiment x N=10 + merge-educated messaging x N=20
+**Evidence:** context-share 20/20 CONFLICT, messaging 20/20 CONFLICT, merge-educated messaging 14/20 CONFLICT (6/20 SUCCESS, p=0.02 vs messaging baseline). Placement 20/20 SUCCESS for comparison.
+**Status:** Confirmed with nuance (N=100 messaging/context trials + N=20 merge-educated trials; communication achieves partial coordination with correct merge models but remains insufficient for reliable coordination)
 
-**Evidence quality:** Observed (single experiment family, N=80, same-file same-repo tasks; not yet tested across repos, languages, or task types).
+**Evidence quality:** Observed (single experiment family, N=120, same-file same-repo tasks; not yet tested across repos, languages, or task types).
+
+**Merge-educated messaging (2026-03-23):** Adding explicit git merge education (~200 words explaining textual merge mechanics and providing concrete conflict examples) reduced conflicts from 100% to 70% (Fisher's exact p=0.010 one-sided, p=0.020 two-sided). Simple tasks coordinated better (40% success) than complex tasks (20% success). The false merge model was a contributing factor (~30% of outcomes) but not the sole mechanism. Five distinct failure patterns persist even with education: mutual convergence on "safe" position, plan misreading, self-contradiction, gap overestimation, and sequential messaging lag. See `probes/2026-03-23-probe-merge-educated-messaging-experiment.md`.
 
 ### Claim 2: Structural placement prevents conflicts in tested scenarios
 
@@ -43,10 +45,12 @@ In the tested same-file scenarios, explicit non-overlapping insertion point inst
 **Evidence:** placement 20/20 SUCCESS (clean merge + tests pass); attractor decay 9/9 SUCCESS with stale anchors (3 mutation types x 3 trials)
 **Status:** Confirmed (N=29 across main experiment + decay experiment, same task family)
 
-**Evidence quality:** Observed (N=29 across two experiment runs in the same task family; effectiveness at scale, with many agents, or across diverse codebases is untested).
+**Evidence quality:** Observed (N=29 at N=2, scaling to N=4 and N=6 tested with limited insertion points; diverse codebases untested).
 
 **Attractor resilience (2026-03-22):** Placement attractors tolerate codebase mutations. Tested three mutation types with ORIGINAL (stale) placement prompts: function renames (agent adapted semantically), file reorganization (agent used secondary anchors), and addition of competing insertion points (agent followed literal attractor). 9/9 SUCCESS. The coordination value comes from **region separation** (agents assigned to different file regions), not from specific anchor function names. Agents compensate for stale anchors through semantic adaptation and anchor redundancy. See `probes/2026-03-22-probe-attractor-decay-degradation-curve.md`.
 
+
+**Scaling behavior (2026-03-23):** Placement degrades gracefully at N>2 with limited insertion points. Tested 4 and 6 agents on a 3-function file (130 agent invocations, 210 pairwise merge checks). Pairwise success: 100% (N=2, ratio 3.0) -> 70% (N=4, ratio 0.75) -> 67% (N=6, ratio 0.50). N-way merge: 0% at both N=4 and N=6. Conflicts are deterministic — each pair is 5/5 SUCCESS or 0/5 CONFLICT — driven by two mechanisms: (1) same-region sharing (unavoidable when agents > regions) and (2) import-block conflicts (agents needing different imports modify the shared import block incompatibly). Sub-region placement does not help — agents ignore sub-directives and converge on the anchor function. For reliable pairwise coordination: need insertion-points >= agents AND import compatibility. See `probes/2026-03-23-probe-agent-scaling-limited-insertion-points.md`.
 ### Claim 3: Individual agent capability is not the bottleneck
 
 Across 80 trials (160 agents total), all agents achieved 6/6 individual scores regardless of condition or task complexity. The failure was entirely in the coordination mechanism, not in individual agent performance.
@@ -85,9 +89,13 @@ In the tested gate design, giving agents a mandatory post-implementation verific
 
 **Evidence quality:** Observed (directly measured across 80 trials in one experiment family).
 
-**Agents chose the "correct" location over the "non-conflicting" location.** In messaging trials, both agents chose to insert "after FormatDurationShort" because that's the semantically correct location per the task. Even when told about the other agent's identical plan, they did not deviate. The task instruction was stronger than the coordination instruction in 18/20 trials.
+**Agents chose the "correct" location over the "non-conflicting" location.** In messaging trials without merge education, both agents chose to insert "after FormatDurationShort" because that's the semantically correct location per the task. Even when told about the other agent's identical plan, they did not deviate. The task instruction was stronger than the coordination instruction in 18/20 trials. With merge education, 6/20 trials overcame this bias — agents explicitly cited merge mechanics to justify choosing alternative insertion points.
 
-**Evidence quality:** Observed (18/20 messaging trials in one experiment family; generality to other task structures untested).
+**Evidence quality:** Observed (18/20 messaging trials + 20 merge-educated trials in one experiment family; generality to other task structures untested).
+
+**Merge-educated messaging reveals a 5-pattern failure taxonomy (2026-03-23).** Even with correct merge knowledge, 14/20 trials still conflicted. Plan analysis reveals: (1) mutual convergence — both agents independently choosing the same "safe" alternative position; (2) plan misreading — agents paraphrasing coordinates instead of quoting exactly, introducing drift; (3) self-contradiction — agents stating conflicting insertion points within the same plan; (4) gap overestimation — agents calculating line separations incorrectly; (5) sequential messaging lag — revision plans crossing in flight with no re-read cycle. This taxonomy suggests multi-round negotiation could address patterns 2 and 5, but patterns 1 and 4 are intrinsic to communicative coordination with limited insertion points.
+
+**Evidence quality:** Observed (N=20, one experiment family, one model; 14 conflict trial plan files analyzed).
 
 **Automated attractor discovery works.** A 2-phase experiment showed that structural coordination constraints can be generated automatically from failure data. Phase 1 collected collisions; Phase 2 injected auto-generated constraints and achieved 7/7 SUCCESS with zero human intervention. Only 1 collision was needed. See Key Experiment: Automated Attractor Discovery below.
 
@@ -226,9 +234,9 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 
 ## Implications (Extrapolated)
 
-1. **In the tested scenarios, single-round messaging without merge-mechanics education did not produce coordination outcomes for additive same-file tasks.** CrewAI, LangGraph, Claude Agent SDK, OpenAI Agents SDK, and similar systems that assume agents can coordinate through communication showed coordination failures in the reviewed literature. In our experiments (N=40 messaging + gate trials), communication did not fail — agents communicated effectively, wrote accurate plans, and correctly identified each other's work. The coordination still failed. The specific failure mechanism: agents have a false model of git merge conflicts, believing that additions at the same file position with different function names will merge cleanly. This false model persists even through explicit self-checking (gate condition). Whether git-merge-aware messaging, multi-round negotiation, or tool-augmented conflict detection could overcome this is untested. (Note: AutoGen, originally cited here, entered maintenance mode by Mar 2026, succeeded by Microsoft Agent Framework.)
+1. **In the tested scenarios, messaging-based coordination produced partial but unreliable results for additive same-file tasks.** Without merge education, messaging produced 0/20 SUCCESS (false merge model suppressed all coordination). With explicit git merge education, messaging achieved 6/20 SUCCESS (30%, p=0.02 vs baseline). This is a significant improvement but well below structural placement (20/20 SUCCESS, 100%). Five distinct failure patterns persist even with correct merge knowledge: mutual convergence on alternative positions, plan coordinate misreading, self-contradictory plans, gap overestimation, and sequential messaging lag. The false merge model accounted for ~30% of outcomes (the gap between 0% and 30%), while structural limitations and communication quality failures account for the remaining ~70%. CrewAI, LangGraph, Claude Agent SDK, OpenAI Agents SDK, and similar systems that assume communication solves coordination may achieve partial coordination with merge-aware protocols but cannot match structural approaches. Multi-round negotiation and tool-augmented conflict detection remain untested. (Note: AutoGen, originally cited here, entered maintenance mode by Mar 2026, succeeded by Microsoft Agent Framework.)
 
-**Evidence quality:** Working-hypothesis (extrapolated from same-file experiment N=40 messaging+gate + literature review of 6 frameworks; the specific failure mechanism — false merge model + gravitational convergence — is observed but whether it generalizes beyond additive same-file tasks is untested).
+**Evidence quality:** Working-hypothesis (extrapolated from same-file experiment N=60 messaging+gate+merge-educated + literature review of 6 frameworks; the specific failure taxonomy — 5 communication failure patterns — is observed in one experiment family with one model).
 
 ---
 
@@ -282,7 +290,7 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 
 ### Open
 
-- Does placement work when the number of agents exceeds the number of natural insertion points?
+- ~~Does placement work when the number of agents exceeds the number of natural insertion points?~~ **Answered 2026-03-23:** Partially. Pairwise placement works for non-conflicting pairs (67-70% at N=4,6 with 3 insertion points) but N-way merge fails 100% because at least one pair always conflicts. Two mechanisms: same-region gravitational convergence + import-block conflicts. See `probes/2026-03-23-probe-agent-scaling-limited-insertion-points.md`.
 - Can iterative messaging (multi-round negotiation) produce different results than single-shot plan exchange?
 - At what task granularity does structural placement become impractical?
 - Should Align decompose into sub-primitives? **Evidence supports yes (2026-03-22):** 80-trial messaging condition shows task alignment defeating coordination alignment in 18/20 trials. At minimum three sub-components: task alignment (agent understands its own task), state alignment (agent knows system state), coordination alignment (agent adjusts behavior for multi-agent context). Needs formal decomposition and separate testing.
@@ -292,12 +300,13 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 - Does the multiplier model (Coordination_value = Route x Sequence x Throttle x Align) hold quantitatively, or is the interaction more complex? McEntire's 64% hierarchical result is consistent, but no controlled experiment isolates each factor.
 - ~~Can attractor-based coordination degrade? (What happens when structural destinations become stale or misaligned with evolving requirements?)~~ **Answered 2026-03-22:** Not for incremental codebase changes. 9/9 SUCCESS with stale attractors across renames, file reorganization, and competing insertion points. Agents adapt through semantic resolution and anchor redundancy. Region separation (not anchor accuracy) is the load-bearing property. Untested: wholesale restructuring. See `probes/2026-03-22-probe-attractor-decay-degradation-curve.md`.
 - Does automated attractor discovery work for complex tasks? (Multi-file, ambiguous requirements may produce collision patterns harder to parse or requiring more nuanced constraint generation.)
-- What is the minimum number of natural insertion points needed per agent? (Automated discovery relies on function boundaries as candidate points. With 6 functions and 2 agents, alternatives were plentiful. What about 6+ agents?)
+- ~~What is the minimum number of natural insertion points needed per agent?~~ **Answered 2026-03-23:** At least 1.0 for function-body separation, plus import compatibility. Below 1.0, pigeonhole forces same-region sharing. Import-block conflicts add a second constraint independent of region ratio. See `probes/2026-03-23-probe-agent-scaling-limited-insertion-points.md`.
+- Can import-block conflicts be solved by coordinating import changes separately (e.g., a pre-merge import normalization step)?
 - Would a stronger placement model (Opus vs Haiku) produce better anticipatory placements? The simple-task failures are arguably a reasoning failure — the LLM picks adjacent functions as "different" without understanding git merge proximity. A model with better spatial reasoning might avoid this.
 - Can anticipatory placement be improved by injecting git-merge-specific knowledge into the placement prompt? (e.g., "adjacent functions produce conflicts even if they are different functions")
 - ~~Do the primitives apply to non-LLM multi-agent systems?~~ **Partially answered 2026-03-22:** Mapping against Malone & Crowston, Mintzberg, and distributed systems shows the four primitives are consistent with but narrower than established coordination theory. They apply well to multi-agent SE but miss decomposition, recovery, and meta-coordination found in broader coordination theory. See `probes/2026-03-22-probe-claim9-primitives-generality.md`.
 - Does the coordination pattern hold for modification/refactoring tasks (as opposed to additive tasks)? In modification tasks, agents are anchored to the function they're modifying — no gravitational insertion point. Messaging about "what I'm modifying" may be sufficient because agents produce non-overlapping diffs by construction.
-- Would git-merge-aware messaging (educating agents about merge mechanics) change the messaging condition results? Analysis shows agents have a false model of merge conflicts — they believe same-point additions with different function names merge cleanly. Correcting this false model is the cheapest untested intervention.
+- ~~Would git-merge-aware messaging (educating agents about merge mechanics) change the messaging condition results?~~ **Answered 2026-03-23:** Yes, partially. Adding ~200 words of git merge education reduced conflicts from 100% to 70% (6/20 SUCCESS, p=0.02). The false merge model suppressed ~30% of coordination capacity. Five failure patterns persist: mutual convergence, plan misreading, self-contradiction, gap overestimation, and messaging lag. Communication ceiling ~30%, well below structural placement (100%). See `probes/2026-03-23-probe-merge-educated-messaging-experiment.md`.
 - Should decomposition (pre-Route) and recovery (post-failure) be added as coordination primitives, or are they outside the model's scope?
 
 ---
@@ -324,6 +333,7 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 | 2026-03-22 | Claim 4 task-type scope probe | Both tested task families share the same gravitational-convergence structure (additive, same file, same insertion point). "Task complexity" varies implementation difficulty but not coordination challenge structure. Anticipatory experiment already shows task-type sensitivity with a different mechanism. Claim scoped to additive tasks. |
 | 2026-03-22 | Claim 6 messaging scope probe | Analysis of 40 messaging+gate trial plans reveals specific failure mechanism: agents have a false model of git merge conflicts. They believe same-point additions with different function names merge cleanly. This false model persists through explicit self-checking. Messaging fails specifically for gravitational-convergence tasks, not "fundamentally." |
 | 2026-03-22 | Claim 9 primitives generality probe | Mapped against Malone & Crowston (1994), Mintzberg (1979), MAST, and distributed systems. 4 primitives are consistent with but narrower than established coordination theory. Missing: decomposition (pre-Route), recovery (post-failure), meta-coordination. Scoped from "any multi-agent system" to "multi-agent SE with merge-based integration." |
+| 2026-03-23 | Merge-educated messaging experiment (N=20) | Git merge education reduced conflicts from 100% to 70% (6/20 SUCCESS, p=0.02). False merge model was a contributing factor (~30%) but not sole mechanism. Five failure patterns identified: mutual convergence, plan misreading, self-contradiction, gap overestimation, messaging lag. Simple tasks 40% success, complex 20%. Communication ceiling ~30% vs placement 100%. |
 
 ## Key Experiment: 4-Condition Redesign (2026-03-10)
 
@@ -406,13 +416,35 @@ The four primitives describe WHAT coordination requires. The mechanism dimension
 
 **Results:** `experiments/coordination-demo/redesign/results/20260322-162206/`
 
+## Key Experiment: Merge-Educated Messaging (2026-03-23)
+
+**Design:** 1 condition (merge-educated messaging) x 2 task types x N=10 = 20 trials, 40 agent invocations
+**Model:** claude-haiku-4-5 (both agents)
+**Tasks:** Same as 4-condition experiment
+**Question:** Does correcting agents' false model of git merge mechanics change coordination outcomes?
+
+| Condition | Simple | Complex | Total | p vs messaging |
+|-----------|:------:|:-------:|:-----:|:--------------:|
+| messaging (baseline) | 0/10 | 0/10 | 0/20 | - |
+| merge-educated | 4/10 | 2/10 | 6/20 | p=0.02 |
+
+**What the education added:** ~200 words on textual merge mechanics, concrete conflict example, instruction to separate insertion points by 3+ lines.
+
+**Success mechanism:** All 6 successes used "binary opposition" (one agent early after StripANSI, one late after FormatDurationShort), explicitly citing merge education.
+
+**Failure taxonomy (14 conflict trials):** (1) mutual convergence on same "safe" position; (2) plan coordinate misreading; (3) self-contradictory plans; (4) gap overestimation; (5) messaging lag.
+
+**Key finding:** False merge model suppressed ~30% of coordination capacity. Communication ceiling ~30%, well below structural placement (100%).
+
+**Results:** `experiments/coordination-demo/redesign/results/merge-educated-20260323-093342/`
+
 ---
 
 ## Boundaries
 
 **What this model covers:**
 - Multi-agent coordination failure and prevention in software engineering tasks
-- Four coordination primitives (Route, Sequence, Throttle, Align) proposed from 100 trials + literature review of 6 external sources
+- Four coordination primitives (Route, Sequence, Throttle, Align) proposed from 159 trials across 6 experiments + literature review of 6 external sources
 - Mechanism dimension: gate (runtime) vs attractor (structural) implementation
 - Control theory structural homology (qualitative insights, not formal tools)
 - Scope boundary: N>1 (single agent trivially satisfies all primitives)

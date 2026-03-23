@@ -1,0 +1,55 @@
+verification:
+  type: experiment
+  issue: orch-go-0p844
+
+  prerequisites:
+    - pkg/scaling/scaling.go exists with 3 functions (Normalize, Clamp, Wrap)
+    - pkg/scaling/scaling_test.go exists and passes
+    - experiments/coordination-demo/redesign/run-scaling.sh is executable
+    - 6 agent prompts exist in experiments/coordination-demo/redesign/prompts/scaling/
+
+  experiment_results:
+    n4_results_dir: experiments/coordination-demo/redesign/results/scaling-n4-20260323-093936/
+    n6_noplacement_results_dir: experiments/coordination-demo/redesign/results/scaling-n6-20260323-095838/
+    n6_evenplacement_results_dir: experiments/coordination-demo/redesign/results/scaling-n6-20260323-100553/
+
+    n4_no_placement:
+      pairwise_success: 6/30 (20%)
+      nway_success: 0/5
+      individual_scores: all 4/4
+
+    n4_even_placement:
+      pairwise_success: 21/30 (70%)
+      nway_success: 0/5
+      individual_scores: all 4/4
+
+    n4_sub_placement:
+      pairwise_success: 21/30 (70%)
+      nway_success: 0/5
+      individual_scores: all 4/4
+
+    n6_no_placement:
+      pairwise_success: 15/75 (20%)
+      nway_success: 0/5
+      individual_scores: all 4/4
+
+    n6_even_placement:
+      pairwise_success: 50/75 (67%)
+      nway_success: 0/5
+      individual_scores: all 4/4
+
+  probe:
+    path: .kb/models/coordination/probes/2026-03-23-probe-agent-scaling-limited-insertion-points.md
+    status: Complete
+    verdict: extends
+    model_updated: true
+
+  model_merge:
+    file: .kb/models/coordination/model.md
+    sections_updated:
+      - Claim 2 (added scaling behavior paragraph)
+      - Evidence quality (updated from "untested at scale" to "tested at N=4,6")
+      - Open questions (marked 2 as answered, added 1 new)
+      - Source line (updated experiment/probe counts)
+
+  manual_verification: none required
