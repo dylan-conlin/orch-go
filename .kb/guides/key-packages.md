@@ -2,7 +2,7 @@
 
 **Purpose:** Descriptions of key orch-go packages — their responsibilities, main types, and APIs.
 
-**Last verified:** 2026-03-23
+**Last verified:** 2026-03-24
 
 ---
 
@@ -22,8 +22,9 @@
 ## pkg/model/ (Model Resolution)
 
 - `Resolve(spec)` maps aliases to full provider/model format
-- Aliases: `opus`, `sonnet`, `haiku` (Anthropic), `flash`, `pro` (Gemini)
+- Aliases: `opus`, `sonnet`, `haiku` (Anthropic), `flash`, `pro` (Gemini), `gpt-5.4`, `codex-latest` (OpenAI)
 - Code fallback: `anthropic/claude-sonnet-4-5-20250929`; effective default is Opus via project config
+- Helper methods: `IsAnthropicModel()`, `ProviderName()`, `ModelFamily()`, `String()`
 
 ## pkg/account/ (Account Management)
 

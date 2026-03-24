@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for the orch-go CLI. Read this before debugging CLI issues or adding new commands.
 
-**Last verified:** Mar 23, 2026
+**Last verified:** Mar 24, 2026
 
 **Supersedes:** 16 CLI investigations from Dec 19 - Jan 4 (see History section)
 
@@ -29,7 +29,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `orch spawn` | Create new agent session | `--issue`, `--model`, `--backend`, `--light`, `--full`, `--dry-run` |
 | `orch work` | Start work on beads issue with skill inference | `--inline` |
 | `orch complete` | Verify and close agent work | `--force`, `--reason` |
-| `orch abandon` | Abandon stuck agents | - |
+| `orch abandon` | Abandon stuck agents | `--force`, `--reason`, `--workdir` |
 | `orch reject` | Reject agent work quality and reopen issue | - |
 | `orch rework` | Spawn a rework agent for a completed issue | - |
 | `orch clean` | Clean up stale resources | `--workspaces`, `--sessions`, `--all` |

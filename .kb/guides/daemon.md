@@ -36,7 +36,7 @@ The daemon is an autonomous agent spawner that:
 | `issue_adapter.go` | Beads integration |
 | `issue_queue.go` | Issue filtering logic |
 | `active_count.go` | OpenCode session counting |
-| `spawn_tracker.go` | Spawn tracking: ID dedup (L1), title dedup (L3), thrash detection |
+| `spawn_tracker.go` | Spawn tracking: ID dedup (L1), title dedup (L3), thrash detection. Cleared on `orch abandon --force` |
 | `session_dedup.go` | Session/tmux existence checking (L2) |
 
 **Related packages:**
