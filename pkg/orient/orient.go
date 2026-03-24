@@ -220,6 +220,20 @@ func FormatOrientation(data *OrientationData) string {
 	// Usage warning (surface before work planning)
 	formatUsageWarning(&b, data.UsageWarning)
 
+	// --- Thread state (primary frame) ---
+	formatActiveThreads(&b, data.ActiveThreads)
+
+	// New evidence since last session (thread-contextualized)
+	sinceDate := ""
+	if data.PreviousSession != nil {
+		sinceDate = data.PreviousSession.Date
+	}
+	b.WriteString(FormatChangelog(data.Changelog, sinceDate))
+
+	// Relevant models (evidence supporting active threads)
+	formatRelevantModels(&b, data.RelevantModels)
+
+	// --- Operational baseline ---
 	// Throughput section
 	formatThroughput(&b, &data.Throughput)
 
@@ -232,26 +246,13 @@ func FormatOrientation(data *OrientationData) string {
 	// Previous session section (from debrief)
 	b.WriteString(FormatPreviousSession(data.PreviousSession))
 
-	// Changelog since last session
-	sinceDate := ""
-	if data.PreviousSession != nil {
-		sinceDate = data.PreviousSession.Date
-	}
-	b.WriteString(FormatChangelog(data.Changelog, sinceDate))
-
 	// Ready work section
 	formatReadyIssues(&b, data.ReadyIssues)
 
 	// Active plans section
 	formatActivePlans(&b, data.ActivePlans)
 
-	// Active threads section
-	formatActiveThreads(&b, data.ActiveThreads)
-
-	// Relevant models section
-	formatRelevantModels(&b, data.RelevantModels)
-
-	// Stale models section
+	// --- Staleness (thread-contextualized) ---
 	formatStaleModels(&b, data.StaleModels)
 
 	// Knowledge edges (claim-level tensions, staleness, unconfirmed)

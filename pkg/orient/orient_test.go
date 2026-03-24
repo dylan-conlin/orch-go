@@ -1056,33 +1056,66 @@ func TestUsageWarningJSON(t *testing.T) {
 
 func TestFormatOrientation_SectionOrder(t *testing.T) {
 	data := &OrientationData{
-		Throughput: Throughput{Days: 1, Completions: 1},
+		Throughput:    Throughput{Days: 1, Completions: 1},
 		SessionResume: &SessionResume{Content: "resume content"},
 		ConfigDrift:   []ConfigDriftItem{{File: "test", Reason: "drift"}},
 		UsageWarning:  &UsageWarning{Utilization: 90, Remaining: "10%", Level: "HIGH"},
+		ActiveThreads: []ActiveThread{
+			{Name: "test-thread", Title: "Test thread", Updated: "2026-03-24", EntryCount: 1},
+		},
+		Changelog: []ChangelogEntry{
+			{Hash: "abc1234", Subject: "feat: something"},
+		},
+		RelevantModels: []ModelFreshness{
+			{Name: "test-model", Summary: "A model.", AgeDays: 1},
+		},
 		ReflectSummary: &ReflectSummary{Total: 5, Synthesis: 5},
-		FocusGoal:     "Test focus",
+		FocusGoal:      "Test focus",
 	}
 
 	output := FormatOrientation(data)
 
-	// Session resume should come before throughput
+	// Session resume should come before threads
 	resumeIdx := strings.Index(output, "Session resumed:")
-	throughputIdx := strings.Index(output, "Last 24h:")
-	if resumeIdx > throughputIdx {
-		t.Error("session resume should appear before throughput")
+	threadsIdx := strings.Index(output, "Active threads:")
+	if resumeIdx > threadsIdx {
+		t.Error("session resume should appear before active threads")
 	}
 
-	// Config drift before throughput
+	// Config drift before threads
 	driftIdx := strings.Index(output, "Config drift detected:")
-	if driftIdx > throughputIdx {
-		t.Error("config drift should appear before throughput")
+	if driftIdx > threadsIdx {
+		t.Error("config drift should appear before active threads")
 	}
 
-	// Usage warning before throughput
+	// Usage warning before threads
 	usageIdx := strings.Index(output, "Usage HIGH:")
-	if usageIdx > throughputIdx {
-		t.Error("usage warning should appear before throughput")
+	if usageIdx > threadsIdx {
+		t.Error("usage warning should appear before active threads")
+	}
+
+	// Threads before throughput (the inversion)
+	throughputIdx := strings.Index(output, "Last 24h:")
+	if threadsIdx > throughputIdx {
+		t.Error("active threads should appear before throughput")
+	}
+
+	// Changelog after threads, before throughput (new evidence)
+	changelogIdx := strings.Index(output, "Changelog (recent):")
+	if changelogIdx < threadsIdx {
+		t.Error("changelog should appear after active threads")
+	}
+	if changelogIdx > throughputIdx {
+		t.Error("changelog should appear before throughput")
+	}
+
+	// Relevant models after threads, before throughput
+	modelsIdx := strings.Index(output, "Relevant models:")
+	if modelsIdx < threadsIdx {
+		t.Error("relevant models should appear after active threads")
+	}
+	if modelsIdx > throughputIdx {
+		t.Error("relevant models should appear before throughput")
 	}
 
 	// Reflect summary should come after focus
