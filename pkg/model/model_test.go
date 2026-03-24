@@ -151,6 +151,53 @@ func TestResolveWithConfig_ConfigAliasOverride(t *testing.T) {
 	}
 }
 
+func TestModelSpec_IsAnthropicModel(t *testing.T) {
+	tests := []struct {
+		spec     ModelSpec
+		expected bool
+	}{
+		{ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}, true},
+		{ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}, true},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4-codex"}, false},
+		{ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}, false},
+		{ModelSpec{Provider: "deepseek", ModelID: "deepseek-chat"}, false},
+		{ModelSpec{Provider: "Anthropic", ModelID: "claude-opus-4-5-20251101"}, true},
+		{ModelSpec{Provider: "", ModelID: "claude-opus-4-5-20251101"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.spec.Format(), func(t *testing.T) {
+			if got := tt.spec.IsAnthropicModel(); got != tt.expected {
+				t.Errorf("IsAnthropicModel() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestModelSpec_ProviderName(t *testing.T) {
+	tests := []struct {
+		spec     ModelSpec
+		expected string
+	}{
+		{ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}, "Anthropic"},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4-codex"}, "OpenAI"},
+		{ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}, "Google"},
+		{ModelSpec{Provider: "deepseek", ModelID: "deepseek-chat"}, "DeepSeek"},
+		{ModelSpec{Provider: "Anthropic", ModelID: "claude-opus-4-5-20251101"}, "Anthropic"},
+		{ModelSpec{Provider: "OPENAI", ModelID: "gpt-4o"}, "OpenAI"},
+		{ModelSpec{Provider: "unknown-provider", ModelID: "some-model"}, "unknown-provider"},
+		{ModelSpec{Provider: "", ModelID: "some-model"}, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.spec.Format(), func(t *testing.T) {
+			if got := tt.spec.ProviderName(); got != tt.expected {
+				t.Errorf("ProviderName() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestModelSpec_Format(t *testing.T) {
 	spec := ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}
 	if spec.Format() != "anthropic/claude-opus-4-5-20251101" {

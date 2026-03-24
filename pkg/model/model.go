@@ -14,6 +14,11 @@ func (m ModelSpec) Format() string {
 	return m.Provider + "/" + m.ModelID
 }
 
+// IsAnthropicModel returns true if the model's provider is Anthropic.
+func (m ModelSpec) IsAnthropicModel() bool {
+	return strings.EqualFold(m.Provider, "anthropic")
+}
+
 // DefaultModel is used when no model is specified.
 // Sonnet is the default (Flash has TPM limits that make it unusable for real work).
 var DefaultModel = ModelSpec{
@@ -53,7 +58,8 @@ var Aliases = map[string]ModelSpec{
 	"gpt-5":       {Provider: "openai", ModelID: "gpt-5.2"},
 	"gpt-5.1":     {Provider: "openai", ModelID: "gpt-5.1"},
 	"gpt-5.2":     {Provider: "openai", ModelID: "gpt-5.2"},
-	"gpt5-latest": {Provider: "openai", ModelID: "gpt-5.2"},
+	"gpt-5.4":     {Provider: "openai", ModelID: "gpt-5.4-codex"},
+	"gpt5-latest": {Provider: "openai", ModelID: "gpt-5.4-codex"},
 	"gpt5-mini":   {Provider: "openai", ModelID: "gpt-5.1-codex-mini"},
 	"gpt-5-mini":  {Provider: "openai", ModelID: "gpt-5.1-codex-mini"},
 	"o3":          {Provider: "openai", ModelID: "o3"},
@@ -63,7 +69,8 @@ var Aliases = map[string]ModelSpec{
 	"codex":        {Provider: "openai", ModelID: "gpt-5.2-codex"},
 	"codex-mini":   {Provider: "openai", ModelID: "gpt-5.1-codex-mini"},
 	"codex-max":    {Provider: "openai", ModelID: "gpt-5.1-codex-max"},
-	"codex-latest": {Provider: "openai", ModelID: "gpt-5.2-codex"},
+	"codex-latest": {Provider: "openai", ModelID: "gpt-5.4-codex"},
+	"codex-5.4":    {Provider: "openai", ModelID: "gpt-5.4-codex"},
 	"codex-5.1":    {Provider: "openai", ModelID: "gpt-5.1-codex"},
 	"codex-5.2":    {Provider: "openai", ModelID: "gpt-5.2"},
 
@@ -159,8 +166,8 @@ func ListAliases() []string {
 	return []string{
 		"Anthropic: opus, sonnet, haiku (also -4.5 variants)",
 		"Google: flash, flash-2.5, flash3, flash-3, pro, pro-2.5",
-		"OpenAI: gpt (4o), gpt4o, gpt-4o, gpt4o-mini, gpt-5 (5.2), gpt-5.1, gpt-5.2, gpt5-latest (5.2), gpt-5-mini (codex-mini), o3, o3-mini",
-		"Codex: codex (5.2), codex-mini, codex-max, codex-latest (5.2), codex-5.1, codex-5.2 (non-codex variant)",
+		"OpenAI: gpt (4o), gpt4o, gpt-4o, gpt4o-mini, gpt-5 (5.2), gpt-5.1, gpt-5.2, gpt-5.4, gpt5-latest (5.4), gpt-5-mini (codex-mini), o3, o3-mini",
+		"Codex: codex (5.2), codex-mini, codex-max, codex-latest (5.4), codex-5.1, codex-5.2, codex-5.4",
 		"DeepSeek: deepseek, deepseek-chat, deepseek-r1, reasoning (alias for reasoner)",
 	}
 }
