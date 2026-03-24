@@ -136,32 +136,28 @@ The daemon infers model from skill type before spawning:
 
 ## Spawn Gates (Preflight Checks)
 
-**All spawn gates are hard gates (fail-fast).** They abort spawn before any side effects (no beads issue created, no workspace, no session). This applies to both manual spawns and daemon-driven spawns.
+Gates run before any side effects (no beads issue, workspace, or session created). Two gates are hard (fail-fast), the rest are advisory (warn but allow spawn).
 
 ### Gate Ordering
 
-Gates run in this order (all must pass):
+Gates run in this order:
 
-| Gate | What it checks | Override |
-|------|---------------|----------|
-| **Triage bypass** | Manual spawns have `--bypass-triage` | `--bypass-triage` flag |
-| **Concurrency** | Active agent count < max (default 5) | `--max-agents 0` |
-| **Rate limit** | Account usage < 95% | `ORCH_USAGE_BLOCK_THRESHOLD=100` |
-| **Verification** | No unverified Tier 1 work exists | `--bypass-verification` + `--bypass-reason` |
-| **Hotspot** | Target files not CRITICAL (>1500 lines) for blocking skills | `--force-hotspot` + `--architect-ref` |
-| **OPSEC** | Proxy running when `opsec.sandbox: true` in project config | `orch opsec start` |
+| Gate | Type | What it checks | Override |
+|------|------|---------------|----------|
+| **Triage bypass** | Hard | Manual spawns have `--bypass-triage` | `--bypass-triage` flag |
+| **Concurrency** | Hard | Active agent count < max (default 5, manual spawns only) | `--max-agents 0` |
+| **Governance** | Advisory | Task references governance-protected paths | N/A (warn only) |
+| **Hotspot** | Advisory | Target files CRITICAL (>1500 lines) | N/A (warn only, daemon schedules extraction) |
+| **Agreements** | Advisory | `kb agreements check` for project violations | N/A (warn only) |
+| **Open questions** | Advisory | Open questions in transitive dependency chain | N/A (warn only) |
+
+**Note:** OPSEC enforcement happens separately in the spawn pipeline (not in `RunPreFlightChecks`). Rate limit and verification gates were removed; only triage and concurrency are hard gates.
 
 ### Hotspot Gate Details
 
-The hotspot gate only blocks specific skills that modify code:
+The hotspot gate is **advisory-only** — it never blocks spawn. When critical hotspot files are detected, the daemon schedules extraction cascades to address structural health.
 
-**Blocked skills:** `feature-impl`, `systematic-debugging`
-
-**Exempt skills:** investigation, architect, codebase-audit, capture-knowledge, and all others (strategic/read-only skills).
-
-**Auto-bypass:** Before hard blocking, the gate checks for a prior closed architect review of the critical files. If a verified architect review exists, the gate auto-bypasses.
-
-**Context injection:** When hotspot files are detected (even if not blocking), the SPAWN_CONTEXT.md includes a hotspot warning with **all matched hotspot files** (`MatchedFiles`), not just the critical ones (`CriticalFiles` >1500 lines). This gives agents full awareness of the hotspot area.
+**Context injection:** When hotspot files are detected, the SPAWN_CONTEXT.md includes a hotspot warning with **all matched hotspot files** (`MatchedFiles`), not just the critical ones (`CriticalFiles` >1500 lines). This gives agents full awareness of the hotspot area.
 
 ### Why Hard Gates Matter
 
@@ -334,10 +330,6 @@ Default tier is determined by skill:
 | `--max-agents <n>` | Maximum concurrent agents (default 5, 0 to disable) |
 | `--auto-init` | Auto-initialize .orch and .beads if missing |
 | `--force` | Override safety checks (blocking dependencies, existing workspace) |
-| `--force-hotspot` | Override hotspot gate (requires `--architect-ref`) |
-| `--architect-ref <id>` | Beads ID of prior architect review (required with `--force-hotspot`) |
-| `--bypass-verification` | Override verification gate (requires `--bypass-reason`) |
-| `--bypass-reason <text>` | Reason for bypassing verification gate |
 
 ### Exploration Flags
 
@@ -541,8 +533,8 @@ orch spawn feature-impl "add feature" --workdir ~/Documents/personal/kb-cli
 ## Key Decisions (from kn)
 
 - **Model-aware backend routing** - Anthropic models → Claude CLI, others → OpenCode. Default model is opus, default backend is claude. (Feb 2026)
-- **All spawn gates are hard (fail-fast)** - No soft warnings. Gate failure aborts before side effects.
-- **Hotspot gate uses skill allowlist** - Only `feature-impl` and `systematic-debugging` are blocked; exempt skills aren't enumerated.
+- **Triage and concurrency gates are hard (fail-fast)** - Other gates (hotspot, governance, agreements, open questions) are advisory only.
+- **Hotspot gate is advisory** - Warns but doesn't block; daemon schedules extraction cascades for structural health.
 - **Two-phase atomic spawn** - Phase 1 (beads + workspace) with rollback, Phase 2 (per-backend session) best-effort.
 - **Headless is default** - `--tmux` is opt-in (but Claude backend always forces tmux)
 - **SPAWN_CONTEXT.md is redundant** - generated from beads + kb + skill + template

@@ -205,3 +205,106 @@
 
 - User-level configuration (`~/.orch/config.yaml`)
 - Notification preferences, account defaults
+
+## pkg/agent/ (Agent Utilities)
+
+- Agent filtering logic for determining "active" agents
+- Workspace scanning, manifest parsing, agent metadata
+
+## pkg/session/ (Orchestrator Session State)
+
+- Orchestrator session state management (start, status, end, resume)
+- Session goal tracking, time tracking, label management
+
+## pkg/sessions/ (Session History)
+
+- Search and listing for OpenCode session history
+- Walks OpenCode disk storage, fetches message content for searching
+
+## pkg/action/ (Action Outcome Logging)
+
+- Action outcome logging and behavioral pattern detection
+- Tracks tool invocations and outcomes for pattern surfacing
+
+## pkg/health/ (System Health Monitoring)
+
+- Time-series health monitoring for `orch doctor`
+- Tracks system invariants, alerts on threshold crossings
+
+## pkg/checkpoint/ (Verification Checkpoints)
+
+- Verification checkpoint tracking infrastructure
+- Phase 1 of verifiability-first mechanical enforcement
+
+## pkg/completion/ (Completion Validation)
+
+- Completion artifact validation (COMPLETION.yaml parsing)
+- Required field enforcement per work type
+
+## pkg/coaching/ (Coaching Plugin)
+
+- Agent coaching and guidance infrastructure
+
+## pkg/thread/ (Living Threads)
+
+- Living threads — multi-session accumulating knowledge artifacts
+- Captures insight as it forms for comprehension
+
+## pkg/port/ (Port Allocation)
+
+- Port allocation registry for orch-go projects
+- Allocate, list, release, tmuxinator integration
+
+## pkg/workspace/ (Workspace Operations)
+
+- Shared workspace scanning and manifest operations
+
+## pkg/service/ (Service Monitoring)
+
+- Service monitoring for overmind-managed processes
+- PID tracking, crash detection, restart events
+
+## pkg/claudemd/ (CLAUDE.md Generation)
+
+- CLAUDE.md template generation for different project types
+
+## pkg/timeline/ (Session Timeline)
+
+- Session timeline extraction and grouping
+
+## pkg/urltomd/ (URL to Markdown)
+
+- URL-to-Markdown conversion using headless Chrome (chromedp)
+
+## pkg/beadsutil/ (Beads Utilities)
+
+- Shared beads ID parsing, extraction, and resolution utilities
+
+## pkg/question/ (Question Extraction)
+
+- Extraction of pending questions from agent output
+
+## pkg/display/ (Output Formatting)
+
+- Shared output formatting: string truncation, ID abbreviation, ANSI helpers
+
+## pkg/graph/ (Work Graph)
+
+- Graph data structures for work dependencies
+
+## pkg/activity/ (Activity Feed)
+
+- Activity feed persistence for agent workspaces
+- Exports session activity to ACTIVITY.json for archival
+
+## pkg/notify/ (Desktop Notifications)
+
+- Desktop notification functionality (configurable via `~/.orch/config.yaml`)
+
+## pkg/state/ (Agent State Reconciliation)
+
+- Agent state reconciliation across multiple sources
+
+## pkg/advisor/ (Model Recommendation)
+
+- Model recommendation using live API data (OpenRouter)
