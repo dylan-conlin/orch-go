@@ -1,0 +1,51 @@
+verification:
+  type: behavioral
+  issue: orch-go-wu1si
+
+  root_cause:
+    description: >
+      Popup was configured on orch_bracket (a bracket), but sketchybar brackets
+      don't support popups. The click handler called orch_bracket:query().popup.drawing
+      which returned nil, causing a Lua error that prevented the popup toggle.
+    location: ~/.config/sketchybar/items/widgets/orch.lua
+
+  fix:
+    description: >
+      Moved popup ownership from bracket to orch item. Changed popup item positions,
+      click handler, and close handler to target the item. Added nil-safe popup query.
+    files_changed:
+      - ~/.config/sketchybar/items/widgets/orch.lua
+
+  automated_verification:
+    - description: "Popup appears in item query after adding child"
+      command: |
+        sketchybar --add item orch.popup.test popup.widgets.orch \
+          --set orch.popup.test label="test" && \
+        sleep 1 && \
+        sketchybar --query widgets.orch | python3 -c "import json,sys; d=json.load(sys.stdin); assert 'popup' in d, 'no popup key'; print('PASS: popup key present')" && \
+        sketchybar --remove orch.popup.test
+      expected: "PASS: popup key present"
+
+    - description: "Popup toggles on via CLI"
+      command: |
+        sketchybar --add item orch.popup.test2 popup.widgets.orch \
+          --set orch.popup.test2 label="test" && \
+        sketchybar --set widgets.orch popup.drawing=on && \
+        sleep 1 && \
+        sketchybar --query widgets.orch | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['popup']['drawing'] == 'on', 'not on'; print('PASS: popup drawing=on')" && \
+        sketchybar --set widgets.orch popup.drawing=off && \
+        sketchybar --remove orch.popup.test2
+      expected: "PASS: popup drawing=on"
+
+  manual_verification:
+    - description: "Click orch widget in sketchybar bar — popup should appear with Daemon Health, Account Usage, Active Agents sections"
+      steps:
+        - "Click the orch widget (robot icon + count) in the left side of the bar"
+        - "Popup should open showing 3 sections with traffic-light indicators"
+        - "Moving mouse away from popup should close it"
+        - "Clicking again should toggle open/close"
+
+  reproduction_verified: >
+    Programmatically verified: popup opens when toggled via CLI, popup items position
+    correctly under the orch item, screenshot confirms visual rendering. Physical click
+    verification requires manual test by user.
