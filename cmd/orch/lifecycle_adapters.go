@@ -6,6 +6,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/agent"
@@ -221,6 +222,47 @@ func (a *workspaceAdapter) Remove(workspacePath string) error {
 
 func (a *workspaceAdapter) HasLandedArtifacts(workspacePath, projectDir string) (bool, error) {
 	return spawn.HasLandedArtifacts(workspacePath, projectDir)
+}
+
+func (a *workspaceAdapter) CopyBrief(workspacePath, beadsID, projectDir string) error {
+	briefSrc := filepath.Join(workspacePath, "BRIEF.md")
+	content, err := os.ReadFile(briefSrc)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // Not all agents produce briefs
+		}
+		return err
+	}
+	briefsDir := filepath.Join(projectDir, ".kb", "briefs")
+	if err := os.MkdirAll(briefsDir, 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(briefsDir, beadsID+".md"), content, 0644)
+}
+
+func (a *workspaceAdapter) CleanStaleBriefs(projectDir string, maxAge time.Duration) error {
+	briefsDir := filepath.Join(projectDir, ".kb", "briefs")
+	entries, err := os.ReadDir(briefsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	cutoff := time.Now().Add(-maxAge)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().Before(cutoff) {
+			os.Remove(filepath.Join(briefsDir, entry.Name()))
+		}
+	}
+	return nil
 }
 
 func (a *workspaceAdapter) ScanWorkspaces(projectDir string) ([]agent.WorkspaceInfo, error) {

@@ -175,6 +175,8 @@ type mockWorkspaceManager struct {
 	removed          []string
 	workspaces       map[string][]WorkspaceInfo // projectDir → workspaces
 	landedArtifacts  map[string]bool            // workspacePath → has artifacts
+	briefsCopied     map[string]string          // beadsID → workspacePath
+	briefsCleaned    []string                   // projectDirs cleaned
 	failOn           map[string]error
 }
 
@@ -185,6 +187,7 @@ func newMockWorkspaceManager() *mockWorkspaceManager {
 		sessionIDs:      make(map[string]string),
 		workspaces:      make(map[string][]WorkspaceInfo),
 		landedArtifacts: make(map[string]bool),
+		briefsCopied:    make(map[string]string),
 		failOn:          make(map[string]error),
 	}
 }
@@ -237,6 +240,22 @@ func (m *mockWorkspaceManager) HasLandedArtifacts(workspacePath, projectDir stri
 		return false, err
 	}
 	return m.landedArtifacts[workspacePath], nil
+}
+
+func (m *mockWorkspaceManager) CopyBrief(workspacePath, beadsID, projectDir string) error {
+	if err, ok := m.failOn["copy_brief:"+workspacePath]; ok {
+		return err
+	}
+	m.briefsCopied[beadsID] = workspacePath
+	return nil
+}
+
+func (m *mockWorkspaceManager) CleanStaleBriefs(projectDir string, maxAge time.Duration) error {
+	if err, ok := m.failOn["clean_stale_briefs:"+projectDir]; ok {
+		return err
+	}
+	m.briefsCleaned = append(m.briefsCleaned, projectDir)
+	return nil
 }
 
 // --- Helper to build a standard test LifecycleManager ---
@@ -1224,6 +1243,148 @@ func TestComplete_TimestampSet(t *testing.T) {
 
 	if event.Timestamp.Before(before) || event.Timestamp.After(after) {
 		t.Error("timestamp should be within test execution window")
+	}
+}
+
+// --- Brief Copy Tests ---
+
+func TestComplete_CopiesBrief(t *testing.T) {
+	mgr, _, _, _, _, wm := testManager()
+	agent := testAgent()
+	wm.existing[agent.WorkspacePath] = true
+
+	event, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	if !event.Success {
+		t.Error("expected Success=true")
+	}
+
+	// Brief should be copied using beads ID
+	if src, ok := wm.briefsCopied[agent.BeadsID]; !ok {
+		t.Error("brief was NOT copied — expected CopyBrief to be called")
+	} else if src != agent.WorkspacePath {
+		t.Errorf("brief copied from wrong workspace: got %q, want %q", src, agent.WorkspacePath)
+	}
+}
+
+func TestComplete_BriefCopyBeforeArchive(t *testing.T) {
+	mgr, _, _, _, _, wm := testManager()
+	agent := testAgent()
+	wm.existing[agent.WorkspacePath] = true
+
+	event, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	// Find the positions of copy_brief and archive in effects
+	briefIdx := -1
+	archiveIdx := -1
+	for i, e := range event.Effects {
+		if e.Subsystem == "workspace" && e.Operation == "copy_brief" {
+			briefIdx = i
+		}
+		if e.Subsystem == "workspace" && e.Operation == "archive" {
+			archiveIdx = i
+		}
+	}
+
+	if briefIdx == -1 {
+		t.Fatal("copy_brief effect not found")
+	}
+	if archiveIdx == -1 {
+		t.Fatal("archive effect not found")
+	}
+	if briefIdx >= archiveIdx {
+		t.Errorf("copy_brief (idx=%d) must happen BEFORE archive (idx=%d)", briefIdx, archiveIdx)
+	}
+}
+
+func TestComplete_BriefCopyFails_NonCriticalWarning(t *testing.T) {
+	mgr, _, _, _, _, wm := testManager()
+	agent := testAgent()
+	wm.existing[agent.WorkspacePath] = true
+	wm.failOn["copy_brief:"+agent.WorkspacePath] = fmt.Errorf("disk full")
+
+	event, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	if !event.Success {
+		t.Error("expected Success=true — brief copy is non-critical")
+	}
+	if len(event.Warnings) == 0 {
+		t.Error("expected warning about brief copy failure")
+	}
+}
+
+func TestComplete_NoWorkspace_SkipsBriefCopy(t *testing.T) {
+	mgr, _, _, _, _, wm := testManager()
+	agent := testAgent()
+	agent.WorkspacePath = ""
+	agent.WorkspaceName = ""
+
+	_, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	if len(wm.briefsCopied) != 0 {
+		t.Errorf("expected no brief copy when no workspace, got %v", wm.briefsCopied)
+	}
+}
+
+func TestComplete_NoBeadsID_SkipsBriefCopy(t *testing.T) {
+	mgr, _, _, _, _, wm := testManager()
+	agent := testAgent()
+	agent.BeadsID = ""
+
+	_, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	if len(wm.briefsCopied) != 0 {
+		t.Errorf("expected no brief copy when no beads ID, got %v", wm.briefsCopied)
+	}
+}
+
+func TestComplete_CleansStaleBriefs(t *testing.T) {
+	mgr, _, _, _, _, wm := testManager()
+	agent := testAgent()
+	wm.existing[agent.WorkspacePath] = true
+
+	event, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	if !event.Success {
+		t.Error("expected Success=true")
+	}
+
+	if len(wm.briefsCleaned) != 1 || wm.briefsCleaned[0] != agent.ProjectDir {
+		t.Errorf("expected stale briefs cleanup for %s, got %v", agent.ProjectDir, wm.briefsCleaned)
+	}
+}
+
+func TestComplete_CleanStaleBriefsFails_NonCritical(t *testing.T) {
+	mgr, _, _, _, _, wm := testManager()
+	agent := testAgent()
+	wm.existing[agent.WorkspacePath] = true
+	wm.failOn["clean_stale_briefs:"+agent.ProjectDir] = fmt.Errorf("permission denied")
+
+	event, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	if !event.Success {
+		t.Error("expected Success=true — brief cleanup is non-critical")
 	}
 }
 

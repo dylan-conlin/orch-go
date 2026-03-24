@@ -104,6 +104,15 @@ type WorkspaceManager interface {
 	// and returns metadata from their manifests. Used by DetectOrphans.
 	ScanWorkspaces(projectDir string) ([]WorkspaceInfo, error)
 
+	// CopyBrief copies BRIEF.md from the workspace to .kb/briefs/{beadsID}.md
+	// in the project directory. Returns nil if BRIEF.md doesn't exist (not all
+	// agents produce briefs). Must be called BEFORE Archive moves the workspace.
+	CopyBrief(workspacePath, beadsID, projectDir string) error
+
+	// CleanStaleBriefs removes briefs older than maxAge from .kb/briefs/.
+	// Prevents unbounded accumulation (defect class 3).
+	CleanStaleBriefs(projectDir string, maxAge time.Duration) error
+
 	// HasLandedArtifacts checks if an agent's workspace has committed work
 	// (git commits since the baseline SHA from AGENT_MANIFEST.json).
 	// Used to detect agents that crashed after doing work but before Phase: Complete.

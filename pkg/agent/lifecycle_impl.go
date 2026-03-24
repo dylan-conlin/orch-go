@@ -152,8 +152,9 @@ func (m *lifecycleManager) Abandon(agent AgentRef, reason string) (*TransitionEv
 //  2. [non-critical] beads: remove orch:agent label (prevents ghost agent visibility)
 //  3. [non-critical] tmux: kill window (if exists)
 //  4. [non-critical] opencode: delete session (if exists)
-//  5. [non-critical] workspace: archive (move to archived/)
-//  6. [non-critical] events: log agent.completed
+//  5. [non-critical] workspace: copy BRIEF.md to .kb/briefs/ (before archive)
+//  6. [non-critical] workspace: archive (move to archived/)
+//  7. [non-critical] workspace: clean stale briefs (>30 days)
 func (m *lifecycleManager) Complete(agent AgentRef, reason string) (*TransitionEvent, error) {
 	event := &TransitionEvent{
 		Transition: TransitionComplete,
@@ -267,10 +268,24 @@ func (m *lifecycleManager) runCompletionEffects(event *TransitionEvent, agent Ag
 	// 3-4. Tear down infrastructure (tmux + opencode).
 	m.cleanInfrastructure(event, agent)
 
-	// 5. Archive workspace if it exists.
+	// 5. Copy BRIEF.md to .kb/briefs/ before archiving (not all agents produce briefs).
+	if agent.WorkspacePath != "" && agent.BeadsID != "" {
+		m.runEffect(event, "workspace", "copy_brief", false, func() error {
+			return m.workspace.CopyBrief(agent.WorkspacePath, agent.BeadsID, agent.ProjectDir)
+		})
+	}
+
+	// 6. Archive workspace if it exists.
 	if agent.WorkspacePath != "" {
 		m.runEffect(event, "workspace", "archive", false, func() error {
 			return m.workspace.Archive(agent.WorkspacePath)
+		})
+	}
+
+	// 7. Clean stale briefs (>30 days) to prevent accumulation.
+	if agent.ProjectDir != "" {
+		m.runEffect(event, "workspace", "clean_stale_briefs", false, func() error {
+			return m.workspace.CleanStaleBriefs(agent.ProjectDir, 30*24*time.Hour)
 		})
 	}
 
