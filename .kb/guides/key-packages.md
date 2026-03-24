@@ -73,6 +73,7 @@
 - Work graph for daemon prioritization
 - Git-based ground-truth metrics (merge rate, net code impact)
 - Model trust scores with decay tracking
+- Thread-first orient: leads with active thread state, then evidence/operations
 
 ## pkg/orch/ (Spawn Pipeline & Completion)
 
@@ -249,6 +250,11 @@
 
 - Living threads — multi-session accumulating knowledge artifacts
 - Captures insight as it forms for comprehension
+- Lifecycle states: `forming`, `active`, `converged`, `subsumed` (backward-compatible with `open`/`resolved`)
+- Relational frontmatter: `spawned_from`, `spawned`, `active_work`, `resolved_by`
+- `BackPropagateCompletion()`: on `orch complete`, moves beads IDs from `active_work` to `resolved_by`
+- `CreateWithParent()`: child thread creation with bidirectional parent/child links
+- `LinkWork()`: connect beads issues to threads (used by `spawn --thread`)
 
 ## pkg/port/ (Port Allocation)
 

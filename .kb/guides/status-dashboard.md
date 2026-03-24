@@ -149,6 +149,8 @@ Or use `orch doctor` which checks all three.
 | `GET /api/beads/stats` | Issue counts (ready, blocked, open) |
 | `GET /api/usage` | Claude Max usage percentage |
 | `GET /api/daemon/status` | Daemon running state |
+| `GET /api/briefs/:beads-id` | BRIEF.md content and read status for review queue |
+| `POST /api/briefs/:beads-id` | Mark a brief as read (UI-only state, not comprehension gate) |
 
 ---
 

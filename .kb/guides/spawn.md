@@ -352,6 +352,7 @@ Default tier is determined by skill:
 
 | Flag | Purpose |
 |------|---------|
+| `--thread <slug>` | Link spawned work to a living thread (adds beads ID to thread's active_work) |
 | `--design-workspace <name>` | Design workspace handoff from ui-design-session to feature-impl |
 | `--settings <path>` | Path to settings.json for Claude CLI worker hook isolation |
 

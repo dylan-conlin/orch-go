@@ -182,6 +182,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `--verify-level` | Verification level override (V0-V3) |
 | `--review-tier` | Review tier override (auto/scan/review/deep) |
 | `--reason` | Reason for override flags (min 10 chars) |
+| `--thread` | Thread slug to link spawned work to (adds beads ID to thread's active_work) |
 | `--design-workspace` | Design workspace handoff from ui-design-session |
 | `--settings` | Path to settings.json for worker hook isolation |
 
