@@ -23,6 +23,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
+	"github.com/dylan-conlin/orch-go/pkg/thread"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -64,6 +65,7 @@ var (
 	spawnExploreBreadth     int    // Max parallel subproblem workers (default 3)
 	spawnExploreDepth       int    // Max iteration depth for judge-triggered re-exploration (default 1)
 	spawnExploreJudgeModel  string // Model for judge agent (cross-model judging experiment)
+	spawnThread             string // Thread slug to link spawned work to
 	spawnModeSet            bool   // Tracks whether --mode was explicitly set
 	spawnValidationSet      bool   // Tracks whether --validation was explicitly set
 )
@@ -199,6 +201,7 @@ func init() {
 	spawnCmd.Flags().IntVar(&spawnExploreBreadth, "explore-breadth", 3, "Max parallel subproblem workers for exploration mode (default 3)")
 	spawnCmd.Flags().IntVar(&spawnExploreDepth, "explore-depth", 1, "Max iteration depth for exploration mode (1=single pass, N=judge triggers up to N-1 re-explorations)")
 	spawnCmd.Flags().StringVar(&spawnExploreJudgeModel, "explore-judge-model", "", "Model for exploration judge agent (cross-model judging, e.g., 'sonnet' when workers use 'opus')")
+	spawnCmd.Flags().StringVar(&spawnThread, "thread", "", "Thread slug to link this work to (adds beads ID to thread's active_work)")
 }
 
 func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless bool, tmux bool, attach bool) error {
@@ -342,6 +345,16 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	beadsID, err := orch.SetupBeadsTracking(skillName, task, projectName, spawnIssue, isOrchestrator, isMetaOrchestrator, serverURL, spawnNoTrack, workspaceName, orch.CreateBeadsIssue, projectDir)
 	if err != nil {
 		return err
+	}
+
+	// 4-thread. Link work to thread if --thread was specified
+	if spawnThread != "" && beadsID != "" {
+		threadDir := filepath.Join(projectDir, ".kb", "threads")
+		if err := thread.LinkWork(threadDir, spawnThread, beadsID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to link thread %s -> %s: %v\n", spawnThread, beadsID, err)
+		} else {
+			fmt.Printf("Linked thread %s -> %s\n", spawnThread, beadsID)
+		}
 	}
 
 	// 4a. Cross-repo auto-labeling: when --workdir targets a different project

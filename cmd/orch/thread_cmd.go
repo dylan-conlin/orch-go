@@ -38,6 +38,8 @@ Examples:
   orch thread resolve enforcement-comprehension --to ".kb/models/enforcement.md"`,
 }
 
+var threadNewFrom string
+
 var threadNewCmd = &cobra.Command{
 	Use:   `new "title" ["initial entry"]`,
 	Short: "Create a new thread",
@@ -46,9 +48,13 @@ var threadNewCmd = &cobra.Command{
 Optionally provide an initial entry as the second argument.
 If no entry is provided, creates the thread with an empty first entry.
 
+Use --from to spawn a child thread from an existing parent thread.
+The child gets a spawned_from reference and the parent's spawned list is updated.
+
 Examples:
   orch thread new "How enforcement and comprehension relate"
-  orch thread new "Daemon capacity" "First thought about this..."`,
+  orch thread new "Daemon capacity" "First thought about this..."
+  orch thread new --from coordination-primitives "Route vs sequence" "Exploring the distinction..."`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		title := args[0]
@@ -62,14 +68,23 @@ Examples:
 			return err
 		}
 
-		result, err := thread.CreateOrAppend(dir, title, entry)
+		var result *thread.Result
+		if threadNewFrom != "" {
+			result, err = thread.CreateWithParent(dir, title, entry, threadNewFrom)
+		} else {
+			result, err = thread.CreateOrAppend(dir, title, entry)
+		}
 		if err != nil {
 			return err
 		}
 
 		relPath, _ := filepath.Rel(mustGetwd(), result.FilePath)
 		if result.Created {
-			fmt.Printf("Thread created: %s\n", relPath)
+			if threadNewFrom != "" {
+				fmt.Printf("Thread created: %s (from %s)\n", relPath, threadNewFrom)
+			} else {
+				fmt.Printf("Thread created: %s\n", relPath)
+			}
 		} else {
 			fmt.Printf("Thread already exists, appended: %s (%d entries)\n", relPath, result.EntryCount)
 		}
@@ -140,7 +155,7 @@ Examples:
 		for _, t := range threads {
 			statusIcon := threadStatusIcon(t.Status)
 			staleFlag := ""
-			if t.Status == "open" {
+			if thread.IsActive(t.Status) {
 				if updated, err := time.Parse("2006-01-02", t.Updated); err == nil {
 					age := int(today.Sub(updated).Hours() / 24)
 					if age > 7 {
@@ -223,22 +238,60 @@ Examples:
 	},
 }
 
+var threadLinkCmd = &cobra.Command{
+	Use:   "link <thread-slug> <beads-id>",
+	Short: "Link a thread to active work (beads issue)",
+	Long: `Add a beads issue ID to a thread's active_work list.
+
+This creates a bidirectional connection between a thread and spawned work,
+so completion can back-propagate to the thread.
+
+Examples:
+  orch thread link coordination-primitives orch-go-abc12
+  orch thread link daemon-capacity orch-go-def34`,
+	Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		slug := args[0]
+		beadsID := args[1]
+
+		dir, err := threadsDir()
+		if err != nil {
+			return err
+		}
+
+		if err := thread.LinkWork(dir, slug, beadsID); err != nil {
+			return err
+		}
+
+		fmt.Printf("Linked %s -> %s\n", slug, beadsID)
+		return nil
+	},
+}
+
 func init() {
 	threadCmd.AddCommand(threadNewCmd)
 	threadCmd.AddCommand(threadAppendCmd)
 	threadCmd.AddCommand(threadListCmd)
 	threadCmd.AddCommand(threadShowCmd)
 	threadCmd.AddCommand(threadResolveCmd)
+	threadCmd.AddCommand(threadLinkCmd)
 
 	threadCmd.PersistentFlags().StringVar(&threadWorkdir, "workdir", "", "Target project directory (for cross-project thread operations)")
+	threadNewCmd.Flags().StringVar(&threadNewFrom, "from", "", "Parent thread slug (creates child thread with spawned_from reference)")
 	threadResolveCmd.Flags().StringVar(&threadResolveTo, "to", "", "Target artifact path (e.g., .kb/models/enforcement.md)")
 }
 
 func threadStatusIcon(status string) string {
 	switch status {
-	case "open":
+	case thread.StatusForming:
 		return "[~]"
-	case "resolved":
+	case thread.StatusActive:
+		return "[*]"
+	case thread.StatusConverged:
+		return "[x]"
+	case thread.StatusSubsumed:
+		return "[>]"
+	case thread.StatusResolved:
 		return "[x]"
 	default:
 		return "[?]"
