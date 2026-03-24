@@ -1,0 +1,101 @@
+---
+# Verification Specification for Sketchybar Widget Design
+# Issue: orch-go-7c4s1
+# Type: Design/Architecture (no code changes)
+
+verification_type: design
+outcome: success
+
+# Design artifacts produced
+artifacts:
+  investigation:
+    path: .kb/investigations/2026-03-24-inv-design-sketchybar-widget-live-daemon.md
+    status: complete
+    sections_filled:
+      - D.E.K.N. Summary
+      - 5 Findings with evidence and sources
+      - Synthesis with key insights
+      - Structured Uncertainty
+      - Implementation Recommendations with authority classification
+      - Proposed Widget Layout (bar + popup mockups)
+      - References with file paths
+
+  synthesis:
+    path: .orch/workspace/og-arch-design-sketchybar-widget-24mar-c804/SYNTHESIS.md
+    status: complete
+    has_plain_language_summary: true
+
+# Design forks navigated
+forks_identified: 5
+forks_navigated: 5
+forks:
+  - name: Data Source
+    recommendation: "Hybrid: daemon-status.json for bar (0ms), orch status --json for popup (2-5s)"
+    substrate: "No Local Agent State constraint + performance budget"
+
+  - name: Update Interval
+    recommendation: "5s file read poll (daemon writes every ~30s)"
+    substrate: "File reads are <1ms, matches daemon poll cadence"
+
+  - name: Bar Display Format
+    recommendation: "active/max with worst-signal-wins color"
+    substrate: "health_signals.go already defines 6 traffic-light thresholds"
+
+  - name: Color Thresholds
+    recommendation: "Reuse health_signals.go thresholds directly"
+    substrate: "Already codified and tested in Go code"
+
+  - name: Popup Content
+    recommendation: "3 sections: daemon health, account usage, agent list"
+    substrate: "render.lua proves multi-section popup pattern works"
+
+# Questions surfaced (3 blocking)
+questions:
+  - id: orch-go-sagnf
+    authority: judgment
+    text: "Bar display: active/max OR active-only with color encoding health?"
+
+  - id: orch-go-iliu3
+    authority: judgment
+    text: "Comprehension:pending in bar (requires bd CLI call) or popup-only?"
+
+  - id: orch-go-9a0v6
+    authority: architectural
+    text: "Event provider script placement: orch-go repo or sketchybar config?"
+
+# Implementation decomposition
+implementation_issues:
+  - id: orch-go-biu97
+    title: "Rewrite orch_status.sh event provider"
+    type: component
+
+  - id: orch-go-ggdyj
+    title: "Rewrite orch.lua bar display"
+    type: component
+
+  - id: orch-go-fqpw1
+    title: "Rewrite orch.lua popup"
+    type: component
+
+  - id: orch-go-vryep
+    title: "Integration verification"
+    type: integration
+    depends_on: [orch-go-biu97, orch-go-ggdyj, orch-go-fqpw1]
+
+# Migration status
+migration_status:
+  designed: "Sketchybar widget with hybrid data source (daemon-status.json + orch status --json)"
+  implemented: none
+  deployed: none
+  remaining: "4 implementation issues created (orch-go-biu97, orch-go-ggdyj, orch-go-fqpw1, orch-go-vryep)"
+
+# Manual verification
+manual_checks:
+  - description: "Investigation has 5 findings with evidence and source references"
+    verified: true
+  - description: "Design uses existing daemon-status.json — no new Go code needed"
+    verified: true
+  - description: "Health signal thresholds from health_signals.go are reusable"
+    verified: true
+  - description: "Existing orch.lua is confirmed broken (references removed agent-registry.json)"
+    verified: true
