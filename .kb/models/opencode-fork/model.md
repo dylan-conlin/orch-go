@@ -2,7 +2,7 @@
 
 **Domain:** Dylan's OpenCode fork at `~/Documents/personal/opencode`
 **Created:** 2026-02-13
-**Last Updated:** 2026-03-21
+**Last Updated:** 2026-03-24
 **Source:** Investigation `2026-02-13-inv-build-model-opencode-fork.md` + fork's own `2026-02-11-inv-opencode-fork-resource-audit-investigate.md`
 
 ---
@@ -350,18 +350,55 @@ server.instance.disposed
 
 ---
 
+## Fork Relevance Assessment (as of 2026-03-24)
+
+### Backend Bifurcation
+
+The fork's relevance has **bifurcated by backend**. Since the claude backend became primary (Feb 19, 2026 — Anthropic OAuth ban inverted primary/secondary roles), the fork is only needed for the opencode backend path:
+
+| Backend | Primary? | Uses OpenCode? | Needs Fork? |
+|---------|----------|----------------|-------------|
+| **claude** (Claude Code CLI) | YES (default) | NO | NO |
+| **opencode** (HTTP API) | NO (secondary, multi-model) | YES | YES (metadata, TTL, ORCH_WORKER, memory mgmt) |
+
+**Quantified dependency:**
+- 2 of 9 orch-go API integrations require fork-specific features (session create with metadata/TTL, metadata PATCH)
+- ~800 LoC in orch-go depends on fork-specific features
+- ~3,600 LoC total in `pkg/opencode/` depends on OpenCode (any version)
+- Primary backend (claude) has zero OpenCode dependency
+
+### Maintenance Cost
+
+- **975 commits behind** upstream (5 weeks drift since Feb 18 sync)
+- **32 custom commits** to cherry-pick on each rebase
+- Upstream restructured `src/` into subdirectories — future rebases will have path conflicts
+- None of the 4 fork-critical features (metadata, TTL, ORCH_WORKER, LRU eviction) have been upstreamed
+
+### Strategic Options
+
+| Option | Effort | What's Lost | When Appropriate |
+|--------|--------|-------------|------------------|
+| **Keep fork, sync regularly** | HIGH | Nothing | Multi-model actively needed |
+| **Keep fork, stop syncing** | LOW | Upstream improvements, security patches | Short-term acceptable |
+| **Drop opencode backend** | MEDIUM (~3,600 LoC removal) | Multi-model, OpenCode plugins, headless monitoring | Multi-model not used |
+| **Upstream custom changes** | HIGH (PRs + maintenance) | Nothing long-term | Ideal but uncertain acceptance |
+
+---
+
 ## What This Model Enables / Constrains
 
 **Enables:**
 - Planning concrete implementation of the three features in the fork
 - Understanding what orch-go changes depend on what OpenCode changes
 - Estimating effort accurately (hours, not days)
+- **Deciding whether to maintain, freeze, or drop the fork** based on actual backend usage
 
 **Constrains:**
 - Must keep custom commits minimal (rebase cost)
 - Must not break upstream compatibility (fork may re-sync)
 - Session metadata schema must be generic (not orch-go-specific field names in OpenCode)
 - TTL cleanup must respect active prompts (don't delete mid-conversation)
+- **Fork maintenance is only justified while opencode backend is actively used**
 
 ---
 
@@ -392,6 +429,7 @@ server.instance.disposed
 | `probes/2026-02-18-probe-verify-session-metadata-api.md` | 2026-02-18 | CONFIRMS | Metadata persists via `Session.setMetadata`; TTL cleanup guards busy sessions; `GET /session/status` returns liveness only, not metadata |
 | `probes/2026-02-20-probe-mcp-hot-reload-production-failure.md` | 2026-02-20 | EXTENDS | Documented MCP watcher fire-and-forget race condition (double unawaited async init); fix applied and verified with regression test |
 | `probes/2026-03-21-probe-knowledge-decay-verification.md` | 2026-03-21 | CORRECTS | File paths all stale (upstream restructured src/ into subdirectories); commit count 16→32; ORCH_WORKER server-side code restored; upstream rebase incorporated 268 commits |
+| `probes/2026-03-24-probe-fork-necessity-assessment.md` | 2026-03-24 | EXTENDS | Fork relevance bifurcated by backend: claude (primary) has zero OpenCode dependency; opencode (secondary) still requires fork. 975 commits behind upstream. 2/9 API integrations need fork features. Strategic options: keep+sync, freeze, drop opencode backend, or upstream changes. |
 
 ## Auto-Linked Investigations
 
