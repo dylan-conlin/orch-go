@@ -9,14 +9,59 @@ type ModelSpec struct {
 	ModelID  string // e.g., "claude-sonnet-4-5-20250929", "gemini-2.5-flash"
 }
 
+// String returns a formatted "Provider: ModelID" string using the human-readable provider name.
+func (m ModelSpec) String() string {
+	return m.ProviderName() + ": " + m.ModelID
+}
+
 // Format returns the provider/model format string.
 func (m ModelSpec) Format() string {
 	return m.Provider + "/" + m.ModelID
 }
 
+// ModelFamily returns the model family string based on ModelID.
+// Returns "claude", "gemini", "gpt", or "deepseek".
+// For OpenAI o-series models (o3, o3-mini), returns "gpt".
+// Falls back to Provider if the family cannot be determined from ModelID.
+func (m ModelSpec) ModelFamily() string {
+	id := strings.ToLower(m.ModelID)
+	switch {
+	case strings.HasPrefix(id, "claude"):
+		return "claude"
+	case strings.HasPrefix(id, "gemini"):
+		return "gemini"
+	case strings.HasPrefix(id, "gpt"), strings.HasPrefix(id, "o3"):
+		return "gpt"
+	case strings.HasPrefix(id, "deepseek"):
+		return "deepseek"
+	default:
+		if m.Provider != "" {
+			return strings.ToLower(m.Provider)
+		}
+		return "unknown"
+	}
+}
+
 // IsAnthropicModel returns true if the model's provider is Anthropic.
 func (m ModelSpec) IsAnthropicModel() bool {
 	return strings.EqualFold(m.Provider, "anthropic")
+}
+
+// providerDisplayNames maps lowercase provider identifiers to human-readable names.
+var providerDisplayNames = map[string]string{
+	"anthropic": "Anthropic",
+	"openai":    "OpenAI",
+	"google":    "Google",
+	"deepseek":  "DeepSeek",
+}
+
+// ProviderName returns the human-readable provider name (e.g. "Anthropic", "OpenAI", "Google").
+// For unknown providers, returns the raw Provider string.
+func (m ModelSpec) ProviderName() string {
+	if name, ok := providerDisplayNames[strings.ToLower(m.Provider)]; ok {
+		return name
+	}
+	return m.Provider
 }
 
 // DefaultModel is used when no model is specified.

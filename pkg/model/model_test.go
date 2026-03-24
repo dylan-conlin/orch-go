@@ -47,7 +47,7 @@ func TestResolve_Aliases(t *testing.T) {
 		{"codex", ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}},
 		{"codex-mini", ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex-mini"}},
 		{"codex-max", ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex-max"}},
-		{"codex-latest", ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}},
+		{"codex-latest", ModelSpec{Provider: "openai", ModelID: "gpt-5.4-codex"}},
 		{"codex-5.1", ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex"}},
 		{"codex-5.2", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
 		{"CODEX", ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}},
@@ -193,6 +193,68 @@ func TestModelSpec_ProviderName(t *testing.T) {
 		t.Run(tt.spec.Format(), func(t *testing.T) {
 			if got := tt.spec.ProviderName(); got != tt.expected {
 				t.Errorf("ProviderName() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestModelSpec_ModelFamily(t *testing.T) {
+	tests := []struct {
+		spec     ModelSpec
+		expected string
+	}{
+		// Claude family
+		{ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}, "claude"},
+		{ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}, "claude"},
+		{ModelSpec{Provider: "anthropic", ModelID: "claude-haiku-4-5-20251001"}, "claude"},
+
+		// Gemini family
+		{ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}, "gemini"},
+		{ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}, "gemini"},
+		{ModelSpec{Provider: "google", ModelID: "gemini-2.5-pro"}, "gemini"},
+
+		// GPT family (includes codex and o-series)
+		{ModelSpec{Provider: "openai", ModelID: "gpt-4o"}, "gpt"},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}, "gpt"},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4-codex"}, "gpt"},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex-mini"}, "gpt"},
+		{ModelSpec{Provider: "openai", ModelID: "o3"}, "gpt"},
+		{ModelSpec{Provider: "openai", ModelID: "o3-mini"}, "gpt"},
+
+		// DeepSeek family
+		{ModelSpec{Provider: "deepseek", ModelID: "deepseek-chat"}, "deepseek"},
+		{ModelSpec{Provider: "deepseek", ModelID: "deepseek-reasoner"}, "deepseek"},
+
+		// Unknown model — falls back to provider
+		{ModelSpec{Provider: "custom", ModelID: "some-model"}, "custom"},
+		{ModelSpec{Provider: "", ModelID: "unknown"}, "unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.spec.Format(), func(t *testing.T) {
+			if got := tt.spec.ModelFamily(); got != tt.expected {
+				t.Errorf("ModelFamily() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestModelSpec_String(t *testing.T) {
+	tests := []struct {
+		spec     ModelSpec
+		expected string
+	}{
+		{ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}, "Anthropic: claude-opus-4-5-20251101"},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4-codex"}, "OpenAI: gpt-5.4-codex"},
+		{ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}, "Google: gemini-2.5-flash"},
+		{ModelSpec{Provider: "deepseek", ModelID: "deepseek-chat"}, "DeepSeek: deepseek-chat"},
+		{ModelSpec{Provider: "unknown-provider", ModelID: "some-model"}, "unknown-provider: some-model"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.spec.Format(), func(t *testing.T) {
+			if got := tt.spec.String(); got != tt.expected {
+				t.Errorf("String() = %q, want %q", got, tt.expected)
 			}
 		})
 	}
