@@ -16,6 +16,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	"github.com/dylan-conlin/orch-go/pkg/thread"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -206,6 +207,18 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 		// Signal human verification to daemon
 		if err := daemon.WriteVerificationSignal(); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to signal human verification to daemon: %v\n", err)
+		}
+	}
+
+	// Back-propagate completion to threads: move beads ID from active_work to resolved_by
+	if target.BeadsID != "" && !target.IsOrchestratorSession {
+		threadsDir := filepath.Join(target.BeadsProjectDir, ".kb", "threads")
+		if results, err := thread.BackPropagateCompletion(threadsDir, target.BeadsID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: thread back-propagation failed: %v\n", err)
+		} else if len(results) > 0 {
+			for _, r := range results {
+				fmt.Printf("Thread back-prop: %s (active_work → resolved_by)\n", r.Slug)
+			}
 		}
 	}
 
