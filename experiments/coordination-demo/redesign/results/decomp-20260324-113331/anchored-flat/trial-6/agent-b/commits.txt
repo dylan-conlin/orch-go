@@ -1,0 +1,1 @@
+d9b91cbbd feat: add FormatRate for transfer rate formatting

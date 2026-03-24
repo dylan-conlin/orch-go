@@ -1,0 +1,2 @@
+9ade750f8 feat: add FormatRate function for transfer rate formatting
+b9ede956a setup: sectioned display files

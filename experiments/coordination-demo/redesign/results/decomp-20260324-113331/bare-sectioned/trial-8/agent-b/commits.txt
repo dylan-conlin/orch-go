@@ -1,0 +1,2 @@
+69ed45aad feat: add FormatRate to pkg/display for human-readable transfer rates
+d229e9669 setup: sectioned display files

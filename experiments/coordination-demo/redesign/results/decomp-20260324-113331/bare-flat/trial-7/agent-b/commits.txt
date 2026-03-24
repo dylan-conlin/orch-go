@@ -1,0 +1,1 @@
+2d39a4e34 feat: add FormatRate to pkg/display for human-readable transfer rates

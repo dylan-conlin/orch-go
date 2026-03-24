@@ -1,0 +1,1 @@
+82418afb6 feat: add FormatRate function to pkg/display

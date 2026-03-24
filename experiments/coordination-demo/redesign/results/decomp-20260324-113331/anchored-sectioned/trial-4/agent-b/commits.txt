@@ -1,0 +1,2 @@
+347d70236 feat: add FormatRate transfer rate formatting utility
+87e08f772 setup: sectioned display files

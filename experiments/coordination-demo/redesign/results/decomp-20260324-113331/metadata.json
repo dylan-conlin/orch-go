@@ -1,0 +1,25 @@
+{
+  "timestamp": "20260324-113331",
+  "baseline_commit": "aa1bb5683881f9dd1a6375c560b939e4e249f664",
+  "model": "haiku",
+  "model_full": "claude-haiku-4-5-20251001",
+  "trials": 10,
+  "task_type": "additive",
+  "experiment": "decomposition-quality",
+  "conditions": [
+  "bare-flat",
+  "rich-flat",
+  "anchored-flat",
+  "bare-sectioned",
+  "anchored-sectioned"
+],
+  "timeout_minutes": 10,
+  "hypothesis": "Decomposition quality (task description + file structure) predicts conflict rate. Best decomposition (anchored-sectioned) should approach 0% conflict without coordination.",
+  "design": {
+    "independent_variables": ["task_description_quality", "file_structure"],
+    "task_description_levels": ["bare", "rich", "anchored"],
+    "file_structure_levels": ["flat", "sectioned"],
+    "dependent_variable": "merge_conflict_rate",
+    "coordination": "none (zero coordination across all conditions)"
+  }
+}

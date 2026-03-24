@@ -1,0 +1,10 @@
+✅ **Completion reported to beads**
+
+Task complete! I've successfully implemented the `FormatRate` function with full test coverage. The implementation:
+
+- Formats transfer rates using binary units (B/s, KiB/s, MiB/s, GiB/s)
+- Displays 1 decimal place for all non-byte units
+- Handles edge cases (zero, negative values, fractional inputs)
+- Includes 20 test cases covering boundaries, magnitudes, and edge cases
+- All tests passing
+- Changes committed to the branch

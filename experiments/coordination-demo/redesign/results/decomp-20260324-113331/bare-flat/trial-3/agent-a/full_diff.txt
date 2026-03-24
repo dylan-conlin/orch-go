@@ -1,0 +1,108 @@
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 1a699243d..e966cd624 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -92,3 +92,45 @@ func FormatDurationShort(d time.Duration) string {
+ 	}
+ 	return fmt.Sprintf("%dh", int(d.Hours()))
+ }
++
++// FormatBytes formats a byte count into a human-readable string using binary
++// units (B, KiB, MiB, GiB, TiB). Non-byte units are shown with 1 decimal place.
++// Negative values are prefixed with "-".
++func FormatBytes(bytes int64) string {
++	if bytes == 0 {
++		return "0 B"
++	}
++
++	// Handle negative values
++	negative := false
++	if bytes < 0 {
++		negative = true
++		bytes = -bytes
++	}
++
++	const (
++		KiB = 1024
++		MiB = 1024 * KiB
++		GiB = 1024 * MiB
++		TiB = 1024 * GiB
++	)
++
++	var result string
++	switch {
++	case bytes < KiB:
++		result = fmt.Sprintf("%d B", bytes)
++	case bytes < MiB:
++		result = fmt.Sprintf("%.1f KiB", float64(bytes)/float64(KiB))
++	case bytes < GiB:
++		result = fmt.Sprintf("%.1f MiB", float64(bytes)/float64(MiB))
++	case bytes < TiB:
++		result = fmt.Sprintf("%.1f GiB", float64(bytes)/float64(GiB))
++	default:
++		result = fmt.Sprintf("%.1f TiB", float64(bytes)/float64(TiB))
++	}
++
++	if negative {
++		result = "-" + result
++	}
++	return result
++}
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index fcd3fa61c..c2d3e477c 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -132,3 +132,53 @@ func TestFormatDurationShort(t *testing.T) {
+ 		}
+ 	}
+ }
++
++func TestFormatBytes(t *testing.T) {
++	tests := []struct {
++		input int64
++		want  string
++	}{
++		// Zero and small bytes
++		{0, "0 B"},
++		{1, "1 B"},
++		{512, "512 B"},
++		{1023, "1023 B"},
++		// KiB boundary
++		{1024, "1.0 KiB"},
++		{1536, "1.5 KiB"},
++		{2048, "2.0 KiB"},
++		{5120, "5.0 KiB"},
++		// MiB boundary
++		{1048576, "1.0 MiB"},
++		{1572864, "1.5 MiB"},
++		{2097152, "2.0 MiB"},
++		// GiB boundary
++		{1073741824, "1.0 GiB"},
++		{1610612736, "1.5 GiB"},
++		{2147483648, "2.0 GiB"},
++		// TiB boundary
++		{1099511627776, "1.0 TiB"},
++		{1649267441664, "1.5 TiB"},
++		{2199023255552, "2.0 TiB"},
++		// Large values
++		{5368709120, "5.0 GiB"},
++		{10995116277760, "10.0 TiB"},
++		// Between boundaries
++		{2560, "2.5 KiB"},
++		{3145728, "3.0 MiB"},
++		{536870912, "512.0 MiB"},
++		// Negative values
++		{-512, "-512 B"},
++		{-1024, "-1.0 KiB"},
++		{-1048576, "-1.0 MiB"},
++		{-1073741824, "-1.0 GiB"},
++		{-1099511627776, "-1.0 TiB"},
++		{-1536, "-1.5 KiB"},
++	}
++	for _, tt := range tests {
++		got := FormatBytes(tt.input)
++		if got != tt.want {
++			t.Errorf("FormatBytes(%d) = %q, want %q", tt.input, got, tt.want)
++		}
++	}
++}

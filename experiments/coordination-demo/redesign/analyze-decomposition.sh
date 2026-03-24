@@ -47,7 +47,7 @@ for condition in bare-flat rich-flat anchored-flat bare-sectioned anchored-secti
     no_change=0
     total=0
 
-    for trial_dir in "$condition_dir"trial-*/; do
+    for trial_dir in "$condition_dir"/trial-*/; do
         [ ! -d "$trial_dir" ] && continue
         total=$((total + 1))
 
@@ -126,7 +126,7 @@ for condition in bare-flat rich-flat anchored-flat bare-sectioned anchored-secti
 
     durations_a=""
     durations_b=""
-    for trial_dir in "$condition_dir"trial-*/; do
+    for trial_dir in "$condition_dir"/trial-*/; do
         [ ! -d "$trial_dir" ] && continue
         da=$(cat "$trial_dir/agent-a/duration_seconds" 2>/dev/null || echo "0")
         db=$(cat "$trial_dir/agent-b/duration_seconds" 2>/dev/null || echo "0")
@@ -171,7 +171,7 @@ for condition in bare-flat rich-flat anchored-flat bare-sectioned anchored-secti
     hunk_starts_a=""
     hunk_starts_b=""
 
-    for trial_dir in "$condition_dir"trial-*/; do
+    for trial_dir in "$condition_dir"/trial-*/; do
         [ ! -d "$trial_dir" ] && continue
         trial=$(basename "$trial_dir" | sed 's/trial-//')
 
@@ -252,7 +252,7 @@ for condition in bare-flat rich-flat anchored-flat bare-sectioned anchored-secti
     condition_dir="$RESULTS_DIR/$condition"
     [ ! -d "$condition_dir" ] && continue
     conflicts=0; total=0
-    for trial_dir in "$condition_dir"trial-*/; do
+    for trial_dir in "$condition_dir"/trial-*/; do
         [ ! -d "$trial_dir" ] && continue
         total=$((total + 1))
         if [ -f "$trial_dir/merge_result.csv" ]; then

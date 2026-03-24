@@ -1,0 +1,2 @@
+f3b7f2eb4 feat: add FormatBytes utility for human-readable size formatting
+3b0d5e7e9 setup: sectioned display files

@@ -1,0 +1,156 @@
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 1a699243d..92f0ab9e4 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -10,6 +10,8 @@ import (
+ 	"time"
+ )
+ 
++// === String Operations ===
++
+ // Truncate truncates s to maxLen characters, appending "..." if truncated.
+ func Truncate(s string, maxLen int) string {
+ 	if len(s) <= maxLen {
+@@ -44,6 +46,8 @@ func StripANSI(s string) string {
+ 	return ansiRegex.ReplaceAllString(s, "")
+ }
+ 
++// === Duration Formatting ===
++
+ // FormatDuration formats a duration as a human-readable string.
+ // Output style: "0s", "45s", "3m 12s", "2h 15m", "3d 5h".
+ func FormatDuration(d time.Duration) string {
+@@ -92,3 +96,49 @@ func FormatDurationShort(d time.Duration) string {
+ 	}
+ 	return fmt.Sprintf("%dh", int(d.Hours()))
+ }
++
++// === Size Formatting ===
++
++// FormatBytes formats a byte count into a human-readable string using binary
++// units. Output style: "512 B", "1.0 KiB", "1.5 MiB", "1.0 GiB", "1.0 TiB".
++// Negative values are formatted with a leading "-".
++func FormatBytes(bytes int64) string {
++	if bytes == 0 {
++		return "0 B"
++	}
++
++	// Handle negative values
++	negative := bytes < 0
++	if negative {
++		bytes = -bytes
++	}
++
++	const (
++		b   = 1
++		kib = 1024 * b
++		mib = 1024 * kib
++		gib = 1024 * mib
++		tib = 1024 * gib
++	)
++
++	var result string
++	switch {
++	case bytes < kib:
++		result = fmt.Sprintf("%d B", bytes)
++	case bytes < mib:
++		result = fmt.Sprintf("%.1f KiB", float64(bytes)/float64(kib))
++	case bytes < gib:
++		result = fmt.Sprintf("%.1f MiB", float64(bytes)/float64(mib))
++	case bytes < tib:
++		result = fmt.Sprintf("%.1f GiB", float64(bytes)/float64(gib))
++	default:
++		result = fmt.Sprintf("%.1f TiB", float64(bytes)/float64(tib))
++	}
++
++	if negative {
++		result = "-" + result
++	}
++	return result
++}
++
++// === Rate Formatting ===
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index fcd3fa61c..28a1e08fb 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -5,6 +5,8 @@ import (
+ 	"time"
+ )
+ 
++// === String Operation Tests ===
++
+ func TestTruncate(t *testing.T) {
+ 	tests := []struct {
+ 		input  string
+@@ -84,6 +86,8 @@ func TestStripANSI(t *testing.T) {
+ 	}
+ }
+ 
++// === Duration Formatting Tests ===
++
+ func TestFormatDuration(t *testing.T) {
+ 	tests := []struct {
+ 		input time.Duration
+@@ -132,3 +136,61 @@ func TestFormatDurationShort(t *testing.T) {
+ 		}
+ 	}
+ }
++
++// === Size Formatting Tests ===
++
++func TestFormatBytes(t *testing.T) {
++	tests := []struct {
++		input int64
++		want  string
++	}{
++		// Zero
++		{0, "0 B"},
++		// Small bytes (< 1 KiB)
++		{1, "1 B"},
++		{512, "512 B"},
++		{1023, "1023 B"},
++		// Exact boundary: 1 KiB
++		{1024, "1.0 KiB"},
++		{1536, "1.5 KiB"},
++		{2048, "2.0 KiB"},
++		// Between KiB and MiB
++		{10240, "10.0 KiB"},
++		{102400, "100.0 KiB"},
++		// Exact boundary: 1 MiB
++		{1048576, "1.0 MiB"},
++		{1572864, "1.5 MiB"},
++		{2097152, "2.0 MiB"},
++		// Between MiB and GiB
++		{10485760, "10.0 MiB"},
++		{104857600, "100.0 MiB"},
++		// Exact boundary: 1 GiB
++		{1073741824, "1.0 GiB"},
++		{1610612736, "1.5 GiB"},
++		{2147483648, "2.0 GiB"},
++		// Between GiB and TiB
++		{10737418240, "10.0 GiB"},
++		{107374182400, "100.0 GiB"},
++		// Exact boundary: 1 TiB
++		{1099511627776, "1.0 TiB"},
++		{1649267441664, "1.5 TiB"},
++		{2199023255552, "2.0 TiB"},
++		// Large values
++		{10995116277760, "10.0 TiB"},
++		// Negative values
++		{-512, "-512 B"},
++		{-1024, "-1.0 KiB"},
++		{-1048576, "-1.0 MiB"},
++		{-1073741824, "-1.0 GiB"},
++		{-1099511627776, "-1.0 TiB"},
++		{-1536, "-1.5 KiB"},
++	}
++	for _, tt := range tests {
++		got := FormatBytes(tt.input)
++		if got != tt.want {
++			t.Errorf("FormatBytes(%d) = %q, want %q", tt.input, got, tt.want)
++		}
++	}
++}
++
++// === Rate Formatting Tests ===

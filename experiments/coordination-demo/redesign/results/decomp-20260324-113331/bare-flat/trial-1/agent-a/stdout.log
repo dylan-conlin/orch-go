@@ -1,0 +1,1 @@
+✅ **Phase: Complete** — Added `FormatBytes` function to `pkg/display` with comprehensive test coverage for binary unit formatting (B, KiB, MiB, GiB, TiB). All tests passing.

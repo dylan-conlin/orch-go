@@ -1,0 +1,7 @@
+✓ **Completion reported to beads**
+
+The task is complete. FormatRate utility has been successfully implemented and tested:
+- Function added with full specification compliance
+- 18 comprehensive test cases covering boundaries, negatives, and all unit ranges
+- All tests passing
+- Changes committed to the branch
