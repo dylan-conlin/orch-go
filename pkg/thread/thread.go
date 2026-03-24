@@ -546,7 +546,7 @@ func parseFrontmatterLine(thread *Thread, line string) {
 	case "title":
 		thread.Title = value
 	case "status":
-		thread.Status = value
+		thread.Status = NormalizeStatus(value)
 	case "created":
 		thread.Created = value
 	case "updated":

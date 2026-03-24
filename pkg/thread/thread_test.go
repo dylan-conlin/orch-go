@@ -218,8 +218,8 @@ Resolved entry.
 	if threads[0].Title != "Thread one" {
 		t.Errorf("expected most recently updated first, got %q", threads[0].Title)
 	}
-	if threads[0].Status != "open" {
-		t.Errorf("expected open status, got %q", threads[0].Status)
+	if threads[0].Status != StatusForming {
+		t.Errorf("expected forming status, got %q", threads[0].Status)
 	}
 	if threads[1].Status != "resolved" {
 		t.Errorf("expected resolved status, got %q", threads[1].Status)
@@ -549,8 +549,8 @@ This is line two.
 	if thread.Title != "Test parse" {
 		t.Errorf("title = %q, want 'Test parse'", thread.Title)
 	}
-	if thread.Status != "open" {
-		t.Errorf("status = %q, want 'open'", thread.Status)
+	if thread.Status != StatusForming {
+		t.Errorf("status = %q, want %q (normalized from 'open')", thread.Status, StatusForming)
 	}
 	if thread.Created != "2026-03-01" {
 		t.Errorf("created = %q, want '2026-03-01'", thread.Created)
