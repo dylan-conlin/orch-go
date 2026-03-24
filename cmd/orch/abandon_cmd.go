@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/agent"
+	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/identity"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -222,6 +223,16 @@ func runAbandon(beadsID, reason, workdir string, force bool) error {
 				fmt.Fprintf(os.Stderr, "Error: %s/%s failed: %v\n", e.Subsystem, e.Operation, e.Error)
 			}
 		}
+	}
+
+	// --- Phase 5b: Clear daemon spawn tracker ---
+	// The daemon's disk-persisted spawn cache (~/.orch/spawn_cache.json) tracks
+	// recently-spawned issues to prevent duplicate spawns. Without clearing this,
+	// abandoned issues stay blocked for up to 6 hours (the cache TTL).
+	if cachePath := daemon.DefaultSpawnCachePath(); cachePath != "" {
+		tracker := daemon.NewSpawnedIssueTrackerWithFile(cachePath)
+		tracker.Unmark(beadsID)
+		fmt.Printf("Cleared daemon spawn tracker\n")
 	}
 
 	// --- Phase 6: Telemetry (model performance tracking) ---

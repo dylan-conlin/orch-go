@@ -1041,3 +1041,45 @@ func TestDaemon_PreventsDuplicateSpawns(t *testing.T) {
 		t.Errorf("Expected 'No spawnable issues in queue', got %q", result2.Message)
 	}
 }
+
+// TestAbandonClearsSpawnTracker_CrossProcess simulates the bug where orch abandon --force
+// does not clear the daemon's disk-persisted spawn cache. The daemon marks an issue as spawned,
+// the agent dies, and a separate process (orch abandon) opens the same cache file and unmarks it.
+// The daemon's next load should see the issue as untracked, allowing re-spawn.
+func TestAbandonClearsSpawnTracker_CrossProcess(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "spawn_cache.json")
+
+	// Step 1: Daemon marks an issue as spawned (persisted to disk)
+	daemonTracker := NewSpawnedIssueTrackerWithFile(cachePath)
+	daemonTracker.MarkSpawnedWithTitle("led-totem-toppers-jr5", "Fix LED totem toppers")
+	daemonTracker.MarkSpawned("other-issue-abc")
+
+	if !daemonTracker.IsSpawned("led-totem-toppers-jr5") {
+		t.Fatal("issue should be tracked after MarkSpawned")
+	}
+
+	// Step 2: Agent dies, user runs "orch abandon --force".
+	// Abandon opens a NEW tracker instance from the same file and calls Unmark.
+	// This simulates the cross-process interaction.
+	abandonTracker := NewSpawnedIssueTrackerWithFile(cachePath)
+	abandonTracker.Unmark("led-totem-toppers-jr5")
+
+	// Step 3: Daemon restarts (or next poll cycle loads fresh state from disk).
+	// The abandoned issue should NOT be in the cache.
+	reloadedTracker := NewSpawnedIssueTrackerWithFile(cachePath)
+	if reloadedTracker.IsSpawned("led-totem-toppers-jr5") {
+		t.Error("abandoned issue should NOT be tracked after cross-process Unmark")
+	}
+
+	// Other issues should be unaffected
+	if !reloadedTracker.IsSpawned("other-issue-abc") {
+		t.Error("other-issue-abc should still be tracked")
+	}
+
+	// Title dedup should also be cleared for the abandoned issue
+	spawned, _ := reloadedTracker.IsTitleSpawned("Fix LED totem toppers")
+	if spawned {
+		t.Error("title dedup for abandoned issue should be cleared")
+	}
+}
