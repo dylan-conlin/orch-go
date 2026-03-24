@@ -40,6 +40,8 @@ func TestResolve_Aliases(t *testing.T) {
 		{"gpt-5", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
 		{"gpt-5.1", ModelSpec{Provider: "openai", ModelID: "gpt-5.1"}},
 		{"gpt-5.2", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
+		{"gpt-5.4", ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}},
+		{"gpt5-latest", ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}},
 		{"gpt5-mini", ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex-mini"}},
 		{"o3", ModelSpec{Provider: "openai", ModelID: "o3"}},
 
@@ -47,9 +49,10 @@ func TestResolve_Aliases(t *testing.T) {
 		{"codex", ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}},
 		{"codex-mini", ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex-mini"}},
 		{"codex-max", ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex-max"}},
-		{"codex-latest", ModelSpec{Provider: "openai", ModelID: "gpt-5.4-codex"}},
+		{"codex-latest", ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}},
 		{"codex-5.1", ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex"}},
 		{"codex-5.2", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
+		{"codex-5.4", ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}},
 		{"CODEX", ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}},
 
 		// DeepSeek aliases
@@ -158,7 +161,7 @@ func TestModelSpec_IsAnthropicModel(t *testing.T) {
 	}{
 		{ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}, true},
 		{ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}, true},
-		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4-codex"}, false},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}, false},
 		{ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}, false},
 		{ModelSpec{Provider: "deepseek", ModelID: "deepseek-chat"}, false},
 		{ModelSpec{Provider: "Anthropic", ModelID: "claude-opus-4-5-20251101"}, true},
@@ -180,7 +183,7 @@ func TestModelSpec_ProviderName(t *testing.T) {
 		expected string
 	}{
 		{ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}, "Anthropic"},
-		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4-codex"}, "OpenAI"},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}, "OpenAI"},
 		{ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}, "Google"},
 		{ModelSpec{Provider: "deepseek", ModelID: "deepseek-chat"}, "DeepSeek"},
 		{ModelSpec{Provider: "Anthropic", ModelID: "claude-opus-4-5-20251101"}, "Anthropic"},
@@ -216,7 +219,7 @@ func TestModelSpec_ModelFamily(t *testing.T) {
 		// GPT family (includes codex and o-series)
 		{ModelSpec{Provider: "openai", ModelID: "gpt-4o"}, "gpt"},
 		{ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}, "gpt"},
-		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4-codex"}, "gpt"},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}, "gpt"},
 		{ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex-mini"}, "gpt"},
 		{ModelSpec{Provider: "openai", ModelID: "o3"}, "gpt"},
 		{ModelSpec{Provider: "openai", ModelID: "o3-mini"}, "gpt"},
@@ -245,7 +248,7 @@ func TestModelSpec_String(t *testing.T) {
 		expected string
 	}{
 		{ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}, "Anthropic: claude-opus-4-5-20251101"},
-		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4-codex"}, "OpenAI: gpt-5.4-codex"},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}, "OpenAI: gpt-5.4"},
 		{ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}, "Google: gemini-2.5-flash"},
 		{ModelSpec{Provider: "deepseek", ModelID: "deepseek-chat"}, "DeepSeek: deepseek-chat"},
 		{ModelSpec{Provider: "unknown-provider", ModelID: "some-model"}, "unknown-provider: some-model"},
