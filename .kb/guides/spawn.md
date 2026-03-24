@@ -292,7 +292,7 @@ Active count excludes:
 |------|---------|
 | `--issue <id>` | Spawn for existing beads issue (don't create new) |
 | `--no-track` | **Deprecated:** creates lightweight beads issue instead (use `--light`) |
-| `--model <alias>` | Model selection: opus, sonnet, haiku, flash, pro. Triggers model-aware backend routing. |
+| `--model <alias>` | Model selection: opus, sonnet, haiku, flash, pro, gpt-5.4, codex-latest, deepseek. Triggers model-aware backend routing. See `orch model list` for full alias table. |
 | `--backend <name>` | Force backend: `claude` or `opencode`. Overrides model-aware routing. |
 | `--mcp <server>` | Add MCP server (e.g., `--mcp playwright`) |
 | `--workdir <path>` | Run agent in different directory |

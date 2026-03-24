@@ -37,6 +37,7 @@ The daemon is an autonomous agent spawner that:
 | `issue_queue.go` | Issue filtering logic |
 | `active_count.go` | OpenCode session counting |
 | `spawn_tracker.go` | Spawn tracking: ID dedup (L1), title dedup (L3), thrash detection. Cleared on `orch abandon --force` |
+| `sibling_sequencing.go` | Test issue deferral when non-test siblings exist (ghost-filtered) |
 | `session_dedup.go` | Session/tmux existence checking (L2) |
 
 **Related packages:**
@@ -621,6 +622,7 @@ From investigations, these design decisions were made:
 | Fresh status re-check + atomic update (L5/L6) | Structural gate as final dedup authority | Feb 2026 |
 | Orphan detector retains spawn cache | Prevents thrash loops after agent death | Mar 2026 |
 | `--replace` flag for graceful takeover | Avoids manual stop/start; atomic daemon restart | Feb 2026 |
+| Ghost sibling filtering in test deferral | Sibling issues that don't exist in beads no longer block test issue spawn | Mar 2026 |
 
 ---
 

@@ -106,10 +106,13 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `orch entropy` | Aggregate signals from git, events, bloat, duplication |
 | `orch health` | Display composite harness health score (0-100) |
 | `orch history` | Show agent history with skill usage analytics |
+| `orch patterns` | Surface behavioral patterns for orchestrator awareness |
 | `orch tokens` | Show detailed token usage for sessions |
 | `orch transcript` | Convert OpenCode JSON export to readable markdown |
 | `orch tree` | Display knowledge lineage tree visualization |
 | `orch sync` | Analyze recent drift events for stale artifacts |
+| `orch docs` | Manage CLI documentation debt tracking (list, mark, unmark) |
+| `orch session-history` | Search and list OpenCode session history |
 
 ### Configuration & System Commands
 
@@ -184,13 +187,19 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 
 ### Model Selection
 
-| Alias | Model |
-|-------|-------|
-| `opus` | Claude Opus 4.5 (default via Max subscription) |
-| `sonnet` | Claude Sonnet |
-| `haiku` | Claude Haiku |
-| `flash` | Gemini Flash |
-| `pro` | Gemini Pro |
+| Alias | Model | Provider |
+|-------|-------|----------|
+| `opus` | Claude Opus 4.5 (default via Max subscription) | Anthropic |
+| `sonnet` | Claude Sonnet 4.5 | Anthropic |
+| `haiku` | Claude Haiku 4.5 | Anthropic |
+| `flash` | Gemini 3 Flash | Google |
+| `pro` | Gemini 2.5 Pro | Google |
+| `gpt-5.4` / `gpt5-latest` | GPT-5.4 | OpenAI |
+| `codex-latest` / `codex-5.4` | GPT-5.4 (via Codex path) | OpenAI |
+| `codex` | GPT-5.2 Codex | OpenAI |
+| `deepseek` | DeepSeek Chat | DeepSeek |
+
+Full alias list: `orch model list`
 
 **Rate limit escalation:** opus → switch account (`orch account switch work`) → flash
 
