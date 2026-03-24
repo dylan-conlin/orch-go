@@ -106,6 +106,26 @@ explicit at design time creates a prioritized backlog of missing measurement sur
 **Completion gate:** `consequence_sensor` — blocks if gates/hooks are recommended without
 an Enforcement Mechanisms table containing a Consequence Sensor column.
 
+## Composition Claims Format (Multi-Component Designs)
+
+When a design involves 3+ components, enumerate what must hold true when they're assembled. These are properties no single component guarantees — they emerge from relationships between components.
+
+```markdown
+### Composition Claims
+
+| ID | Claim | Components Involved | How to Verify |
+|----|-------|--------------------|----|
+| CC-1 | "Cable path is continuous from pocket to exterior" | pico_pocket + wiring_gap + cable_exit | CSG intersection probe (0 facets = clear) |
+| CC-2 | "All competitor HTTP routes through proxy" | middleware + router + config | Integration test: request without proxy header → 403 |
+| CC-3 | "Agent work merges without conflict" | agent_a_output + agent_b_output | git merge --no-commit + test suite |
+```
+
+**Why:** Most composition failures happen because nobody wrote down what the assembled system should produce. Component gates pass while the whole fails (harness-engineering model §8). Naming the emergent property explicitly is the intervention — the testing apparatus is standard engineering.
+
+**Each claim becomes:** an acceptance criterion on the integration issue. The "How to Verify" column seeds the integration test design.
+
+---
+
 ## Decision Gate Guidance (if promoting to decision)
 
 **Add blocks: frontmatter when:**

@@ -214,6 +214,7 @@ For each unnavigable fork, classify:
 - Each recommendation cites substrate
 - Unnavigable forks surfaced as blocking questions (Phase 3)
 - If recommending gates/hooks: each has a consequence sensor (see reference/templates-and-formats.md)
+- If multi-component: composition claims enumerated (see Phase 5d)
 
 **Output:** All navigable forks resolved. Report via `bd comments add <beads-id> "Phase: Synthesis - [N] forks navigated, recommend [summary]"`.
 
@@ -254,11 +255,19 @@ For designs that will be implemented by agents, produce a verification spec at `
 **If triggered (multi-component):**
 
 1. **Create plan:** `orch plan create <slug>` — phases, dependencies, beads IDs
-2. **Create component issues:** One `bd create` per component, labeled `triage:ready`
-3. **Create integration issue:** `bd create "Integration: <behavioral goal>" --type task -l triage:ready`
-   - Scope as **behavior verification** ("all competitor HTTP goes through proxy"), NOT component verification ("middleware class exists")
+2. **Enumerate composition claims:** What properties must hold when components are assembled? These are properties no single component guarantees — they emerge from relationships between components. Add a Composition Claims table to the investigation:
+   ```markdown
+   ### Composition Claims
+   | ID | Claim | Components Involved | How to Verify |
+   |----|-------|--------------------|----|
+   | CC-1 | "All competitor HTTP goes through proxy" | middleware + router + config | Integration test: request without proxy header → 403 |
+   ```
+   Each claim becomes an acceptance criterion on the integration issue.
+3. **Create component issues:** One `bd create` per component, labeled `triage:ready`
+4. **Create integration issue:** `bd create "Integration: <behavioral goal>" --type task -l triage:ready`
+   - Scope as **behavior verification** using composition claims, NOT component verification ("middleware class exists")
    - Add dependency on all component issues: `bd dep add <integration-id> <component-id>` for each
-4. **Link in investigation:** Reference plan slug and all issue IDs in the Recommendations section
+5. **Link in investigation:** Reference plan slug and all issue IDs in the Recommendations section
 
 **If NOT triggered (single-component):**
 - Create one implementation issue directly: `bd create "<implementation task>" --type feature -l triage:ready`
