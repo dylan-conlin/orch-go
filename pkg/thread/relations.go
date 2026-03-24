@@ -22,7 +22,7 @@ func CreateWithParent(threadsDir, title, entry, parentSlug string) (*Result, err
 
 	content := fmt.Sprintf(`---
 title: "%s"
-status: open
+status: forming
 created: %s
 updated: %s
 resolved_to: ""

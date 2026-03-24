@@ -60,7 +60,7 @@ func TestCreateOrAppend_NewThread(t *testing.T) {
 	if !strings.Contains(s, "title: \"How enforcement and comprehension relate\"") {
 		t.Error("missing title in frontmatter")
 	}
-	if !strings.Contains(s, "status: open") {
+	if !strings.Contains(s, "status: forming") {
 		t.Error("missing status in frontmatter")
 	}
 	if !strings.Contains(s, "created: "+today) {
@@ -712,5 +712,311 @@ Entry.
 	}
 	if len(thread.ActiveWork) != 0 {
 		t.Errorf("active_work should be empty for [], got %v", thread.ActiveWork)
+	}
+}
+
+// --- End-to-end behavioral verification: spawn/complete/orient loop ---
+
+func TestSpawnCompleteOrientLoop(t *testing.T) {
+	dir := tempThreadsDir(t)
+	today := time.Now().Format("2006-01-02")
+
+	// SPAWN: create thread and link work
+	result, err := CreateOrAppend(dir, "Investigation into spawn behavior", "Spawning first agent to explore this")
+	if err != nil {
+		t.Fatalf("create thread: %v", err)
+	}
+	if !result.Created {
+		t.Fatal("expected new thread")
+	}
+
+	slug := Slugify("Investigation into spawn behavior")
+	if err := LinkWork(dir, slug, "orch-go-abc12"); err != nil {
+		t.Fatalf("LinkWork: %v", err)
+	}
+
+	// ORIENT: thread should appear in active threads
+	active, err := ActiveThreads(dir, 7)
+	if err != nil {
+		t.Fatalf("ActiveThreads: %v", err)
+	}
+	if len(active) != 1 {
+		t.Fatalf("orient: expected 1 active thread, got %d", len(active))
+	}
+	if active[0].Name != slug {
+		t.Errorf("orient: expected slug %q, got %q", slug, active[0].Name)
+	}
+
+	// Verify work is linked
+	shown, err := Show(dir, slug)
+	if err != nil {
+		t.Fatalf("Show: %v", err)
+	}
+	if len(shown.ActiveWork) != 1 || shown.ActiveWork[0] != "orch-go-abc12" {
+		t.Errorf("expected active_work=[orch-go-abc12], got %v", shown.ActiveWork)
+	}
+
+	// COMPLETE: resolve the thread
+	if err := Resolve(dir, slug, ".kb/decisions/spawn-behavior.md"); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+
+	// ORIENT again: thread should no longer appear
+	active, err = ActiveThreads(dir, 7)
+	if err != nil {
+		t.Fatalf("ActiveThreads post-resolve: %v", err)
+	}
+	if len(active) != 0 {
+		t.Errorf("orient post-resolve: expected 0 active threads, got %d", len(active))
+	}
+
+	// Verify resolved state
+	shown, err = Show(dir, slug)
+	if err != nil {
+		t.Fatalf("Show post-resolve: %v", err)
+	}
+	if shown.Status != StatusResolved {
+		t.Errorf("expected resolved, got %q", shown.Status)
+	}
+	if shown.ResolvedTo != ".kb/decisions/spawn-behavior.md" {
+		t.Errorf("resolved_to = %q", shown.ResolvedTo)
+	}
+
+	// TodaysEntries should exclude resolved thread
+	entries, err := TodaysEntries(dir, today)
+	if err != nil {
+		t.Fatalf("TodaysEntries: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("TodaysEntries should exclude resolved, got %d entries", len(entries))
+	}
+}
+
+func TestParentChildSpawnLoop(t *testing.T) {
+	dir := tempThreadsDir(t)
+	today := time.Now().Format("2006-01-02")
+
+	// Create parent thread
+	_, err := CreateOrAppend(dir, "Coordination protocol design", "Starting exploration")
+	if err != nil {
+		t.Fatalf("create parent: %v", err)
+	}
+	parentSlug := "coordination-protocol-design"
+
+	// Orient: parent visible
+	active, err := ActiveThreads(dir, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 1 {
+		t.Fatalf("expected 1 active, got %d", len(active))
+	}
+
+	// Spawn child from parent
+	childResult, err := CreateWithParent(dir, "Sequencing primitive details", "Deep dive", parentSlug)
+	if err != nil {
+		t.Fatalf("CreateWithParent: %v", err)
+	}
+	if !childResult.Created {
+		t.Fatal("expected child created")
+	}
+	childSlug := Slugify("Sequencing primitive details")
+
+	// Link work to child
+	if err := LinkWork(dir, childSlug, "orch-go-xyz99"); err != nil {
+		t.Fatalf("LinkWork child: %v", err)
+	}
+
+	// Orient: both threads visible
+	active, err = ActiveThreads(dir, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 2 {
+		t.Fatalf("expected 2 active threads, got %d", len(active))
+	}
+
+	// Verify parent-child relationship
+	parent, _ := Show(dir, parentSlug)
+	child, _ := Show(dir, childSlug)
+
+	if child.SpawnedFrom != parentSlug {
+		t.Errorf("child.SpawnedFrom = %q, want %q", child.SpawnedFrom, parentSlug)
+	}
+	foundChild := false
+	for _, s := range parent.Spawned {
+		if s == childSlug {
+			foundChild = true
+		}
+	}
+	if !foundChild {
+		t.Errorf("parent.Spawned %v missing child %q", parent.Spawned, childSlug)
+	}
+
+	// Complete child
+	if err := Resolve(dir, childSlug, ""); err != nil {
+		t.Fatalf("resolve child: %v", err)
+	}
+
+	// Orient: only parent remains
+	active, err = ActiveThreads(dir, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 1 {
+		t.Fatalf("expected 1 active after child resolve, got %d", len(active))
+	}
+	if active[0].Name != parentSlug {
+		t.Errorf("expected parent %q still active, got %q", parentSlug, active[0].Name)
+	}
+
+	// TodaysEntries should only include parent
+	entries, err := TodaysEntries(dir, today)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 today entry, got %d", len(entries))
+	}
+	if entries[0].ThreadName != parentSlug {
+		t.Errorf("expected parent in today entries, got %q", entries[0].ThreadName)
+	}
+}
+
+func TestMultiWorkSpawnTracking(t *testing.T) {
+	dir := tempThreadsDir(t)
+
+	_, err := CreateOrAppend(dir, "Multi agent investigation", "Starting parallel exploration")
+	if err != nil {
+		t.Fatal(err)
+	}
+	slug := "multi-agent-investigation"
+
+	// Link multiple work items
+	beads := []string{"orch-go-aaa11", "orch-go-bbb22", "orch-go-ccc33"}
+	for _, b := range beads {
+		if err := LinkWork(dir, slug, b); err != nil {
+			t.Fatalf("LinkWork %s: %v", b, err)
+		}
+	}
+
+	// Verify all work is tracked
+	shown, err := Show(dir, slug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(shown.ActiveWork) != 3 {
+		t.Fatalf("expected 3 active_work items, got %d: %v", len(shown.ActiveWork), shown.ActiveWork)
+	}
+	for i, b := range beads {
+		if shown.ActiveWork[i] != b {
+			t.Errorf("active_work[%d] = %q, want %q", i, shown.ActiveWork[i], b)
+		}
+	}
+
+	// Orient still surfaces as active
+	active, err := ActiveThreads(dir, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 1 {
+		t.Fatalf("expected 1 active thread, got %d", len(active))
+	}
+
+	// Resolve and verify orient drops it
+	Resolve(dir, slug, "")
+	active, _ = ActiveThreads(dir, 7)
+	if len(active) != 0 {
+		t.Errorf("expected 0 active after resolve, got %d", len(active))
+	}
+}
+
+func TestBackPropCompleteOrientLoop(t *testing.T) {
+	dir := tempThreadsDir(t)
+
+	// Create thread and link work
+	_, err := CreateOrAppend(dir, "Backprop verification thread", "Testing completion back-propagation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	slug := "backprop-verification-thread"
+
+	if err := LinkWork(dir, slug, "orch-go-bp001"); err != nil {
+		t.Fatalf("LinkWork: %v", err)
+	}
+
+	// Orient: thread is active with linked work
+	active, err := ActiveThreads(dir, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 1 {
+		t.Fatalf("expected 1 active, got %d", len(active))
+	}
+
+	// BackPropagateCompletion simulates orch complete removing work
+	results, err := BackPropagateCompletion(dir, "orch-go-bp001")
+	if err != nil {
+		t.Fatalf("BackPropagateCompletion: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 backprop result, got %d", len(results))
+	}
+	if results[0].Slug != slug {
+		t.Errorf("backprop slug = %q, want %q", results[0].Slug, slug)
+	}
+
+	// Verify thread state: active_work empty, resolved_by populated
+	shown, err := Show(dir, slug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(shown.ActiveWork) != 0 {
+		t.Errorf("expected empty active_work after backprop, got %v", shown.ActiveWork)
+	}
+	if len(shown.ResolvedBy) != 1 || shown.ResolvedBy[0] != "orch-go-bp001" {
+		t.Errorf("expected resolved_by=[orch-go-bp001], got %v", shown.ResolvedBy)
+	}
+
+	// Thread is still active (not resolved) — only the work item completed
+	if shown.Status != StatusForming {
+		t.Errorf("thread status should still be forming, got %q", shown.Status)
+	}
+
+	// Orient still surfaces it (thread is active, just the beads work completed)
+	active, err = ActiveThreads(dir, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 1 {
+		t.Fatalf("thread should remain active after backprop, got %d", len(active))
+	}
+}
+
+func TestAppendThenOrientShowsUpdatedEntry(t *testing.T) {
+	dir := tempThreadsDir(t)
+
+	_, err := CreateOrAppend(dir, "Evolving understanding", "Initial thought")
+	if err != nil {
+		t.Fatal(err)
+	}
+	slug := "evolving-understanding"
+
+	// Append deeper insight
+	_, err = Append(dir, slug, "Deeper insight after more investigation")
+	if err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	// Orient should show updated latest entry
+	active, err := ActiveThreads(dir, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 1 {
+		t.Fatalf("expected 1 active, got %d", len(active))
+	}
+	if !strings.Contains(active[0].LatestEntry, "Deeper insight") {
+		t.Errorf("latest entry = %q, want to contain 'Deeper insight'", active[0].LatestEntry)
 	}
 }

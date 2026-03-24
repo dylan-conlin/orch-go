@@ -151,7 +151,7 @@ func createThread(dir, title, slug, today, entry string) (*Result, error) {
 
 	content := fmt.Sprintf(`---
 title: "%s"
-status: open
+status: forming
 created: %s
 updated: %s
 resolved_to: ""
@@ -416,7 +416,7 @@ func TodaysEntries(threadsDir, date string) ([]ThreadEntry, error) {
 		}
 
 		// Skip resolved threads
-		if thread.Status == "resolved" {
+		if IsResolved(thread.Status) {
 			continue
 		}
 
@@ -447,7 +447,7 @@ func ActiveThreads(threadsDir string, maxAge int) ([]ThreadSummary, error) {
 
 	var active []ThreadSummary
 	for _, s := range all {
-		if s.Status == "resolved" {
+		if IsResolved(s.Status) {
 			continue
 		}
 		if s.Updated < cutoff {
