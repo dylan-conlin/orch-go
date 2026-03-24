@@ -130,11 +130,27 @@ func (d *Daemon) Decide(orient OrientResult, skip map[string]bool) SpawnDecision
 		return decision
 	}
 
+	// Build sibling validator that checks beads for ghost issues.
+	// Caches results within this Decide call to avoid repeated queries.
+	siblingCache := make(map[string]bool)
+	siblingExists := func(id string) bool {
+		if cached, ok := siblingCache[id]; ok {
+			return cached
+		}
+		_, err := d.resolveIssueQuerier().GetIssueStatus(id)
+		exists := err == nil
+		siblingCache[id] = exists
+		if !exists && d.Config.Verbose {
+			fmt.Printf("  DEBUG: Decide: ghost sibling %s not found in beads, ignoring\n", id)
+		}
+		return exists
+	}
+
 	// Filter each issue through coordination and compliance checks, select first passing
 	var selected *Issue
 	for _, issue := range orient.PrioritizedIssues {
 		// Coordination: defer test issues when implementation siblings are pending
-		if shouldDefer, reason := ShouldDeferTestIssue(issue, orient.PrioritizedIssues); shouldDefer {
+		if shouldDefer, reason := ShouldDeferTestIssue(issue, orient.PrioritizedIssues, siblingExists); shouldDefer {
 			if d.Config.Verbose {
 				fmt.Printf("  DEBUG: Decide: deferring %s (%s)\n", issue.ID, reason)
 			}

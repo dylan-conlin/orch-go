@@ -93,11 +93,23 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 	// Check for silent rework channels
 	result.ChannelHealthWarnings = CheckChannelHealth(d.Learning)
 
+	// Build sibling validator matching Decide() in ooda.go.
+	siblingCache := make(map[string]bool)
+	siblingExists := func(id string) bool {
+		if cached, ok := siblingCache[id]; ok {
+			return cached
+		}
+		_, err := d.resolveIssueQuerier().GetIssueStatus(id)
+		exists := err == nil
+		siblingCache[id] = exists
+		return exists
+	}
+
 	var spawnable *Issue
 	for _, issue := range issues {
 		// Coordination: defer test issues when implementation siblings are pending.
 		// Matches the ShouldDeferTestIssue check in Decide() (ooda.go).
-		if shouldDefer, reason := ShouldDeferTestIssue(issue, issues); shouldDefer {
+		if shouldDefer, reason := ShouldDeferTestIssue(issue, issues, siblingExists); shouldDefer {
 			result.RejectedIssues = append(result.RejectedIssues, RejectedIssue{
 				Issue:  issue,
 				Reason: reason,

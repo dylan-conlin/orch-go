@@ -1,0 +1,36 @@
+verification:
+  issue: orch-go-natal
+  type: bug-fix
+
+  automated:
+    - name: "Ghost sibling ignored by ShouldDeferTestIssue"
+      command: "go test ./pkg/daemon/ -run TestShouldDeferTestIssue_GhostSiblingIgnored -v"
+      expected: "PASS"
+
+    - name: "Valid sibling still causes deferral"
+      command: "go test ./pkg/daemon/ -run TestShouldDeferTestIssue_ValidSiblingStillDefers -v"
+      expected: "PASS"
+
+    - name: "Nil validator trusts all siblings (backwards compatible)"
+      command: "go test ./pkg/daemon/ -run TestShouldDeferTestIssue_NilValidatorTrustsAllSiblings -v"
+      expected: "PASS"
+
+    - name: "Mixed ghost+real: ghost skipped, real defers"
+      command: "go test ./pkg/daemon/ -run TestShouldDeferTestIssue_GhostSiblingSkippedRealSiblingDefers -v"
+      expected: "PASS"
+
+    - name: "Decide() integration: ghost sibling does not block spawning"
+      command: "go test ./pkg/daemon/ -run TestDecide_IgnoresGhostSiblingForDeferral -v"
+      expected: "PASS"
+
+    - name: "Full daemon test suite passes"
+      command: "go test ./pkg/daemon/ -count=1"
+      expected: "ok"
+
+  reproduction:
+    original_symptom: "4 test issues permanently deferred due to ghost sibling orch-go-ehz"
+    fix_verification: "TestDecide_IgnoresGhostSiblingForDeferral directly reproduces the scenario with a mock GetIssueStatusFunc that returns error for the ghost ID"
+
+  manual:
+    - description: "After daemon restart, verify orch-go-kxtrd/3tyik/c1274/pk7ds are no longer deferred"
+      note: "Requires running daemon with verbose logging to observe deferral behavior"

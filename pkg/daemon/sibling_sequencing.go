@@ -43,6 +43,12 @@ func isTestLikeIssue(issue Issue) bool {
 	return false
 }
 
+// SiblingExistsFunc checks whether a sibling issue actually exists in beads.
+// Used to protect against ghost issues that appear in the ready queue but
+// don't exist when queried directly (e.g., via bd show).
+// When nil, all siblings in allIssues are trusted.
+type SiblingExistsFunc func(id string) bool
+
 // ShouldDeferTestIssue determines whether a test-like issue should be deferred
 // because same-project implementation siblings are still pending (open or
 // in_progress). Returns (true, reason) if the issue should be skipped this cycle.
@@ -51,12 +57,17 @@ func isTestLikeIssue(issue Issue) bool {
 // same ListReadyIssues query — this is already the case since beads Ready()
 // returns both statuses.
 //
+// siblingExists is an optional validator that confirms a sibling issue actually
+// exists in beads. When non-nil, siblings that fail validation are skipped
+// (ghost issue protection). When nil, all siblings are trusted.
+//
 // Logic:
 //   - If issue is not test-like → no deferral
 //   - If same-project siblings exist that are NOT test-like and are open or
 //     in_progress → defer (let implementations complete first)
 //   - If all same-project siblings are also test-like or are closed → no deferral
-func ShouldDeferTestIssue(issue Issue, allIssues []Issue) (bool, string) {
+//   - If blocking sibling is a ghost (siblingExists returns false) → skip it
+func ShouldDeferTestIssue(issue Issue, allIssues []Issue, siblingExists SiblingExistsFunc) (bool, string) {
 	if !isTestLikeIssue(issue) {
 		return false, ""
 	}
@@ -71,6 +82,10 @@ func ShouldDeferTestIssue(issue Issue, allIssues []Issue) (bool, string) {
 		}
 		// Sibling is implementation-like (not test) and still active
 		if !isTestLikeIssue(other) && (other.Status == "open" || other.Status == "in_progress") {
+			// Verify sibling exists if validator provided (ghost issue protection)
+			if siblingExists != nil && !siblingExists(other.ID) {
+				continue
+			}
 			return true, fmt.Sprintf("test issue deferred: implementation sibling %s (%s) pending in same project", other.ID, other.Status)
 		}
 	}
