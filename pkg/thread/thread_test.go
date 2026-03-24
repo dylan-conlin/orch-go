@@ -568,3 +568,149 @@ This is line two.
 		t.Error("second entry missing content")
 	}
 }
+
+func TestParseThread_RelationalFrontmatter(t *testing.T) {
+	content := `---
+title: "Relational test"
+status: open
+created: 2026-03-10
+updated: 2026-03-22
+resolved_to: ""
+spawned_from: "coordination-protocol-primitives"
+spawned:
+  - "beads-atom-problem-work-molecules"
+  - "constraint-first-design-orchestration-wrong"
+active_work:
+  - "orch-go-abc12"
+  - "orch-go-def34"
+resolved_by:
+  - ".kb/decisions/2026-03-20-coord-primitives.md"
+---
+
+# Relational test
+
+## 2026-03-10
+
+First entry.
+`
+	thread, err := ParseThread(content)
+	if err != nil {
+		t.Fatalf("ParseThread failed: %v", err)
+	}
+
+	if thread.Title != "Relational test" {
+		t.Errorf("title = %q, want 'Relational test'", thread.Title)
+	}
+
+	// spawned_from (scalar string)
+	if thread.SpawnedFrom != "coordination-protocol-primitives" {
+		t.Errorf("spawned_from = %q, want 'coordination-protocol-primitives'", thread.SpawnedFrom)
+	}
+
+	// spawned (list)
+	if len(thread.Spawned) != 2 {
+		t.Fatalf("spawned length = %d, want 2", len(thread.Spawned))
+	}
+	if thread.Spawned[0] != "beads-atom-problem-work-molecules" {
+		t.Errorf("spawned[0] = %q", thread.Spawned[0])
+	}
+	if thread.Spawned[1] != "constraint-first-design-orchestration-wrong" {
+		t.Errorf("spawned[1] = %q", thread.Spawned[1])
+	}
+
+	// active_work (list)
+	if len(thread.ActiveWork) != 2 {
+		t.Fatalf("active_work length = %d, want 2", len(thread.ActiveWork))
+	}
+	if thread.ActiveWork[0] != "orch-go-abc12" {
+		t.Errorf("active_work[0] = %q", thread.ActiveWork[0])
+	}
+	if thread.ActiveWork[1] != "orch-go-def34" {
+		t.Errorf("active_work[1] = %q", thread.ActiveWork[1])
+	}
+
+	// resolved_by (list)
+	if len(thread.ResolvedBy) != 1 {
+		t.Fatalf("resolved_by length = %d, want 1", len(thread.ResolvedBy))
+	}
+	if thread.ResolvedBy[0] != ".kb/decisions/2026-03-20-coord-primitives.md" {
+		t.Errorf("resolved_by[0] = %q", thread.ResolvedBy[0])
+	}
+
+	// Entries still parse correctly
+	if len(thread.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(thread.Entries))
+	}
+}
+
+func TestParseThread_RelationalEmpty(t *testing.T) {
+	// Relational fields absent — should default to empty
+	content := `---
+title: "No relations"
+status: open
+created: 2026-03-01
+updated: 2026-03-01
+resolved_to: ""
+---
+
+# No relations
+
+## 2026-03-01
+
+Entry.
+`
+	thread, err := ParseThread(content)
+	if err != nil {
+		t.Fatalf("ParseThread failed: %v", err)
+	}
+
+	if thread.SpawnedFrom != "" {
+		t.Errorf("spawned_from should be empty, got %q", thread.SpawnedFrom)
+	}
+	if len(thread.Spawned) != 0 {
+		t.Errorf("spawned should be empty, got %v", thread.Spawned)
+	}
+	if len(thread.ActiveWork) != 0 {
+		t.Errorf("active_work should be empty, got %v", thread.ActiveWork)
+	}
+	if len(thread.ResolvedBy) != 0 {
+		t.Errorf("resolved_by should be empty, got %v", thread.ResolvedBy)
+	}
+}
+
+func TestParseThread_InlineYAMLList(t *testing.T) {
+	// Test inline YAML list syntax: key: ["a", "b"]
+	content := `---
+title: "Inline list"
+status: open
+created: 2026-03-01
+updated: 2026-03-01
+resolved_to: ""
+spawned: ["child-one", "child-two"]
+active_work: []
+---
+
+# Inline list
+
+## 2026-03-01
+
+Entry.
+`
+	thread, err := ParseThread(content)
+	if err != nil {
+		t.Fatalf("ParseThread failed: %v", err)
+	}
+
+	if len(thread.Spawned) != 2 {
+		t.Fatalf("spawned length = %d, want 2", len(thread.Spawned))
+	}
+	if thread.Spawned[0] != "child-one" {
+		t.Errorf("spawned[0] = %q, want 'child-one'", thread.Spawned[0])
+	}
+	if thread.Spawned[1] != "child-two" {
+		t.Errorf("spawned[1] = %q, want 'child-two'", thread.Spawned[1])
+	}
+	if len(thread.ActiveWork) != 0 {
+		t.Errorf("active_work should be empty for [], got %v", thread.ActiveWork)
+	}
+}

@@ -16,15 +16,19 @@ import (
 
 // Thread represents a parsed thread file.
 type Thread struct {
-	Title      string
-	Status     string // open, resolved
-	Created    string // YYYY-MM-DD
-	Updated    string // YYYY-MM-DD
-	ResolvedTo string
-	Entries    []Entry
-	Content    string // raw file content
-	Slug       string // filename slug (without date prefix and .md)
-	Filename   string // full filename
+	Title       string
+	Status      string // open, resolved
+	Created     string // YYYY-MM-DD
+	Updated     string // YYYY-MM-DD
+	ResolvedTo  string
+	SpawnedFrom string   // thread slug this was spawned from
+	Spawned     []string // thread slugs spawned from this thread
+	ActiveWork  []string // beads IDs of active work on this thread
+	ResolvedBy  []string // artifact paths that resolved this thread
+	Entries     []Entry
+	Content     string // raw file content
+	Slug        string // filename slug (without date prefix and .md)
+	Filename    string // full filename
 }
 
 // Entry represents a single dated entry within a thread.
@@ -461,9 +465,10 @@ func ParseThread(content string) (*Thread, error) {
 
 	lines := strings.Split(content, "\n")
 
-	// Parse frontmatter
+	// Parse frontmatter (supports scalar values and YAML lists)
 	inFrontmatter := false
 	fmEnd := 0
+	var currentListKey string
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "---" {
@@ -474,8 +479,32 @@ func ParseThread(content string) (*Thread, error) {
 			fmEnd = i + 1
 			break
 		}
-		if inFrontmatter {
-			parseFrontmatterLine(thread, trimmed)
+		if !inFrontmatter {
+			continue
+		}
+
+		// YAML list item (e.g., "  - value")
+		if strings.HasPrefix(trimmed, "- ") && currentListKey != "" {
+			item := strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
+			item = strings.Trim(item, "\"")
+			appendListField(thread, currentListKey, item)
+			continue
+		}
+
+		// New key: line — stop accumulating previous list
+		currentListKey = ""
+		parseFrontmatterLine(thread, trimmed)
+
+		// Check if this key starts a list (value is empty or inline list)
+		parts := strings.SplitN(trimmed, ":", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			if value == "" && isListField(key) {
+				currentListKey = key
+			} else if strings.HasPrefix(value, "[") && isListField(key) {
+				parseInlineList(thread, key, value)
+			}
 		}
 	}
 
@@ -503,7 +532,7 @@ func ParseThread(content string) (*Thread, error) {
 	return thread, nil
 }
 
-// parseFrontmatterLine parses a single YAML frontmatter line.
+// parseFrontmatterLine parses a single YAML frontmatter line (scalar values only).
 func parseFrontmatterLine(thread *Thread, line string) {
 	parts := strings.SplitN(line, ":", 2)
 	if len(parts) != 2 {
@@ -524,6 +553,47 @@ func parseFrontmatterLine(thread *Thread, line string) {
 		thread.Updated = value
 	case "resolved_to":
 		thread.ResolvedTo = value
+	case "spawned_from":
+		thread.SpawnedFrom = value
+	}
+}
+
+// isListField returns true if the key is a YAML list field.
+func isListField(key string) bool {
+	switch key {
+	case "spawned", "active_work", "resolved_by":
+		return true
+	}
+	return false
+}
+
+// appendListField appends a value to a list field on the thread.
+func appendListField(thread *Thread, key, value string) {
+	switch key {
+	case "spawned":
+		thread.Spawned = append(thread.Spawned, value)
+	case "active_work":
+		thread.ActiveWork = append(thread.ActiveWork, value)
+	case "resolved_by":
+		thread.ResolvedBy = append(thread.ResolvedBy, value)
+	}
+}
+
+// parseInlineList parses an inline YAML list like ["a", "b"] and appends to the thread.
+func parseInlineList(thread *Thread, key, value string) {
+	// Strip brackets
+	value = strings.TrimPrefix(value, "[")
+	value = strings.TrimSuffix(value, "]")
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return
+	}
+	for _, item := range strings.Split(value, ",") {
+		item = strings.TrimSpace(item)
+		item = strings.Trim(item, "\"")
+		if item != "" {
+			appendListField(thread, key, item)
+		}
 	}
 }
 
