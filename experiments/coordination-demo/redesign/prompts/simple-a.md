@@ -30,7 +30,6 @@ Add a `FormatBytes` function to `pkg/display/display.go` and write comprehensive
 
 - Do NOT modify any existing functions
 - Do NOT add new dependencies
-- Place the function after the existing `FormatDurationShort` function
 - Follow existing code style (see existing functions for patterns)
 
 ### Verification

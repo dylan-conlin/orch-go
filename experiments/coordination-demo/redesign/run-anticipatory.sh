@@ -33,6 +33,7 @@ AGENT_MODEL_FULL="claude-haiku-4-5-20251001"
 PLACEMENT_MODEL="haiku"
 PLACEMENT_MODEL_FULL="claude-haiku-4-5-20251001"
 TIMEOUT_MINUTES=10
+SEED=""
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -41,9 +42,15 @@ while [[ $# -gt 0 ]]; do
         --task) TASK_TYPES=("$2"); shift 2 ;;
         --agent-model) AGENT_MODEL="$2"; shift 2 ;;
         --placement-model) PLACEMENT_MODEL="$2"; shift 2 ;;
+        --seed) SEED="$2"; shift 2 ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
+
+# Generate seed if not provided
+if [ -z "$SEED" ]; then
+    SEED=$(od -An -tu4 -N4 /dev/urandom | tr -d ' ')
+fi
 
 # Resolve models
 resolve_model() {
@@ -62,6 +69,15 @@ mkdir -p "$RESULTS_DIR"
 
 BASELINE_COMMIT=$(cd "$PROJECT_DIR" && git rev-parse HEAD)
 
+# Clean up orphan worktrees from crashed runs
+cd "$PROJECT_DIR"
+git worktree prune 2>/dev/null || true
+for orphan in /tmp/coord-*; do
+    [ -d "$orphan" ] || continue
+    echo "Cleaning orphan worktree: $orphan"
+    git worktree remove "$orphan" --force 2>/dev/null || rm -rf "$orphan"
+done
+
 echo "=== Experiment C: Anticipatory Placement ==="
 echo "Project:          $PROJECT_DIR"
 echo "Baseline:         $BASELINE_COMMIT"
@@ -69,6 +85,7 @@ echo "Agent model:      $AGENT_MODEL ($AGENT_MODEL_FULL)"
 echo "Placement model:  $PLACEMENT_MODEL ($PLACEMENT_MODEL_FULL)"
 echo "Trials:           $TRIALS per task type"
 echo "Tasks:            ${TASK_TYPES[*]}"
+echo "Seed:             $SEED"
 echo "Results:          $RESULTS_DIR"
 echo ""
 
@@ -85,7 +102,8 @@ cat > "$RESULTS_DIR/metadata.json" << EOF
   "trials": $TRIALS,
   "task_types": $(printf '%s\n' "${TASK_TYPES[@]}" | jq -R . | jq -s .),
   "condition": "anticipatory",
-  "timeout_minutes": $TIMEOUT_MINUTES
+  "timeout_minutes": $TIMEOUT_MINUTES,
+  "seed": $SEED
 }
 EOF
 
@@ -311,97 +329,113 @@ check_merge() {
     git branch -D "$merge_branch" 2>/dev/null || true
 }
 
-# --- Main loop ---
+# --- Randomization ---
 
-total_trials=0
+# Build flat list of (task_type, trial) tuples
+TUPLES=()
 for task_type in "${TASK_TYPES[@]}"; do
-    total_trials=$((total_trials + TRIALS))
+    for trial in $(seq 1 "$TRIALS"); do
+        TUPLES+=("${task_type}:${trial}")
+    done
+done
+
+# Fisher-Yates shuffle using seed
+RANDOM=$SEED
+total_trials=${#TUPLES[@]}
+for ((i=total_trials-1; i>0; i--)); do
+    j=$((RANDOM % (i + 1)))
+    tmp="${TUPLES[i]}"
+    TUPLES[i]="${TUPLES[j]}"
+    TUPLES[j]="$tmp"
+done
+
+# Save execution order for reproducibility
+printf '%s\n' "${TUPLES[@]}" > "$RESULTS_DIR/execution_order.txt"
+
+# --- Main loop (randomized) ---
+
+# Pre-create result directories
+for task_type in "${TASK_TYPES[@]}"; do
+    mkdir -p "$RESULTS_DIR/anticipatory/$task_type"
 done
 
 current=0
 placement_successes=0
 placement_failures=0
 
-for task_type in "${TASK_TYPES[@]}"; do
+for tuple in "${TUPLES[@]}"; do
+    IFS=':' read -r task_type trial <<< "$tuple"
+    current=$((current + 1))
     echo ""
-    echo "===== Task: $task_type ====="
+    echo "--- [$current/$total_trials] anticipatory/$task_type trial $trial ---"
 
-    cond_dir="$RESULTS_DIR/anticipatory/$task_type"
-    mkdir -p "$cond_dir"
+    trial_dir="$RESULTS_DIR/anticipatory/$task_type/trial-$trial"
+    mkdir -p "$trial_dir/agent-a" "$trial_dir/agent-b" "$trial_dir/placement"
 
-    for trial in $(seq 1 "$TRIALS"); do
-        current=$((current + 1))
-        echo ""
-        echo "--- [$current/$total_trials] anticipatory/$task_type trial $trial ---"
+    # Step 1: Generate placement via LLM
+    echo "  Generating placements via $PLACEMENT_MODEL..."
+    placement_result=$(generate_placement "$task_type" "$trial" "$trial_dir/placement") || {
+        echo "  PLACEMENT GENERATION FAILED — skipping trial"
+        placement_failures=$((placement_failures + 1))
+        echo "placement_failed,0,LLM placement generation failed" > "$trial_dir/merge_result.csv"
+        continue
+    }
 
-        trial_dir="$cond_dir/trial-$trial"
-        mkdir -p "$trial_dir/agent-a" "$trial_dir/agent-b" "$trial_dir/placement"
+    # Parse placement result
+    IFS='|' read -r a_code a_test b_code b_test placements_diff <<< "$placement_result"
+    echo "  Agent A: code after '$a_code', tests after '$a_test'"
+    echo "  Agent B: code after '$b_code', tests after '$b_test'"
+    echo "  Placements different: $placements_diff"
 
-        # Step 1: Generate placement via LLM
-        echo "  Generating placements via $PLACEMENT_MODEL..."
-        placement_result=$(generate_placement "$task_type" "$trial" "$trial_dir/placement") || {
-            echo "  PLACEMENT GENERATION FAILED — skipping trial"
-            placement_failures=$((placement_failures + 1))
-            echo "placement_failed,0,LLM placement generation failed" > "$trial_dir/merge_result.csv"
-            continue
-        }
+    if [ "$placements_diff" = "false" ]; then
+        echo "  WARNING: LLM generated SAME insertion point for both agents!"
+    fi
 
-        # Parse placement result
-        IFS='|' read -r a_code a_test b_code b_test placements_diff <<< "$placement_result"
-        echo "  Agent A: code after '$a_code', tests after '$a_test'"
-        echo "  Agent B: code after '$b_code', tests after '$b_test'"
-        echo "  Placements different: $placements_diff"
+    # Step 2: Build prompts with LLM-generated placements
+    prompt_a=$(build_anticipatory_prompt "$task_type" "a" "$a_code" "$a_test")
+    prompt_b=$(build_anticipatory_prompt "$task_type" "b" "$b_code" "$b_test")
 
-        if [ "$placements_diff" = "false" ]; then
-            echo "  WARNING: LLM generated SAME insertion point for both agents!"
-        fi
+    echo "$prompt_a" > "$trial_dir/agent-a/prompt.md"
+    echo "$prompt_b" > "$trial_dir/agent-b/prompt.md"
 
-        # Step 2: Build prompts with LLM-generated placements
-        prompt_a=$(build_anticipatory_prompt "$task_type" "a" "$a_code" "$a_test")
-        prompt_b=$(build_anticipatory_prompt "$task_type" "b" "$b_code" "$b_test")
+    # Step 3: Create worktrees
+    wt_a="/tmp/coord-antic-a-t${trial}-$$"
+    wt_b="/tmp/coord-antic-b-t${trial}-$$"
+    branch_a="exp/antic-${task_type}-a-t${trial}-$$"
+    branch_b="exp/antic-${task_type}-b-t${trial}-$$"
 
-        echo "$prompt_a" > "$trial_dir/agent-a/prompt.md"
-        echo "$prompt_b" > "$trial_dir/agent-b/prompt.md"
+    cd "$PROJECT_DIR"
+    git worktree add -b "$branch_a" "$wt_a" "$BASELINE_COMMIT" 2>/dev/null
+    git worktree add -b "$branch_b" "$wt_b" "$BASELINE_COMMIT" 2>/dev/null
 
-        # Step 3: Create worktrees
-        wt_a="/tmp/coord-antic-a-t${trial}-$$"
-        wt_b="/tmp/coord-antic-b-t${trial}-$$"
-        branch_a="exp/antic-${task_type}-a-t${trial}-$$"
-        branch_b="exp/antic-${task_type}-b-t${trial}-$$"
+    # Step 4: Run both agents in parallel
+    (run_agent "$wt_a" "$prompt_a" "$trial_dir/agent-a") &
+    pid_a=$!
+    (run_agent "$wt_b" "$prompt_b" "$trial_dir/agent-b") &
+    pid_b=$!
 
-        cd "$PROJECT_DIR"
-        git worktree add -b "$branch_a" "$wt_a" "$BASELINE_COMMIT" 2>/dev/null
-        git worktree add -b "$branch_b" "$wt_b" "$BASELINE_COMMIT" 2>/dev/null
+    wait "$pid_a" || true
+    wait "$pid_b" || true
 
-        # Step 4: Run both agents in parallel
-        (run_agent "$wt_a" "$prompt_a" "$trial_dir/agent-a") &
-        pid_a=$!
-        (run_agent "$wt_b" "$prompt_b" "$trial_dir/agent-b") &
-        pid_b=$!
+    dur_a=$(cat "$trial_dir/agent-a/duration_seconds" 2>/dev/null || echo "?")
+    dur_b=$(cat "$trial_dir/agent-b/duration_seconds" 2>/dev/null || echo "?")
+    echo "  Agent A: ${dur_a}s | Agent B: ${dur_b}s"
 
-        wait "$pid_a" || true
-        wait "$pid_b" || true
+    # Step 5: Check merge
+    check_merge "$trial_dir" "$branch_a" "$branch_b"
 
-        dur_a=$(cat "$trial_dir/agent-a/duration_seconds" 2>/dev/null || echo "?")
-        dur_b=$(cat "$trial_dir/agent-b/duration_seconds" 2>/dev/null || echo "?")
-        echo "  Agent A: ${dur_a}s | Agent B: ${dur_b}s"
+    # Track placement success
+    merge_outcome=$(cut -d',' -f1 "$trial_dir/merge_result.csv" 2>/dev/null || echo "unknown")
+    if [ "$merge_outcome" = "success" ]; then
+        placement_successes=$((placement_successes + 1))
+    fi
 
-        # Step 5: Check merge
-        check_merge "$trial_dir" "$branch_a" "$branch_b"
-
-        # Track placement success
-        merge_outcome=$(cut -d',' -f1 "$trial_dir/merge_result.csv" 2>/dev/null || echo "unknown")
-        if [ "$merge_outcome" = "success" ]; then
-            placement_successes=$((placement_successes + 1))
-        fi
-
-        # Cleanup
-        cd "$PROJECT_DIR"
-        git worktree remove "$wt_a" --force 2>/dev/null || true
-        git worktree remove "$wt_b" --force 2>/dev/null || true
-        git branch -D "$branch_a" 2>/dev/null || true
-        git branch -D "$branch_b" 2>/dev/null || true
-    done
+    # Cleanup
+    cd "$PROJECT_DIR"
+    git worktree remove "$wt_a" --force 2>/dev/null || true
+    git worktree remove "$wt_b" --force 2>/dev/null || true
+    git branch -D "$branch_a" 2>/dev/null || true
+    git branch -D "$branch_b" 2>/dev/null || true
 done
 
 echo ""

@@ -30,7 +30,6 @@ Add `TestVisualWidth` and `TestPadToWidth` to `pkg/display/display_test.go` cove
 - Do NOT modify any existing functions
 - Do NOT add new dependencies — standard library only
 - All public functions MUST have doc comments
-- Place functions after the existing `FormatDurationShort` function
 - Follow existing code style
 
 ### Verification

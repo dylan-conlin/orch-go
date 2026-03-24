@@ -34,7 +34,6 @@ Add `TestFormatTable` to `pkg/display/display_test.go` covering:
 - Do NOT modify any existing functions
 - Do NOT add new dependencies — standard library only
 - All public functions MUST have doc comments
-- Place functions after the existing `FormatDurationShort` function
 - Follow existing code style
 
 ### Verification

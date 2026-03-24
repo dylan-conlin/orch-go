@@ -29,6 +29,7 @@ CONDITIONS=("no-coord" "placement" "context-share" "messaging" "gate")
 MODEL="haiku"
 MODEL_FULL="claude-haiku-4-5-20251001"
 TIMEOUT_MINUTES=10
+SEED=""
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -37,9 +38,15 @@ while [[ $# -gt 0 ]]; do
         --task) TASK_TYPES=("$2"); shift 2 ;;
         --trials) TRIALS="$2"; shift 2 ;;
         --model) MODEL="$2"; shift 2 ;;
+        --seed) SEED="$2"; shift 2 ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
+
+# Generate seed if not provided
+if [ -z "$SEED" ]; then
+    SEED=$(od -An -tu4 -N4 /dev/urandom | tr -d ' ')
+fi
 
 # Resolve model
 case "$MODEL" in
@@ -55,6 +62,15 @@ mkdir -p "$RESULTS_DIR"
 # Get baseline commit
 BASELINE_COMMIT=$(cd "$PROJECT_DIR" && git rev-parse HEAD)
 
+# Clean up orphan worktrees from crashed runs
+cd "$PROJECT_DIR"
+git worktree prune 2>/dev/null || true
+for orphan in /tmp/coord-*; do
+    [ -d "$orphan" ] || continue
+    echo "Cleaning orphan worktree: $orphan"
+    git worktree remove "$orphan" --force 2>/dev/null || rm -rf "$orphan"
+done
+
 echo "=== Redesigned Coordination Experiment ==="
 echo "Project:    $PROJECT_DIR"
 echo "Baseline:   $BASELINE_COMMIT"
@@ -62,6 +78,7 @@ echo "Model:      $MODEL ($MODEL_FULL)"
 echo "Trials:     $TRIALS"
 echo "Tasks:      ${TASK_TYPES[*]}"
 echo "Conditions: ${CONDITIONS[*]}"
+echo "Seed:       $SEED"
 echo "Results:    $RESULTS_DIR"
 echo "Timeout:    ${TIMEOUT_MINUTES}m per agent"
 echo ""
@@ -76,7 +93,8 @@ cat > "$RESULTS_DIR/metadata.json" << EOF
   "trials": $TRIALS,
   "task_types": $(printf '%s\n' "${TASK_TYPES[@]}" | jq -R . | jq -s .),
   "conditions": $(printf '%s\n' "${CONDITIONS[@]}" | jq -R . | jq -s .),
-  "timeout_minutes": $TIMEOUT_MINUTES
+  "timeout_minutes": $TIMEOUT_MINUTES,
+  "seed": $SEED
 }
 EOF
 
@@ -318,88 +336,104 @@ check_merge() {
     git branch -D "$merge_branch" 2>/dev/null || true
 }
 
-# --- Main loop ---
+# --- Randomization ---
 
-total_trials=0
+# Build flat list of all (condition, task_type, trial) tuples
+TUPLES=()
 for condition in "${CONDITIONS[@]}"; do
     for task_type in "${TASK_TYPES[@]}"; do
-        total_trials=$((total_trials + TRIALS))
+        for trial in $(seq 1 "$TRIALS"); do
+            TUPLES+=("${condition}:${task_type}:${trial}")
+        done
+    done
+done
+
+# Fisher-Yates shuffle using seed
+RANDOM=$SEED
+total_trials=${#TUPLES[@]}
+for ((i=total_trials-1; i>0; i--)); do
+    j=$((RANDOM % (i + 1)))
+    tmp="${TUPLES[i]}"
+    TUPLES[i]="${TUPLES[j]}"
+    TUPLES[j]="$tmp"
+done
+
+# Save execution order for reproducibility
+printf '%s\n' "${TUPLES[@]}" > "$RESULTS_DIR/execution_order.txt"
+
+# --- Main loop (randomized) ---
+
+# Pre-create all result directories
+for condition in "${CONDITIONS[@]}"; do
+    for task_type in "${TASK_TYPES[@]}"; do
+        mkdir -p "$RESULTS_DIR/$condition/$task_type"
     done
 done
 
 current=0
-for condition in "${CONDITIONS[@]}"; do
-    for task_type in "${TASK_TYPES[@]}"; do
-        echo ""
-        echo "===== Condition: $condition | Task: $task_type ====="
+for tuple in "${TUPLES[@]}"; do
+    IFS=':' read -r condition task_type trial <<< "$tuple"
+    current=$((current + 1))
+    echo ""
+    echo "--- [$current/$total_trials] $condition/$task_type trial $trial ---"
 
-        cond_dir="$RESULTS_DIR/$condition/$task_type"
-        mkdir -p "$cond_dir"
+    trial_dir="$RESULTS_DIR/$condition/$task_type/trial-$trial"
+    mkdir -p "$trial_dir/agent-a" "$trial_dir/agent-b"
 
-        for trial in $(seq 1 "$TRIALS"); do
-            current=$((current + 1))
-            echo ""
-            echo "--- [$current/$total_trials] $condition/$task_type trial $trial ---"
+    # Create worktrees
+    wt_a="/tmp/coord-${condition}-a-t${trial}-$$"
+    wt_b="/tmp/coord-${condition}-b-t${trial}-$$"
+    branch_a="exp/coord-${condition}-${task_type}-a-t${trial}-$$"
+    branch_b="exp/coord-${condition}-${task_type}-b-t${trial}-$$"
 
-            trial_dir="$cond_dir/trial-$trial"
-            mkdir -p "$trial_dir/agent-a" "$trial_dir/agent-b"
+    cd "$PROJECT_DIR"
+    git worktree add -b "$branch_a" "$wt_a" "$BASELINE_COMMIT" 2>/dev/null
+    git worktree add -b "$branch_b" "$wt_b" "$BASELINE_COMMIT" 2>/dev/null
 
-            # Create worktrees
-            wt_a="/tmp/coord-${condition}-a-t${trial}-$$"
-            wt_b="/tmp/coord-${condition}-b-t${trial}-$$"
-            branch_a="exp/coord-${condition}-${task_type}-a-t${trial}-$$"
-            branch_b="exp/coord-${condition}-${task_type}-b-t${trial}-$$"
+    # Messaging directory for condition 4
+    msg_dir="/tmp/coord-msg-${condition}-${task_type}-${trial}-$$"
+    if [ "$condition" = "messaging" ]; then
+        mkdir -p "$msg_dir"
+    fi
 
-            cd "$PROJECT_DIR"
-            git worktree add -b "$branch_a" "$wt_a" "$BASELINE_COMMIT" 2>/dev/null
-            git worktree add -b "$branch_b" "$wt_b" "$BASELINE_COMMIT" 2>/dev/null
+    # Build prompts
+    prompt_a=$(build_prompt "$task_type" "a" "$condition" "$trial" "$msg_dir")
+    prompt_b=$(build_prompt "$task_type" "b" "$condition" "$trial" "$msg_dir")
 
-            # Messaging directory for condition 4
-            msg_dir="/tmp/coord-msg-${trial}-$$"
-            if [ "$condition" = "messaging" ]; then
-                mkdir -p "$msg_dir"
-            fi
+    # Save prompts for reproducibility
+    echo "$prompt_a" > "$trial_dir/agent-a/prompt.md"
+    echo "$prompt_b" > "$trial_dir/agent-b/prompt.md"
 
-            # Build prompts
-            prompt_a=$(build_prompt "$task_type" "a" "$condition" "$trial" "$msg_dir")
-            prompt_b=$(build_prompt "$task_type" "b" "$condition" "$trial" "$msg_dir")
+    # Run both agents in parallel
+    (run_agent "$wt_a" "$prompt_a" "$trial_dir/agent-a") &
+    pid_a=$!
+    (run_agent "$wt_b" "$prompt_b" "$trial_dir/agent-b") &
+    pid_b=$!
 
-            # Save prompts for reproducibility
-            echo "$prompt_a" > "$trial_dir/agent-a/prompt.md"
-            echo "$prompt_b" > "$trial_dir/agent-b/prompt.md"
+    wait "$pid_a" || true
+    wait "$pid_b" || true
 
-            # Run both agents in parallel
-            (run_agent "$wt_a" "$prompt_a" "$trial_dir/agent-a") &
-            pid_a=$!
-            (run_agent "$wt_b" "$prompt_b" "$trial_dir/agent-b") &
-            pid_b=$!
+    # Read durations
+    dur_a=$(cat "$trial_dir/agent-a/duration_seconds" 2>/dev/null || echo "?")
+    dur_b=$(cat "$trial_dir/agent-b/duration_seconds" 2>/dev/null || echo "?")
+    echo "  Agent A: ${dur_a}s | Agent B: ${dur_b}s"
 
-            wait "$pid_a" || true
-            wait "$pid_b" || true
+    # Check merge
+    check_merge "$trial_dir" "$branch_a" "$branch_b"
 
-            # Read durations
-            dur_a=$(cat "$trial_dir/agent-a/duration_seconds" 2>/dev/null || echo "?")
-            dur_b=$(cat "$trial_dir/agent-b/duration_seconds" 2>/dev/null || echo "?")
-            echo "  Agent A: ${dur_a}s | Agent B: ${dur_b}s"
+    # Cleanup worktrees
+    cd "$PROJECT_DIR"
+    git worktree remove "$wt_a" --force 2>/dev/null || true
+    git worktree remove "$wt_b" --force 2>/dev/null || true
+    git branch -D "$branch_a" 2>/dev/null || true
+    git branch -D "$branch_b" 2>/dev/null || true
 
-            # Check merge
-            check_merge "$trial_dir" "$branch_a" "$branch_b"
-
-            # Cleanup worktrees
-            cd "$PROJECT_DIR"
-            git worktree remove "$wt_a" --force 2>/dev/null || true
-            git worktree remove "$wt_b" --force 2>/dev/null || true
-            git branch -D "$branch_a" 2>/dev/null || true
-            git branch -D "$branch_b" 2>/dev/null || true
-
-            # Cleanup messaging dir
-            if [ "$condition" = "messaging" ]; then
-                # Save messaging artifacts first
-                cp -r "$msg_dir" "$trial_dir/messages" 2>/dev/null || true
-                rm -rf "$msg_dir"
-            fi
-        done
-    done
+    # Cleanup messaging dir
+    if [ "$condition" = "messaging" ]; then
+        # Save messaging artifacts first
+        cp -r "$msg_dir" "$trial_dir/messages" 2>/dev/null || true
+        rm -rf "$msg_dir"
+    fi
 done
 
 echo ""

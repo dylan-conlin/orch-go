@@ -67,7 +67,7 @@ echo "## Individual Agent Success Rates" >> "$ANALYSIS_FILE"
 echo "" >> "$ANALYSIS_FILE"
 
 if [ -f "$RESULTS_DIR/scores.csv" ]; then
-    echo "| Condition | Agent | Avg Score | Perfect (6/6) | Trials |" >> "$ANALYSIS_FILE"
+    echo "| Condition | Agent | Avg Score | Perfect (5/5) | Trials |" >> "$ANALYSIS_FILE"
     echo "|-----------|-------|-----------|---------------|--------|" >> "$ANALYSIS_FILE"
 
     echo ""
@@ -78,11 +78,11 @@ if [ -f "$RESULTS_DIR/scores.csv" ]; then
             total_score=0
             perfect=0
             count=0
-            while IFS=',' read -r c t ag comp build tests regr files spec dur tot; do
+            while IFS=',' read -r c t ag comp build tests files spec dur tot; do
                 if [ "$c" = "$condition" ] && [ "$ag" = "$agent" ]; then
                     total_score=$((total_score + tot))
                     count=$((count + 1))
-                    if [ "$tot" = "6" ]; then
+                    if [ "$tot" = "5" ]; then
                         perfect=$((perfect + 1))
                     fi
                 fi
@@ -90,10 +90,10 @@ if [ -f "$RESULTS_DIR/scores.csv" ]; then
 
             if [ "$count" -gt 0 ]; then
                 avg=$((total_score * 100 / count))
-                printf "  %-14s agent-%s: avg=%d.%02d/6 perfect=%d/%d\n" \
+                printf "  %-14s agent-%s: avg=%d.%02d/5 perfect=%d/%d\n" \
                     "$condition" "$agent" \
                     "$((avg / 100))" "$((avg % 100))" "$perfect" "$count"
-                echo "| $condition | $agent | $((avg / 100)).$((avg % 100))/6 | $perfect/$count | $count |" >> "$ANALYSIS_FILE"
+                echo "| $condition | $agent | $((avg / 100)).$((avg % 100))/5 | $perfect/$count | $count |" >> "$ANALYSIS_FILE"
             fi
         done
     done

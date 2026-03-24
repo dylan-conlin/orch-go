@@ -8,7 +8,7 @@ set -euo pipefail
 RESULTS_DIR="${1:?Usage: score.sh RESULTS_DIR}"
 SCORE_FILE="$RESULTS_DIR/scores.csv"
 
-echo "condition,task_type,trial,agent,completion,build,tests_pass,no_regression,file_discipline,spec_match,duration_s,total" > "$SCORE_FILE"
+echo "condition,task_type,trial,agent,completion,build,tests_pass,file_discipline,spec_match,duration_s,total" > "$SCORE_FILE"
 
 score_agent() {
     local agent_dir="$1"
@@ -20,7 +20,6 @@ score_agent() {
     local f_completion=0
     local f_build=0
     local f_tests=0
-    local f_regression=0
     local f_files=0
     local f_spec=0
     local duration=0
@@ -39,14 +38,12 @@ score_agent() {
         fi
     fi
 
-    # Tests pass: do new tests pass?
+    # Tests pass: do all tests pass?
     if [ -f "$agent_dir/all_tests.txt" ]; then
         if grep -q "^ok" "$agent_dir/all_tests.txt" 2>/dev/null; then
             f_tests=1
-            f_regression=1
         elif grep -q "PASS" "$agent_dir/all_tests.txt" 2>/dev/null; then
             f_tests=1
-            f_regression=1
         fi
     fi
 
@@ -97,16 +94,16 @@ score_agent() {
         duration=$(cat "$agent_dir/duration_seconds")
     fi
 
-    local total=$((f_completion + f_build + f_tests + f_regression + f_files + f_spec))
+    local total=$((f_completion + f_build + f_tests + f_files + f_spec))
 
-    echo "$condition,$task_type,$trial,$agent,$f_completion,$f_build,$f_tests,$f_regression,$f_files,$f_spec,$duration,$total" >> "$SCORE_FILE"
-    printf "  %-14s %-8s t%-2s agent-%s: comp=%d build=%d test=%d regr=%d file=%d spec=%d  %d/6  (%ds)\n" \
+    echo "$condition,$task_type,$trial,$agent,$f_completion,$f_build,$f_tests,$f_files,$f_spec,$duration,$total" >> "$SCORE_FILE"
+    printf "  %-14s %-8s t%-2s agent-%s: comp=%d build=%d test=%d file=%d spec=%d  %d/5  (%ds)\n" \
         "$condition" "$task_type" "$trial" "$agent" \
-        "$f_completion" "$f_build" "$f_tests" "$f_regression" "$f_files" "$f_spec" "$total" "$duration"
+        "$f_completion" "$f_build" "$f_tests" "$f_files" "$f_spec" "$total" "$duration"
 }
 
 echo "=== Individual Agent Scores ==="
-echo "Legend: comp=completion build=build test=tests_pass regr=no_regression file=file_discipline spec=spec_match"
+echo "Legend: comp=completion build=build test=tests_pass file=file_discipline spec=spec_match"
 echo ""
 
 for condition_dir in "$RESULTS_DIR"/*/; do
