@@ -428,6 +428,9 @@ func runServe(portNum int) error {
 
 
 
+	// GET/POST /api/briefs/{beads-id} - brief content and mark-as-read
+	mux.HandleFunc("/api/briefs/", corsHandler(handleBrief))
+
 	// GET /api/harness - harness pipeline visualization data (gate deflection, measurement status, falsification verdicts)
 	mux.HandleFunc("/api/harness", corsHandler(handleHarnessReport))
 

@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
-	import { reviewQueue, type ReviewQueueIssue } from '$lib/stores/beads';
+	import { MarkdownContent } from '$lib/components/markdown-content';
+	import { reviewQueue, type ReviewQueueIssue, type BriefResponse } from '$lib/stores/beads';
 	import { agents, type Agent } from '$lib/stores/agents';
+
+	const API_BASE = 'http://localhost:3348';
 
 	export let expanded: boolean = true;
 
@@ -12,8 +15,64 @@
 			.map(a => [a.beads_id, a])
 	);
 
+	// Brief expansion state: which issue IDs have their brief expanded
+	let expandedBriefs: Set<string> = new Set();
+	// Brief content cache
+	let briefCache: Map<string, BriefResponse> = new Map();
+	// Loading state
+	let briefLoading: Set<string> = new Set();
+
 	function toggle() {
 		expanded = !expanded;
+	}
+
+	async function toggleBrief(issueId: string) {
+		if (expandedBriefs.has(issueId)) {
+			expandedBriefs.delete(issueId);
+			expandedBriefs = expandedBriefs; // trigger reactivity
+			return;
+		}
+
+		// Fetch brief if not cached
+		if (!briefCache.has(issueId)) {
+			briefLoading.add(issueId);
+			briefLoading = briefLoading;
+			try {
+				const response = await fetch(`${API_BASE}/api/briefs/${issueId}`);
+				if (response.ok) {
+					const data: BriefResponse = await response.json();
+					briefCache.set(issueId, data);
+					briefCache = briefCache;
+				}
+			} catch (e) {
+				console.error('Failed to fetch brief:', e);
+			} finally {
+				briefLoading.delete(issueId);
+				briefLoading = briefLoading;
+			}
+		}
+
+		expandedBriefs.add(issueId);
+		expandedBriefs = expandedBriefs;
+	}
+
+	async function markAsRead(issueId: string, event: MouseEvent) {
+		event.stopPropagation();
+		try {
+			const response = await fetch(`${API_BASE}/api/briefs/${issueId}`, {
+				method: 'POST',
+			});
+			if (response.ok) {
+				// Update cache to reflect read state
+				const cached = briefCache.get(issueId);
+				if (cached) {
+					briefCache.set(issueId, { ...cached, marked_read: true });
+					briefCache = briefCache;
+				}
+			}
+		} catch (e) {
+			console.error('Failed to mark brief as read:', e);
+		}
 	}
 
 	function getPreview(issues: ReviewQueueIssue[]): string {
@@ -101,38 +160,81 @@
 				<div class="space-y-1">
 					{#each sortedIssues as issue (issue.id)}
 						{@const synthesis = agentByBeadsId.get(issue.id)?.synthesis}
-						<div class="flex items-center gap-1 sm:gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50" data-testid="review-issue-{issue.id}">
-							<span class="flex-shrink-0 text-xs font-medium {getTierClass(issue.tier)}">
-								{getTierLabel(issue.tier)}
-							</span>
-							{#if synthesis?.outcome}
-								<Badge variant={synthesis.outcome === 'success' ? 'default' : 'secondary'} class="h-4 px-1 text-[10px] flex-shrink-0">
-									{synthesis.outcome.split(/\s*\(/)[0].trim()}
-								</Badge>
-							{/if}
-							{#if synthesis?.tldr}
-								<span class="flex-1 truncate min-w-0" title={synthesis.tldr}>
-									{synthesis.tldr.length > 60 ? synthesis.tldr.substring(0, 57) + '...' : synthesis.tldr}
+						{@const brief = briefCache.get(issue.id)}
+						{@const isBriefExpanded = expandedBriefs.has(issue.id)}
+						{@const isLoading = briefLoading.has(issue.id)}
+						<div data-testid="review-issue-{issue.id}">
+							<div class="flex items-center gap-1 sm:gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50">
+								<span class="flex-shrink-0 text-xs font-medium {getTierClass(issue.tier)}">
+									{getTierLabel(issue.tier)}
 								</span>
-							{:else}
-								<span class="flex-1 truncate min-w-0 italic text-muted-foreground" title={issue.title}>
-									{issue.title}
-								</span>
-							{/if}
-							{#if !synthesis}
-								<Badge variant="outline" class="h-4 px-1 text-[10px] flex-shrink-0 text-muted-foreground/70 border-dashed">
-									no synthesis
+								{#if synthesis?.outcome}
+									<Badge variant={synthesis.outcome === 'success' ? 'default' : 'secondary'} class="h-4 px-1 text-[10px] flex-shrink-0">
+										{synthesis.outcome.split(/\s*\(/)[0].trim()}
+									</Badge>
+								{/if}
+								{#if synthesis?.tldr}
+									<span class="flex-1 truncate min-w-0" title={synthesis.tldr}>
+										{synthesis.tldr.length > 60 ? synthesis.tldr.substring(0, 57) + '...' : synthesis.tldr}
+									</span>
+								{:else}
+									<span class="flex-1 truncate min-w-0 italic text-muted-foreground" title={issue.title}>
+										{issue.title}
+									</span>
+								{/if}
+								{#if !synthesis}
+									<Badge variant="outline" class="h-4 px-1 text-[10px] flex-shrink-0 text-muted-foreground/70 border-dashed">
+										no synthesis
+									</Badge>
+								{/if}
+								{#if issue.has_brief}
+									<button
+										class="h-5 px-1.5 text-[10px] rounded border flex-shrink-0 transition-colors
+											{brief?.marked_read
+												? 'border-emerald-500/30 text-emerald-500/60 bg-emerald-500/5'
+												: 'border-blue-500/40 text-blue-500 bg-blue-500/10 hover:bg-blue-500/20'}"
+										onclick={() => toggleBrief(issue.id)}
+										data-testid="brief-toggle-{issue.id}"
+									>
+										{#if isLoading}
+											...
+										{:else if brief?.marked_read}
+											read
+										{:else}
+											brief
+										{/if}
+									</button>
+								{/if}
+								<Badge variant="outline" class="h-5 px-1.5 text-xs flex-shrink-0">
+									{issue.issue_type}
 								</Badge>
+								{#if getGateStatus(issue)}
+									<span class="text-xs text-amber-500 flex-shrink-0 hidden sm:inline">{getGateStatus(issue)}</span>
+								{/if}
+								<span class="text-xs text-muted-foreground flex-shrink-0 font-mono hidden sm:inline">
+									{issue.id}
+								</span>
+							</div>
+
+							{#if isBriefExpanded && brief}
+								<div class="mx-2 mb-2 p-3 rounded-md border border-blue-500/20 bg-blue-500/5" data-testid="brief-content-{issue.id}">
+									<div class="flex items-center justify-between mb-2">
+										<span class="text-xs font-medium text-blue-400">Brief</span>
+										{#if !brief.marked_read}
+											<button
+												class="text-xs px-2 py-0.5 rounded border border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 transition-colors"
+												onclick={(e) => markAsRead(issue.id, e)}
+												data-testid="mark-read-{issue.id}"
+											>
+												Mark as read
+											</button>
+										{:else}
+											<span class="text-xs text-emerald-500/60">Read</span>
+										{/if}
+									</div>
+									<MarkdownContent content={brief.content} />
+								</div>
 							{/if}
-							<Badge variant="outline" class="h-5 px-1.5 text-xs flex-shrink-0">
-								{issue.issue_type}
-							</Badge>
-							{#if getGateStatus(issue)}
-								<span class="text-xs text-amber-500 flex-shrink-0 hidden sm:inline">{getGateStatus(issue)}</span>
-							{/if}
-							<span class="text-xs text-muted-foreground flex-shrink-0 font-mono hidden sm:inline">
-								{issue.id}
-							</span>
 						</div>
 					{/each}
 				</div>

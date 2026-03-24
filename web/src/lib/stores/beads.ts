@@ -43,6 +43,14 @@ export interface ReviewQueueIssue {
   tier: number    // 1=feature/bug, 2=investigation, 3=task
   gate1: boolean  // Comprehension gate passed
   gate2: boolean  // Behavioral gate passed
+  has_brief: boolean // True if .kb/briefs/{id}.md exists
+}
+
+// Brief content from /api/briefs/{beads-id}
+export interface BriefResponse {
+  beads_id: string
+  content: string
+  marked_read: boolean
 }
 
 // Review queue response from /api/beads/review-queue

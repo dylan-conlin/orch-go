@@ -97,6 +97,7 @@ type ReviewQueueIssueResponse struct {
 	Tier      int    `json:"tier"`  // 1=feature/bug, 2=investigation, 3=task
 	Gate1     bool   `json:"gate1"` // Comprehension gate passed
 	Gate2     bool   `json:"gate2"` // Behavioral gate passed
+	HasBrief  bool   `json:"has_brief"` // True if .kb/briefs/{id}.md exists
 }
 
 // BeadsReviewQueueResponse is the JSON structure returned by /api/beads/review-queue.
@@ -198,6 +199,7 @@ func handleBeadsReviewQueue(w http.ResponseWriter, r *http.Request) {
 			Tier:      item.Tier,
 			Gate1:     item.Gate1,
 			Gate2:     item.Gate2,
+			HasBrief:  hasBriefFile(item.BeadsID),
 		})
 	}
 
