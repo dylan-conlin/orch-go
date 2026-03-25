@@ -1,0 +1,48 @@
+Agent A Completion Summary - VisualWidth and PadToWidth
+========================================================
+
+IMPLEMENTATION COMPLETE ✓
+
+FILES MODIFIED:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+FUNCTIONS ADDED TO display.go:
+1. VisualWidth(s string) int
+   - Location: Lines 47-51 (after StripANSI, before FormatDuration)
+   - Returns visual display width ignoring ANSI codes
+   - Uses existing StripANSI function as required
+   - Counts runes correctly for Unicode support
+
+2. PadToWidth(s string, width int) string
+   - Location: Lines 53-61 (after VisualWidth)
+   - Right-pads with spaces to target visual width
+   - Preserves ANSI codes (don't count toward width)
+   - Returns unchanged if already wider
+
+TESTS ADDED TO display_test.go:
+1. TestVisualWidth
+   - Location: Lines 87-115 (after TestStripANSI)
+   - Tests: ASCII, ANSI colors, Unicode (CJK, emoji), ANSI+Unicode
+
+2. TestPadToWidth
+   - Location: Lines 117-145 (after TestVisualWidth)
+   - Tests: padding scenarios, ANSI preservation, Unicode, edge cases
+   - Includes visual width verification
+
+TEST RESULTS:
+All tests pass (8/8):
+- TestTruncate ✓
+- TestTruncateWithPadding ✓
+- TestShortID ✓
+- TestStripANSI ✓
+- TestVisualWidth ✓
+- TestPadToWidth ✓
+- TestFormatDuration ✓
+- TestFormatDurationShort ✓
+
+MERGE COORDINATION:
+- No conflicts expected with Agent B (FormatTable)
+- Agent B inserts at end of file (after FormatDurationShort)
+- My insertions are earlier in both files
+- Different line regions ensure clean git merge

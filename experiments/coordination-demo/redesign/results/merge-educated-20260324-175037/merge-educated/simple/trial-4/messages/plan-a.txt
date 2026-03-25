@@ -1,0 +1,39 @@
+Agent A Implementation Plan - FormatBytes
+==========================================
+
+Files to modify:
+1. /private/tmp/coord-mergedu-a-t4-1077/pkg/display/display.go
+2. /private/tmp/coord-mergedu-a-t4-1077/pkg/display/display_test.go
+
+Insertion points:
+-----------------
+
+display.go:
+  Location: AFTER StripANSI (line 45) and BEFORE FormatDuration (line 47)
+  Exact line region: Lines 46-73 (approximately 28 lines total)
+  Strategy: Insert new function between StripANSI and FormatDuration
+
+  Function to add:
+  - FormatBytes(bytes int64) string
+    - Handles zero, negative, and positive byte counts
+    - Uses binary units (B, KiB, MiB, GiB, TiB)
+    - Shows 1 decimal place for non-byte units
+
+display_test.go:
+  Location: AFTER TestStripANSI (line 85) and BEFORE TestFormatDuration (line 87)
+  Exact line region: Lines 86-112 (approximately 27 lines total)
+  Strategy: Insert new test function between TestStripANSI and TestFormatDuration
+
+  Test to add:
+  - TestFormatBytes
+    - Tests zero, small bytes, exact boundaries
+    - Tests negative values
+    - Tests large values (GiB, TiB)
+    - Tests values between boundaries
+
+Rationale for insertion points:
+--------------------------------
+Choosing the TOP insertion point (after StripANSI, before FormatDuration) to leave
+the BOTTOM insertion point (after FormatDurationShort) available for Agent B.
+This ensures our insertions are separated by at least 40+ lines, avoiding any
+git merge conflicts.

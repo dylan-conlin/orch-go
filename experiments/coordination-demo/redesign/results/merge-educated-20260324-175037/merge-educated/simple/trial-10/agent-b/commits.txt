@@ -1,0 +1,1 @@
+88a841e0e feat: add FormatRate to pkg/display for transfer rate formatting

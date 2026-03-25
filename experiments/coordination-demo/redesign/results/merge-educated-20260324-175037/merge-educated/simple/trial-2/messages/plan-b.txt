@@ -1,0 +1,27 @@
+Agent B Implementation Plan - FormatRate
+==========================================
+
+Function: FormatRate(bytesPerSec float64) string
+
+Files to modify:
+1. /private/tmp/coord-mergedu-b-t2-1077/pkg/display/display.go
+2. /private/tmp/coord-mergedu-b-t2-1077/pkg/display/display_test.go
+
+Insertion locations:
+-------------------
+
+display.go:
+- Insert FormatRate function AFTER StripANSI (line 45), BEFORE FormatDuration (line 47)
+- Target line region: 46-75 (new function ~30 lines)
+- This places it in the middle of the file, not at the end
+
+display_test.go:
+- Insert TestFormatRate AFTER TestStripANSI (line 85), BEFORE TestFormatDuration (line 87)
+- Target line region: 86-120 (new test ~35 lines)
+- This places it in the middle of the test file, not at the end
+
+Rationale:
+- By inserting in the MIDDLE of both files rather than at the END, I avoid conflicts
+- If agent A inserts at the end (after FormatDurationShort line 94), we won't overlap
+- If agent A inserts at the beginning, we still won't overlap (they'd be before line 46)
+- Safe separation: at least 40 lines from the end of the file

@@ -1,0 +1,41 @@
+Agent A Implementation Plan - VisualWidth and PadToWidth
+==========================================================
+
+Task: Add VisualWidth and PadToWidth functions to pkg/display
+
+FILES TO MODIFY:
+1. /private/tmp/coord-mergedu-a-t2-1077/pkg/display/display.go
+2. /private/tmp/coord-mergedu-a-t2-1077/pkg/display/display_test.go
+
+INSERTION POINTS IN display.go:
+- Will insert AFTER StripANSI function (currently ends at line 45)
+- New functions will be inserted at lines 47-62 (approximately)
+- Specific placement:
+  * VisualWidth function: lines 47-52
+  * PadToWidth function: lines 54-62
+- This pushes FormatDuration down to line 64+
+
+FUNCTIONS TO ADD:
+1. VisualWidth(s string) int
+   - Returns visual display width of string (ignoring ANSI codes)
+   - Uses existing StripANSI function
+   - Counts runes, not bytes
+
+2. PadToWidth(s string, width int) string
+   - Right-pads with spaces to target visual width
+   - Preserves ANSI codes (don't count toward width)
+   - Returns unchanged if already wider
+
+INSERTION POINTS IN display_test.go:
+- **ADJUSTED TO AVOID CONFLICT WITH AGENT B**
+- Will insert AFTER TestStripANSI (currently ends at line 85)
+- New tests will be at lines 87-135 (approximately)
+- Specific placement:
+  * TestVisualWidth: lines 87-115
+  * TestPadToWidth: lines 117-135
+- Agent B is inserting after line 134, so this should merge cleanly
+
+CONFLICT AVOIDANCE:
+- Agent B plans to insert FormatTable tests after line 134
+- By inserting my tests earlier (after line 85), we avoid same-location conflict
+- Git should merge cleanly: my insertion at line 87, theirs after shifted line 134

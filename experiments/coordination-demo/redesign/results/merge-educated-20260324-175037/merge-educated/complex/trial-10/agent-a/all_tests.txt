@@ -1,0 +1,48 @@
+=== RUN   TestTruncate
+--- PASS: TestTruncate (0.00s)
+=== RUN   TestTruncateWithPadding
+--- PASS: TestTruncateWithPadding (0.00s)
+=== RUN   TestShortID
+--- PASS: TestShortID (0.00s)
+=== RUN   TestStripANSI
+--- PASS: TestStripANSI (0.00s)
+=== RUN   TestVisualWidth
+=== RUN   TestVisualWidth/plain_ASCII
+=== RUN   TestVisualWidth/empty_string
+=== RUN   TestVisualWidth/with_ANSI_color
+=== RUN   TestVisualWidth/with_multiple_ANSI_codes
+=== RUN   TestVisualWidth/Unicode_-_emoji
+=== RUN   TestVisualWidth/Unicode_-_CJK
+=== RUN   TestVisualWidth/mixed_Unicode_and_ANSI
+=== RUN   TestVisualWidth/only_ANSI_codes
+--- PASS: TestVisualWidth (0.00s)
+    --- PASS: TestVisualWidth/plain_ASCII (0.00s)
+    --- PASS: TestVisualWidth/empty_string (0.00s)
+    --- PASS: TestVisualWidth/with_ANSI_color (0.00s)
+    --- PASS: TestVisualWidth/with_multiple_ANSI_codes (0.00s)
+    --- PASS: TestVisualWidth/Unicode_-_emoji (0.00s)
+    --- PASS: TestVisualWidth/Unicode_-_CJK (0.00s)
+    --- PASS: TestVisualWidth/mixed_Unicode_and_ANSI (0.00s)
+    --- PASS: TestVisualWidth/only_ANSI_codes (0.00s)
+=== RUN   TestPadToWidth
+=== RUN   TestPadToWidth/pad_plain_ASCII
+=== RUN   TestPadToWidth/already_at_width
+=== RUN   TestPadToWidth/already_wider_than_width
+=== RUN   TestPadToWidth/empty_string
+=== RUN   TestPadToWidth/with_ANSI_color_codes
+=== RUN   TestPadToWidth/Unicode_emoji
+=== RUN   TestPadToWidth/zero_width
+--- PASS: TestPadToWidth (0.00s)
+    --- PASS: TestPadToWidth/pad_plain_ASCII (0.00s)
+    --- PASS: TestPadToWidth/already_at_width (0.00s)
+    --- PASS: TestPadToWidth/already_wider_than_width (0.00s)
+    --- PASS: TestPadToWidth/empty_string (0.00s)
+    --- PASS: TestPadToWidth/with_ANSI_color_codes (0.00s)
+    --- PASS: TestPadToWidth/Unicode_emoji (0.00s)
+    --- PASS: TestPadToWidth/zero_width (0.00s)
+=== RUN   TestFormatDuration
+--- PASS: TestFormatDuration (0.00s)
+=== RUN   TestFormatDurationShort
+--- PASS: TestFormatDurationShort (0.00s)
+PASS
+ok  	github.com/dylan-conlin/orch-go/pkg/display	(cached)

@@ -1,0 +1,49 @@
+Agent B Completion Summary - FormatTable Function
+===================================================
+
+TASK COMPLETED: FormatTable implementation
+
+FILES MODIFIED:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+EXACT LINE REGIONS:
+- display.go: Lines 96-159 (64 lines)
+  - Added FormatTable function after FormatDurationShort (which ends at line 94)
+  - Function starts at line 96, ends at line 159
+
+- display_test.go: Lines 136-332 (197 lines)
+  - Added TestFormatTable and helper functions
+  - Test starts at line 136, helpers end at line 332
+
+IMPLEMENTATION DETAILS:
+- Function signature: FormatTable(headers []string, rows [][]string) string
+- Uses existing StripANSI function for ANSI-aware width calculation
+- Auto-sizes columns based on widest content (visual width, ignoring ANSI codes)
+- Format: pipe-separated columns with dashes separator between header and data
+- Handles edge cases: empty rows, nil rows, mismatched column counts, empty headers
+
+TEST COVERAGE:
+✓ Basic table (headers + multiple rows)
+✓ Empty table (headers only, no rows)
+✓ ANSI colored content alignment
+✓ Mismatched column counts (missing/extra columns)
+✓ Single-column table
+✓ Wide content (long strings)
+✓ Nil rows
+✓ Empty headers
+
+ALL TESTS PASSING:
+$ go test ./pkg/display/ -v
+PASS
+ok      github.com/dylan-conlin/orch-go/pkg/display     0.370s
+
+COMMIT:
+Committed as: 6eea045a6
+Message: "feat: add FormatTable function to pkg/display"
+
+COORDINATION:
+- Inserted code at END of both files (after all existing functions)
+- Agent A has not yet written their plan
+- If Agent A chooses same location, they should adjust to TOP location (after StripANSI, before FormatDuration)
+- My insertion region: display.go lines 96-159, display_test.go lines 136-332

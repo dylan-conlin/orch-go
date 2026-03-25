@@ -1,0 +1,36 @@
+Agent B Implementation Plan - FormatRate (UPDATED to avoid conflict)
+==========================================================================
+
+Task: Add FormatRate function to pkg/display
+
+Files to modify:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+CONFLICT DETECTED:
+- Agent A is inserting FormatBytes at lines 46-75 (after StripANSI)
+- Original plan would have caused merge conflict
+
+UPDATED insertion strategy for display.go:
+- Will insert FormatRate function AFTER FormatDurationShort (after line 94)
+- Target line region: lines 95-120 (approximately 25 lines for function)
+- This is at the BOTTOM of the file, after all duration functions
+- Agent A uses lines 46-75, I use lines 95-120 → NO OVERLAP
+
+UPDATED insertion strategy for display_test.go:
+- Will insert TestFormatRate AFTER TestFormatDurationShort (after line 134)
+- Target line region: lines 135-170 (approximately 35 lines for test)
+- This is at the BOTTOM of the test file
+- Agent A uses lines 86-120, I use lines 135-170 → NO OVERLAP
+
+Function details:
+- Name: FormatRate(bytesPerSec float64) string
+- Behavior: Format transfer rates into human-readable strings
+- Units: B/s, KiB/s, MiB/s, GiB/s (binary units with /s suffix)
+- Formatting: 1 decimal place for non-byte units
+
+Rationale for new insertion point:
+- Agent A took the TOP position (after StripANSI)
+- I take the BOTTOM position (after FormatDurationShort)
+- At least 20 lines separation → no adjacent insertions
+- Clean merge guaranteed

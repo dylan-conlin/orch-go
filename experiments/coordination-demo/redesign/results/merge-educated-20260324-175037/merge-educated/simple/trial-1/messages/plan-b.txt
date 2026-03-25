@@ -1,0 +1,27 @@
+Agent B Plan: FormatRate Implementation
+==========================================
+
+Files to modify:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+Function to add:
+- FormatRate(bytesPerSec float64) string
+
+Insertion locations:
+-------------------
+display.go:
+  - Insert AFTER FormatDurationShort (after line 94)
+  - New code will span approximately lines 96-113 (18 lines)
+  - Rationale: Inserting at the END of the file to avoid conflicts with Agent A
+
+display_test.go:
+  - Insert AFTER TestFormatDurationShort (after line 134)
+  - New code will span approximately lines 136-170 (35 lines)
+  - Rationale: Inserting at the END of the test file
+
+Implementation notes:
+- Binary units: B/s, KiB/s, MiB/s, GiB/s
+- 1 decimal place for non-byte units
+- Handle zero and negative values
+- No modifications to existing functions

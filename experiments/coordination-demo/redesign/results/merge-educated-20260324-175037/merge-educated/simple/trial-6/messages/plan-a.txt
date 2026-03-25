@@ -1,0 +1,37 @@
+Agent A Plan - FormatBytes Implementation (REVISED)
+====================================================
+
+Task: Add FormatBytes function and tests
+
+Files to modify:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+CONFLICT DETECTED:
+- Agent B is inserting FormatRate after StripANSI (line 45)
+- I was also planning to insert there
+- RESOLUTION: I'm moving to the END of both files
+
+Insertion locations (REVISED):
+------------------------------
+
+display.go:
+- Insert FormatBytes function AFTER FormatDurationShort (after line 94)
+- Expected line range: lines 96-126 (approximately 30 lines)
+- This is at the END of the file
+
+display_test.go:
+- Insert TestFormatBytes AFTER TestFormatDurationShort (after line 134)
+- Expected line range: lines 136-194 (approximately 58 lines)
+- This is at the END of the file
+
+Function to add:
+- FormatBytes(bytes int64) string
+  - Binary units (B, KiB, MiB, GiB, TiB)
+  - 1 decimal place for non-byte units
+  - Handle negatives and zero
+
+Separation strategy:
+- Agent B: inserting at lines 46-75 (display.go) and 86-115 (display_test.go)
+- Agent A: inserting at lines 96+ (display.go) and 136+ (display_test.go)
+- Separation: 20+ lines in both files - NO CONFLICT

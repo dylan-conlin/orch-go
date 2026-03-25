@@ -1,0 +1,36 @@
+Agent A Implementation Plan: VisualWidth and PadToWidth
+=========================================================
+
+Files to modify:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+Insertion strategy for display.go:
+- INSERT LOCATION: After StripANSI function (after line 45), BEFORE FormatDuration (line 49)
+- EXACT LINE REGION: Lines 46-95 (estimated ~50 lines for both functions)
+- REASONING: This is early in the file, minimizing conflict risk with other agent who likely inserts at EOF
+
+Functions to add:
+1. VisualWidth(s string) int
+   - Returns visual width of string after stripping ANSI codes
+   - Uses existing StripANSI function (constraint)
+   - Handles Unicode by counting runes, not bytes
+
+2. PadToWidth(s string, width int) string
+   - Right-pads with spaces to reach target visual width
+   - Preserves ANSI codes but doesn't count them toward width
+   - Returns unchanged if already wider than target
+
+Insertion strategy for display_test.go:
+- INSERT LOCATION: After TestStripANSI (after line 85), BEFORE TestFormatDuration (line 87)
+- EXACT LINE REGION: Lines 86-180 (estimated ~95 lines for both test functions)
+- REASONING: Maintains test order matching function order in display.go
+
+Test functions to add:
+1. TestVisualWidth - covers ASCII, ANSI codes, Unicode (CJK, emoji), empty strings
+2. TestPadToWidth - covers plain strings, ANSI strings, already-at-width, wider-than-target
+
+Implementation approach:
+- Use unicode/utf8 or len([]rune(s)) for proper Unicode width counting
+- Leverage StripANSI as required by constraints
+- Follow existing test table-driven style

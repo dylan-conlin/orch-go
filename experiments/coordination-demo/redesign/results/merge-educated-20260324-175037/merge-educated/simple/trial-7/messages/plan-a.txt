@@ -1,0 +1,26 @@
+Agent A Plan - FormatBytes Implementation
+==========================================
+
+Files to modify:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+Insertion strategy for display.go:
+- Insert FormatBytes function AFTER StripANSI (line 45) and BEFORE FormatDuration (line 47)
+- Target line region: lines 46-75 (approximately 30 lines for function)
+- This places it near the TOP of the file, well separated from the end
+
+Insertion strategy for display_test.go:
+- Insert TestFormatBytes AFTER TestStripANSI (line 85) and BEFORE TestFormatDuration (line 87)
+- Target line region: lines 86-115 (approximately 30 lines for test)
+
+Function to add:
+- FormatBytes(bytes int64) string
+- Formats byte counts with binary units (B, KiB, MiB, GiB, TiB)
+- 1 decimal place for non-byte units
+- Handles negatives and zero
+
+Rationale for insertion point:
+- Choosing top of file (after StripANSI) vs bottom (after FormatDurationShort)
+- This leaves the bottom of the file available for the other agent
+- Minimizes merge conflict risk by using different regions

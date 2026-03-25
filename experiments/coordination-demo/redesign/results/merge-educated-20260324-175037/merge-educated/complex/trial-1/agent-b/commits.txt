@@ -1,0 +1,1 @@
+14cdfca33 feat(display): add FormatTable function with ANSI-aware column alignment

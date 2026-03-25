@@ -1,0 +1,32 @@
+Agent A Implementation Plan (UPDATED)
+======================================
+
+Task: Add VisualWidth and PadToWidth functions
+
+Files to modify:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+CONFLICT DETECTED: Agent B is inserting after StripANSI (lines 47-110)
+
+UPDATED Insertion location in display.go:
+- AFTER FormatDurationShort function (currently ends at line 94)
+- Estimated line range: 96-130 (inserting ~30-35 lines)
+- This avoids conflict with Agent B who is using lines 47-110
+
+Functions to add:
+1. VisualWidth(s string) int
+   - Returns visual display width ignoring ANSI codes
+   - Uses existing StripANSI function
+   - Counts runes for proper Unicode handling
+
+2. PadToWidth(s string, width int) string
+   - Right-pads string to target visual width
+   - Preserves ANSI codes but doesn't count them toward width
+   - Returns unchanged if already wider than target
+
+Test location in display_test.go:
+- Will add TestVisualWidth and TestPadToWidth
+- Insertion point: After existing tests (end of file)
+
+Strategy: Insert at END of file (after FormatDurationShort) to avoid conflicts with Agent B who is inserting in the middle (after StripANSI).

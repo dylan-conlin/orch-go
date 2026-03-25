@@ -1,0 +1,30 @@
+# Plan B: FormatTable Implementation
+
+## Files to Modify
+1. /private/tmp/coord-mergedu-b-t7-1077/pkg/display/display.go
+2. /private/tmp/coord-mergedu-b-t7-1077/pkg/display/display_test.go
+
+## Insertion Points
+
+### display.go
+- **Initial plan:** Insert FormatTable function after FormatDurationShort (after line 94)
+- **Line region:** Lines 96-150 (estimated ~54 lines for the function)
+- **Location:** At the END of the file, after all existing functions
+
+### display_test.go
+- **Initial plan:** Insert TestFormatTable after TestFormatDurationShort (after line 134)
+- **Line region:** Lines 136-250 (estimated ~114 lines for comprehensive tests)
+- **Location:** At the END of the file, after all existing tests
+
+## Function Names to Add
+- FormatTable(headers []string, rows [][]string) string
+
+## Implementation Details
+- Will use existing StripANSI function for width calculation (no reimplementation)
+- Will handle ANSI-colored content correctly
+- Will handle edge cases: empty rows, mismatched columns, nil rows
+- Table style: pipes + spaces for borders and separators
+- Header separated from data by dashed line
+
+## Note
+Will check plan-a.txt after writing this to ensure no line region conflicts.

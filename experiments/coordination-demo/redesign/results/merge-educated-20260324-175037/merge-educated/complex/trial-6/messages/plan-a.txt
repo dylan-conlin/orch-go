@@ -1,0 +1,30 @@
+Agent A Implementation Plan - VisualWidth and PadToWidth
+=========================================================
+
+Target file: pkg/display/display.go
+Target test file: pkg/display/display_test.go
+
+INSERTION LOCATION (display.go):
+- Inserting AFTER StripANSI function (line 45)
+- Inserting BEFORE FormatDuration function (line 47)
+- Estimated line range: 46-75 (approximately 30 lines for both functions)
+
+Functions to add:
+1. VisualWidth(s string) int
+   - Uses existing StripANSI to remove ANSI codes
+   - Counts runes for proper Unicode handling
+
+2. PadToWidth(s string, width int) string
+   - Uses VisualWidth to calculate current width
+   - Right-pads with spaces to reach target width
+
+TEST INSERTION LOCATION (display_test.go):
+- Inserting AFTER TestStripANSI function (line 85)
+- Inserting BEFORE TestFormatDuration function (line 87)
+- Estimated line range: 86-150 (approximately 65 lines for both test functions)
+
+Tests to add:
+1. TestVisualWidth - covers ASCII, ANSI codes, Unicode, empty strings
+2. TestPadToWidth - covers padding, ANSI preservation, edge cases
+
+This plan places my code in the UPPER portion of the file, leaving the LOWER portion (after FormatDurationShort at line 94) available for the other agent.

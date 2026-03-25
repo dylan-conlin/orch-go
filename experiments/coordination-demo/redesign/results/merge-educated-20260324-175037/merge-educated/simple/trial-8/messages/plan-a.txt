@@ -1,0 +1,29 @@
+Agent A Implementation Plan - FormatBytes
+==========================================
+
+Files to modify:
+1. /private/tmp/coord-mergedu-a-t8-1077/pkg/display/display.go
+2. /private/tmp/coord-mergedu-a-t8-1077/pkg/display/display_test.go
+
+Insertion locations:
+
+display.go:
+- Function: FormatBytes(bytes int64) string
+- Insertion point: AFTER StripANSI function, BEFORE FormatDuration function
+- Current line 45 is end of StripANSI
+- Current line 47 is start of FormatDuration
+- Will insert at line 46 (blank line between them)
+- Estimated line region: lines 46-75 (~30 lines for function)
+- This is FAR from the end of file (line 94) to avoid conflicts
+
+display_test.go:
+- Function: TestFormatBytes(t *testing.T)
+- Insertion point: AFTER TestStripANSI (ends at line 85), BEFORE TestFormatDuration (starts at line 87)
+- Will insert at line 86 (blank line between them)
+- Estimated line region: lines 86-120 (~35 lines for test cases)
+
+Implementation details:
+- Binary units: B, KiB, MiB, GiB, TiB (1024-based)
+- 1 decimal place for non-byte units
+- Handle zero, negative, and large values
+- Test coverage: zero, small bytes, exact boundaries, negatives, large values, in-between values

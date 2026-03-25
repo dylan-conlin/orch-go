@@ -1,0 +1,40 @@
+Agent A Implementation Plan
+==========================
+
+Task: Add VisualWidth and PadToWidth functions
+
+Files to modify:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+Insertion strategy for display.go:
+- INSERT LOCATION: After StripANSI function (after line 45, before FormatDuration at line 47)
+- EXACT LINE REGION: Lines 46-75 (approximately 30 lines for both functions)
+- Functions to add:
+  * VisualWidth(s string) int - calculates visual width ignoring ANSI codes
+  * PadToWidth(s string, width int) string - right-pads to target width
+
+Rationale for insertion point:
+- StripANSI is at lines 42-45
+- My functions use StripANSI, so placing them immediately after makes logical sense
+- FormatDuration starts at line 47
+- This is EARLY in the file, avoiding the end where the other agent will likely insert FormatTable
+
+Insertion strategy for display_test.go:
+- Will check test file structure and insert tests EARLY in the file
+- Likely after existing tests for StripANSI or other early functions
+- Will avoid inserting at the END of the file
+
+Dependencies:
+- Must use existing StripANSI function (not reimplement)
+- Standard library only (strings, unicode/utf8)
+- Follow existing code style
+
+Next steps:
+1. Check for other agent's plan (plan-b.txt)
+2. Verify no line region overlap
+3. Implement functions
+4. Write tests
+5. Run: go test ./pkg/display/ -v
+6. Commit changes
+7. Write done-a.txt summary

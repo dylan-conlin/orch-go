@@ -1,0 +1,33 @@
+Agent B Implementation Plan - FormatRate Function
+=====================================================
+
+Task: Add FormatRate function to pkg/display
+
+Files to modify:
+1. /private/tmp/coord-mergedu-b-t10-1077/pkg/display/display.go
+2. /private/tmp/coord-mergedu-b-t10-1077/pkg/display/display_test.go
+
+Implementation details:
+
+display.go:
+- Function: FormatRate(bytesPerSec float64) string
+- Insertion point: After FormatDurationShort function
+- EXACT LINE REGION: Lines 96-115 (approximately)
+- Location: After line 94 (end of FormatDurationShort), before end of file
+- This is the END of the file, so minimal conflict risk
+
+display_test.go:
+- Function: TestFormatRate
+- Insertion point: After TestFormatDurationShort function
+- EXACT LINE REGION: Lines 136-170 (approximately)
+- Location: After line 134 (end of TestFormatDurationShort), before end of file
+- This is the END of the file, so minimal conflict risk
+
+Strategy: Inserting at the END of both files to minimize merge conflicts.
+The other agent (working on FormatBytes) will likely insert earlier in the file.
+
+Function behavior:
+- Format transfer rates with binary units + "/s" suffix
+- 1 decimal place for non-byte units
+- Handle zero as "0 B/s"
+- Handle negative values with "-" prefix

@@ -1,0 +1,27 @@
+Agent B Implementation Plan - FormatRate
+==========================================
+
+Task: Add FormatRate function to pkg/display
+
+Files to modify:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+Insertion points:
+- display.go: Insert FormatRate function AFTER line 94 (after FormatDurationShort function ends)
+  Estimated line region: 96-120 (approximately 25 lines for the function)
+
+- display_test.go: Insert TestFormatRate function AFTER line 134 (at end of file)
+  Estimated line region: 136-180 (approximately 45 lines for comprehensive tests)
+
+Function to add:
+- FormatRate(bytesPerSec float64) string
+  - Returns human-readable transfer rates with binary units (B/s, KiB/s, MiB/s, GiB/s)
+  - 1 decimal place for non-byte units
+  - Handles zero, negative values, and large values
+
+Implementation strategy:
+- Follow existing code style (similar pattern to FormatDuration)
+- Use math package for Abs function
+- Binary units: 1024 bytes per KiB
+- Comprehensive test coverage including edge cases

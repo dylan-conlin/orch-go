@@ -1,0 +1,35 @@
+Agent B Implementation Plan - FormatTable
+==========================================
+
+Task: Add FormatTable function to pkg/display
+
+Files to modify:
+1. pkg/display/display.go
+2. pkg/display/display_test.go
+
+Insertion points:
+-----------------
+
+display.go:
+  - Will insert FormatTable function AFTER line 94 (after FormatDurationShort)
+  - Estimated insertion region: lines 96-150 (approximately 50-55 lines)
+  - This is at the END of the file, leaving plenty of space at the top for agent A
+
+display_test.go:
+  - Will insert TestFormatTable function AFTER line 134 (at the end of file)
+  - Estimated insertion region: lines 136-220 (approximately 85 lines for comprehensive tests)
+
+Function names to add:
+- FormatTable(headers []string, rows [][]string) string
+
+Implementation approach:
+- Use existing StripANSI function for width calculation
+- Calculate column widths based on max content width (including headers)
+- Use pipe separators (|) with padding for clean table format
+- Add header separator line with dashes
+- Handle edge cases: empty rows, mismatched columns, ANSI colors
+
+Strategy to avoid conflicts:
+- Inserting at END of both files (agent A likely to insert near top/middle)
+- Clear separation from existing functions
+- No modification to existing code

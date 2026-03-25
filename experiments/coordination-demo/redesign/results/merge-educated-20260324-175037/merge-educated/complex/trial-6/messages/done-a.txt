@@ -1,0 +1,60 @@
+Agent A Completion Summary - VisualWidth and PadToWidth
+========================================================
+
+STATUS: ✅ COMPLETE - All tests passing
+
+Implementation Details:
+-----------------------
+
+File: pkg/display/display.go
+- Added VisualWidth function at lines 47-54 (8 lines including doc comments)
+- Added PadToWidth function at lines 56-68 (13 lines including doc comments)
+- Total insertion: 21 lines between line 46 and the FormatDuration function
+- ACTUAL LINE NUMBERS: VisualWidth starts at line 50, PadToWidth at line 59
+
+File: pkg/display/display_test.go
+- Added TestVisualWidth at lines 87-110 (24 lines)
+- Added TestPadToWidth at lines 111-134 (24 lines)
+- Total insertion: 48 lines between TestStripANSI and TestFormatDuration
+- ACTUAL LINE NUMBERS: TestVisualWidth starts at line 87, TestPadToWidth at line 111
+
+Functions Implemented:
+---------------------
+1. VisualWidth(s string) int
+   - Returns visual display width ignoring ANSI codes
+   - Uses existing StripANSI function (as required)
+   - Counts runes for proper Unicode handling
+
+2. PadToWidth(s string, width int) string
+   - Right-pads with spaces to target width
+   - Preserves ANSI codes
+   - Returns unchanged if already at or exceeding width
+
+Test Coverage:
+--------------
+✅ Plain ASCII strings
+✅ ANSI color codes
+✅ Unicode (CJK characters, emoji)
+✅ Empty strings
+✅ Edge cases (already at width, wider than target, zero/negative width)
+✅ Mixed ANSI and Unicode
+
+Test Results:
+-------------
+$ go test ./pkg/display/ -v
+PASS: TestTruncate
+PASS: TestTruncateWithPadding
+PASS: TestShortID
+PASS: TestStripANSI
+PASS: TestVisualWidth ← NEW
+PASS: TestPadToWidth ← NEW
+PASS: TestFormatDuration
+PASS: TestFormatDurationShort
+ok   github.com/dylan-conlin/orch-go/pkg/display  0.281s
+
+Coordination Notes:
+------------------
+- No conflicts with Agent B's plan
+- Agent B is inserting after line 94 (FormatDurationShort)
+- My insertions are well separated (46-68 vs their 96+)
+- Both agents can merge cleanly
