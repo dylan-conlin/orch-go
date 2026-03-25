@@ -82,6 +82,7 @@
 - Governance checks and spawn gate integration
 - Backend abstraction: Claude CLI (tmux) vs OpenCode (headless)
 - Spawn type definitions, inference, and beads integration
+- Loop controller (`loop.go`): `--loop` spawn mode iteration cycle (wait → eval → rework)
 
 ## pkg/plan/ (Coordination Plans)
 

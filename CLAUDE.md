@@ -19,6 +19,7 @@ orch spawn feature-impl "implement X" --issue proj-123   # Spawn from issue
 orch spawn --dry-run feature-impl "implement X"           # Dry run
 orch spawn --explore investigation "how does X work?"     # Parallel decomposition
 orch spawn --thread daemon-capacity feature-impl "fix Y"  # Spawn linked to thread
+orch spawn --loop --loop-eval "make test" feature-impl "fix tests"  # Loop until eval passes
 orch work proj-123 --inline                               # Blocking TUI (--inline on work, not spawn)
 orch account switch work                                  # Switch accounts
 orch wait proj-123 --timeout 30m                          # Wait for completion

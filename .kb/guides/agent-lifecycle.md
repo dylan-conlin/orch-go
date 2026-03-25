@@ -49,6 +49,25 @@ orch spawn                    bd comment "Phase: Complete"           orch comple
                                      - Git commits                    - Thread back-propagation
 ```
 
+### Loop Mode Variant (`--loop`)
+
+When spawned with `--loop`, the lifecycle adds an eval-rework cycle after Phase: Complete:
+
+```
+spawn → agent works → Phase: Complete → loop controller evals
+                                              │
+                              ┌────────────────┴────────────────┐
+                              ▼                                 ▼
+                        eval passes (exit 0)             eval fails (exit ≠ 0)
+                              │                                 │
+                              ▼                                 ▼
+                        orch complete                   iteration < max?
+                        (normal close)                    yes → rework (re-spawn with feedback)
+                                                          no  → stop, report failure
+```
+
+The loop controller (`pkg/orch/loop.go`) composes existing primitives: `orch wait` → eval command → `orch rework`. Default max iterations: 3.
+
 ---
 
 ## Architecture: Four-Layer State Model

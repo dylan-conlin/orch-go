@@ -103,6 +103,9 @@ Spawn a new agent with skill context. Manual spawn requires `--bypass-triage`.
 | `--explore-breadth <n>` | Max parallel subproblem workers (default 3, max 10) |
 | `--explore-depth <n>` | Max judge re-exploration iterations (default 1, max 5) |
 | `--explore-judge-model <alias>` | Model for judge agent (cross-model judging, e.g., sonnet when workers use opus) |
+| `--loop` | Loop mode: spawn → wait → eval → rework until eval passes or max reached |
+| `--loop-eval <cmd>` | Shell command for loop eval (exit 0 = done, non-zero = continue). Required with `--loop` |
+| `--loop-max <n>` | Maximum loop iterations (default 3). Cannot combine with `--explore` |
 | `--force-hotspot` | Bypass hotspot gate (requires `--architect-ref`) |
 | `--auto-init` | Auto-initialize .orch/.beads if missing |
 
@@ -121,6 +124,10 @@ orch spawn --bypass-triage --mcp playwright feature-impl "UI feature"
 # Exploration mode (multi-angle parallel investigation)
 orch spawn --bypass-triage --explore investigation "how does the spawn pipeline work?"
 orch spawn --bypass-triage --explore --explore-breadth 5 architect "design new completion flow"
+
+# Loop mode (re-spawn until eval passes)
+orch spawn --bypass-triage --loop --loop-eval "make test" feature-impl "fix flaky auth tests"
+orch spawn --bypass-triage --loop --loop-eval "go test ./pkg/..." --loop-max 5 feature-impl "fix test suite"
 ```
 
 ### orch complete

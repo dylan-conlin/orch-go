@@ -206,6 +206,9 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `--explore-breadth` | Max parallel workers for exploration mode (default 3) |
 | `--explore-depth` | Max iteration depth for exploration mode |
 | `--explore-judge-model` | Model for exploration judge agent |
+| `--loop` | Loop mode: spawn → wait → eval → rework until eval passes or max reached |
+| `--loop-eval` | Shell command for loop eval (exit 0 = done, non-zero = continue). Required with `--loop` |
+| `--loop-max` | Maximum loop iterations (default 3). Values > 5 trigger warning |
 
 ### Complete Flags
 

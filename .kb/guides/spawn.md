@@ -340,6 +340,14 @@ Default tier is determined by skill:
 | `--explore-depth <n>` | Max iteration depth (1=single pass, N=up to N-1 re-explorations) |
 | `--explore-judge-model <alias>` | Model for judge agent (cross-model judging, e.g., `sonnet` when workers use `opus`) |
 
+### Loop Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--loop` | Loop mode: spawn → wait → eval → rework cycle until eval passes or max iterations reached |
+| `--loop-eval <cmd>` | Shell command checked after each iteration; exit 0 = done, non-zero = continue. Required with `--loop` |
+| `--loop-max <n>` | Maximum iterations before stopping (default 3). Values > 5 trigger a warning. Cannot be combined with `--explore` |
+
 ### Verification & Review Flags
 
 | Flag | Purpose |
@@ -580,6 +588,7 @@ Key files for spawn system developers:
 | `pkg/spawn/claude.go` | ~172 | Claude CLI tmux launch |
 | `pkg/spawn/gates/` | | Gate implementations (hotspot, verification, triage, concurrency, rate limit) |
 | `pkg/spawn/backends/` | | Extracted backend implementations (in-progress, not yet wired to main dispatch) |
+| `pkg/orch/loop.go` | ~251 | Loop controller: wait → eval → rework iteration cycle |
 | `pkg/orch/flags.go` | ~46 | `ValidateMode` — rejects `claude`/`opencode` as `--mode` values |
 
 **Note:** `extraction.go` exceeds the 1500-line CRITICAL threshold. The P0 extraction (Feb 2026) already split spawn modes and helpers out, reducing it from 2077 to ~1551 lines. Further extraction needed.

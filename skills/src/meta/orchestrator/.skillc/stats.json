@@ -734,6 +734,62 @@
       "sources": {
         "orchestrator": 5998
       }
+    },
+    {
+      "timestamp": "2026-03-25T11:32:05.497493-07:00",
+      "total_tokens": 6469,
+      "sources": {
+        "orchestrator": 6469
+      }
+    },
+    {
+      "timestamp": "2026-03-25T11:32:41.191674-07:00",
+      "total_tokens": 6424,
+      "sources": {
+        "orchestrator": 6424
+      }
+    },
+    {
+      "timestamp": "2026-03-25T11:32:56.603214-07:00",
+      "total_tokens": 6382,
+      "sources": {
+        "orchestrator": 6382
+      }
+    },
+    {
+      "timestamp": "2026-03-25T11:33:19.436946-07:00",
+      "total_tokens": 6382,
+      "sources": {
+        "orchestrator": 6382
+      }
+    },
+    {
+      "timestamp": "2026-03-25T11:44:35.932285-07:00",
+      "total_tokens": 6485,
+      "sources": {
+        "orchestrator": 6485
+      }
+    },
+    {
+      "timestamp": "2026-03-25T11:45:27.504932-07:00",
+      "total_tokens": 6376,
+      "sources": {
+        "orchestrator": 6376
+      }
+    },
+    {
+      "timestamp": "2026-03-25T11:45:33.885635-07:00",
+      "total_tokens": 6376,
+      "sources": {
+        "orchestrator": 6376
+      }
+    },
+    {
+      "timestamp": "2026-03-25T16:39:21.962119-07:00",
+      "total_tokens": 6376,
+      "sources": {
+        "orchestrator": 6376
+      }
     }
   ]
 }
