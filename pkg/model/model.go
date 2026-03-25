@@ -47,6 +47,11 @@ func (m ModelSpec) IsAnthropicModel() bool {
 	return strings.EqualFold(m.Provider, "anthropic")
 }
 
+// IsOpenAI returns true if the model's provider is OpenAI.
+func (m ModelSpec) IsOpenAI() bool {
+	return strings.EqualFold(m.Provider, "openai")
+}
+
 // providerDisplayNames maps lowercase provider identifiers to human-readable names.
 var providerDisplayNames = map[string]string{
 	"anthropic": "Anthropic",

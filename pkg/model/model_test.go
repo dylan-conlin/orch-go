@@ -177,6 +177,31 @@ func TestModelSpec_IsAnthropicModel(t *testing.T) {
 	}
 }
 
+func TestModelSpec_IsOpenAI(t *testing.T) {
+	tests := []struct {
+		spec     ModelSpec
+		expected bool
+	}{
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}, true},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-4o"}, true},
+		{ModelSpec{Provider: "openai", ModelID: "o3"}, true},
+		{ModelSpec{Provider: "OpenAI", ModelID: "gpt-5.4"}, true},
+		{ModelSpec{Provider: "OPENAI", ModelID: "gpt-4o"}, true},
+		{ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}, false},
+		{ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}, false},
+		{ModelSpec{Provider: "deepseek", ModelID: "deepseek-chat"}, false},
+		{ModelSpec{Provider: "", ModelID: "gpt-5.4"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.spec.Format(), func(t *testing.T) {
+			if got := tt.spec.IsOpenAI(); got != tt.expected {
+				t.Errorf("IsOpenAI() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestModelSpec_ProviderName(t *testing.T) {
 	tests := []struct {
 		spec     ModelSpec
