@@ -176,6 +176,8 @@ Question emerges → OPEN → Investigation spawned → INVESTIGATING → Unders
 
 ## Auto-Linked Investigations
 
+- .kb/investigations/2026-03-25-inv-design-daemon-triggered-headless-orchestrator.md
+- .kb/investigations/2026-03-24-design-thread-centric-orchestration-data-model.md
 - .kb/investigations/archived/2026-01-18-inv-design-questions-first-class-entities.md
 - .kb/investigations/2026-03-05-inv-architect-unified-reliability-design-orch.md
 - .kb/investigations/2026-01-18-inv-add-questions-view-orch-go.md

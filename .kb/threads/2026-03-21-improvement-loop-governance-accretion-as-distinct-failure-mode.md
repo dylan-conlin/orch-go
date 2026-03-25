@@ -43,5 +43,6 @@ The degradation loop forces engagement — things break, you have to respond. Th
 
 ## Auto-Linked Investigations
 
+- .kb/investigations/2026-03-25-inv-investigate-operationalizing-ralph-loop-orch.md
 - .kb/investigations/archived/2025-12-22-inv-debug-session-id-write.md
 - .kb/investigations/archived/2025-12-21-inv-failure-mode-artifacts.md

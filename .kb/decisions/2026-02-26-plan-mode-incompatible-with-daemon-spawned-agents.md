@@ -100,6 +100,7 @@ All three conditions would need to be true simultaneously:
 
 ## Auto-Linked Investigations
 
+- .kb/investigations/2026-03-19-design-knowledge-graph-visualization.md
 - .kb/investigations/archived/2026-01-04-inv-design-analyze-pkg-daemon-daemon.md
 - .kb/investigations/archived/2026-01-06-inv-daemon-auto-complete-agents-report.md
 - .kb/investigations/archived/2026-01-03-inv-test-spawned-agents-complete-work.md

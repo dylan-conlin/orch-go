@@ -28,5 +28,6 @@ Resolving this thread. The closed-loop risk is now a well-understood failure mod
 
 ## Auto-Linked Investigations
 
+- .kb/investigations/2026-03-23-inv-investigate-openclaw-external-api-surface.md
 - .kb/investigations/archived/2025-12-26-inv-api-endpoint-api-agents-hangs.md
 - .kb/investigations/synthesized/serve-performance/2026-01-04-inv-orch-serve-shows-closed-agents.md

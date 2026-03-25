@@ -48,3 +48,7 @@ The template transfers. The agent built the connectivity gate without knowing ab
 - Extends: coordination model — gate/attractor/probe as three mechanism types
 - Informs: narrative-packaging thread — concrete hook (CSG probe rendering), but the story is smaller than initially thought
 - Informs: architect skill — implications for what architects should produce (TBD)
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-25-inv-investigate-antithesis-hegel-property-based.md
