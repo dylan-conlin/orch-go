@@ -686,9 +686,9 @@ func TestJoinWithReasonCodes_ClaudeBackendRecentlySpawned(t *testing.T) {
 
 func TestJoinWithReasonCodes_ClaudeBackendNoPhaseStale(t *testing.T) {
 	// Agent spawned >10 min ago with no phase → never_started (overrides tmux check)
-	oldCheck := discovery.CheckTmuxWindowAlive
-	discovery.CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool { return false }
-	defer func() { discovery.CheckTmuxWindowAlive = oldCheck }()
+	oldCheck := discovery.CheckTmuxWindow
+	discovery.CheckTmuxWindow = func(workspaceName, projectDir string) (string, bool) { return "", false }
+	defer func() { discovery.CheckTmuxWindow = oldCheck }()
 
 	issues := []beads.Issue{
 		{ID: "orch-go-1200", Title: "Dead claude agent", Status: "in_progress"},
@@ -726,17 +726,22 @@ func TestJoinWithReasonCodes_ClaudeBackendNoPhaseStale(t *testing.T) {
 func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
 	// Tmux fallback is only trusted in the 5-10 min window (after grace, before never-started)
 	recentTime := time.Now().Add(-7 * time.Minute).Format(time.RFC3339)
-	oldCheck := discovery.CheckTmuxWindowAlive
-	discovery.CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool {
+	oldCheck := discovery.CheckTmuxWindow
+	oldPaneCheck := discovery.CheckPaneActive
+	discovery.CheckTmuxWindow = func(workspaceName, projectDir string) (string, bool) {
 		if workspaceName != "og-debug-browser-02mar-abcd" {
 			t.Errorf("unexpected workspaceName: %s", workspaceName)
 		}
 		if projectDir != "/tmp/project" {
 			t.Errorf("unexpected projectDir: %s", projectDir)
 		}
-		return true
+		return "@999", true
 	}
-	defer func() { discovery.CheckTmuxWindowAlive = oldCheck }()
+	discovery.CheckPaneActive = func(windowID string) bool { return true }
+	defer func() {
+		discovery.CheckTmuxWindow = oldCheck
+		discovery.CheckPaneActive = oldPaneCheck
+	}()
 
 	issues := []beads.Issue{
 		{ID: "orch-go-1250", Title: "Working but no phase", Status: "in_progress"},
@@ -763,19 +768,19 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
 	if r.Status != "active" {
 		t.Errorf("expected Status active for claude agent with tmux window alive, got %s", r.Status)
 	}
-	if r.Reason != "tmux_window_alive" {
-		t.Errorf("expected Reason tmux_window_alive, got %q", r.Reason)
+	if r.Reason != "tmux_pane_active" {
+		t.Errorf("expected Reason tmux_pane_active, got %q", r.Reason)
 	}
 }
 
 func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackNotCheckedWhenPhaseExists(t *testing.T) {
-	oldCheck := discovery.CheckTmuxWindowAlive
+	oldCheck := discovery.CheckTmuxWindow
 	tmuxCalled := false
-	discovery.CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool {
+	discovery.CheckTmuxWindow = func(workspaceName, projectDir string) (string, bool) {
 		tmuxCalled = true
-		return true
+		return "@999", true
 	}
-	defer func() { discovery.CheckTmuxWindowAlive = oldCheck }()
+	defer func() { discovery.CheckTmuxWindow = oldCheck }()
 
 	issues := []beads.Issue{
 		{ID: "orch-go-1260", Title: "Agent with phase", Status: "in_progress"},

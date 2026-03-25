@@ -234,9 +234,9 @@ func TestJoinWithReasonCodes_ClaudeBackendRecentlySpawned(t *testing.T) {
 
 func TestJoinWithReasonCodes_ClaudeBackendNoPhaseStale(t *testing.T) {
 	// Agent spawned >10 min ago with no phase and tmux dead → never_started
-	oldCheck := CheckTmuxWindowAlive
-	CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool { return false }
-	defer func() { CheckTmuxWindowAlive = oldCheck }()
+	oldCheck := CheckTmuxWindow
+	CheckTmuxWindow = func(workspaceName, projectDir string) (string, bool) { return "", false }
+	defer func() { CheckTmuxWindow = oldCheck }()
 
 	issues := []beads.Issue{
 		{ID: "orch-go-1200", Title: "Dead claude agent", Status: "in_progress"},
@@ -270,11 +270,11 @@ func TestJoinWithReasonCodes_ClaudeBackendNoPhaseStale(t *testing.T) {
 }
 
 func TestJoinWithReasonCodes_ClaudeBackendNoPhaseNoTmux(t *testing.T) {
-	// Agent spawned 7 min ago (in 5-10 min window) with no phase and no tmux → dead/no_phase_reported
+	// Agent spawned 7 min ago (in 5-10 min window) with no phase and no tmux → dead/no_tmux_window
 	recentTime := time.Now().Add(-7 * time.Minute).Format(time.RFC3339)
-	oldCheck := CheckTmuxWindowAlive
-	CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool { return false }
-	defer func() { CheckTmuxWindowAlive = oldCheck }()
+	oldCheck := CheckTmuxWindow
+	CheckTmuxWindow = func(workspaceName, projectDir string) (string, bool) { return "", false }
+	defer func() { CheckTmuxWindow = oldCheck }()
 
 	issues := []beads.Issue{
 		{ID: "orch-go-1210", Title: "Dead agent in grace window", Status: "in_progress"},
@@ -299,8 +299,8 @@ func TestJoinWithReasonCodes_ClaudeBackendNoPhaseNoTmux(t *testing.T) {
 	if r.Status != "dead" {
 		t.Errorf("expected Status dead, got %s", r.Status)
 	}
-	if r.Reason != "no_phase_reported" {
-		t.Errorf("expected Reason no_phase_reported, got %q", r.Reason)
+	if r.Reason != "no_tmux_window" {
+		t.Errorf("expected Reason no_tmux_window, got %q", r.Reason)
 	}
 	if r.NeverStarted {
 		t.Error("expected NeverStarted=false for agent in 5-10 min window")
@@ -311,9 +311,14 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
 	// Tmux fallback is only trusted between 5-10 min after spawn.
 	// After 10 min with no phase, never-started overrides tmux.
 	recentTime := time.Now().Add(-7 * time.Minute).Format(time.RFC3339)
-	oldCheck := CheckTmuxWindowAlive
-	CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool { return true }
-	defer func() { CheckTmuxWindowAlive = oldCheck }()
+	oldCheck := CheckTmuxWindow
+	oldPaneCheck := CheckPaneActive
+	CheckTmuxWindow = func(workspaceName, projectDir string) (string, bool) { return "@999", true }
+	CheckPaneActive = func(windowID string) bool { return true }
+	defer func() {
+		CheckTmuxWindow = oldCheck
+		CheckPaneActive = oldPaneCheck
+	}()
 
 	issues := []beads.Issue{
 		{ID: "orch-go-1250", Title: "Working but no phase", Status: "in_progress"},
@@ -338,17 +343,98 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
 	if r.Status != "active" {
 		t.Errorf("expected Status active, got %s", r.Status)
 	}
-	if r.Reason != "tmux_window_alive" {
-		t.Errorf("expected Reason tmux_window_alive, got %q", r.Reason)
+	if r.Reason != "tmux_pane_active" {
+		t.Errorf("expected Reason tmux_pane_active, got %q", r.Reason)
+	}
+}
+
+func TestJoinWithReasonCodes_ClaudeBackendTmuxPaneIdle(t *testing.T) {
+	// Tmux window exists but pane is idle (claude process exited) → dead/tmux_pane_idle
+	recentTime := time.Now().Add(-7 * time.Minute).Format(time.RFC3339)
+	oldCheck := CheckTmuxWindow
+	oldPaneCheck := CheckPaneActive
+	CheckTmuxWindow = func(workspaceName, projectDir string) (string, bool) { return "@888", true }
+	CheckPaneActive = func(windowID string) bool { return false }
+	defer func() {
+		CheckTmuxWindow = oldCheck
+		CheckPaneActive = oldPaneCheck
+	}()
+
+	issues := []beads.Issue{
+		{ID: "orch-go-1270", Title: "Exited claude agent", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-1270": {
+			BeadsID:       "orch-go-1270",
+			ProjectDir:    "/tmp/project",
+			SpawnMode:     "claude",
+			WorkspaceName: "og-feat-exited-25mar-abcd",
+			SpawnTime:     recentTime,
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{}
+
+	results := JoinWithReasonCodes(issues, manifests, liveness, nil)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "dead" {
+		t.Errorf("expected Status dead, got %s", r.Status)
+	}
+	if r.Reason != "tmux_pane_idle" {
+		t.Errorf("expected Reason tmux_pane_idle, got %q", r.Reason)
+	}
+}
+
+func TestJoinWithReasonCodes_ClaudeBackendPaneActivePassesWindowID(t *testing.T) {
+	// Verify that CheckPaneActive receives the correct window ID from CheckTmuxWindow
+	recentTime := time.Now().Add(-7 * time.Minute).Format(time.RFC3339)
+	oldCheck := CheckTmuxWindow
+	oldPaneCheck := CheckPaneActive
+	var receivedWindowID string
+	CheckTmuxWindow = func(workspaceName, projectDir string) (string, bool) { return "@1234", true }
+	CheckPaneActive = func(windowID string) bool {
+		receivedWindowID = windowID
+		return true
+	}
+	defer func() {
+		CheckTmuxWindow = oldCheck
+		CheckPaneActive = oldPaneCheck
+	}()
+
+	issues := []beads.Issue{
+		{ID: "orch-go-1280", Title: "Active agent", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-1280": {
+			BeadsID:       "orch-go-1280",
+			ProjectDir:    "/tmp/project",
+			SpawnMode:     "claude",
+			WorkspaceName: "og-feat-active-25mar-abcd",
+			SpawnTime:     recentTime,
+		},
+	}
+
+	JoinWithReasonCodes(issues, manifests, nil, nil)
+
+	if receivedWindowID != "@1234" {
+		t.Errorf("expected CheckPaneActive to receive window ID @1234, got %q", receivedWindowID)
 	}
 }
 
 func TestJoinWithReasonCodes_ClaudeBackendNeverStarted(t *testing.T) {
 	// Agent spawned 15+ minutes ago with no phase should be marked never_started,
 	// overriding tmux window liveness check.
-	oldCheck := CheckTmuxWindowAlive
-	CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool { return true }
-	defer func() { CheckTmuxWindowAlive = oldCheck }()
+	oldCheck := CheckTmuxWindow
+	oldPaneCheck := CheckPaneActive
+	CheckTmuxWindow = func(workspaceName, projectDir string) (string, bool) { return "@999", true }
+	CheckPaneActive = func(windowID string) bool { return true }
+	defer func() {
+		CheckTmuxWindow = oldCheck
+		CheckPaneActive = oldPaneCheck
+	}()
 
 	staleTime := time.Now().Add(-15 * time.Minute).Format(time.RFC3339)
 	issues := []beads.Issue{

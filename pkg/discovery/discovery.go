@@ -64,17 +64,25 @@ type AgentStatus struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// CheckTmuxWindowAlive checks if a tmux window exists for the given workspace.
+// CheckTmuxWindow looks up a tmux window for the given workspace and returns
+// its window ID (e.g., "@1234") if found. Returns ("", false) if no window exists.
 // This is a package-level variable to allow test mocking.
-var CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool {
+var CheckTmuxWindow = func(workspaceName, projectDir string) (windowID string, alive bool) {
 	if workspaceName == "" || projectDir == "" {
-		return false
+		return "", false
 	}
 	projectName := filepath.Base(projectDir)
 	sessionName := tmux.GetWorkersSessionName(projectName)
 	window, _ := tmux.FindWindowByWorkspaceName(sessionName, workspaceName)
-	return window != nil
+	if window == nil {
+		return "", false
+	}
+	return window.ID, true
 }
+
+// CheckPaneActive checks if a tmux pane has an active (non-shell) process.
+// This is a package-level variable to allow test mocking.
+var CheckPaneActive = tmux.IsPaneActive
 
 // QueryTrackedAgents implements the single-pass query engine for tracked work.
 // It queries beads (source of truth), workspace manifests (binding), OpenCode
@@ -397,7 +405,14 @@ func JoinWithReasonCodes(
 		}
 
 		// Step 2: Route by spawn backend
-		// Claude-backend agents use phase comments + tmux fallback for liveness.
+		// Claude-backend agents use phase comments + tmux window/pane for liveness.
+		// Signal priority:
+		//   1. Phase reported → active (strongest signal)
+		//   2. Recently spawned (<5 min) → active (grace period)
+		//   3. Never started (>10 min, no phase) → dead (overrides tmux)
+		//   4. Tmux window + active pane → active (process still running)
+		//   5. Tmux window + idle pane → dead (process exited, shell remains)
+		//   6. No tmux window → dead
 		if manifest.SpawnMode == "claude" && manifest.WorkspaceName != "" {
 			spawnTime := manifest.ParseSpawnTime()
 
@@ -413,12 +428,18 @@ func JoinWithReasonCodes(
 				agent.Status = "dead"
 				agent.Reason = "never_started"
 				agent.NeverStarted = true
-			} else if CheckTmuxWindowAlive(manifest.WorkspaceName, manifest.ProjectDir) {
-				agent.Status = "active"
-				agent.Reason = "tmux_window_alive"
+			} else if windowID, alive := CheckTmuxWindow(manifest.WorkspaceName, manifest.ProjectDir); alive {
+				// Window exists — check if pane has an active process
+				if CheckPaneActive(windowID) {
+					agent.Status = "active"
+					agent.Reason = "tmux_pane_active"
+				} else {
+					agent.Status = "dead"
+					agent.Reason = "tmux_pane_idle"
+				}
 			} else {
 				agent.Status = "dead"
-				agent.Reason = "no_phase_reported"
+				agent.Reason = "no_tmux_window"
 			}
 			results = append(results, agent)
 			continue

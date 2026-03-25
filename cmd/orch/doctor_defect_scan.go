@@ -85,7 +85,7 @@ var (
 		"discovery.QueryTrackedAgents",
 		"discovery.JoinWithReasonCodes",
 		"discovery.ListTrackedIssues",
-		"discovery.CheckTmuxWindowAlive",
+		"discovery.CheckTmuxWindow",
 		"discovery.FilterActiveIssues",
 	}
 
@@ -119,9 +119,11 @@ var (
 
 	// Class 5: Tmux liveness signals
 	tmuxLivenessPatterns = []string{
-		"checkTmuxWindowAlive",
-		"WindowExists",
-		"tmux_window_alive",
+		"CheckTmuxWindow",
+		"CheckPaneActive",
+		"tmux_pane_active",
+		"tmux_pane_idle",
+		"no_tmux_window",
 	}
 
 	// Class 5: Beads issue status signals
@@ -159,7 +161,7 @@ var (
 		"QueryTrackedAgents":         true,
 		"JoinWithReasonCodes":        true,
 		"ListTrackedIssues":          true,
-		"CheckTmuxWindowAlive":       true,
+		"CheckTmuxWindow":       true,
 		"FilterActiveIssues":         true,
 		"ExtractSessionIDs":          true,
 		"ExtractLatestPhases":        true,
