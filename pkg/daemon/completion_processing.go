@@ -445,6 +445,14 @@ func (d *Daemon) CompletionOnce(config CompletionConfig) (*CompletionLoopResult,
 				d.VerificationRetryTracker.Clear(agent.BeadsID)
 			}
 
+			// Clear spawn cache entry so the issue is no longer blocked
+			// from re-spawning (if reopened) and CountSpawnable reports
+			// correct numbers. Without this, the 6h TTL keeps the entry
+			// alive long after the agent has completed.
+			if d.SpawnedIssues != nil {
+				d.SpawnedIssues.Unmark(agent.BeadsID)
+			}
+
 			// Mark this completion as processed to prevent reprocessing
 			// if daemon:ready-review label doesn't persist.
 			if d.CompletionDedupTracker != nil {

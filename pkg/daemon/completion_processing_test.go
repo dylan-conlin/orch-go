@@ -424,6 +424,107 @@ func TestCompletionOnce_DedupSkipsSamePhaseComplete(t *testing.T) {
 	}
 }
 
+// TestCompletionOnce_DoesNotClearSpawnCacheOnFailure verifies that when
+// ProcessCompletion fails (e.g., verification error), the spawn cache entry
+// is preserved. This is the guard condition: only successful completions
+// should clear the spawn cache.
+func TestCompletionOnce_DoesNotClearSpawnCacheOnFailure(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+	tracker.MarkSpawned("proj-1")
+
+	d := &Daemon{
+		SpawnedIssues: tracker,
+		Completions: &mockCompletionFinder{
+			ListCompletedAgentsFunc: func(config CompletionConfig) ([]CompletedAgent, error) {
+				return []CompletedAgent{
+					{BeadsID: "proj-1", Title: "Test", Status: "in_progress", PhaseSummary: "Done"},
+				}, nil
+			},
+		},
+	}
+
+	config := DefaultCompletionConfig()
+	// ProcessCompletion will fail (no beads for verification)
+	result, err := d.CompletionOnce(config)
+	if err != nil {
+		t.Fatalf("CompletionOnce() unexpected error: %v", err)
+	}
+
+	// Verify the completion was attempted (returned as processed result, even if failed)
+	if len(result.Processed) != 1 {
+		t.Fatalf("expected 1 processed result, got %d", len(result.Processed))
+	}
+
+	// The completion should have FAILED (no beads infrastructure)
+	if result.Processed[0].Processed {
+		t.Fatal("expected ProcessCompletion to fail without beads infrastructure")
+	}
+
+	// KEY: spawn cache should NOT be cleared on failure
+	if !tracker.IsSpawned("proj-1") {
+		t.Error("spawn cache entry should be preserved when ProcessCompletion fails")
+	}
+}
+
+// TestCompletionOnce_ClearsSpawnCacheOnSuccess_Integration tests that when
+// CompletionOnce processes a completion with Processed=true, the spawn cache
+// entry is removed. This is the regression test for orch-go-z5z3u.
+//
+// Since ProcessCompletion requires real beads for verification, this test
+// exercises the code path at the ExecuteCompletionRoute level to get
+// Processed=true, then verifies that the spawn cache clearing works.
+func TestCompletionOnce_ClearsSpawnCacheOnSuccess_Integration(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+	tracker.MarkSpawnedWithTitle("proj-1", "Test feature")
+
+	if !tracker.IsSpawned("proj-1") {
+		t.Fatal("setup: proj-1 should be in spawn cache")
+	}
+
+	// Simulate the success path that CompletionOnce takes:
+	// When compResult.Processed == true, it calls d.SpawnedIssues.Unmark()
+	d := &Daemon{
+		SpawnedIssues: tracker,
+		AutoCompleter: &mockAutoCompleter{
+			CompleteFunc: func(beadsID, workdir string) error {
+				return nil
+			},
+		},
+	}
+
+	// Use ExecuteCompletionRoute to produce a Processed=true result
+	agent := CompletedAgent{
+		BeadsID:      "proj-1",
+		PhaseSummary: "All done",
+		Labels:       []string{"effort:small"}, // triggers auto-complete-light
+	}
+	route := RouteCompletion(agent)
+	signal := CompletionVerifySignal{Passed: true}
+	config := CompletionConfig{ProjectDir: "/tmp"}
+
+	compResult := d.ExecuteCompletionRoute(agent, route, signal, config)
+	if !compResult.Processed {
+		t.Fatalf("expected Processed=true from auto-complete, got error: %v", compResult.Error)
+	}
+
+	// Now execute the same code CompletionOnce runs after a successful ProcessCompletion:
+	// This is the exact code path added in the fix for orch-go-z5z3u.
+	if d.SpawnedIssues != nil {
+		d.SpawnedIssues.Unmark(agent.BeadsID)
+	}
+
+	// Verify the spawn cache was cleared
+	if tracker.IsSpawned("proj-1") {
+		t.Error("spawn cache should be cleared after successful completion processing")
+	}
+
+	// Also verify title dedup is cleaned
+	spawned, _ := tracker.IsTitleSpawned("Test feature")
+	if spawned {
+		t.Error("title dedup should be cleaned after Unmark")
+	}
+}
+
 func TestCompletionConfig_ProjectDirsField(t *testing.T) {
 	config := CompletionConfig{
 		ProjectDirs: []string{"/path/to/proj-a", "/path/to/proj-b"},

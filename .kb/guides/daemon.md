@@ -214,7 +214,7 @@ The orphan detector (`pkg/daemon/orphan_detector.go`) resets dead agents' issues
 - **Correlated failures:** When beads is unavailable, L4, L5, and L6 all degrade simultaneously
 - **No atomic CAS:** L5 and L6 are separate operations with a TOCTOU race window
 - **Unbounded spawnCounts:** The spawn count map grows indefinitely (minor leak)
-- **ReconcileWithIssues() is dead code:** Exists in spawn_tracker.go but never called from production
+- **ReconcileWithIssues() is dead code:** Exists in spawn_tracker.go but never called from production. Spawn cache is instead cleared by CompletionOnce (on successful completion processing) and CleanStale (6h TTL)
 
 **Structural redesign recommended:** See `.kb/investigations/2026-03-01-inv-structural-review-daemon-dedup-after.md` for architect analysis recommending CAS-based primary gate with advisory-only heuristic layers.
 
