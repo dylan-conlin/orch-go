@@ -112,7 +112,7 @@
 				{@const isExpanded = expandedId === item.beads_id}
 				{@const isLoading = briefLoading.has(item.beads_id)}
 				<button
-					class="w-full text-left rounded-md border p-3 transition-colors hover:bg-accent/50
+					class="w-full text-left rounded-md border p-3 transition-colors hover:border-foreground/20
 						{!item.marked_read ? 'border-blue-500/30 bg-blue-500/5' : ''}
 						{isExpanded ? 'ring-1 ring-foreground/20' : ''}"
 					onclick={() => toggleExpand(item)}
