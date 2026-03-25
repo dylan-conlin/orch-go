@@ -14,6 +14,7 @@ import (
 // TestBriefPipeline_EndToEnd verifies the full comprehension artifact pipeline:
 // workspace BRIEF.md -> CopyBrief -> .kb/briefs/ -> API serves content -> mark-as-read.
 func TestBriefPipeline_EndToEnd(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // isolate state file writes from real ~/.orch/
 	// Setup: temporary project dir simulating workspace and .kb structure
 	projectDir := t.TempDir()
 	workspacePath := filepath.Join(projectDir, ".orch", "workspace", "og-feat-test-24mar-abcd")
@@ -171,6 +172,7 @@ func TestBriefPipeline_NoBriefInWorkspace(t *testing.T) {
 // briefs remain accessible via the /api/briefs list endpoint.
 // This is the lifecycle decoupling that makes /briefs a persistent reading queue.
 func TestBriefReadingQueue_SurvivesCompletionLifecycle(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // isolate state file writes from real ~/.orch/
 	projectDir := t.TempDir()
 
 	// Save/restore sourceDir and briefReadState
@@ -328,6 +330,7 @@ Are two primitives sufficient, or will a third emerge from multi-agent scenarios
 // from different agents appear in the list sorted newest-first, and read state
 // is tracked independently per brief.
 func TestBriefReadingQueue_MultipleBriefsOrdering(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // isolate state file writes from real ~/.orch/
 	projectDir := t.TempDir()
 
 	oldSourceDir := sourceDir
