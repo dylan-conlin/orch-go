@@ -58,6 +58,9 @@
 - Beads health monitoring with circuit breaker
 - Phase timeout detection and escalation
 - Artifact sync: documentation drift detection
+- Phantom spawn detection: post-spawn workspace verification (`workspace_verify.go`)
+- Shared interfaces (`interfaces.go`): `WorkspaceVerifier`, `IssueUpdater`
+- Spawn execution pipeline (`spawn_execution.go`): dedup gates → pool slot → status update → spawn → workspace verify
 - Cycle cache (`cycle_cache.go`): shares `GetActiveAgents()` across periodic tasks to avoid redundant queries
 - Audit selection: random quality audits weighted toward auto-completed work
 - Capacity polling: account capacity cache for `orch status`

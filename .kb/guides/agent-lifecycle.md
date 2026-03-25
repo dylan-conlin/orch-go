@@ -456,6 +456,14 @@ Each agent produces a SYNTHESIS.md following D.E.K.N.:
 
 **Important:** `orch clean` must check tmux pane process liveness before closing windows. A window may appear idle but still have an active Claude Code process.
 
+### "Daemon says spawned but no agent is running (phantom spawn)"
+
+**Cause:** `orch work` exited 0 but no workspace directory was created. The issue was marked `in_progress` but no agent is running.
+
+**How daemon handles it:** Post-spawn workspace verification (`pkg/daemon/workspace_verify.go`) detects this and rolls back to `open` for retry. Check daemon logs for "Phantom spawn: no workspace created".
+
+**If daemon isn't catching it:** Ensure daemon binary includes the Mar 2026 workspace verification (`make install-restart`).
+
 ### "Lots of zombie agents in dashboard"
 
 **Cause:** Agents finished but `orch complete` was never run.

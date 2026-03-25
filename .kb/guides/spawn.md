@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for how `orch spawn` creates and configures agents. Read this before debugging spawn issues.
 
-**Last verified:** Mar 23, 2026
+**Last verified:** Mar 25, 2026
 
 ---
 
@@ -554,6 +554,7 @@ orch spawn feature-impl "add feature" --workdir ~/Documents/personal/kb-cli
 - **Proactive rate limits** - warn at 80%, block at 95% with auto-switch attempt
 - **Duplicate prevention** - checks for active agents, Phase: Complete, and beads ID consistency before respawning
 - **Issues transition to in_progress at spawn** - dashboard discovery depends on this status
+- **Post-spawn workspace verification** - daemon verifies workspace directory exists after spawn exits 0; catches phantom spawns and rolls back to `open` (Mar 2026)
 - **Accretion gravity via structural extraction** - create attractor packages, agents naturally route there (proven by probe: agent found `pkg/spawn/gates/` without being told)
 
 ---

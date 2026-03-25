@@ -39,6 +39,9 @@ The daemon is an autonomous agent spawner that:
 | `spawn_tracker.go` | Spawn tracking: ID dedup (L1), title dedup (L3), thrash detection. Cleared on `orch abandon --force` |
 | `sibling_sequencing.go` | Test issue deferral when non-test siblings exist (ghost-filtered); investigations/questions exempt |
 | `session_dedup.go` | Session/tmux existence checking (L2) |
+| `workspace_verify.go` | Post-spawn workspace verification — detects phantom spawns (L7) |
+| `interfaces.go` | Shared interfaces: `WorkspaceVerifier`, `IssueUpdater` |
+| `spawn_execution.go` | Spawn pipeline: dedup gates, pool slot, status update, spawn, workspace verify |
 
 **Related packages:**
 - `pkg/daemonconfig/` — ComplianceConfig, allocation profiles
@@ -208,6 +211,18 @@ Catches content duplicates where different beads issues have identical titles:
 #### Orphan Detector Interaction
 
 The orphan detector (`pkg/daemon/orphan_detector.go`) resets dead agents' issues from `in_progress` → `open` but **intentionally does NOT clear spawn cache entries**. This prevents thrash loops where an issue is repeatedly spawned and fails. The trade-off: legitimate retries are blocked for the remainder of the 6h TTL.
+
+#### Post-Spawn Workspace Verification (L7)
+
+After `orch work` returns exit 0, the daemon verifies a workspace directory was actually created via `WorkspaceVerifier.Exists()` (`pkg/daemon/workspace_verify.go`). This catches **phantom spawns** — cases where the spawn command succeeds but no agent actually starts (e.g., silent failures in workspace setup, cross-project path issues).
+
+If no workspace is found:
+1. Status rolled back to `open` (via the same `statusUpdater` used for L6)
+2. Spawn cache entry cleared (`SpawnedIssues.Unmark`)
+3. Pool slot released
+4. Issue becomes eligible for retry on next cycle
+
+**Why this exists:** Without this check, the daemon logs "Spawned" and marks the issue `in_progress`, but no agent is running — creating a phantom agent that blocks the issue from being retried.
 
 #### Known Limitations
 
@@ -537,6 +552,14 @@ make install-restart
 3. Check if beads was unavailable (degrades L4, L5, L6 simultaneously)
 4. Check `~/.orch/spawn_cache.json` for current tracked entries
 
+### "Daemon spawned but no agent is running (phantom spawn)"
+
+**Cause:** `orch work` exits 0 but the workspace directory was never created — no tmux window, no agent.
+
+**How daemon handles it:** Post-spawn workspace verification (L7) detects this and rolls back the issue to `open` status for retry. Check daemon logs for "Phantom spawn: no workspace created".
+
+**If verification isn't catching it:** Ensure daemon binary is current (`make install-restart`). The `WorkspaceVerifier` was added in Mar 2026.
+
 ### "Daemon capacity stuck at max"
 
 **Cause:** Pool not reconciling with actual OpenCode sessions.
@@ -633,6 +656,7 @@ From investigations, these design decisions were made:
 | Orphan detector retains spawn cache | Prevents thrash loops after agent death | Mar 2026 |
 | `--replace` flag for graceful takeover | Avoids manual stop/start; atomic daemon restart | Feb 2026 |
 | Ghost sibling filtering in test deferral | Sibling issues that don't exist in beads no longer block test issue spawn | Mar 2026 |
+| Post-spawn workspace verification (L7) | Catches phantom spawns where orch work exits 0 but no workspace exists | Mar 2026 |
 
 ---
 
