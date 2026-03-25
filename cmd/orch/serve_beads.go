@@ -199,7 +199,7 @@ func handleBeadsReviewQueue(w http.ResponseWriter, r *http.Request) {
 			Tier:      item.Tier,
 			Gate1:     item.Gate1,
 			Gate2:     item.Gate2,
-			HasBrief:  hasBriefFile(item.BeadsID),
+			HasBrief:  hasBriefFile(item.BeadsID, projectDir),
 		})
 	}
 

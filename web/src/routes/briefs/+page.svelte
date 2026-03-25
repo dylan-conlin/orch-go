@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { derived } from 'svelte/store';
 	import { briefs, type BriefListItem } from '$lib/stores/briefs';
+	import { orchestratorContext } from '$lib/stores/context';
 	import { MarkdownContent } from '$lib/components/markdown-content';
 	import type { BriefResponse } from '$lib/stores/beads';
 
@@ -9,6 +11,10 @@
 	let expandedId: string | null = null;
 	let briefCache: Map<string, BriefResponse> = new Map();
 	let briefLoading: Set<string> = new Set();
+	let currentProjectDir: string | undefined;
+
+	// Derived store for project_dir to isolate reactivity
+	const projectDir = derived(orchestratorContext, $ctx => $ctx.project_dir);
 
 	$: unreadCount = $briefs.filter(b => !b.marked_read).length;
 	$: readCount = $briefs.filter(b => b.marked_read).length;
@@ -19,6 +25,17 @@
 		return true;
 	});
 
+	// Re-fetch briefs when project_dir changes
+	$: {
+		if (typeof window !== 'undefined' && $projectDir && $projectDir !== currentProjectDir) {
+			currentProjectDir = $projectDir;
+			// Clear cache when switching projects
+			briefCache = new Map();
+			expandedId = null;
+			briefs.fetch($projectDir);
+		}
+	}
+
 	async function toggleExpand(item: BriefListItem) {
 		if (expandedId === item.beads_id) {
 			expandedId = null;
@@ -28,7 +45,7 @@
 		if (!briefCache.has(item.beads_id)) {
 			briefLoading.add(item.beads_id);
 			briefLoading = briefLoading;
-			const data = await briefs.fetchBrief(item.beads_id);
+			const data = await briefs.fetchBrief(item.beads_id, $projectDir);
 			if (data) {
 				briefCache.set(item.beads_id, data);
 				briefCache = briefCache;
@@ -42,7 +59,7 @@
 
 	async function markAsRead(beadsId: string, event: MouseEvent) {
 		event.stopPropagation();
-		const success = await briefs.markAsRead(beadsId);
+		const success = await briefs.markAsRead(beadsId, $projectDir);
 		if (success) {
 			const cached = briefCache.get(beadsId);
 			if (cached) {
@@ -53,8 +70,11 @@
 	}
 
 	onMount(async () => {
-		await briefs.fetch();
-		pollInterval = setInterval(() => briefs.fetch(), 30_000);
+		orchestratorContext.startPolling(10_000);
+		const dir = $orchestratorContext?.project_dir;
+		currentProjectDir = dir;
+		await briefs.fetch(dir);
+		pollInterval = setInterval(() => briefs.fetch($projectDir), 30_000);
 	});
 
 	onDestroy(() => {
@@ -74,6 +94,11 @@
 			<span class="text-muted-foreground" data-testid="briefs-stats">
 				{unreadCount} unread · {readCount} read · {$briefs.length} total
 			</span>
+			{#if $orchestratorContext?.project_dir}
+				<span class="text-muted-foreground truncate max-w-xs">
+					{$orchestratorContext.project_dir.split('/').pop()}
+				</span>
+			{/if}
 		</div>
 	</div>
 

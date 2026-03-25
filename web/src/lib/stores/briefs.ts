@@ -14,9 +14,10 @@ function createBriefsStore() {
 	return {
 		subscribe,
 		set,
-		async fetch(): Promise<void> {
+		async fetch(projectDir?: string): Promise<void> {
 			try {
-				const response = await fetch(`${API_BASE}/api/briefs`)
+				const params = projectDir ? `?project_dir=${encodeURIComponent(projectDir)}` : ''
+				const response = await fetch(`${API_BASE}/api/briefs${params}`)
 				if (!response.ok) {
 					throw new Error(`HTTP ${response.status}: ${response.statusText}`)
 				}
@@ -27,9 +28,10 @@ function createBriefsStore() {
 				set([])
 			}
 		},
-		async fetchBrief(beadsId: string): Promise<BriefResponse | null> {
+		async fetchBrief(beadsId: string, projectDir?: string): Promise<BriefResponse | null> {
 			try {
-				const response = await fetch(`${API_BASE}/api/briefs/${beadsId}`)
+				const params = projectDir ? `?project_dir=${encodeURIComponent(projectDir)}` : ''
+				const response = await fetch(`${API_BASE}/api/briefs/${beadsId}${params}`)
 				if (!response.ok) return null
 				return await response.json()
 			} catch (error) {
@@ -37,9 +39,10 @@ function createBriefsStore() {
 				return null
 			}
 		},
-		async markAsRead(beadsId: string): Promise<boolean> {
+		async markAsRead(beadsId: string, projectDir?: string): Promise<boolean> {
 			try {
-				const response = await fetch(`${API_BASE}/api/briefs/${beadsId}`, {
+				const params = projectDir ? `?project_dir=${encodeURIComponent(projectDir)}` : ''
+				const response = await fetch(`${API_BASE}/api/briefs/${beadsId}${params}`, {
 					method: 'POST',
 				})
 				if (!response.ok) return false

@@ -35,17 +35,23 @@ type BriefMarkReadResponse struct {
 // briefReadState tracks which briefs have been marked as read.
 // This is UI-only state — does NOT affect comprehension:pending labels.
 // orch complete remains the sole comprehension gate.
+// Keys are "project_dir:beadsID" to avoid collisions across projects.
 var (
 	briefReadState   = make(map[string]bool)
 	briefReadStateMu sync.RWMutex
 )
 
+// briefReadKey returns the map key for briefReadState, scoped by project.
+func briefReadKey(projectDir, beadsID string) string {
+	return projectDir + ":" + beadsID
+}
+
 // validBeadsID matches beads IDs like "orch-go-abc12" or "project-name-xyz99"
 var validBeadsID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
 
 // handleBrief serves brief content and handles mark-as-read.
-// GET /api/briefs/{beads-id} - returns brief content from .kb/briefs/{beads-id}.md
-// POST /api/briefs/{beads-id} - marks brief as read (UI state only)
+// GET /api/briefs/{beads-id}?project_dir=/path - returns brief content from .kb/briefs/{beads-id}.md
+// POST /api/briefs/{beads-id}?project_dir=/path - marks brief as read (UI state only)
 func handleBrief(w http.ResponseWriter, r *http.Request) {
 	// Extract beads ID from URL path
 	beadsID := strings.TrimPrefix(r.URL.Path, "/api/briefs/")
@@ -62,18 +68,24 @@ func handleBrief(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get project directory from query parameter (default to sourceDir)
+	projectDir := r.URL.Query().Get("project_dir")
+	if projectDir == "" {
+		projectDir = sourceDir
+	}
+
 	switch r.Method {
 	case http.MethodGet:
-		handleBriefGet(w, beadsID)
+		handleBriefGet(w, beadsID, projectDir)
 	case http.MethodPost:
-		handleBriefMarkRead(w, beadsID)
+		handleBriefMarkRead(w, beadsID, projectDir)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-func handleBriefGet(w http.ResponseWriter, beadsID string) {
-	briefPath := filepath.Join(sourceDir, ".kb", "briefs", beadsID+".md")
+func handleBriefGet(w http.ResponseWriter, beadsID, projectDir string) {
+	briefPath := filepath.Join(projectDir, ".kb", "briefs", beadsID+".md")
 	content, err := os.ReadFile(briefPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -84,8 +96,9 @@ func handleBriefGet(w http.ResponseWriter, beadsID string) {
 		return
 	}
 
+	key := briefReadKey(projectDir, beadsID)
 	briefReadStateMu.RLock()
-	markedRead := briefReadState[beadsID]
+	markedRead := briefReadState[key]
 	briefReadStateMu.RUnlock()
 
 	resp := BriefAPIResponse{
@@ -98,16 +111,17 @@ func handleBriefGet(w http.ResponseWriter, beadsID string) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func handleBriefMarkRead(w http.ResponseWriter, beadsID string) {
+func handleBriefMarkRead(w http.ResponseWriter, beadsID, projectDir string) {
 	// Verify brief file exists before marking as read
-	briefPath := filepath.Join(sourceDir, ".kb", "briefs", beadsID+".md")
+	briefPath := filepath.Join(projectDir, ".kb", "briefs", beadsID+".md")
 	if _, err := os.Stat(briefPath); os.IsNotExist(err) {
 		http.Error(w, "Brief not found", http.StatusNotFound)
 		return
 	}
 
+	key := briefReadKey(projectDir, beadsID)
 	briefReadStateMu.Lock()
-	briefReadState[beadsID] = true
+	briefReadState[key] = true
 	briefReadStateMu.Unlock()
 
 	resp := BriefMarkReadResponse{
@@ -120,14 +134,20 @@ func handleBriefMarkRead(w http.ResponseWriter, beadsID string) {
 }
 
 // handleBriefsList serves the list of all briefs, sorted newest-first by mod time.
-// GET /api/briefs - returns [{beads_id, marked_read}]
+// GET /api/briefs?project_dir=/path - returns [{beads_id, marked_read}]
 func handleBriefsList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	briefsDir := filepath.Join(sourceDir, ".kb", "briefs")
+	// Get project directory from query parameter (default to sourceDir)
+	projectDir := r.URL.Query().Get("project_dir")
+	if projectDir == "" {
+		projectDir = sourceDir
+	}
+
+	briefsDir := filepath.Join(projectDir, ".kb", "briefs")
 	entries, err := os.ReadDir(briefsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -165,9 +185,10 @@ func handleBriefsList(w http.ResponseWriter, r *http.Request) {
 	briefReadStateMu.RLock()
 	result := make([]BriefListItem, len(items))
 	for i, item := range items {
+		key := briefReadKey(projectDir, item.beadsID)
 		result[i] = BriefListItem{
 			BeadsID:    item.beadsID,
-			MarkedRead: briefReadState[item.beadsID],
+			MarkedRead: briefReadState[key],
 		}
 	}
 	briefReadStateMu.RUnlock()
@@ -176,9 +197,13 @@ func handleBriefsList(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
-// hasBriefFile checks if a brief file exists for the given beads ID.
-func hasBriefFile(beadsID string) bool {
-	briefPath := filepath.Join(sourceDir, ".kb", "briefs", beadsID+".md")
+// hasBriefFile checks if a brief file exists for the given beads ID in the given project.
+// If projectDir is empty, falls back to sourceDir.
+func hasBriefFile(beadsID, projectDir string) bool {
+	if projectDir == "" {
+		projectDir = sourceDir
+	}
+	briefPath := filepath.Join(projectDir, ".kb", "briefs", beadsID+".md")
 	_, err := os.Stat(briefPath)
 	return err == nil
 }

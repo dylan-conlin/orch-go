@@ -122,10 +122,10 @@ We don't know yet whether agents will write genuinely provocative Tension sectio
 	}
 
 	// Step 5: hasBriefFile reports correctly
-	if !hasBriefFile(beadsID) {
+	if !hasBriefFile(beadsID, projectDir) {
 		t.Error("hasBriefFile should return true for existing brief")
 	}
-	if hasBriefFile("orch-go-nonexistent") {
+	if hasBriefFile("orch-go-nonexistent", projectDir) {
 		t.Error("hasBriefFile should return false for nonexistent brief")
 	}
 }

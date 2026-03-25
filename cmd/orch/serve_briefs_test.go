@@ -29,13 +29,14 @@ func TestHandleBriefsList(t *testing.T) {
 		t.Fatalf("Failed to write brief: %v", err)
 	}
 
-	// Mark one as read
+	// Mark one as read (keyed by project+beadsID)
+	readKey := briefReadKey(sourceDir, "orch-go-aaa11")
 	briefReadStateMu.Lock()
-	briefReadState["orch-go-aaa11"] = true
+	briefReadState[readKey] = true
 	briefReadStateMu.Unlock()
 	defer func() {
 		briefReadStateMu.Lock()
-		delete(briefReadState, "orch-go-aaa11")
+		delete(briefReadState, readKey)
 		briefReadStateMu.Unlock()
 	}()
 
@@ -278,11 +279,111 @@ func TestReviewQueueHasBriefField(t *testing.T) {
 		t.Fatalf("Failed to write brief: %v", err)
 	}
 
-	// Test hasBriefFile helper
-	if !hasBriefFile("test-id-1") {
+	// Test hasBriefFile helper (uses sourceDir when projectDir is empty)
+	if !hasBriefFile("test-id-1", "") {
 		t.Error("Expected hasBriefFile to return true for existing brief")
 	}
-	if hasBriefFile("nonexistent-id") {
+	if hasBriefFile("nonexistent-id", "") {
 		t.Error("Expected hasBriefFile to return false for nonexistent brief")
+	}
+	// Also test with explicit projectDir
+	if !hasBriefFile("test-id-1", sourceDir) {
+		t.Error("Expected hasBriefFile to return true with explicit projectDir")
+	}
+}
+
+func TestHandleBriefsListWithProjectDir(t *testing.T) {
+	// Create two separate project dirs with different briefs
+	projectA := t.TempDir()
+	projectB := t.TempDir()
+
+	briefsDirA := filepath.Join(projectA, ".kb", "briefs")
+	briefsDirB := filepath.Join(projectB, ".kb", "briefs")
+	os.MkdirAll(briefsDirA, 0755)
+	os.MkdirAll(briefsDirB, 0755)
+
+	os.WriteFile(filepath.Join(briefsDirA, "proj-a-001.md"), []byte("brief A"), 0644)
+	os.WriteFile(filepath.Join(briefsDirB, "proj-b-001.md"), []byte("brief B"), 0644)
+
+	// Query project A
+	req := httptest.NewRequest(http.MethodGet, "/api/briefs?project_dir="+projectA, nil)
+	w := httptest.NewRecorder()
+	handleBriefsList(w, req)
+
+	var itemsA []BriefListItem
+	json.NewDecoder(w.Result().Body).Decode(&itemsA)
+	if len(itemsA) != 1 || itemsA[0].BeadsID != "proj-a-001" {
+		t.Errorf("Expected 1 brief from project A (proj-a-001), got %v", itemsA)
+	}
+
+	// Query project B
+	req2 := httptest.NewRequest(http.MethodGet, "/api/briefs?project_dir="+projectB, nil)
+	w2 := httptest.NewRecorder()
+	handleBriefsList(w2, req2)
+
+	var itemsB []BriefListItem
+	json.NewDecoder(w2.Result().Body).Decode(&itemsB)
+	if len(itemsB) != 1 || itemsB[0].BeadsID != "proj-b-001" {
+		t.Errorf("Expected 1 brief from project B (proj-b-001), got %v", itemsB)
+	}
+}
+
+func TestHandleBriefReadStateIsolation(t *testing.T) {
+	// Two projects sharing the same beads ID should have independent read state
+	projectA := t.TempDir()
+	projectB := t.TempDir()
+
+	briefsDirA := filepath.Join(projectA, ".kb", "briefs")
+	briefsDirB := filepath.Join(projectB, ".kb", "briefs")
+	os.MkdirAll(briefsDirA, 0755)
+	os.MkdirAll(briefsDirB, 0755)
+
+	// Same beads ID in both projects
+	os.WriteFile(filepath.Join(briefsDirA, "shared-id.md"), []byte("brief A"), 0644)
+	os.WriteFile(filepath.Join(briefsDirB, "shared-id.md"), []byte("brief B"), 0644)
+
+	// Clean up read state
+	briefReadStateMu.Lock()
+	savedState := make(map[string]bool)
+	for k, v := range briefReadState {
+		savedState[k] = v
+	}
+	briefReadState = make(map[string]bool)
+	briefReadStateMu.Unlock()
+	defer func() {
+		briefReadStateMu.Lock()
+		briefReadState = savedState
+		briefReadStateMu.Unlock()
+	}()
+
+	// Mark as read in project A only
+	reqMark := httptest.NewRequest(http.MethodPost, "/api/briefs/shared-id?project_dir="+projectA, nil)
+	wMark := httptest.NewRecorder()
+	handleBrief(wMark, reqMark)
+
+	if wMark.Result().StatusCode != http.StatusOK {
+		t.Fatalf("Mark as read returned %d", wMark.Result().StatusCode)
+	}
+
+	// Project A should show read
+	reqA := httptest.NewRequest(http.MethodGet, "/api/briefs/shared-id?project_dir="+projectA, nil)
+	wA := httptest.NewRecorder()
+	handleBrief(wA, reqA)
+
+	var respA BriefAPIResponse
+	json.NewDecoder(wA.Result().Body).Decode(&respA)
+	if !respA.MarkedRead {
+		t.Error("Expected shared-id to be marked_read in project A")
+	}
+
+	// Project B should still be unread
+	reqB := httptest.NewRequest(http.MethodGet, "/api/briefs/shared-id?project_dir="+projectB, nil)
+	wB := httptest.NewRecorder()
+	handleBrief(wB, reqB)
+
+	var respB BriefAPIResponse
+	json.NewDecoder(wB.Result().Body).Decode(&respB)
+	if respB.MarkedRead {
+		t.Error("Expected shared-id to be unread in project B (isolation failure)")
 	}
 }
