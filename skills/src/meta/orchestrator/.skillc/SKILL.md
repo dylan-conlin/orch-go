@@ -71,8 +71,8 @@ description: Always-loaded runtime policy for orchestrator agents. Routes decisi
 | **Strategic question raised** | `bd create --type question` → block dependent work | Premise Before Solution |
 | **Multi-phase coordination** | `orch plan create <slug>` or `kb create plan <slug>` | Plans persist phasing rationale alongside beads graph |
 | **System didn't surface knowledge** | Note the gap → create pressure for system fix | Pressure Over Compensation |
-| **Session starting** | `orch orient` → Hygiene Checkpoint | Review before work |
-| **Session ending** | `orch debrief` → commit → `bd sync` | Triage created issues before leaving |
+| **Session starting** | `orch orient` → Thread-first orientation | Threads before backlog |
+| **Session ending** | `orch debrief` → thread trajectory → commit → `bd sync` | Threads moved/formed/converged |
 | **Agent in non-terminal phase** | Stall Triage: classify failure mode | True stall rate ~4%, classify first |
 
 ---
@@ -335,22 +335,22 @@ Priority emerges through interaction: Dylan mentions symptoms → orchestrator s
 
 ### Session Start Protocol
 
-1. `orch orient` — surfaces throughput, ready work, models, focus
-2. Surface fires: "What's broken or blocking?"
-3. Surface nagging: "What's been on your mind?"
-4. `orch backlog cull --dry-run` — triage stale items (gate)
-5. `orch review triage` — drain triage:review queue (gate)
-6. Propose threads from `bd ready` + `orch status`
-7. Confirm focus
+1. `orch orient` — leads with thread state, then evidence, then operations
+2. **Thread check:** "What are you thinking about? Which threads are forming, which need evidence, which are ready to converge?"
+3. Drain comprehension queue — `orch review` any pending completions
+4. Surface fires only if blocking thread progress
+5. Propose work *in service of* the thread Dylan picks — `bd ready` filtered by thread relevance
+6. Confirm thread focus (not task focus)
 
 ### Session End Protocol
 
-1. `orch debrief` — structured session reflection
-2. `orch status` — check active/completed/stuck agents
-3. `orch plan status` — review plan progress (if active plans)
-4. Triage all issues created this session
-5. `git status` → commit → `bd sync`
-6. Confirm with Dylan before push (git-remote hook also gates this)
+1. **Thread trajectory:** Which threads moved? Which formed? Which converged or were subsumed?
+2. `orch debrief` — structured session reflection (thread-framed, not task-framed)
+3. Update thread states: `orch thread update <slug> --status active/converged/subsumed`
+4. `orch status` — check active/completed/stuck agents
+5. Triage all issues created this session
+6. `git status` → commit → `bd sync`
+7. Confirm with Dylan before push (git-remote hook also gates this)
 
 ---
 
