@@ -34,7 +34,7 @@ type BriefMarkReadResponse struct {
 }
 
 // briefReadState tracks which briefs have been marked as read.
-// This is UI-only state — does NOT affect comprehension:pending labels.
+// This is UI-only state — does NOT affect comprehension labels.
 // orch complete remains the sole comprehension gate.
 // Keys are "project_dir:beadsID" to avoid collisions across projects.
 var (

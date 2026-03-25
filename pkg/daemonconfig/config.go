@@ -234,9 +234,9 @@ type Config struct {
 	// Default: 0.6 (60% auto-completed, 40% any completion).
 	AuditAutoCompleteWeight float64
 
-	// ComprehensionThreshold is the maximum number of comprehension:pending items
-	// before the daemon pauses spawning. The orchestrator adds this label after
-	// completing agents; removing it signals comprehension is done.
+	// ComprehensionThreshold is the maximum number of comprehension:unread items
+	// before the daemon pauses spawning. The daemon adds this label after
+	// auto-completing agents; orch complete transitions it to comprehension:processed.
 	// Default: 5. Set to 0 to disable comprehension throttle.
 	ComprehensionThreshold int
 }

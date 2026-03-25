@@ -199,8 +199,9 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 			// Non-critical
 		}
 
-		// Remove comprehension:pending — this completion is now comprehended
-		if err := daemon.RemoveComprehensionPendingInDir(target.BeadsID, target.BeadsProjectDir); err != nil {
+		// Transition comprehension:unread → comprehension:processed
+		// Orchestrator has reviewed; Dylan still needs to read the brief.
+		if err := daemon.TransitionToProcessedInDir(target.BeadsID, target.BeadsProjectDir); err != nil {
 			// Non-critical: label may not exist (e.g., manual completion, not daemon-queued)
 		}
 

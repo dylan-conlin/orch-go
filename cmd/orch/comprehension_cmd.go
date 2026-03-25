@@ -12,45 +12,82 @@ import (
 
 var comprehensionCmd = &cobra.Command{
 	Use:   "comprehension",
-	Short: "Manage comprehension queue (pending review items)",
-	Long: `List and manage issues with comprehension:pending label.
+	Short: "Manage comprehension queue (two-state: unread → processed)",
+	Long: `List and manage the comprehension queue.
 
-The daemon adds comprehension:pending after auto-completing agents.
-The orchestrator removes it during completion review (orch complete).
-When the queue exceeds the threshold (default 5), the daemon pauses spawning.`,
+Two-state lifecycle:
+  comprehension:unread     — daemon completed work, orchestrator hasn't reviewed yet
+  comprehension:processed  — orchestrator reviewed (orch complete), Dylan hasn't read brief
+
+The daemon throttles spawning based on comprehension:unread count.
+orch complete transitions unread → processed.
+Reading the brief removes comprehension:processed.`,
 }
 
 var comprehensionListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List pending comprehension items",
+	Use:     "list",
+	Short:   "List comprehension items by state",
 	Aliases: []string{"ls"},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		output, err := daemon.RunBdListComprehensionPending()
+		// Show unread items (need orchestrator review)
+		unreadOutput, err := daemon.RunBdListComprehensionUnread()
 		if err != nil {
-			return fmt.Errorf("failed to list comprehension queue: %w", err)
+			return fmt.Errorf("failed to list unread queue: %w", err)
 		}
+		unreadItems := parseComprehensionItems(unreadOutput)
 
-		items := parseComprehensionItems(output)
-		if len(items) == 0 {
+		// Show processed items (need Dylan to read brief)
+		processedOutput, err := daemon.RunBdListComprehensionProcessed()
+		if err != nil {
+			return fmt.Errorf("failed to list processed queue: %w", err)
+		}
+		processedItems := parseComprehensionItems(processedOutput)
+
+		// Check for legacy pending items
+		legacyOutput, _ := daemon.RunBdListComprehensionPending()
+		legacyItems := parseComprehensionItems(legacyOutput)
+
+		if len(unreadItems) == 0 && len(processedItems) == 0 && len(legacyItems) == 0 {
 			fmt.Println("Comprehension queue is empty.")
 			return nil
 		}
 
-		fmt.Printf("Comprehension queue: %d pending items\n\n", len(items))
-		for _, item := range items {
-			age := ""
-			if !item.ClosedAt.IsZero() {
-				age = fmt.Sprintf(" (closed %s ago)", time.Since(item.ClosedAt).Truncate(time.Minute))
+		if len(unreadItems) > 0 {
+			fmt.Printf("Unread (%d) — needs orchestrator review:\n", len(unreadItems))
+			for _, item := range unreadItems {
+				fmt.Printf("  %s  %s%s\n", item.ID, item.Title, formatAge(item.ClosedAt))
 			}
-			fmt.Printf("  %s  %s%s\n", item.ID, item.Title, age)
+			fmt.Println()
 		}
+
+		if len(processedItems) > 0 {
+			fmt.Printf("Processed (%d) — needs brief read:\n", len(processedItems))
+			for _, item := range processedItems {
+				feedback := ""
+				if rating, _ := daemon.ReadBriefFeedback(item.ID, sourceDir); rating != "" {
+					feedback = fmt.Sprintf(" [%s]", rating)
+				}
+				fmt.Printf("  %s  %s%s%s\n", item.ID, item.Title, formatAge(item.ClosedAt), feedback)
+			}
+			fmt.Println()
+		}
+
+		if len(legacyItems) > 0 {
+			fmt.Printf("Legacy pending (%d) — migrate with 'orch complete':\n", len(legacyItems))
+			for _, item := range legacyItems {
+				fmt.Printf("  %s  %s%s\n", item.ID, item.Title, formatAge(item.ClosedAt))
+			}
+			fmt.Println()
+		}
+
+		fmt.Printf("Throttle: %d unread (threshold: %d)\n", len(unreadItems)+len(legacyItems), daemon.DefaultComprehensionThreshold)
 		return nil
 	},
 }
 
 var comprehensionCountCmd = &cobra.Command{
 	Use:   "count",
-	Short: "Show count of pending comprehension items",
+	Short: "Show count of items needing orchestrator review",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		q := &daemon.BeadsComprehensionQuerier{}
 		count, err := q.CountPending()
@@ -64,14 +101,52 @@ var comprehensionCountCmd = &cobra.Command{
 
 var comprehensionReviewCmd = &cobra.Command{
 	Use:   "review <beads-id>",
-	Short: "Mark an issue as comprehended (remove comprehension:pending)",
+	Short: "Mark an issue as reviewed (transition unread → processed)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
-		if err := daemon.RemoveComprehensionPending(beadsID); err != nil {
-			return fmt.Errorf("failed to mark %s as comprehended: %w", beadsID, err)
+		if err := daemon.TransitionToProcessed(beadsID); err != nil {
+			return fmt.Errorf("failed to transition %s to processed: %w", beadsID, err)
 		}
-		fmt.Printf("Marked %s as comprehended (removed comprehension:pending)\n", beadsID)
+		fmt.Printf("Transitioned %s: unread → processed\n", beadsID)
+		return nil
+	},
+}
+
+var comprehensionReadCmd = &cobra.Command{
+	Use:   "read <beads-id>",
+	Short: "Mark a processed issue as read (remove comprehension:processed)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		beadsID := args[0]
+		if err := daemon.RemoveComprehensionProcessed(beadsID); err != nil {
+			return fmt.Errorf("failed to mark %s as read: %w", beadsID, err)
+		}
+		fmt.Printf("Marked %s as read (removed comprehension:processed)\n", beadsID)
+		return nil
+	},
+}
+
+var comprehensionFeedbackCmd = &cobra.Command{
+	Use:   "feedback <beads-id> <shallow|good>",
+	Short: "Rate brief quality for a completed issue",
+	Long: `Record quality feedback on a comprehension brief.
+
+Ratings:
+  shallow  — brief lacks depth, missing key insights
+  good     — brief is useful and comprehensive
+
+Feedback is stored in .kb/briefs/feedback/ and used to improve brief generation.`,
+	Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		beadsID := args[0]
+		rating := args[1]
+
+		projectDir := sourceDir
+		if err := daemon.RecordBriefFeedback(beadsID, rating, projectDir); err != nil {
+			return fmt.Errorf("failed to record feedback: %w", err)
+		}
+		fmt.Printf("Recorded feedback for %s: %s\n", beadsID, rating)
 		return nil
 	},
 }
@@ -80,6 +155,13 @@ type comprehensionItem struct {
 	ID       string
 	Title    string
 	ClosedAt time.Time
+}
+
+func formatAge(closedAt time.Time) string {
+	if closedAt.IsZero() {
+		return ""
+	}
+	return fmt.Sprintf(" (closed %s ago)", time.Since(closedAt).Truncate(time.Minute))
 }
 
 func parseComprehensionItems(output []byte) []comprehensionItem {
@@ -119,6 +201,8 @@ func init() {
 	comprehensionCmd.AddCommand(comprehensionListCmd)
 	comprehensionCmd.AddCommand(comprehensionCountCmd)
 	comprehensionCmd.AddCommand(comprehensionReviewCmd)
+	comprehensionCmd.AddCommand(comprehensionReadCmd)
+	comprehensionCmd.AddCommand(comprehensionFeedbackCmd)
 
 	// Default to list when no subcommand given
 	comprehensionCmd.RunE = comprehensionListCmd.RunE

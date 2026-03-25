@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -74,8 +76,55 @@ func TestCheckComprehensionThrottle_DefaultThreshold(t *testing.T) {
 	}
 }
 
-func TestComprehensionLabelConstant(t *testing.T) {
+func TestComprehensionLabelConstants(t *testing.T) {
+	if LabelComprehensionUnread != "comprehension:unread" {
+		t.Errorf("LabelComprehensionUnread = %q, want %q", LabelComprehensionUnread, "comprehension:unread")
+	}
+	if LabelComprehensionProcessed != "comprehension:processed" {
+		t.Errorf("LabelComprehensionProcessed = %q, want %q", LabelComprehensionProcessed, "comprehension:processed")
+	}
 	if LabelComprehensionPending != "comprehension:pending" {
 		t.Errorf("LabelComprehensionPending = %q, want %q", LabelComprehensionPending, "comprehension:pending")
+	}
+}
+
+func TestRecordBriefFeedback_ValidRatings(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "project")
+	os.MkdirAll(filepath.Join(projectDir, ".kb", "briefs"), 0755)
+
+	// Test valid ratings
+	for _, rating := range []string{"shallow", "good"} {
+		err := RecordBriefFeedback("test-123", rating, projectDir)
+		if err != nil {
+			t.Errorf("RecordBriefFeedback(%q) failed: %v", rating, err)
+		}
+
+		got, err := ReadBriefFeedback("test-123", projectDir)
+		if err != nil {
+			t.Errorf("ReadBriefFeedback failed: %v", err)
+		}
+		if got != rating {
+			t.Errorf("ReadBriefFeedback = %q, want %q", got, rating)
+		}
+	}
+}
+
+func TestRecordBriefFeedback_InvalidRating(t *testing.T) {
+	tmpDir := t.TempDir()
+	err := RecordBriefFeedback("test-123", "invalid", tmpDir)
+	if err == nil {
+		t.Error("expected error for invalid rating")
+	}
+}
+
+func TestReadBriefFeedback_NoFeedback(t *testing.T) {
+	tmpDir := t.TempDir()
+	rating, err := ReadBriefFeedback("nonexistent", tmpDir)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if rating != "" {
+		t.Errorf("expected empty rating, got %q", rating)
 	}
 }

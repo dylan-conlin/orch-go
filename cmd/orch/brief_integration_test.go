@@ -167,7 +167,7 @@ func TestBriefPipeline_NoBriefInWorkspace(t *testing.T) {
 }
 
 // TestBriefReadingQueue_SurvivesCompletionLifecycle verifies the core integration:
-// after orch complete clears the review queue (removes comprehension:pending),
+// after orch complete transitions comprehension:unread → comprehension:processed,
 // briefs remain accessible via the /api/briefs list endpoint.
 // This is the lifecycle decoupling that makes /briefs a persistent reading queue.
 func TestBriefReadingQueue_SurvivesCompletionLifecycle(t *testing.T) {
@@ -262,8 +262,8 @@ Are two primitives sufficient, or will a third emerge from multi-agent scenarios
 	}
 
 	// --- Phase 4: Simulate orch complete (review queue clears) ---
-	// In production, orch complete calls daemon.RemoveComprehensionPendingInDir
-	// which removes the comprehension:pending label. The review queue handler
+	// In production, orch complete calls daemon.TransitionToProcessedInDir
+	// which transitions comprehension:unread → comprehension:processed. The review queue handler
 	// (handleBeadsReviewQueue) then no longer returns this issue.
 	// The brief in .kb/briefs/ is NOT affected — it persists on disk.
 	// No action needed here — the brief files are independent of beads labels.
