@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for the orch-go CLI. Read this before debugging CLI issues or adding new commands.
 
-**Last verified:** Mar 24, 2026
+**Last verified:** 2026-03-24 (artifact sync: daemon subcommands, spawn/complete flags, subcommand descriptions)
 
 **Supersedes:** 16 CLI investigations from Dec 19 - Jan 4 (see History section)
 
@@ -28,7 +28,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 |---------|---------|--------------|
 | `orch spawn` | Create new agent session | `--issue`, `--model`, `--backend`, `--light`, `--full`, `--dry-run` |
 | `orch work` | Start work on beads issue with skill inference | `--inline` |
-| `orch complete` | Verify and close agent work | `--force`, `--reason` |
+| `orch complete` | Verify and close agent work | `--force`, `--reason`, `--skip-*` gates, `--explain`, `--verified` |
 | `orch abandon` | Abandon stuck agents | `--force`, `--reason`, `--workdir` |
 | `orch reject` | Reject agent work quality and reopen issue | - |
 | `orch rework` | Spawn a rework agent for a completed issue | - |
@@ -39,11 +39,11 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 
 | Command | Purpose | Common Flags |
 |---------|---------|--------------|
-| `orch status` | List active agents | `--json`, `--project` |
+| `orch status` | List active agents | `--json`, `--project`, `--all` |
 | `orch monitor` | SSE event monitoring | - |
 | `orch tail` | Capture agent output | - |
 | `orch question` | Extract pending question | - |
-| `orch review` | Batch completion review | `--needs-review` |
+| `orch review` | Batch completion review (done, orphans, synthesize, triage) | `--needs-review` |
 | `orch retries` | Show issues with retry patterns | - |
 
 ### Strategic Commands
@@ -59,14 +59,23 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 
 | Command | Purpose |
 |---------|---------|
-| `orch daemon run` | Run work daemon |
+| `orch daemon run` | Run work daemon (continuous OODA loop) |
+| `orch daemon status` | Show daemon status |
+| `orch daemon stop` | Stop running daemon |
+| `orch daemon restart` | Restart daemon |
+| `orch daemon once` | Execute single OODA cycle |
 | `orch daemon preview` | Preview what would spawn |
+| `orch daemon reflect` | Trigger daemon reflection |
+| `orch daemon resume` | Resume paused daemon |
+| `orch daemon clean-stale` | Clean stale daemon state |
+| `orch daemon install` | Install daemon as launchd service |
+| `orch daemon uninstall` | Remove daemon launchd service |
 
 ### Knowledge & Session Commands
 
 | Command | Purpose |
 |---------|---------|
-| `orch kb` | Knowledge base inline queries and artifact management |
+| `orch kb` | Knowledge base management (init, ask, extract, claims, orphans, autolink, clusters, create, gate, challenge, audit, scan-claims) |
 | `orch debrief` | Generate session debrief with auto-populated sections |
 | `orch thread` | Living threads — mid-session comprehension capture |
 | `orch comprehension` | Manage comprehension queue (pending review items) |
@@ -78,7 +87,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 
 | Command | Purpose |
 |---------|---------|
-| `orch harness` | Harness measurement (audit, report, init) |
+| `orch harness` | Harness measurement (init, check, lock, unlock, status, verify, snapshot, audit, report, gate-effectiveness) |
 | `orch control` | Manage control plane immutability |
 | `orch hook` | Test, validate, and trace Claude Code hooks |
 | `orch settings` | Modify ~/.claude/settings.json programmatically |
@@ -121,7 +130,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `orch config` | Get/set project configuration values |
 | `orch model` | Model resolution and management |
 | `orch mode` | Switch between development and operations mode |
-| `orch servers` | Show server status across all projects |
+| `orch servers` | Manage project servers (list, start, stop, attach, open, status) |
 | `orch doctor` | Diagnostics and health checks |
 | `orch precommit` | Pre-commit duplicate detection for staged Go files |
 | `orch guarded` | List files with modification protocols enforced |
@@ -135,7 +144,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | Command | Purpose |
 |---------|---------|
 | `orch serve` | Start dashboard API server |
-| `orch send` / `orch ask` | Send message to agent |
+| `orch send` | Send message to agent |
 | `orch account` | Manage Claude accounts |
 | `orch usage` | Show Claude Max usage for all accounts |
 | `orch backlog` | Backlog maintenance (surface stale issues) |
@@ -143,7 +152,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `orch fetchmd` | Fetch web page and convert to markdown |
 | `orch learn` | Manage gap tracking history |
 | `orch changelog` | Aggregated changelog across ecosystem repos |
-| `orch session` | Validate SESSION_HANDOFF.md quality |
+| `orch session` | Session lifecycle management (start, status, end, resume, migrate, validate, label) |
 | `orch sessions` | List untracked OpenCode sessions |
 | `orch version` | Print version information |
 
@@ -185,6 +194,45 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `--thread` | Thread slug to link spawned work to (adds beads ID to thread's active_work) |
 | `--design-workspace` | Design workspace handoff from ui-design-session |
 | `--settings` | Path to settings.json for worker hook isolation |
+| `--headless` | Run headless via HTTP API |
+| `--tmux` | Run in tmux window |
+| `--skip-artifact-check` | Bypass pre-spawn kb context check |
+| `--auto-init` | Auto-initialize .orch and .beads if missing |
+| `--workdir` | Target project directory |
+| `--gate-on-gap` | Block spawn if context quality is too low |
+| `--skip-gap-gate` | Explicitly bypass gap gating |
+| `--gap-threshold` | Custom gap quality threshold |
+| `--force` | Force overwrite of existing workspace |
+| `--explore-breadth` | Max parallel workers for exploration mode (default 3) |
+| `--explore-depth` | Max iteration depth for exploration mode |
+| `--explore-judge-model` | Model for exploration judge agent |
+
+### Complete Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--force` | Force completion without verification |
+| `--reason` | Reason for force completion |
+| `--approve` | Approve visual changes for UI tasks |
+| `--workdir` | Cross-project completion |
+| `--explain` | Explanation for explain-back gate |
+| `--verified` | Record behavioral verification (Tier 1 work) |
+| `--review-tier` | Override review tier |
+| `--skip-reason` | Required reason for all `--skip-*` flags |
+| `--skip-test-evidence` | Skip test execution evidence gate |
+| `--skip-visual` | Skip visual verification gate |
+| `--skip-git-diff` | Skip git diff gate |
+| `--skip-synthesis` | Skip SYNTHESIS.md gate |
+| `--skip-build` | Skip build verification gate |
+| `--skip-phase-complete` | Skip Phase: Complete gate |
+| `--skip-explain-back` | Skip explain-back gate |
+| `--skip-accretion` | Skip accretion gate |
+| `--skip-probe-model-merge` | Skip probe-to-model merge gate |
+| `--skip-architect-handoff` | Skip architect handoff gate |
+| `--skip-consequence-sensor` | Skip consequence sensor gate |
+| `--skip-artifact` | Skip COMPLETION.yaml gate |
+| `--no-archive` | Skip workspace archival |
+| `--no-changelog-check` | Skip changelog detection |
 
 ### Model Selection
 

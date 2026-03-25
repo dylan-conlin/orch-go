@@ -314,3 +314,15 @@
 ## pkg/advisor/ (Model Recommendation)
 
 - Model recommendation using live API data (OpenRouter)
+
+## pkg/kbgate/ (KB Quality Gates)
+
+- Adversarial quality gates for knowledge base artifacts
+- Challenge artifact generation with severity codes (ENDOGENOUS_EVIDENCE, VOCABULARY_INFLATION, etc.)
+- Publication readiness validation
+- Claim quality enforcement
+
+## pkg/certs/ (TLS Certificates)
+
+- Static TLS certificate and key files for OPSEC proxy
+- Not a Go package — contains `cert.pem` and `key.pem`

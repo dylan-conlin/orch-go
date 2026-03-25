@@ -2,7 +2,7 @@
 
 **Purpose:** Reference for all event types logged to `~/.orch/events.jsonl` for stats aggregation.
 
-**Last verified:** 2026-03-22
+**Last verified:** 2026-03-24 (artifact sync: added audit.passed/failed, spawn.bypass)
 
 ---
 
@@ -85,6 +85,9 @@
 | `command.invoked` | measurement commands | Tracks which diagnostic commands are used and by whom (human/orchestrator/worker) |
 | `artifact.drift` | artifact sync | Documentation drift detected (files changed since last sync) |
 | `gap.gate.bypassed` | spawn pipeline | KB gap gate bypassed via `--skip-gap-gate` |
+| `audit.passed` | daemon audit | Daemon quality audit passed |
+| `audit.failed` | daemon audit | Daemon quality audit failed/rejected |
+| `spawn.bypass` | `orch spawn` | Direct (non-daemon) spawn tracked for human vs daemon rate |
 
 **Enrichment fields:** `verification.failed`, `agent.completed`, `verification.bypassed`, and `verification.auto_skipped` events include a `verification_level` field (V0-V3) tracking what "verified" means at completion.
 
