@@ -241,6 +241,27 @@ func runStatus(serverURL string) error {
 		}
 	}
 
+	// Claude IsProcessing override: use live tmux pane signal instead of static phase-based status.
+	// OpenCode agents get their IsProcessing overridden above via session API. Claude agents
+	// have no OpenCode session, so IsProcessing from agentStatusToAgentInfo (status="active" →
+	// IsProcessing=true) is a static signal from historical phase comments. A dead Claude agent
+	// with a stale phase comment would be permanently masked as "processing."
+	// Check IsPaneActive as the live equivalent of OpenCode's IsBusy().
+	for i := range agents {
+		agent := &agents[i]
+		if agent.Mode != "claude" || agent.IsCompleted || agent.IsPhantom {
+			continue
+		}
+		// trackedAgents and agents are 1:1 aligned (built in same loop above)
+		tracked := trackedAgents[i]
+		windowID, alive := discovery.CheckTmuxWindow(tracked.WorkspaceName, tracked.ProjectDir)
+		if !alive {
+			agent.IsProcessing = false
+			continue
+		}
+		agent.IsProcessing = discovery.CheckPaneActive(windowID)
+	}
+
 	// Determine phantom and completed status from the query engine's reason codes
 	for i := range agents {
 		agent := &agents[i]

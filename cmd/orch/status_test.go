@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/discovery"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 )
 
@@ -193,6 +194,64 @@ func TestTerminalWidthConstants(t *testing.T) {
 	if termWidthNarrow >= termWidthWide {
 		t.Errorf("termWidthNarrow (%d) should be less than termWidthWide (%d)", termWidthNarrow, termWidthWide)
 	}
+}
+
+// TestAgentStatusToAgentInfo_ClaudeProcessingFromStatus verifies that Claude agents
+// with status="active" from phase_reported get IsProcessing=true from the conversion,
+// which is then eligible for live override by the consumer's IsPaneActive check.
+func TestAgentStatusToAgentInfo_ClaudeProcessingFromStatus(t *testing.T) {
+	now := time.Now()
+
+	t.Run("claude active agent gets IsProcessing from status mapping", func(t *testing.T) {
+		tracked := discovery.AgentStatus{
+			BeadsID:   "orch-go-test1",
+			Title:     "Test claude agent",
+			Status:    "active",
+			Reason:    "phase_reported",
+			SpawnMode: "claude",
+			Phase:     "Implementing - working",
+		}
+		info := agentStatusToAgentInfo(tracked, now)
+		if !info.IsProcessing {
+			t.Error("expected IsProcessing=true for active Claude agent")
+		}
+		if info.Mode != "claude" {
+			t.Errorf("expected Mode=claude, got %q", info.Mode)
+		}
+	})
+
+	t.Run("claude dead agent does not get IsProcessing", func(t *testing.T) {
+		tracked := discovery.AgentStatus{
+			BeadsID:   "orch-go-test2",
+			Title:     "Dead claude agent",
+			Status:    "dead",
+			Reason:    "tmux_pane_idle",
+			SpawnMode: "claude",
+			Phase:     "Planning - reading code",
+		}
+		info := agentStatusToAgentInfo(tracked, now)
+		if info.IsProcessing {
+			t.Error("expected IsProcessing=false for dead Claude agent")
+		}
+	})
+
+	t.Run("claude completed agent does not get IsProcessing", func(t *testing.T) {
+		tracked := discovery.AgentStatus{
+			BeadsID:   "orch-go-test3",
+			Title:     "Completed claude agent",
+			Status:    "completed",
+			Reason:    "phase_complete",
+			SpawnMode: "claude",
+			Phase:     "Complete - done",
+		}
+		info := agentStatusToAgentInfo(tracked, now)
+		if info.IsProcessing {
+			t.Error("expected IsProcessing=false for completed Claude agent")
+		}
+		if !info.IsCompleted {
+			t.Error("expected IsCompleted=true for completed Claude agent")
+		}
+	})
 }
 
 // TestPrintSwarmStatusWithWidth tests output format selection based on width.

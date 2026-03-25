@@ -127,6 +127,25 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		agents = append(agents, agent)
 	}
 
+	// Claude IsProcessing override: use live tmux pane signal instead of static phase-based status.
+	// Mirrors the OpenCode session API override above, but for Claude-backend agents.
+	for i := range agents {
+		if agents[i].Status == "completed" || agents[i].Status == "dead" {
+			continue
+		}
+		// Only override Claude agents (OpenCode agents already overridden above via session API)
+		tracked := trackedAgents[i]
+		if tracked.SpawnMode != "claude" || tracked.WorkspaceName == "" {
+			continue
+		}
+		windowID, alive := discovery.CheckTmuxWindow(tracked.WorkspaceName, tracked.ProjectDir)
+		if !alive {
+			agents[i].IsProcessing = false
+			continue
+		}
+		agents[i].IsProcessing = discovery.CheckPaneActive(windowID)
+	}
+
 	// === Dashboard-specific enrichment ===
 	// This adds data that queryTrackedAgents doesn't provide:
 	// phase timestamps, investigation paths, synthesis content, close_reason, gap analysis.
