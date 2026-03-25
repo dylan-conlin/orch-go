@@ -68,6 +68,9 @@ var (
 	spawnThread             string // Thread slug to link spawned work to
 	spawnModeSet            bool   // Tracks whether --mode was explicitly set
 	spawnValidationSet      bool   // Tracks whether --validation was explicitly set
+	spawnLoop               bool   // Enable loop mode: spawn → wait → eval → rework cycle
+	spawnLoopEval           string // Eval command for loop mode (exit 0 = done)
+	spawnLoopMax            int    // Maximum loop iterations (default 3)
 )
 
 // SpawnInput, SpawnContext, GapCheckResult, and headlessSpawnResult types
@@ -202,6 +205,9 @@ func init() {
 	spawnCmd.Flags().IntVar(&spawnExploreDepth, "explore-depth", 1, "Max iteration depth for exploration mode (1=single pass, N=judge triggers up to N-1 re-explorations)")
 	spawnCmd.Flags().StringVar(&spawnExploreJudgeModel, "explore-judge-model", "", "Model for exploration judge agent (cross-model judging, e.g., 'sonnet' when workers use 'opus')")
 	spawnCmd.Flags().StringVar(&spawnThread, "thread", "", "Thread slug to link this work to (adds beads ID to thread's active_work)")
+	spawnCmd.Flags().BoolVar(&spawnLoop, "loop", false, "Loop mode: spawn → wait → eval → rework cycle until eval passes or max iterations reached")
+	spawnCmd.Flags().StringVar(&spawnLoopEval, "loop-eval", "", "Eval command for loop mode (exit 0 = done, non-zero = continue). Required with --loop.")
+	spawnCmd.Flags().IntVar(&spawnLoopMax, "loop-max", 3, "Maximum loop iterations (default 3). Values > 5 trigger a warning.")
 }
 
 func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless bool, tmux bool, attach bool) error {
@@ -240,6 +246,22 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		}
 		if spawnBypassTriage && len(spawnReason) < 10 {
 			return fmt.Errorf("--reason must be at least 10 characters (got %d)", len(spawnReason))
+		}
+	}
+
+	// Validate --loop flags
+	if spawnLoop {
+		if strings.TrimSpace(spawnLoopEval) == "" {
+			return fmt.Errorf("--loop-eval is required when using --loop")
+		}
+		if spawnLoopMax < 1 {
+			return fmt.Errorf("--loop-max must be >= 1 (got %d)", spawnLoopMax)
+		}
+		if spawnLoopMax > 5 {
+			fmt.Fprintf(os.Stderr, "Warning: --loop-max %d exceeds recommended maximum of 5. Agents should not spawn more than 3 iterations without human review.\n", spawnLoopMax)
+		}
+		if spawnExplore {
+			return fmt.Errorf("--loop and --explore cannot be used together")
 		}
 	}
 
@@ -536,7 +558,40 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		return err
 	}
 
-	// 15. Emit spawn.bypass event for direct (non-daemon) spawns
+	// 15. Start loop controller if --loop was specified
+	if spawnLoop && beadsID != "" {
+		fmt.Printf("\nStarting loop controller: eval=%q, max=%d\n", spawnLoopEval, spawnLoopMax)
+		loopCfg := orch.LoopConfig{
+			BeadsID:     beadsID,
+			EvalCommand: spawnLoopEval,
+			MaxIter:     spawnLoopMax,
+			ProjectDir:  projectDir,
+		}
+
+		reworkFn := func(id, feedback string) error {
+			return runReworkWithParams(ReworkParams{
+				BeadsID:      id,
+				Feedback:     feedback,
+				BypassTriage: true,
+				Force:        true,
+				Workdir:      spawnWorkdir,
+				ServerURL:    serverURL,
+			})
+		}
+
+		result, err := orch.RunLoop(loopCfg, reworkFn)
+		if err != nil {
+			return fmt.Errorf("loop controller error: %w", err)
+		}
+		if result.EvalPassed {
+			fmt.Printf("Loop completed successfully after %d iteration(s)\n", result.Iterations)
+		} else {
+			fmt.Printf("Loop exhausted %d iteration(s) without eval passing\n", result.Iterations)
+		}
+		return nil
+	}
+
+	// 16. Emit spawn.bypass event for direct (non-daemon) spawns
 	if !daemonDriven {
 		logger := events.NewLogger(events.DefaultLogPath())
 		_ = logger.Log(events.Event{

@@ -75,6 +75,10 @@ const (
 	EventTypeCommandInvoked = "command.invoked"
 	// EventTypeAgentRejected logs when an orchestrator rejects agent work quality.
 	EventTypeAgentRejected = "agent.rejected"
+	// EventTypeLoopIteration logs each iteration of a --loop spawn cycle.
+	EventTypeLoopIteration = "loop.iteration"
+	// EventTypeLoopComplete logs the final outcome of a --loop spawn cycle.
+	EventTypeLoopComplete = "loop.complete"
 )
 
 // Event is a loggable event for events.jsonl.

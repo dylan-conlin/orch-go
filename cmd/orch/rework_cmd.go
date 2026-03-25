@@ -27,6 +27,20 @@ var (
 	reworkWorkdir      string
 )
 
+// ReworkParams holds parameters for programmatic rework invocation.
+// Used by the loop controller to call rework without relying on cobra globals.
+type ReworkParams struct {
+	BeadsID       string
+	Feedback      string
+	Model         string
+	Skill         string
+	Tmux          bool
+	BypassTriage  bool
+	Force         bool
+	Workdir       string
+	ServerURL     string
+}
+
 var reworkCmd = &cobra.Command{
 	Use:   "rework [beads-id] [feedback]",
 	Short: "Spawn a rework agent for a completed issue",
@@ -60,17 +74,37 @@ func init() {
 }
 
 func runRework(beadsID, feedback string) error {
+	params := ReworkParams{
+		BeadsID:      beadsID,
+		Feedback:     feedback,
+		Model:        reworkModel,
+		Skill:        reworkSkill,
+		Tmux:         reworkTmux,
+		BypassTriage: reworkBypassTriage,
+		Force:        reworkForce,
+		Workdir:      reworkWorkdir,
+		ServerURL:    serverURL,
+	}
+	return runReworkWithParams(params)
+}
+
+// runReworkWithParams is the core rework implementation that accepts a struct parameter.
+// This enables programmatic invocation from the loop controller.
+func runReworkWithParams(params ReworkParams) error {
+	beadsID := params.BeadsID
+	feedback := params.Feedback
+
 	if err := orch.ValidateMode(orch.Mode); err != nil {
 		return err
 	}
 	if strings.TrimSpace(feedback) == "" {
 		return fmt.Errorf("feedback message is required")
 	}
-	if !reworkBypassTriage {
+	if !params.BypassTriage {
 		return fmt.Errorf("manual rework requires --bypass-triage")
 	}
 
-	projectDir, projectName, err := orch.ResolveProjectDirectory(reworkWorkdir)
+	projectDir, projectName, err := orch.ResolveProjectDirectory(params.Workdir)
 	if err != nil {
 		return err
 	}
@@ -83,7 +117,7 @@ func runRework(beadsID, feedback string) error {
 		return fmt.Errorf("failed to get beads issue: %w", err)
 	}
 
-	if issue.Status != "closed" && !reworkForce {
+	if issue.Status != "closed" && !params.Force {
 		return fmt.Errorf("issue %s is %s (rework requires closed issue). Use --force to override", beadsID, issue.Status)
 	}
 
@@ -96,7 +130,7 @@ func runRework(beadsID, feedback string) error {
 	priorWorkspace, err := spawn.FindArchivedWorkspaceByBeadsID(projectDir, beadsID)
 	if err != nil {
 		if wsPath, _ := findWorkspaceByBeadsID(projectDir, beadsID); wsPath != "" {
-			if !reworkForce {
+			if !params.Force {
 				return fmt.Errorf("prior workspace not archived for %s. Run orch complete or use --force to rework from active workspace", beadsID)
 			}
 			priorWorkspace = wsPath
@@ -107,7 +141,7 @@ func runRework(beadsID, feedback string) error {
 
 	manifest := spawn.ReadAgentManifestWithFallback(priorWorkspace)
 
-	skillName := strings.TrimSpace(reworkSkill)
+	skillName := strings.TrimSpace(params.Skill)
 	if skillName == "" {
 		skillName = strings.TrimSpace(manifest.Skill)
 	}
@@ -119,14 +153,19 @@ func runRework(beadsID, feedback string) error {
 		skillName = inferred
 	}
 
+	srvURL := params.ServerURL
+	if srvURL == "" {
+		srvURL = serverURL
+	}
+
 	input := &orch.SpawnInput{
-		ServerURL:    serverURL,
+		ServerURL:    srvURL,
 		SkillName:    skillName,
 		Task:         task,
 		IssueID:      beadsID,
 		Inline:       false,
 		Headless:     false,
-		Tmux:         reworkTmux,
+		Tmux:         params.Tmux,
 		Attach:       false,
 		DaemonDriven: false,
 	}
@@ -151,7 +190,7 @@ func runRework(beadsID, feedback string) error {
 
 	agreementsCheckFunc := buildAgreementsChecker()
 	openQuestionCheckFunc := buildOpenQuestionChecker()
-	hotspotResult, _, _, err := orch.RunPreFlightChecks(input, projectDir, reworkBypassTriage, "", hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc)
+	hotspotResult, _, _, err := orch.RunPreFlightChecks(input, projectDir, params.BypassTriage, "", hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc)
 	if err != nil {
 		return err
 	}
@@ -164,7 +203,7 @@ func runRework(beadsID, feedback string) error {
 		return fmt.Errorf("orch rework only supports worker skills")
 	}
 
-	modelFlag := strings.TrimSpace(reworkModel)
+	modelFlag := strings.TrimSpace(params.Model)
 	if modelFlag == "" {
 		modelFlag = strings.TrimSpace(manifest.Model)
 	}
@@ -192,7 +231,7 @@ func runRework(beadsID, feedback string) error {
 			Light:         strings.EqualFold(manifestTier, spawn.TierLight),
 			Full:          strings.EqualFold(manifestTier, spawn.TierFull),
 			Headless:      false,
-			Tmux:          reworkTmux,
+			Tmux:          params.Tmux,
 			Inline:        false,
 		},
 		BeadsLabels:            beadsLabels,
@@ -307,7 +346,7 @@ func runRework(beadsID, feedback string) error {
 		return err
 	}
 
-	if err := orch.DispatchSpawn(input, cfg, minimalPrompt, beadsID, skillName, task, serverURL); err != nil {
+	if err := orch.DispatchSpawn(input, cfg, minimalPrompt, beadsID, skillName, task, srvURL); err != nil {
 		if rollback != nil {
 			rollback()
 		}
