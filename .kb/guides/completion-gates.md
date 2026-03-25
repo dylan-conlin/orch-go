@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for all gates that block `orch complete`. Read this before debugging completion issues or adding new gates.
 
-**Last verified:** Mar 14, 2026
+**Last verified:** Mar 25, 2026
 
 ---
 
@@ -334,6 +334,7 @@ bd comment <id> "Tests: npm test - 15 passing, 0 failing"
 | Flag | What it bypasses |
 |------|------------------|
 | `--force` | All gates (1-10) |
+| `--headless` | Interactive gates (liveness prompt, repro check) — auto-generates brief to `.kb/briefs/` |
 | `--approve` | Gate 6 (visual verification) - adds approval comment |
 
 ---

@@ -24,7 +24,7 @@
 - `Resolve(spec)` maps aliases to full provider/model format
 - Aliases: `opus`, `sonnet`, `haiku` (Anthropic), `flash`, `pro` (Gemini), `gpt-5.4`, `codex-latest` (OpenAI)
 - Code fallback: `anthropic/claude-sonnet-4-5-20250929`; effective default is Opus via project config
-- Helper methods: `IsAnthropicModel()`, `ProviderName()`, `ModelFamily()`, `String()`
+- Helper methods: `IsAnthropicModel()`, `IsOpenAI()`, `IsReasoningModel()`, `ProviderName()`, `ModelFamily()`, `String()`
 
 ## pkg/account/ (Account Management)
 
