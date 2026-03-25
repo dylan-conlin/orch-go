@@ -325,3 +325,64 @@ func TestShouldDeferTestIssue_ReasonIncludesSiblingID(t *testing.T) {
 		t.Errorf("reason should include sibling ID, got: %s", reason)
 	}
 }
+
+// Regression test for orch-go-e4uiq: investigation issues that mention testing
+// concepts (e.g., "property-based testing as verification layer") must NOT be
+// classified as test-like issues. Investigations produce knowledge, not code —
+// deferring them behind implementation siblings is meaningless.
+func TestIsTestLikeIssue_InvestigationExempt(t *testing.T) {
+	issue := Issue{
+		ID:          "orch-go-kxtrd",
+		Title:       "Investigate Antithesis Hegel — property-based testing as agent verification layer",
+		Description: "Hegel testing libraries wrap Hypothesis. testing as the verification layer for AI agents.",
+		IssueType:   "investigation",
+		Status:      "open",
+	}
+	if isTestLikeIssue(issue) {
+		t.Error("investigation issue mentioning testing should NOT be classified as test-like")
+	}
+}
+
+func TestIsTestLikeIssue_QuestionExempt(t *testing.T) {
+	issue := Issue{
+		ID:          "proj-q1",
+		Title:       "Should we add integration tests for the auth module?",
+		Description: "Testing strategy question.",
+		IssueType:   "question",
+		Status:      "open",
+	}
+	if isTestLikeIssue(issue) {
+		t.Error("question issue mentioning testing should NOT be classified as test-like")
+	}
+}
+
+func TestIsTestLikeIssue_FeatureStillMatches(t *testing.T) {
+	issue := Issue{
+		ID:        "proj-1",
+		Title:     "Add tests for auth module",
+		IssueType: "feature",
+		Status:    "open",
+	}
+	if !isTestLikeIssue(issue) {
+		t.Error("feature issue about writing tests should still be classified as test-like")
+	}
+}
+
+func TestShouldDeferTestIssue_InvestigationNotDeferred(t *testing.T) {
+	investigation := Issue{
+		ID:          "orch-go-kxtrd",
+		Title:       "Investigate property-based testing frameworks",
+		Description: "Research testing approaches.",
+		IssueType:   "investigation",
+		Status:      "open",
+	}
+	allIssues := []Issue{
+		investigation,
+		{ID: "orch-go-impl", Title: "Implement feature X", IssueType: "feature", Status: "open"},
+	}
+
+	shouldDefer, _ := ShouldDeferTestIssue(investigation, allIssues, nil)
+	if shouldDefer {
+		t.Error("investigation issue should never be deferred as test-like, even with open impl siblings")
+	}
+}

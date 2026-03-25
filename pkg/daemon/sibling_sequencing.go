@@ -33,7 +33,15 @@ var testTitlePatterns = []string{
 // writing tests based on title and description keywords. This is a heuristic —
 // false negatives are acceptable (test issue spawns normally), but false
 // positives would incorrectly defer implementation work.
+//
+// Investigations and questions are always exempt: they produce knowledge
+// artifacts (not code), so deferring them behind implementation siblings
+// is meaningless. This prevents false positives from investigations that
+// discuss testing topics (e.g., "property-based testing as verification layer").
 func isTestLikeIssue(issue Issue) bool {
+	if issue.IssueType == "investigation" || issue.IssueType == "question" {
+		return false
+	}
 	text := strings.ToLower(issue.Title + " " + issue.Description)
 	for _, p := range testTitlePatterns {
 		if strings.Contains(text, p) {

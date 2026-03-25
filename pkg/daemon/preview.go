@@ -27,6 +27,7 @@ type PreviewResult struct {
 	HotspotWarnings       []HotspotWarning       // Warnings about hotspot areas this issue may touch
 	ChannelHealthWarnings []ChannelHealthWarning // Skills with rework=0 + high completions (silent channel)
 	RejectedIssues        []RejectedIssue        // Issues that were rejected with reasons
+	SpawnableCount        int                    // Total issues passing compliance (not just the displayed one)
 	ArchitectEscalated    bool                   // True if skill would be escalated from impl to architect
 	FocusBoosted          bool                   // True if selected issue was boosted by focus
 	FocusGoal             string                 // Current focus goal (if any)
@@ -128,7 +129,10 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 			continue
 		}
 
-		// Found a spawnable issue - take the first one (highest priority)
+		// Count all spawnable issues for accurate reporting.
+		result.SpawnableCount++
+
+		// Take the first one (highest priority) as the preview candidate.
 		if spawnable == nil {
 			issueCopy := issue
 			spawnable = &issueCopy

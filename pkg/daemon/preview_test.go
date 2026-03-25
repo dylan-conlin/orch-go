@@ -546,6 +546,49 @@ func TestPreview_NoDefferWhenAllSiblingsComplete(t *testing.T) {
 	}
 }
 
+// Regression test for orch-go-e4uiq: Preview must count ALL issues that pass
+// compliance, not just the first one. Without this, the spawnable count shown
+// to users is always 0 or 1, making it impossible to gauge true queue depth.
+func TestPreview_SpawnableCountTracksAllPassingIssues(t *testing.T) {
+	d := &Daemon{
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "First spawnable", Priority: 0, IssueType: "feature", Status: "open"},
+				{ID: "proj-2", Title: "Also spawnable", Priority: 1, IssueType: "bug", Status: "open"},
+				{ID: "proj-3", Title: "Third spawnable", Priority: 2, IssueType: "task", Status: "open"},
+				{ID: "proj-4", Title: "Blocked", Priority: 3, IssueType: "feature", Status: "blocked"},
+			}, nil
+		}},
+	}
+
+	result, err := d.Preview()
+	if err != nil {
+		t.Fatalf("Preview() error: %v", err)
+	}
+
+	// First spawnable should be selected for display
+	if result.Issue == nil || result.Issue.ID != "proj-1" {
+		t.Errorf("Preview() issue = %v, want proj-1", result.Issue)
+	}
+
+	// SpawnableCount should reflect ALL passing issues, not just 1
+	if result.SpawnableCount != 3 {
+		t.Errorf("Preview() SpawnableCount = %d, want 3", result.SpawnableCount)
+	}
+
+	// Rejected should only contain the blocked issue
+	if len(result.RejectedIssues) != 1 {
+		t.Errorf("Preview() rejected count = %d, want 1", len(result.RejectedIssues))
+	}
+
+	// Total accounted = spawnable + rejected should equal input
+	total := result.SpawnableCount + len(result.RejectedIssues)
+	if total != 4 {
+		t.Errorf("Total accounted = %d (spawnable=%d + rejected=%d), want 4",
+			total, result.SpawnableCount, len(result.RejectedIssues))
+	}
+}
+
 func TestPreview_ShowsVerificationPaused(t *testing.T) {
 	tracker := NewVerificationTracker(2)
 	tracker.RecordCompletion("test-1")

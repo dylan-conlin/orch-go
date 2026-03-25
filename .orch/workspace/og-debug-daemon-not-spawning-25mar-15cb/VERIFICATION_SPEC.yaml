@@ -1,0 +1,17 @@
+verification:
+  reproduction:
+    command: "build/orch daemon preview"
+    before: "Queue: 0 spawnable, 90 rejected — kxtrd hidden in test-deferred bucket"
+    after: "Queue: 2 spawnable, 89 rejected — kxtrd shown as next spawn"
+    verified: true
+
+  tests:
+    command: "go test ./pkg/daemon/ -run 'TestIsTestLikeIssue|TestShouldDeferTestIssue_InvestigationNotDeferred|TestPreview_SpawnableCount' -count=1 -v"
+    result: "6 PASS, 0 FAIL"
+    regression_suite: "go test ./pkg/daemon/ -count=1 — PASS (18.9s)"
+
+  manual_steps:
+    - step: "Run 'build/orch daemon preview' and confirm kxtrd appears as next spawn"
+      result: "PASS — kxtrd shown with type=investigation, skill=investigation inferred"
+    - step: "Confirm SpawnableCount shows accurate count (not 0/1)"
+      result: "PASS — shows '2 spawnable' reflecting both passing issues"

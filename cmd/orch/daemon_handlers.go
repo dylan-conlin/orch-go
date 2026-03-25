@@ -188,12 +188,8 @@ func runDaemonPreview() error {
 	projectName := filepath.Base(projectDir)
 
 	// Show queue summary: spawnable vs rejected counts
-	spawnableCount := 0
-	if result.Issue != nil {
-		spawnableCount = 1
-	}
 	rejectedCount := len(result.RejectedIssues)
-	fmt.Printf("Queue: %d spawnable, %d rejected\n\n", spawnableCount, rejectedCount)
+	fmt.Printf("Queue: %d spawnable, %d rejected\n\n", result.SpawnableCount, rejectedCount)
 
 	// Display focus status
 	if result.FocusGoal != "" {
