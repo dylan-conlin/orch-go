@@ -328,6 +328,9 @@ func countIdleInList(agents []AgentInfo) int {
 }
 
 // getAgentStatus returns a status string based on agent state.
+// Priority: completed > phantom > running (IsProcessing) > UNRESPONSIVE > STALLED > idle.
+// IsProcessing (confirmed by OpenCode session) overrides phase-timeout signals because
+// an agent actively generating a response is definitionally not unresponsive.
 func getAgentStatus(agent AgentInfo) string {
 	if agent.IsCompleted {
 		return "completed"
@@ -335,14 +338,14 @@ func getAgentStatus(agent AgentInfo) string {
 	if agent.IsPhantom {
 		return "phantom"
 	}
+	if agent.IsProcessing {
+		return "running"
+	}
 	if agent.IsUnresponsive {
 		return "\u26a0\ufe0f UNRESPONSIVE"
 	}
 	if agent.IsStalled {
 		return "\u26a0\ufe0f STALLED"
-	}
-	if agent.IsProcessing {
-		return "running"
 	}
 	return "idle"
 }

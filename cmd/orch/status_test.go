@@ -148,6 +148,26 @@ func TestGetAgentStatus(t *testing.T) {
 			expected: "running",
 		},
 		{
+			name:     "processing overrides unresponsive",
+			agent:    AgentInfo{IsProcessing: true, IsUnresponsive: true},
+			expected: "running",
+		},
+		{
+			name:     "processing overrides stalled",
+			agent:    AgentInfo{IsProcessing: true, IsStalled: true},
+			expected: "running",
+		},
+		{
+			name:     "unresponsive when not processing",
+			agent:    AgentInfo{IsUnresponsive: true},
+			expected: "\u26a0\ufe0f UNRESPONSIVE",
+		},
+		{
+			name:     "stalled when not processing",
+			agent:    AgentInfo{IsStalled: true},
+			expected: "\u26a0\ufe0f STALLED",
+		},
+		{
 			name:     "default is idle",
 			agent:    AgentInfo{},
 			expected: "idle",

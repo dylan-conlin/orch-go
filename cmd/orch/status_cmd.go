@@ -377,10 +377,12 @@ func runStatus(serverURL string) error {
 		}
 	}
 
-	// Detect unresponsive agents (phase timeout)
+	// Detect unresponsive agents (phase timeout).
+	// An agent confirmed as processing by OpenCode is not unresponsive —
+	// it's just working without reporting a new phase comment.
 	for i := range filteredAgents {
 		agent := &filteredAgents[i]
-		if agent.IsPhantom || agent.IsCompleted {
+		if agent.IsPhantom || agent.IsCompleted || agent.IsProcessing {
 			continue
 		}
 		if strings.HasPrefix(agent.Phase, "Complete") {

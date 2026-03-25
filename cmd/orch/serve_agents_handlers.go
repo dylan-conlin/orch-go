@@ -182,8 +182,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 						if elapsed > stalledThreshold {
 							agents[i].IsStalled = true
 						}
-						// Unresponsive detection (30+ min without phase update)
-						if elapsed > unresponsiveThreshold {
+						// Unresponsive detection (30+ min without phase update).
+						// Skip if agent is actively processing (confirmed by OpenCode session) —
+						// an agent generating a response is not unresponsive.
+						if elapsed > unresponsiveThreshold && !agents[i].IsProcessing {
 							agents[i].IsUnresponsive = true
 						}
 					}
@@ -206,7 +208,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 					if elapsed > stalledThreshold {
 						agents[i].IsStalled = true
 					}
-					if elapsed > unresponsiveThreshold {
+					if elapsed > unresponsiveThreshold && !agents[i].IsProcessing {
 						agents[i].IsUnresponsive = true
 					}
 				}
