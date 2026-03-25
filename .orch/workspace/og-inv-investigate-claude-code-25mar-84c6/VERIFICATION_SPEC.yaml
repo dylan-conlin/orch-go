@@ -1,0 +1,52 @@
+verification:
+  type: investigation
+  outcome: extends-model
+
+  tests_run:
+    - name: "Stream-JSON bidirectional multi-turn"
+      command: |
+        (echo '{"type":"user","message":{"role":"user","content":"Say exactly: FIRST_MESSAGE"}}';
+         sleep 5;
+         echo '{"type":"user","message":{"role":"user","content":"Say exactly: SECOND_MESSAGE"}}')
+        | claude -p --input-format stream-json --output-format stream-json --verbose
+          --dangerously-skip-permissions --effort low 2>/dev/null
+        | grep -o '"text":"[^"]*"'
+      expected: Both messages processed in same session
+      actual: |
+        "text":"FIRST_MESSAGE"
+        "text":"SECOND_MESSAGE"
+      result: pass
+
+    - name: "Session resume with full context recall"
+      command: |
+        SESSION_ID=$(echo "Remember: the secret word is PINEAPPLE"
+          | claude -p --output-format json --dangerously-skip-permissions --effort low 2>/dev/null
+          | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('session_id','NONE'))")
+        echo "What was the secret word?" | claude -p --resume "$SESSION_ID"
+          --output-format stream-json --verbose --dangerously-skip-permissions --effort low 2>/dev/null
+      expected: Model recalls "PINEAPPLE" from prior session
+      actual: '"text":"PINEAPPLE"' — full context loaded (cache_read_input_tokens: 11916)
+      result: pass
+
+    - name: "Resume + stream-json combined"
+      command: |
+        echo '{"type":"user","message":{"role":"user","content":"What was the code?"}}'
+        | claude -p --resume "$SESSION_ID" --input-format stream-json
+          --output-format stream-json --verbose --dangerously-skip-permissions 2>/dev/null
+      expected: Structured message injection into resumed session
+      actual: Session resumed, hooks fired (SessionStart:resume), response generated
+      result: pass
+
+    - name: "Background process notification model"
+      method: binary analysis + documentation review
+      expected: Determine push vs pull notification
+      actual: Pull-based only — output written to file, no push signal
+      result: confirmed
+
+  artifacts:
+    probe: .kb/models/claude-code-agent-configuration/probes/2026-03-25-probe-external-wakeup-mechanisms.md
+    model_updated: .kb/models/claude-code-agent-configuration/model.md
+    synthesis: .orch/workspace/og-inv-investigate-claude-code-25mar-84c6/SYNTHESIS.md
+    brief: .orch/workspace/og-inv-investigate-claude-code-25mar-84c6/BRIEF.md
+
+  manual_verification: none required — all tests are reproducible CLI commands

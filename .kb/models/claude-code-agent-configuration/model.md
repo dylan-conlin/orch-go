@@ -60,12 +60,31 @@ A comprehensive audit of Claude Code v2.1.63 (Feb 28) mapped all available CLI f
 |---|---|---|
 | `--worktree` | Native git isolation per agent | Merge-back problem, bd sync interaction |
 | `--tools` allowlist | Fail-closed capability restriction | Needs skill→toolset mapping |
-| HTTP hooks → orch serve | Real-time event visibility without tmux parsing | Needs webhook endpoint design |
+| HTTP hooks → orch serve | Real-time event visibility without tmux parsing | Superseded by stream-json stdin for daemon→agent communication (Mar 25 probe); Channels (research preview) for push events |
 | `--permission-mode plan` | Read-only mode for investigation/architect | Needs skill updates |
 | `--json-schema` | Structured daemon triage output | Print mode only |
 | `--fallback-model` | Graceful model degradation | Print mode only |
 
 **Not Applicable:** `--chrome` (use Playwright MCP), `--from-pr` (no PR workflow), `--fork-session` (no conversation branching need), sandbox mode (agents need full access).
+
+### External Injection Vectors (Confirmed Mar 25)
+
+Three mechanisms allow external processes to inject messages into Claude Code sessions:
+
+| Vector | How It Works | Session Must Be Running? | Confirmed |
+|---|---|---|---|
+| **Stream-JSON stdin** | `-p --input-format stream-json` reads NDJSON from stdin; external process writes messages to pipe | Yes (same process) | Yes — multi-turn verified |
+| **Session resume** | `claude -p --resume <id> "prompt"` loads full prior context and processes new prompt | No (creates new process) | Yes — context recall verified |
+| **Channels (MCP)** | External POST → channel MCP server → `notifications/claude/channel` | Yes (same process) | Research preview only |
+
+**Stream-JSON protocol** (undocumented, empirically verified v2.1.83):
+- Input: `{"type":"user","message":{"role":"user","content":"..."}}`
+- Output: NDJSON with types `system` (init), `assistant` (response), `result` (completion)
+- Requires `--verbose` when combined with `--output-format stream-json`
+
+**Session resume fires SessionStart hooks** with subtype "resume" — hooks can distinguish fresh vs resumed sessions.
+
+**Background process notification is pull-based only** — `run_in_background` writes to a file; no push/signal wakeup when background tasks complete.
 
 ---
 
@@ -159,6 +178,7 @@ Agents get more capabilities than needed because CLI flag adoption lags. Investi
 - `.kb/decisions/2026-02-26-phase-based-liveness-over-tmux-as-state.md` — Phase comments as agent heartbeat
 
 **Probes:**
+- 2026-03-25: External Wakeup Mechanisms — stream-json stdin, session resume, and Channels are three confirmed vectors for external process injection into Claude Code sessions; stream-json + resume available now (not research preview)
 - 2026-03-22: Hook cwd Path Resolution Failure — relative paths in settings.json cause total Bash blockage when cwd shifts; fix: use $CLAUDE_PROJECT_DIR; also found regex false-positive on quoted strings
 - 2026-03-12: Hook Infrastructure Audit — 11 hooks audited, zero observability, 1 dead-system guard, 1 duplicate registration, Stop hook confirmed in production
 
@@ -168,6 +188,7 @@ Agents get more capabilities than needed because CLI flag adoption lags. Investi
 
 ## Auto-Linked Investigations
 
+- .kb/investigations/2026-03-25-design-composed-liveness-detection-claude.md
 - .kb/investigations/simple/2026-03-19-empirical-audit-displaced-code-governance-hooks.md
 - .kb/investigations/2026-03-08-design-portable-harness-tooling.md
 - .kb/investigations/2026-02-27-inv-claude-code-worktree-agent-isolation.md
