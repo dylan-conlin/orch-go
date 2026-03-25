@@ -111,13 +111,15 @@
 				{@const brief = briefCache.get(item.beads_id)}
 				{@const isExpanded = expandedId === item.beads_id}
 				{@const isLoading = briefLoading.has(item.beads_id)}
-				<button
-					class="w-full text-left rounded-md border border-border p-3 cursor-pointer
+				<div
+					class="rounded-md border border-border
 						{isExpanded ? 'border-foreground/10' : ''}"
-					onclick={() => toggleExpand(item)}
 					data-testid="brief-item-{item.beads_id}"
 				>
-					<div class="flex items-center justify-between gap-2">
+					<button
+						class="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left cursor-pointer"
+						onclick={() => toggleExpand(item)}
+					>
 						<div class="flex items-center gap-2 min-w-0 flex-1">
 							{#if !item.marked_read}
 								<span class="h-1.5 w-1.5 rounded-full bg-blue-500 flex-shrink-0"></span>
@@ -134,11 +136,11 @@
 								<span class="px-1.5 py-0.5 text-[10px] rounded bg-blue-500/20 text-blue-400">unread</span>
 							{/if}
 						</div>
-					</div>
+					</button>
 
 					{#if isExpanded && brief}
-						<div class="mt-3 pt-3 border-t space-y-2" data-testid="brief-content-{item.beads_id}">
-							<div class="flex items-center justify-between mb-2">
+						<div class="px-3 pb-3 pt-0 border-t space-y-2" data-testid="brief-content-{item.beads_id}">
+							<div class="flex items-center justify-between pt-2">
 								<span class="text-xs font-medium text-blue-400">Brief</span>
 								{#if !brief.marked_read}
 									<button
@@ -157,7 +159,7 @@
 							</div>
 						</div>
 					{/if}
-				</button>
+				</div>
 			{/each}
 		</div>
 	{/if}
