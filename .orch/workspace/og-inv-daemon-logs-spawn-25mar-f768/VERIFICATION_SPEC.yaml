@@ -1,0 +1,43 @@
+verification_spec:
+  issue: orch-go-iwp5d
+  type: bug-fix
+
+  automated_tests:
+    command: "go test ./pkg/daemon/ -run 'TestWorkspaceExists|TestSpawnIssue_Phantom|TestSpawnIssue_WorkspaceExists|TestSpawnIssue_NoWorkspaceVerifier' -v"
+    expected_result: "10 tests, all PASS"
+    tests:
+      - name: TestSpawnIssue_PhantomSpawn_RollsBackOnMissingWorkspace
+        verifies: "When SpawnWork exits 0 but no workspace exists, issue is rolled back to open"
+      - name: TestSpawnIssue_WorkspaceExists_ProcessesNormally
+        verifies: "Normal spawn with workspace proceeds as Processed=true"
+      - name: TestSpawnIssue_NoWorkspaceVerifier_SkipsCheck
+        verifies: "When WorkspaceVerifier is nil, check is skipped (backward compatible)"
+      - name: TestSpawnIssue_PhantomSpawn_ReleasesPoolSlot
+        verifies: "Phantom spawn detection releases pool slot to prevent capacity leak"
+      - name: TestWorkspaceExistsForIssue/finds_workspace_by_SPAWN_CONTEXT.md_content
+        verifies: "Workspace lookup works via SPAWN_CONTEXT.md content matching"
+      - name: TestWorkspaceExistsForIssue/returns_false_when_no_workspace_matches
+        verifies: "Different beads ID not matched"
+      - name: TestWorkspaceExistsForIssue/returns_false_when_workspace_dir_is_empty
+        verifies: "Empty workspace directory returns false"
+      - name: TestWorkspaceExistsForIssue/returns_false_for_empty_inputs
+        verifies: "Empty beads ID or project dir returns false"
+      - name: TestWorkspaceExistsForIssue/skips_archived_directory
+        verifies: "Archived workspaces are not scanned"
+      - name: TestWorkspaceExistsForIssue/returns_false_when_no_SPAWN_CONTEXT.md_exists
+        verifies: "Workspace without SPAWN_CONTEXT.md not matched"
+
+  regression_check:
+    command: "go test ./pkg/daemon/ -count=1"
+    expected_result: "PASS — full daemon suite, no regressions"
+
+  build_check:
+    command: "go build ./..."
+    expected_result: "No errors"
+
+  manual_verification:
+    - description: "Confirm phantom spawn scenario no longer produces phantom agents"
+      steps:
+        - "Watch daemon.log for next spawn cycle"
+        - "Verify 'Spawned:' entries correspond to actual workspace directories"
+      status: "pending — requires live daemon observation"

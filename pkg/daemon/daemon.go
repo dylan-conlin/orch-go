@@ -123,6 +123,10 @@ type Daemon struct {
 
 	// Spawner spawns agent work.
 	Spawner Spawner
+	// WorkspaceVerifier checks workspace existence after spawn.
+	// When set, verifies that orch work actually created a workspace directory.
+	// Catches phantom spawns where the subprocess exits 0 but no workspace exists.
+	WorkspaceVerifier WorkspaceVerifier
 	// Completions finds completed agents.
 	Completions CompletionFinder
 	// AgreementCheck provides agreement checking operations.
@@ -239,6 +243,7 @@ func NewWithConfig(config Config) *Daemon {
 		VerificationRetryTracker: NewVerificationRetryTracker(),
 		Issues:                   &defaultIssueQuerier{},
 		Spawner:                  &defaultSpawner{},
+		WorkspaceVerifier:        &defaultWorkspaceVerifier{},
 		Completions:              &defaultCompletionFinder{},
 		AgreementCheck:           &defaultAgreementCheckService{},
 		Cleaner:                  &defaultSessionCleaner{},
@@ -280,6 +285,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		VerificationTracker: NewVerificationTracker(config.VerificationPauseThreshold),
 		Issues:              &defaultIssueQuerier{},
 		Spawner:             &defaultSpawner{},
+		WorkspaceVerifier:   &defaultWorkspaceVerifier{},
 		Completions:         &defaultCompletionFinder{},
 		AgreementCheck:      &defaultAgreementCheckService{},
 		Cleaner:             &defaultSessionCleaner{},

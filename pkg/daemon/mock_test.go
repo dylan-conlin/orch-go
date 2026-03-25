@@ -90,6 +90,18 @@ func (m *mockSpawner) SpawnWork(beadsID, skill, model, workdir, account string) 
 	return nil
 }
 
+// mockWorkspaceVerifier implements WorkspaceVerifier for tests.
+type mockWorkspaceVerifier struct {
+	ExistsFunc func(beadsID, projectDir string) bool
+}
+
+func (m *mockWorkspaceVerifier) Exists(beadsID, projectDir string) bool {
+	if m.ExistsFunc != nil {
+		return m.ExistsFunc(beadsID, projectDir)
+	}
+	return true // default: workspace exists (backward compatible)
+}
+
 // mockCompletionFinder implements CompletionFinder for tests.
 type mockCompletionFinder struct {
 	ListCompletedAgentsFunc func(config CompletionConfig) ([]CompletedAgent, error)

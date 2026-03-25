@@ -310,3 +310,141 @@ func TestSpawnIssue_PhaseCompleteError_NoAutoCompleter_SkipsGracefully(t *testin
 		t.Error("result.Error should be set")
 	}
 }
+
+// =============================================================================
+// Tests for Phantom Spawn Detection (Workspace Verification)
+// =============================================================================
+
+// TestSpawnIssue_PhantomSpawn_RollsBackOnMissingWorkspace verifies that when
+// SpawnWork returns success but no workspace is created, the daemon detects
+// the phantom spawn, rolls back the issue to open, and returns Processed=false.
+func TestSpawnIssue_PhantomSpawn_RollsBackOnMissingWorkspace(t *testing.T) {
+	statusUpdates := map[string][]string{}
+	spawnCalled := false
+	unmarked := false
+
+	tracker := NewSpawnedIssueTracker()
+	d := &Daemon{
+		SpawnedIssues: tracker,
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
+			spawnCalled = true
+			return nil // exits 0 but no workspace
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			statusUpdates[beadsID] = append(statusUpdates[beadsID], status)
+			return nil
+		}},
+		WorkspaceVerifier: &mockWorkspaceVerifier{ExistsFunc: func(beadsID, projectDir string) bool {
+			return false // simulate: no workspace created
+		}},
+	}
+
+	issue := &Issue{ID: "proj-phantom", Title: "Phantom test", Priority: 0, IssueType: "feature", Status: "open", ProjectDir: "/tmp/proj"}
+	result, slot, err := d.spawnIssue(issue, "feature-impl", "sonnet")
+	if err != nil {
+		t.Fatalf("spawnIssue() unexpected error: %v", err)
+	}
+
+	if !spawnCalled {
+		t.Error("SpawnWork should have been called")
+	}
+	if result.Processed {
+		t.Error("result.Processed should be false for phantom spawn")
+	}
+	if result.Error == nil {
+		t.Error("result.Error should be set for phantom spawn")
+	}
+	if slot != nil {
+		t.Error("slot should be nil for phantom spawn")
+	}
+
+	// Verify rollback: status should go in_progress then back to open
+	updates := statusUpdates["proj-phantom"]
+	if len(updates) < 2 || updates[0] != "in_progress" || updates[1] != "open" {
+		t.Errorf("expected status updates [in_progress, open], got %v", updates)
+	}
+
+	// Verify spawn tracker was unmarked
+	unmarked = !tracker.IsSpawned("proj-phantom")
+	if !unmarked {
+		t.Error("SpawnedIssueTracker should have unmarked the phantom spawn")
+	}
+}
+
+// TestSpawnIssue_WorkspaceExists_ProcessesNormally verifies that when
+// SpawnWork returns success and workspace exists, the spawn proceeds normally.
+func TestSpawnIssue_WorkspaceExists_ProcessesNormally(t *testing.T) {
+	d := &Daemon{
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
+			return nil
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
+		WorkspaceVerifier: &mockWorkspaceVerifier{ExistsFunc: func(beadsID, projectDir string) bool {
+			return true // workspace exists
+		}},
+	}
+
+	issue := &Issue{ID: "proj-good", Title: "Good spawn", Priority: 0, IssueType: "feature", Status: "open", ProjectDir: "/tmp/proj"}
+	result, _, err := d.spawnIssue(issue, "feature-impl", "sonnet")
+	if err != nil {
+		t.Fatalf("spawnIssue() unexpected error: %v", err)
+	}
+	if !result.Processed {
+		t.Errorf("result.Processed should be true when workspace exists, got message: %s", result.Message)
+	}
+}
+
+// TestSpawnIssue_NoWorkspaceVerifier_SkipsCheck verifies backward compatibility:
+// when WorkspaceVerifier is nil, the check is skipped and spawn proceeds normally.
+func TestSpawnIssue_NoWorkspaceVerifier_SkipsCheck(t *testing.T) {
+	d := &Daemon{
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
+			return nil
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
+		// WorkspaceVerifier intentionally nil
+	}
+
+	issue := &Issue{ID: "proj-nocheck", Title: "No check", Priority: 0, IssueType: "feature", Status: "open", ProjectDir: "/tmp/proj"}
+	result, _, err := d.spawnIssue(issue, "feature-impl", "sonnet")
+	if err != nil {
+		t.Fatalf("spawnIssue() unexpected error: %v", err)
+	}
+	if !result.Processed {
+		t.Errorf("result.Processed should be true when verifier is nil, got message: %s", result.Message)
+	}
+}
+
+// TestSpawnIssue_PhantomSpawn_ReleasesPoolSlot verifies that phantom spawn
+// detection releases the pool slot, preventing capacity leaks.
+func TestSpawnIssue_PhantomSpawn_ReleasesPoolSlot(t *testing.T) {
+	pool := NewWorkerPool(1)
+	d := &Daemon{
+		Pool: pool,
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, skill, model, workdir, account string) error {
+			return nil
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
+		WorkspaceVerifier: &mockWorkspaceVerifier{ExistsFunc: func(beadsID, projectDir string) bool {
+			return false // phantom spawn
+		}},
+	}
+
+	issue := &Issue{ID: "proj-pool", Title: "Pool test", Priority: 0, IssueType: "feature", Status: "open", ProjectDir: "/tmp/proj"}
+	result, slot, _ := d.spawnIssue(issue, "feature-impl", "sonnet")
+	if result.Processed {
+		t.Error("should not be processed (phantom spawn)")
+	}
+	if slot != nil {
+		t.Error("slot should be nil on phantom spawn")
+	}
+	if pool.Active() != 0 {
+		t.Errorf("Pool.Active() = %d, want 0 (slot should be released)", pool.Active())
+	}
+}

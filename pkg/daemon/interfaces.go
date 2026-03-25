@@ -23,6 +23,13 @@ type Spawner interface {
 	SpawnWork(beadsID, skill, model, workdir, account string) error
 }
 
+// WorkspaceVerifier checks whether a spawn actually created a workspace.
+// Used after SpawnWork returns success to catch phantom spawns where the
+// subprocess exits 0 but no workspace directory was created.
+type WorkspaceVerifier interface {
+	Exists(beadsID, projectDir string) bool
+}
+
 // CompletionFinder finds completed agents.
 type CompletionFinder interface {
 	ListCompletedAgents(config CompletionConfig) ([]CompletedAgent, error)
@@ -116,6 +123,13 @@ type defaultSpawner struct{}
 
 func (s *defaultSpawner) SpawnWork(beadsID, skill, model, workdir, account string) error {
 	return SpawnWork(beadsID, skill, model, workdir, account)
+}
+
+// defaultWorkspaceVerifier checks workspace existence by scanning .orch/workspace/.
+type defaultWorkspaceVerifier struct{}
+
+func (v *defaultWorkspaceVerifier) Exists(beadsID, projectDir string) bool {
+	return workspaceExistsForIssue(beadsID, projectDir)
 }
 
 // defaultCompletionFinder is the production CompletionFinder.

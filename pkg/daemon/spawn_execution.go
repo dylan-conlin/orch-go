@@ -185,6 +185,48 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 		}, nil, nil
 	}
 
+	// POST-SPAWN VERIFICATION: Verify workspace was actually created.
+	// Catches phantom spawns where orch work exits 0 but no workspace directory
+	// exists (e.g., silent failures in workspace setup, cross-project path issues).
+	// Without this check, the daemon logs "Spawned" and marks the issue in_progress
+	// but no agent is actually running — creating a phantom agent.
+	if d.WorkspaceVerifier != nil {
+		verifyDir := workdir
+		if verifyDir == "" && d.ProjectRegistry != nil {
+			verifyDir = d.ProjectRegistry.CurrentDir()
+		}
+		if verifyDir != "" && !d.WorkspaceVerifier.Exists(issue.ID, verifyDir) {
+			// Phantom spawn detected — rollback to allow retry.
+			// Use the resolved statusUpdater (same one used for initial in_progress update)
+			// so cross-project and mock status updaters are used consistently.
+			if rollbackErr := statusUpdater.UpdateStatus(issue.ID, "open"); rollbackErr != nil {
+				fmt.Fprintf(os.Stderr, "ERROR: Failed to rollback status for %s after phantom spawn: %v\n", issue.ID, rollbackErr)
+				return &OnceResult{
+					Processed: false,
+					Issue:     issue,
+					Skill:     skill,
+					Model:     inferredModel,
+					Error:     fmt.Errorf("phantom spawn (no workspace) and rollback failed: %v", rollbackErr),
+					Message:   fmt.Sprintf("CRITICAL: phantom spawn and rollback failed for %s", issue.ID),
+				}, nil, nil
+			}
+			if d.SpawnedIssues != nil {
+				d.SpawnedIssues.Unmark(issue.ID)
+			}
+			if d.Pool != nil && slot != nil {
+				d.Pool.Release(slot)
+			}
+			return &OnceResult{
+				Processed: false,
+				Issue:     issue,
+				Skill:     skill,
+				Model:     inferredModel,
+				Error:     fmt.Errorf("phantom spawn: orch work exited 0 but no workspace found for %s", issue.ID),
+				Message:   fmt.Sprintf("Phantom spawn: no workspace created for %s — rolled back to open", issue.ID),
+			}, nil, nil
+		}
+	}
+
 	// Record successful spawn for rate limiting
 	if d.RateLimiter != nil {
 		d.RateLimiter.RecordSpawn()
