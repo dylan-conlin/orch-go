@@ -55,6 +55,9 @@ var (
 
 	// Review tier override flag
 	completeReviewTier string
+
+	// Headless mode: skip interactive gates, auto-generate brief
+	completeHeadless bool
 )
 
 var completeCmd = &cobra.Command{
@@ -115,6 +118,17 @@ Use --skip-{gate} with --skip-reason to bypass specific gates:
 
 Each --skip-* flag requires --skip-reason with a minimum of 10 characters
 explaining why the gate is being bypassed. Bypasses are logged for audit.
+
+HEADLESS MODE:
+When --headless is specified, completion runs without interactive gates:
+  - Review tier is forced to 'auto' (no interactive prompts)
+  - Explain-back gate is auto-skipped
+  - A brief is auto-generated from SYNTHESIS.md to .kb/briefs/<beads-id>.md
+  - Discovered work is auto-filed without prompting
+
+Designed for daemon-triggered completions where no human is present.
+
+  orch complete proj-123 --headless
 
 DEPRECATION: --force is deprecated. Use targeted --skip-* flags instead.
 Using --force will show a deprecation warning.
@@ -190,6 +204,9 @@ func init() {
 
 	// Review tier override
 	completeCmd.Flags().StringVar(&completeReviewTier, "review-tier", "", "Override review tier (auto/scan/review/deep) — overrides manifest value")
+
+	// Headless mode
+	completeCmd.Flags().BoolVar(&completeHeadless, "headless", false, "Run completion without interactive gates; auto-generates brief to .kb/briefs/")
 }
 
 // getSkipConfig builds the skip configuration from command-line flags.
@@ -257,6 +274,22 @@ func runComplete(identifier, workdir string) error {
 		fmt.Fprintln(os.Stderr)
 	}
 
+	// Headless mode: force non-interactive settings
+	if completeHeadless {
+		fmt.Println("Headless mode: skipping interactive gates, will generate brief")
+		// Force auto review tier (skips interactive gates)
+		if completeReviewTier == "" {
+			completeReviewTier = "auto"
+		}
+		// Auto-skip explain-back (no human present)
+		if !skipConfig.ExplainBack {
+			skipConfig.ExplainBack = true
+			if skipConfig.Reason == "" {
+				skipConfig.Reason = "headless completion — no human present for interactive gates"
+			}
+		}
+	}
+
 	// Phase 1: Resolve completion target
 	target, err := resolveCompletionTarget(identifier, workdir)
 	if err != nil {
@@ -321,6 +354,13 @@ func runComplete(identifier, workdir string) error {
 	advisories, err := runCompletionAdvisories(target, outcome, skipConfig)
 	if err != nil {
 		return err
+	}
+
+	// Headless brief generation: produce .kb/briefs/<beads-id>.md from SYNTHESIS
+	if completeHeadless && target.BeadsID != "" && target.WorkspacePath != "" {
+		if briefErr := generateHeadlessBrief(target); briefErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to generate brief: %v\n", briefErr)
+		}
 	}
 
 	// Phase 4: Execute lifecycle transition
