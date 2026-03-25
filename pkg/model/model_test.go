@@ -288,6 +288,40 @@ func TestModelSpec_String(t *testing.T) {
 	}
 }
 
+func TestModelSpec_IsReasoningModel(t *testing.T) {
+	tests := []struct {
+		spec     ModelSpec
+		expected bool
+	}{
+		// Reasoning models — should return true
+		{ModelSpec{Provider: "openai", ModelID: "o3"}, true},
+		{ModelSpec{Provider: "openai", ModelID: "o3-mini"}, true},
+		{ModelSpec{Provider: "deepseek", ModelID: "deepseek-reasoner"}, true},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}, true},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex-mini"}, true},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex-max"}, true},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex"}, true},
+
+		// Non-reasoning models — should return false
+		{ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}, false},
+		{ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}, false},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-4o"}, false},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}, false},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}, false},
+		{ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}, false},
+		{ModelSpec{Provider: "deepseek", ModelID: "deepseek-chat"}, false},
+		{ModelSpec{Provider: "", ModelID: "o3"}, true},  // ModelID-based, not provider-based
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.spec.Format(), func(t *testing.T) {
+			if got := tt.spec.IsReasoningModel(); got != tt.expected {
+				t.Errorf("IsReasoningModel() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestModelSpec_Format(t *testing.T) {
 	spec := ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}
 	if spec.Format() != "anthropic/claude-opus-4-5-20251101" {

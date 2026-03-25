@@ -47,6 +47,22 @@ func (m ModelSpec) IsAnthropicModel() bool {
 	return strings.EqualFold(m.Provider, "anthropic")
 }
 
+// IsReasoningModel returns true if the model has reasoning/chain-of-thought capability.
+// This includes o3, o3-mini, deepseek-reasoner, and codex models.
+func (m ModelSpec) IsReasoningModel() bool {
+	id := strings.ToLower(m.ModelID)
+	switch {
+	case strings.HasPrefix(id, "o3"):
+		return true
+	case id == "deepseek-reasoner":
+		return true
+	case strings.Contains(id, "codex"):
+		return true
+	default:
+		return false
+	}
+}
+
 // IsOpenAI returns true if the model's provider is OpenAI.
 func (m ModelSpec) IsOpenAI() bool {
 	return strings.EqualFold(m.Provider, "openai")
