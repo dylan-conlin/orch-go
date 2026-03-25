@@ -1,7 +1,9 @@
 package daemon
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/daemonconfig"
 )
@@ -297,5 +299,92 @@ func TestRouteIssueForSpawn_PerSkillComplianceOverride(t *testing.T) {
 	}
 	if route.ArchitectEscalated {
 		t.Error("RouteIssueForSpawn() should NOT escalate when skill-level compliance is relaxed")
+	}
+}
+
+// --- Headless completion wiring tests ---
+
+func TestFireHeadlessCompletion_CalledForHeadlessAutoCompleter(t *testing.T) {
+	// When AutoCompleter implements HeadlessAutoCompleter,
+	// fireHeadlessCompletion should invoke CompleteHeadless.
+	called := make(chan struct{}, 1)
+	d := &Daemon{
+		AutoCompleter: &mockHeadlessAutoCompleter{
+			CompleteHeadlessFunc: func(beadsID, workdir string) error {
+				if beadsID != "proj-42" {
+					t.Errorf("CompleteHeadless beadsID = %q, want %q", beadsID, "proj-42")
+				}
+				if workdir != "/tmp/project" {
+					t.Errorf("CompleteHeadless workdir = %q, want %q", workdir, "/tmp/project")
+				}
+				called <- struct{}{}
+				return nil
+			},
+		},
+	}
+
+	config := CompletionConfig{ProjectDir: "/tmp/project", Verbose: true}
+	d.fireHeadlessCompletion("proj-42", "/tmp/project", config)
+
+	// Wait for goroutine to complete (fire-and-forget runs async)
+	select {
+	case <-called:
+		// success
+	case <-time.After(2 * time.Second):
+		t.Error("CompleteHeadless was not called within timeout")
+	}
+}
+
+func TestFireHeadlessCompletion_SkippedForNonHeadlessAutoCompleter(t *testing.T) {
+	// When AutoCompleter does NOT implement HeadlessAutoCompleter,
+	// fireHeadlessCompletion should be a no-op.
+	completeCalled := false
+	d := &Daemon{
+		AutoCompleter: &mockAutoCompleter{
+			CompleteFunc: func(beadsID, workdir string) error {
+				completeCalled = true
+				return nil
+			},
+		},
+	}
+
+	config := CompletionConfig{ProjectDir: "/tmp"}
+	d.fireHeadlessCompletion("proj-1", "/tmp", config)
+
+	// Give goroutine a moment (there shouldn't be one)
+	time.Sleep(50 * time.Millisecond)
+
+	if completeCalled {
+		t.Error("Complete should NOT be called when AutoCompleter lacks HeadlessAutoCompleter")
+	}
+}
+
+func TestFireHeadlessCompletion_SkippedWhenNilAutoCompleter(t *testing.T) {
+	d := &Daemon{AutoCompleter: nil}
+	config := CompletionConfig{ProjectDir: "/tmp"}
+	// Should not panic
+	d.fireHeadlessCompletion("proj-1", "/tmp", config)
+}
+
+func TestFireHeadlessCompletion_ErrorDoesNotPanic(t *testing.T) {
+	// Headless completion error should be logged, not panic.
+	errDone := make(chan struct{}, 1)
+	d := &Daemon{
+		AutoCompleter: &mockHeadlessAutoCompleter{
+			CompleteHeadlessFunc: func(beadsID, workdir string) error {
+				defer func() { errDone <- struct{}{} }()
+				return fmt.Errorf("brief generation failed")
+			},
+		},
+	}
+
+	config := CompletionConfig{ProjectDir: "/tmp", Verbose: true}
+	d.fireHeadlessCompletion("proj-err", "/tmp", config)
+
+	select {
+	case <-errDone:
+		// success — error was handled without panic
+	case <-time.After(2 * time.Second):
+		t.Error("CompleteHeadless was not called within timeout")
 	}
 }

@@ -86,6 +86,34 @@ func HasEffortLabel(labels []string, target string) bool {
 	return false
 }
 
+// HeadlessAutoCompleter extends LightAutoCompleter with headless completion support.
+// Headless completion runs `orch complete --headless` to generate a brief without
+// interactive gates. Used by the daemon to pre-generate briefs for label-ready-review
+// completions so Dylan arrives to finished briefs instead of raw completions.
+type HeadlessAutoCompleter interface {
+	LightAutoCompleter
+	// CompleteHeadless runs the completion pipeline in headless mode.
+	// Skips interactive gates and auto-generates a brief to .kb/briefs/.
+	// Fire-and-forget: errors are logged but don't block completion labeling.
+	CompleteHeadless(beadsID, workdir string) error
+}
+
+// CompleteHeadless shells out to `orch complete <beadsID> --headless --workdir <workdir>`.
+// Generates a brief without interactive gates (no explain-back, auto review tier).
+func (c *OrcCompleter) CompleteHeadless(beadsID, workdir string) error {
+	args := []string{"complete", beadsID, "--headless"}
+	if workdir != "" {
+		args = append(args, "--workdir", workdir)
+	}
+
+	cmd := exec.Command("orch", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("orch complete (headless) failed: %w\nOutput: %s", err, string(output))
+	}
+	return nil
+}
+
 // IsEffortSmall returns true if the labels indicate light-tier work.
 func IsEffortSmall(labels []string) bool {
 	return HasEffortLabel(labels, LabelEffortSmall)

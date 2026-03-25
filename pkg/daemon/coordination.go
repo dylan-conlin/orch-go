@@ -223,7 +223,7 @@ func (d *Daemon) ExecuteCompletionRoute(
 			result.AutoCompleted = true
 			result.CloseReason = completionSummary
 			// Queue for orchestrator comprehension (fire-and-forget)
-			d.addComprehensionPending(agent.BeadsID, effectiveProjectDir, config)
+			d.addComprehensionUnread(agent.BeadsID, effectiveProjectDir, config)
 			return result
 		}
 		// Fall through to label if no auto-completer
@@ -239,7 +239,7 @@ func (d *Daemon) ExecuteCompletionRoute(
 			result.AutoCompleted = true
 			result.CloseReason = completionSummary
 			// Queue for orchestrator comprehension (fire-and-forget)
-			d.addComprehensionPending(agent.BeadsID, effectiveProjectDir, config)
+			d.addComprehensionUnread(agent.BeadsID, effectiveProjectDir, config)
 			return result
 		}
 		// Fall through to label if no auto-completer
@@ -251,6 +251,8 @@ func (d *Daemon) ExecuteCompletionRoute(
 }
 
 // labelReadyReview marks an issue as ready for orchestrator review.
+// When a HeadlessAutoCompleter is available, also fires headless completion
+// to pre-generate the brief so Dylan arrives to finished briefs.
 func (d *Daemon) labelReadyReview(agent CompletedAgent, completionSummary, effectiveProjectDir string, config CompletionConfig) CompletionResult {
 	result := CompletionResult{
 		BeadsID: agent.BeadsID,
@@ -268,12 +270,37 @@ func (d *Daemon) labelReadyReview(agent CompletedAgent, completionSummary, effec
 		d.recordUnverifiedCompletion(agent.BeadsID, config)
 
 		// Queue for orchestrator comprehension (fire-and-forget)
-		d.addComprehensionPending(agent.BeadsID, effectiveProjectDir, config)
+		d.addComprehensionUnread(agent.BeadsID, effectiveProjectDir, config)
+
+		// Fire-and-forget: pre-generate brief via headless completion.
+		// This runs `orch complete --headless` which skips interactive gates
+		// and writes a brief to .kb/briefs/. Failure doesn't block labeling.
+		d.fireHeadlessCompletion(agent.BeadsID, effectiveProjectDir, config)
 	}
 
 	result.Processed = true
 	result.CloseReason = completionSummary
 	return result
+}
+
+// fireHeadlessCompletion triggers headless completion to pre-generate a brief.
+// Fire-and-forget: errors are logged but don't block the completion pipeline.
+// Only runs when AutoCompleter implements HeadlessAutoCompleter.
+func (d *Daemon) fireHeadlessCompletion(beadsID, projectDir string, config CompletionConfig) {
+	headless, ok := d.AutoCompleter.(HeadlessAutoCompleter)
+	if !ok || headless == nil {
+		return
+	}
+
+	go func() {
+		if err := headless.CompleteHeadless(beadsID, projectDir); err != nil {
+			if config.Verbose {
+				fmt.Printf("    Warning: headless brief generation failed for %s: %v\n", beadsID, err)
+			}
+		} else if config.Verbose {
+			fmt.Printf("    Headless brief generated for %s\n", beadsID)
+		}
+	}()
 }
 
 // recordUnverifiedCompletion records a completion that needs human verification.
@@ -291,18 +318,18 @@ func (d *Daemon) recordUnverifiedCompletion(beadsID string, config CompletionCon
 	}
 }
 
-// addComprehensionPending adds the comprehension:pending label to a completed issue.
+// addComprehensionUnread adds the comprehension:unread label to a completed issue.
 // Fire-and-forget: label failure is logged but doesn't block completion processing.
-func (d *Daemon) addComprehensionPending(beadsID, projectDir string, config CompletionConfig) {
+func (d *Daemon) addComprehensionUnread(beadsID, projectDir string, config CompletionConfig) {
 	var err error
 	if projectDir != "" {
-		err = AddComprehensionPendingInDir(beadsID, projectDir)
+		err = AddComprehensionUnreadInDir(beadsID, projectDir)
 	} else {
-		err = AddComprehensionPending(beadsID)
+		err = AddComprehensionUnread(beadsID)
 	}
 	if err != nil {
 		if config.Verbose {
-			fmt.Printf("    Warning: failed to add comprehension:pending label to %s: %v\n", beadsID, err)
+			fmt.Printf("    Warning: failed to add comprehension:unread label to %s: %v\n", beadsID, err)
 		}
 	}
 }

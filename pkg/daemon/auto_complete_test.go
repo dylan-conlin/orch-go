@@ -385,6 +385,36 @@ func (m *mockLightAutoCompleter) CompleteLight(beadsID, workdir string) error {
 	return nil
 }
 
+// mockHeadlessAutoCompleter implements HeadlessAutoCompleter for tests.
+type mockHeadlessAutoCompleter struct {
+	CompleteFunc         func(beadsID, workdir string) error
+	CompleteLightFunc    func(beadsID, workdir string) error
+	CompleteHeadlessFunc func(beadsID, workdir string) error
+}
+
+func (m *mockHeadlessAutoCompleter) Complete(beadsID, workdir string) error {
+	if m.CompleteFunc != nil {
+		return m.CompleteFunc(beadsID, workdir)
+	}
+	return nil
+}
+
+func (m *mockHeadlessAutoCompleter) CompleteLight(beadsID, workdir string) error {
+	if m.CompleteLightFunc != nil {
+		return m.CompleteLightFunc(beadsID, workdir)
+	}
+	return nil
+}
+
+func (m *mockHeadlessAutoCompleter) CompleteHeadless(beadsID, workdir string) error {
+	if m.CompleteHeadlessFunc != nil {
+		return m.CompleteHeadlessFunc(beadsID, workdir)
+	}
+	return nil
+}
+
 // Verify interface compliance.
 var _ AutoCompleter = (*mockAutoCompleter)(nil)
 var _ LightAutoCompleter = (*mockLightAutoCompleter)(nil)
+var _ HeadlessAutoCompleter = (*mockHeadlessAutoCompleter)(nil)
+var _ HeadlessAutoCompleter = (*OrcCompleter)(nil)
