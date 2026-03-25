@@ -9,6 +9,96 @@ import (
 	"testing"
 )
 
+func TestHandleBriefsList(t *testing.T) {
+	oldSourceDir := sourceDir
+	defer func() { sourceDir = oldSourceDir }()
+	sourceDir = t.TempDir()
+
+	briefsDir := filepath.Join(sourceDir, ".kb", "briefs")
+	if err := os.MkdirAll(briefsDir, 0755); err != nil {
+		t.Fatalf("Failed to create briefs dir: %v", err)
+	}
+
+	// Create two brief files with different mod times
+	brief1 := filepath.Join(briefsDir, "orch-go-aaa11.md")
+	if err := os.WriteFile(brief1, []byte("brief 1"), 0644); err != nil {
+		t.Fatalf("Failed to write brief: %v", err)
+	}
+	brief2 := filepath.Join(briefsDir, "orch-go-bbb22.md")
+	if err := os.WriteFile(brief2, []byte("brief 2"), 0644); err != nil {
+		t.Fatalf("Failed to write brief: %v", err)
+	}
+
+	// Mark one as read
+	briefReadStateMu.Lock()
+	briefReadState["orch-go-aaa11"] = true
+	briefReadStateMu.Unlock()
+	defer func() {
+		briefReadStateMu.Lock()
+		delete(briefReadState, "orch-go-aaa11")
+		briefReadStateMu.Unlock()
+	}()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/briefs", nil)
+	w := httptest.NewRecorder()
+
+	handleBriefsList(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	var items []BriefListItem
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if len(items) != 2 {
+		t.Fatalf("Expected 2 briefs, got %d", len(items))
+	}
+
+	// Newest first — bbb22 was written after aaa11
+	if items[0].BeadsID != "orch-go-bbb22" {
+		t.Errorf("Expected first item to be orch-go-bbb22, got %s", items[0].BeadsID)
+	}
+	if items[0].MarkedRead {
+		t.Error("Expected orch-go-bbb22 to not be marked read")
+	}
+	if items[1].BeadsID != "orch-go-aaa11" {
+		t.Errorf("Expected second item to be orch-go-aaa11, got %s", items[1].BeadsID)
+	}
+	if !items[1].MarkedRead {
+		t.Error("Expected orch-go-aaa11 to be marked read")
+	}
+}
+
+func TestHandleBriefsListEmptyDir(t *testing.T) {
+	oldSourceDir := sourceDir
+	defer func() { sourceDir = oldSourceDir }()
+	sourceDir = t.TempDir()
+
+	// No .kb/briefs/ directory
+	req := httptest.NewRequest(http.MethodGet, "/api/briefs", nil)
+	w := httptest.NewRecorder()
+
+	handleBriefsList(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	var items []BriefListItem
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if len(items) != 0 {
+		t.Errorf("Expected 0 briefs, got %d", len(items))
+	}
+}
+
 func TestHandleBriefNotFound(t *testing.T) {
 	// Save and restore sourceDir
 	oldSourceDir := sourceDir

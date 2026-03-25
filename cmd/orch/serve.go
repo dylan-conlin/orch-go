@@ -428,6 +428,8 @@ func runServe(portNum int) error {
 
 
 
+	// GET /api/briefs - list all briefs sorted newest-first
+	mux.HandleFunc("/api/briefs", corsHandler(handleBriefsList))
 	// GET/POST /api/briefs/{beads-id} - brief content and mark-as-read
 	mux.HandleFunc("/api/briefs/", corsHandler(handleBrief))
 

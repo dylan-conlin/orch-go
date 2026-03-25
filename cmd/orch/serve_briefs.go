@@ -7,9 +7,16 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 )
+
+// BriefListItem is the JSON structure for each item in the GET /api/briefs list.
+type BriefListItem struct {
+	BeadsID    string `json:"beads_id"`
+	MarkedRead bool   `json:"marked_read"`
+}
 
 // BriefAPIResponse is the JSON structure returned by GET /api/briefs/{beads-id}.
 type BriefAPIResponse struct {
@@ -110,6 +117,63 @@ func handleBriefMarkRead(w http.ResponseWriter, beadsID string) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// handleBriefsList serves the list of all briefs, sorted newest-first by mod time.
+// GET /api/briefs - returns [{beads_id, marked_read}]
+func handleBriefsList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	briefsDir := filepath.Join(sourceDir, ".kb", "briefs")
+	entries, err := os.ReadDir(briefsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode([]BriefListItem{})
+			return
+		}
+		http.Error(w, fmt.Sprintf("Failed to read briefs directory: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	type entryWithTime struct {
+		beadsID string
+		modTime int64
+	}
+
+	var items []entryWithTime
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		beadsID := strings.TrimSuffix(e.Name(), ".md")
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		items = append(items, entryWithTime{beadsID: beadsID, modTime: info.ModTime().UnixNano()})
+	}
+
+	// Sort newest-first
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].modTime > items[j].modTime
+	})
+
+	briefReadStateMu.RLock()
+	result := make([]BriefListItem, len(items))
+	for i, item := range items {
+		result[i] = BriefListItem{
+			BeadsID:    item.beadsID,
+			MarkedRead: briefReadState[item.beadsID],
+		}
+	}
+	briefReadStateMu.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 // hasBriefFile checks if a brief file exists for the given beads ID.
