@@ -603,3 +603,211 @@ func TestHandleAgentsReviewLabelWithoutWorkspace(t *testing.T) {
 		t.Fatal("Expected review-queue issue to be included without workspace/session")
 	}
 }
+
+func TestHandleAgents_ClaudeActiveIsProcessing(t *testing.T) {
+	// Integration: active Claude agent with live tmux pane → IsProcessing=true
+	projectDir := t.TempDir()
+	setup := setupHandlerTest(t, projectDir)
+	defer setup.restore()
+
+	// Mock tmux: window exists, pane is active (agent running)
+	oldTmux := discovery.CheckTmuxWindow
+	oldPane := discovery.CheckPaneActive
+	discovery.CheckTmuxWindow = func(workspaceName, pd string) (string, bool) {
+		if workspaceName == "og-feat-claude-live-25mar-abcd" {
+			return "@42", true
+		}
+		return "", false
+	}
+	discovery.CheckPaneActive = func(windowID string) bool {
+		return windowID == "@42"
+	}
+	defer func() {
+		discovery.CheckTmuxWindow = oldTmux
+		discovery.CheckPaneActive = oldPane
+	}()
+
+	// No OpenCode server needed — Claude agents don't have sessions
+	serverURL = ""
+
+	queryTrackedAgentsFn = func(dirs []string) ([]discovery.AgentStatus, error) {
+		return []discovery.AgentStatus{
+			{
+				BeadsID:       "orch-go-clive",
+				Title:         "Claude agent actively running",
+				ProjectDir:    projectDir,
+				SpawnMode:     "claude",
+				WorkspaceName: "og-feat-claude-live-25mar-abcd",
+				Phase:         "Implementing - Writing tests",
+				Status:        "active",
+				Reason:        "phase_reported",
+			},
+		}, nil
+	}
+	getIssuesBatch = func(ids []string, projectDirs map[string]string) (map[string]*verify.Issue, error) {
+		return map[string]*verify.Issue{
+			"orch-go-clive": {ID: "orch-go-clive", Title: "Claude agent actively running", Status: "in_progress"},
+		}, nil
+	}
+	getCommentsBatchWithProjectDirs = func(ids []string, projectDirs map[string]string) map[string][]verify.Comment {
+		return map[string][]verify.Comment{
+			"orch-go-clive": {
+				{Text: "Phase: Implementing - Writing tests", CreatedAt: time.Now().Add(-2 * time.Minute).Format(time.RFC3339)},
+			},
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+	w := httptest.NewRecorder()
+	handleAgents(w, req)
+
+	var agents []AgentAPIResponse
+	if err := json.NewDecoder(w.Result().Body).Decode(&agents); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	agent, ok := findAgentByBeadsID(agents, "orch-go-clive")
+	if !ok {
+		t.Fatal("Expected Claude agent to be present")
+	}
+	if !agent.IsProcessing {
+		t.Error("Expected IsProcessing=true for Claude agent with active tmux pane")
+	}
+	if agent.Status != "active" {
+		t.Errorf("Expected Status active, got %s", agent.Status)
+	}
+}
+
+func TestHandleAgents_ClaudeDeadNotProcessing(t *testing.T) {
+	// Integration: dead Claude agent (no tmux window) → IsProcessing=false, flagged dead
+	projectDir := t.TempDir()
+	setup := setupHandlerTest(t, projectDir)
+	defer setup.restore()
+
+	// Mock tmux: no window found (agent died)
+	oldTmux := discovery.CheckTmuxWindow
+	oldPane := discovery.CheckPaneActive
+	discovery.CheckTmuxWindow = func(workspaceName, pd string) (string, bool) {
+		return "", false
+	}
+	discovery.CheckPaneActive = func(windowID string) bool {
+		return false
+	}
+	defer func() {
+		discovery.CheckTmuxWindow = oldTmux
+		discovery.CheckPaneActive = oldPane
+	}()
+
+	serverURL = ""
+
+	queryTrackedAgentsFn = func(dirs []string) ([]discovery.AgentStatus, error) {
+		return []discovery.AgentStatus{
+			{
+				BeadsID:       "orch-go-cdead",
+				Title:         "Claude agent that died",
+				ProjectDir:    projectDir,
+				SpawnMode:     "claude",
+				WorkspaceName: "og-feat-claude-dead-25mar-efgh",
+				Phase:         "Implementing - Was working",
+				Status:        "active",
+				Reason:        "phase_reported",
+			},
+		}, nil
+	}
+	getIssuesBatch = func(ids []string, projectDirs map[string]string) (map[string]*verify.Issue, error) {
+		return map[string]*verify.Issue{
+			"orch-go-cdead": {ID: "orch-go-cdead", Title: "Claude agent that died", Status: "in_progress"},
+		}, nil
+	}
+	getCommentsBatchWithProjectDirs = func(ids []string, projectDirs map[string]string) map[string][]verify.Comment {
+		return map[string][]verify.Comment{
+			"orch-go-cdead": {
+				{Text: "Phase: Implementing - Was working", CreatedAt: time.Now().Add(-45 * time.Minute).Format(time.RFC3339)},
+			},
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+	w := httptest.NewRecorder()
+	handleAgents(w, req)
+
+	var agents []AgentAPIResponse
+	if err := json.NewDecoder(w.Result().Body).Decode(&agents); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	agent, ok := findAgentByBeadsID(agents, "orch-go-cdead")
+	if !ok {
+		t.Fatal("Expected dead Claude agent to be present")
+	}
+	if agent.IsProcessing {
+		t.Error("Expected IsProcessing=false for Claude agent with no tmux window")
+	}
+}
+
+func TestHandleAgents_ClaudeIdlePaneNotProcessing(t *testing.T) {
+	// Integration: Claude agent with tmux window but idle pane (process exited) → IsProcessing=false
+	projectDir := t.TempDir()
+	setup := setupHandlerTest(t, projectDir)
+	defer setup.restore()
+
+	// Mock tmux: window exists but pane is idle (claude process exited, shell remains)
+	oldTmux := discovery.CheckTmuxWindow
+	oldPane := discovery.CheckPaneActive
+	discovery.CheckTmuxWindow = func(workspaceName, pd string) (string, bool) {
+		return "@99", true
+	}
+	discovery.CheckPaneActive = func(windowID string) bool {
+		return false // pane idle — process exited
+	}
+	defer func() {
+		discovery.CheckTmuxWindow = oldTmux
+		discovery.CheckPaneActive = oldPane
+	}()
+
+	serverURL = ""
+
+	queryTrackedAgentsFn = func(dirs []string) ([]discovery.AgentStatus, error) {
+		return []discovery.AgentStatus{
+			{
+				BeadsID:       "orch-go-cidle",
+				Title:         "Claude agent idle pane",
+				ProjectDir:    projectDir,
+				SpawnMode:     "claude",
+				WorkspaceName: "og-feat-claude-idle-25mar-ijkl",
+				Phase:         "Implementing - Was working",
+				Status:        "active",
+				Reason:        "phase_reported",
+			},
+		}, nil
+	}
+	getIssuesBatch = func(ids []string, projectDirs map[string]string) (map[string]*verify.Issue, error) {
+		return map[string]*verify.Issue{
+			"orch-go-cidle": {ID: "orch-go-cidle", Title: "Claude agent idle pane", Status: "in_progress"},
+		}, nil
+	}
+	getCommentsBatchWithProjectDirs = func(ids []string, projectDirs map[string]string) map[string][]verify.Comment {
+		return map[string][]verify.Comment{
+			"orch-go-cidle": {
+				{Text: "Phase: Implementing - Was working", CreatedAt: time.Now().Add(-10 * time.Minute).Format(time.RFC3339)},
+			},
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+	w := httptest.NewRecorder()
+	handleAgents(w, req)
+
+	var agents []AgentAPIResponse
+	if err := json.NewDecoder(w.Result().Body).Decode(&agents); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	agent, ok := findAgentByBeadsID(agents, "orch-go-cidle")
+	if !ok {
+		t.Fatal("Expected idle-pane Claude agent to be present")
+	}
+	if agent.IsProcessing {
+		t.Error("Expected IsProcessing=false for Claude agent with idle tmux pane")
+	}
+}
