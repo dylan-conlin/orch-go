@@ -224,6 +224,8 @@ func (d *Daemon) ExecuteCompletionRoute(
 			result.CloseReason = completionSummary
 			// Queue for orchestrator comprehension (fire-and-forget)
 			d.addComprehensionUnread(agent.BeadsID, effectiveProjectDir, config)
+			// Fire-and-forget: pre-generate brief via headless completion
+			d.fireHeadlessCompletion(agent.BeadsID, effectiveProjectDir, config)
 			return result
 		}
 		// Fall through to label if no auto-completer
@@ -240,6 +242,8 @@ func (d *Daemon) ExecuteCompletionRoute(
 			result.CloseReason = completionSummary
 			// Queue for orchestrator comprehension (fire-and-forget)
 			d.addComprehensionUnread(agent.BeadsID, effectiveProjectDir, config)
+			// Fire-and-forget: pre-generate brief via headless completion
+			d.fireHeadlessCompletion(agent.BeadsID, effectiveProjectDir, config)
 			return result
 		}
 		// Fall through to label if no auto-completer
@@ -251,8 +255,7 @@ func (d *Daemon) ExecuteCompletionRoute(
 }
 
 // labelReadyReview marks an issue as ready for orchestrator review.
-// When a HeadlessAutoCompleter is available, also fires headless completion
-// to pre-generate the brief so Dylan arrives to finished briefs.
+// Also fires headless completion to pre-generate the brief (same as auto-complete paths).
 func (d *Daemon) labelReadyReview(agent CompletedAgent, completionSummary, effectiveProjectDir string, config CompletionConfig) CompletionResult {
 	result := CompletionResult{
 		BeadsID: agent.BeadsID,

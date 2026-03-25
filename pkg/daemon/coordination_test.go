@@ -388,3 +388,74 @@ func TestFireHeadlessCompletion_ErrorDoesNotPanic(t *testing.T) {
 		t.Error("CompleteHeadless was not called within timeout")
 	}
 }
+
+func TestExecuteCompletionRoute_AutoComplete_FiresHeadlessBrief(t *testing.T) {
+	// Auto-complete path should fire headless brief generation.
+	// This was the bug: only label-ready-review fired headless briefs.
+	headlessCalled := make(chan string, 1)
+	d := &Daemon{
+		AutoCompleter: &mockHeadlessAutoCompleter{
+			CompleteFunc: func(beadsID, workdir string) error {
+				return nil
+			},
+			CompleteHeadlessFunc: func(beadsID, workdir string) error {
+				headlessCalled <- beadsID
+				return nil
+			},
+		},
+	}
+
+	agent := CompletedAgent{BeadsID: "proj-auto", PhaseSummary: "done"}
+	route := CompletionRoute{Action: "auto-complete", ReviewTier: "auto"}
+	signal := CompletionVerifySignal{Passed: true}
+	config := CompletionConfig{ProjectDir: "/tmp"}
+
+	result := d.ExecuteCompletionRoute(agent, route, signal, config)
+	if !result.AutoCompleted {
+		t.Error("expected AutoCompleted=true")
+	}
+
+	select {
+	case id := <-headlessCalled:
+		if id != "proj-auto" {
+			t.Errorf("CompleteHeadless beadsID = %q, want %q", id, "proj-auto")
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("CompleteHeadless was not called for auto-complete path")
+	}
+}
+
+func TestExecuteCompletionRoute_AutoCompleteLight_FiresHeadlessBrief(t *testing.T) {
+	// Auto-complete-light path should fire headless brief generation.
+	headlessCalled := make(chan string, 1)
+	d := &Daemon{
+		AutoCompleter: &mockHeadlessAutoCompleter{
+			CompleteLightFunc: func(beadsID, workdir string) error {
+				return nil
+			},
+			CompleteHeadlessFunc: func(beadsID, workdir string) error {
+				headlessCalled <- beadsID
+				return nil
+			},
+		},
+	}
+
+	agent := CompletedAgent{BeadsID: "proj-light", Labels: []string{"effort:small"}, PhaseSummary: "done"}
+	route := CompletionRoute{Action: "auto-complete-light"}
+	signal := CompletionVerifySignal{Passed: true}
+	config := CompletionConfig{ProjectDir: "/tmp"}
+
+	result := d.ExecuteCompletionRoute(agent, route, signal, config)
+	if !result.AutoCompleted {
+		t.Error("expected AutoCompleted=true for light auto-complete")
+	}
+
+	select {
+	case id := <-headlessCalled:
+		if id != "proj-light" {
+			t.Errorf("CompleteHeadless beadsID = %q, want %q", id, "proj-light")
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("CompleteHeadless was not called for auto-complete-light path")
+	}
+}
