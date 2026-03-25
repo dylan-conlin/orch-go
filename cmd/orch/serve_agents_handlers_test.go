@@ -605,31 +605,16 @@ func TestHandleAgentsReviewLabelWithoutWorkspace(t *testing.T) {
 }
 
 func TestHandleAgents_ClaudeActiveIsProcessing(t *testing.T) {
-	// Integration: active Claude agent with live tmux pane → IsProcessing=true
+	// Integration: active Claude agent with IsProcessing from discovery → IsProcessing=true
 	projectDir := t.TempDir()
 	setup := setupHandlerTest(t, projectDir)
 	defer setup.restore()
 
-	// Mock tmux: window exists, pane is active (agent running)
-	oldTmux := discovery.CheckTmuxWindow
-	oldPane := discovery.CheckPaneActive
-	discovery.CheckTmuxWindow = func(workspaceName, pd string) (string, bool) {
-		if workspaceName == "og-feat-claude-live-25mar-abcd" {
-			return "@42", true
-		}
-		return "", false
-	}
-	discovery.CheckPaneActive = func(windowID string) bool {
-		return windowID == "@42"
-	}
-	defer func() {
-		discovery.CheckTmuxWindow = oldTmux
-		discovery.CheckPaneActive = oldPane
-	}()
-
 	// No OpenCode server needed — Claude agents don't have sessions
 	serverURL = ""
 
+	// Discovery now provides IsProcessing directly from IsPaneActive.
+	// No consumer-side tmux override needed.
 	queryTrackedAgentsFn = func(dirs []string) ([]discovery.AgentStatus, error) {
 		return []discovery.AgentStatus{
 			{
@@ -640,7 +625,9 @@ func TestHandleAgents_ClaudeActiveIsProcessing(t *testing.T) {
 				WorkspaceName: "og-feat-claude-live-25mar-abcd",
 				Phase:         "Implementing - Writing tests",
 				Status:        "active",
-				Reason:        "phase_reported",
+				Reason:        "tmux_pane_active",
+				IsProcessing:  true,
+				TmuxWindowID:  "@42",
 			},
 		}, nil
 	}
@@ -679,27 +666,15 @@ func TestHandleAgents_ClaudeActiveIsProcessing(t *testing.T) {
 }
 
 func TestHandleAgents_ClaudeDeadNotProcessing(t *testing.T) {
-	// Integration: dead Claude agent (no tmux window) → IsProcessing=false, flagged dead
+	// Integration: dead Claude agent (discovery reports dead) → IsProcessing=false
 	projectDir := t.TempDir()
 	setup := setupHandlerTest(t, projectDir)
 	defer setup.restore()
 
-	// Mock tmux: no window found (agent died)
-	oldTmux := discovery.CheckTmuxWindow
-	oldPane := discovery.CheckPaneActive
-	discovery.CheckTmuxWindow = func(workspaceName, pd string) (string, bool) {
-		return "", false
-	}
-	discovery.CheckPaneActive = func(windowID string) bool {
-		return false
-	}
-	defer func() {
-		discovery.CheckTmuxWindow = oldTmux
-		discovery.CheckPaneActive = oldPane
-	}()
-
 	serverURL = ""
 
+	// Discovery now reports dead status and IsProcessing=false for agents
+	// whose tmux pane is gone. No consumer-side tmux check needed.
 	queryTrackedAgentsFn = func(dirs []string) ([]discovery.AgentStatus, error) {
 		return []discovery.AgentStatus{
 			{
@@ -709,8 +684,9 @@ func TestHandleAgents_ClaudeDeadNotProcessing(t *testing.T) {
 				SpawnMode:     "claude",
 				WorkspaceName: "og-feat-claude-dead-25mar-efgh",
 				Phase:         "Implementing - Was working",
-				Status:        "active",
-				Reason:        "phase_reported",
+				Status:        "dead",
+				Reason:        "no_tmux_window",
+				IsProcessing:  false,
 			},
 		}, nil
 	}
@@ -743,30 +719,21 @@ func TestHandleAgents_ClaudeDeadNotProcessing(t *testing.T) {
 	if agent.IsProcessing {
 		t.Error("Expected IsProcessing=false for Claude agent with no tmux window")
 	}
+	if agent.Status != "dead" {
+		t.Errorf("Expected Status dead, got %s", agent.Status)
+	}
 }
 
 func TestHandleAgents_ClaudeIdlePaneNotProcessing(t *testing.T) {
-	// Integration: Claude agent with tmux window but idle pane (process exited) → IsProcessing=false
+	// Integration: Claude agent with idle pane (discovery reports dead) → IsProcessing=false
 	projectDir := t.TempDir()
 	setup := setupHandlerTest(t, projectDir)
 	defer setup.restore()
 
-	// Mock tmux: window exists but pane is idle (claude process exited, shell remains)
-	oldTmux := discovery.CheckTmuxWindow
-	oldPane := discovery.CheckPaneActive
-	discovery.CheckTmuxWindow = func(workspaceName, pd string) (string, bool) {
-		return "@99", true
-	}
-	discovery.CheckPaneActive = func(windowID string) bool {
-		return false // pane idle — process exited
-	}
-	defer func() {
-		discovery.CheckTmuxWindow = oldTmux
-		discovery.CheckPaneActive = oldPane
-	}()
-
 	serverURL = ""
 
+	// Discovery now detects idle pane and sets Status=dead, IsProcessing=false.
+	// No consumer-side tmux check needed.
 	queryTrackedAgentsFn = func(dirs []string) ([]discovery.AgentStatus, error) {
 		return []discovery.AgentStatus{
 			{
@@ -776,8 +743,10 @@ func TestHandleAgents_ClaudeIdlePaneNotProcessing(t *testing.T) {
 				SpawnMode:     "claude",
 				WorkspaceName: "og-feat-claude-idle-25mar-ijkl",
 				Phase:         "Implementing - Was working",
-				Status:        "active",
-				Reason:        "phase_reported",
+				Status:        "dead",
+				Reason:        "tmux_pane_idle",
+				TmuxWindowID:  "@99",
+				IsProcessing:  false,
 			},
 		}, nil
 	}
@@ -809,5 +778,8 @@ func TestHandleAgents_ClaudeIdlePaneNotProcessing(t *testing.T) {
 	}
 	if agent.IsProcessing {
 		t.Error("Expected IsProcessing=false for Claude agent with idle tmux pane")
+	}
+	if agent.Status != "dead" {
+		t.Errorf("Expected Status dead, got %s", agent.Status)
 	}
 }

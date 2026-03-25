@@ -127,24 +127,9 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		agents = append(agents, agent)
 	}
 
-	// Claude IsProcessing override: use live tmux pane signal instead of static phase-based status.
-	// Mirrors the OpenCode session API override above, but for Claude-backend agents.
-	for i := range agents {
-		if agents[i].Status == "completed" || agents[i].Status == "dead" {
-			continue
-		}
-		// Only override Claude agents (OpenCode agents already overridden above via session API)
-		tracked := trackedAgents[i]
-		if tracked.SpawnMode != "claude" || tracked.WorkspaceName == "" {
-			continue
-		}
-		windowID, alive := discovery.CheckTmuxWindow(tracked.WorkspaceName, tracked.ProjectDir)
-		if !alive {
-			agents[i].IsProcessing = false
-			continue
-		}
-		agents[i].IsProcessing = discovery.CheckPaneActive(windowID)
-	}
+	// Claude IsProcessing is now set by discovery's composed liveness detection
+	// (IsPaneActive check in JoinWithReasonCodes). No consumer override needed.
+	// OpenCode agents still get a fresher override above via session API.
 
 	// === Dashboard-specific enrichment ===
 	// This adds data that queryTrackedAgents doesn't provide:
@@ -568,12 +553,9 @@ func agentStatusToAPIResponse(tracked discovery.AgentStatus) AgentAPIResponse {
 	if tracked.SessionDead && tracked.Status != "dead" {
 		resp.Status = "dead"
 	}
-	switch tracked.Status {
-	case "active":
-		resp.IsProcessing = true
-	case "retrying":
-		resp.IsProcessing = true
-	}
+	// Discovery now provides IsProcessing directly (from IsPaneActive for Claude,
+	// from session status for OpenCode) — no need to derive from Status.
+	resp.IsProcessing = tracked.IsProcessing
 
 	// Surface reason code for partial metadata
 	if tracked.Reason != "" {

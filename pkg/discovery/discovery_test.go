@@ -134,7 +134,17 @@ func TestJoinWithReasonCodes_SessionDead(t *testing.T) {
 	}
 }
 
-func TestJoinWithReasonCodes_ClaudeBackendWithPhase(t *testing.T) {
+func TestJoinWithReasonCodes_ClaudeBackendWithPhaseAndActivePane(t *testing.T) {
+	// Claude agent with phase AND active tmux pane → active via tmux (not phase)
+	oldCheck := CheckTmuxWindow
+	oldPaneCheck := CheckPaneActive
+	CheckTmuxWindow = func(workspaceName, projectDir string) (string, bool) { return "@100", true }
+	CheckPaneActive = func(windowID string) bool { return true }
+	defer func() {
+		CheckTmuxWindow = oldCheck
+		CheckPaneActive = oldPaneCheck
+	}()
+
 	issues := []beads.Issue{
 		{ID: "orch-go-1100", Title: "Claude agent with phase", Status: "in_progress"},
 	}
@@ -162,11 +172,106 @@ func TestJoinWithReasonCodes_ClaudeBackendWithPhase(t *testing.T) {
 	if r.Status != "active" {
 		t.Errorf("expected Status active, got %s", r.Status)
 	}
-	if r.Reason != "phase_reported" {
-		t.Errorf("expected Reason phase_reported, got %q", r.Reason)
+	if r.Reason != "tmux_pane_active" {
+		t.Errorf("expected Reason tmux_pane_active, got %q", r.Reason)
 	}
 	if r.SpawnMode != "claude" {
 		t.Errorf("expected SpawnMode claude, got %q", r.SpawnMode)
+	}
+	if !r.IsProcessing {
+		t.Error("expected IsProcessing=true for active Claude agent")
+	}
+	if r.TmuxWindowID != "@100" {
+		t.Errorf("expected TmuxWindowID @100, got %q", r.TmuxWindowID)
+	}
+	// Phase is still preserved as metadata
+	if r.Phase != "Implementing - Working on feature" {
+		t.Errorf("expected Phase preserved, got %q", r.Phase)
+	}
+}
+
+func TestJoinWithReasonCodes_ClaudeBackendWithPhaseButDeadPane(t *testing.T) {
+	// Core bug fix: Claude agent with stale phase but dead tmux pane → dead (not active)
+	// Previously, phase_reported would mask the dead state.
+	oldCheck := CheckTmuxWindow
+	oldPaneCheck := CheckPaneActive
+	CheckTmuxWindow = func(workspaceName, projectDir string) (string, bool) { return "@100", true }
+	CheckPaneActive = func(windowID string) bool { return false }
+	defer func() {
+		CheckTmuxWindow = oldCheck
+		CheckPaneActive = oldPaneCheck
+	}()
+
+	issues := []beads.Issue{
+		{ID: "orch-go-1105", Title: "Dead claude with stale phase", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-1105": {
+			BeadsID:       "orch-go-1105",
+			ProjectDir:    "/tmp/project",
+			SpawnMode:     "claude",
+			WorkspaceName: "og-feat-stale-phase-25mar-abcd",
+			SpawnTime:     "2026-02-24T10:00:00Z",
+		},
+	}
+	phases := map[string]string{
+		"orch-go-1105": "Implementing - Was working 45 min ago",
+	}
+
+	results := JoinWithReasonCodes(issues, manifests, nil, phases)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "dead" {
+		t.Errorf("expected Status dead for agent with stale phase and idle pane, got %s", r.Status)
+	}
+	if r.Reason != "tmux_pane_idle" {
+		t.Errorf("expected Reason tmux_pane_idle, got %q", r.Reason)
+	}
+	if r.IsProcessing {
+		t.Error("expected IsProcessing=false for dead agent")
+	}
+	// Phase is still preserved as metadata even though agent is dead
+	if r.Phase != "Implementing - Was working 45 min ago" {
+		t.Errorf("expected Phase preserved, got %q", r.Phase)
+	}
+}
+
+func TestJoinWithReasonCodes_ClaudeBackendWithPhaseNoTmuxWindow(t *testing.T) {
+	// Claude agent with phase but no tmux window → dead (window destroyed = agent dead)
+	oldCheck := CheckTmuxWindow
+	CheckTmuxWindow = func(workspaceName, projectDir string) (string, bool) { return "", false }
+	defer func() { CheckTmuxWindow = oldCheck }()
+
+	issues := []beads.Issue{
+		{ID: "orch-go-1106", Title: "Claude with phase but no window", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-1106": {
+			BeadsID:       "orch-go-1106",
+			ProjectDir:    "/tmp/project",
+			SpawnMode:     "claude",
+			WorkspaceName: "og-feat-no-window-25mar-abcd",
+			SpawnTime:     "2026-02-24T10:00:00Z",
+		},
+	}
+	phases := map[string]string{
+		"orch-go-1106": "Planning - Was reading code",
+	}
+
+	results := JoinWithReasonCodes(issues, manifests, nil, phases)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "dead" {
+		t.Errorf("expected Status dead for agent with phase but no tmux window, got %s", r.Status)
+	}
+	if r.Reason != "no_tmux_window" {
+		t.Errorf("expected Reason no_tmux_window, got %q", r.Reason)
 	}
 }
 
@@ -470,7 +575,17 @@ func TestJoinWithReasonCodes_ClaudeBackendNeverStarted(t *testing.T) {
 
 func TestJoinWithReasonCodes_ClaudeBackendNeverStartedWithPhase(t *testing.T) {
 	// Agent with a phase comment should NOT be marked as never_started,
-	// even if spawned 15+ minutes ago.
+	// even if spawned 15+ minutes ago. The never_started check requires Phase == "".
+	// With an active pane, the agent is alive via tmux liveness.
+	oldCheck := CheckTmuxWindow
+	oldPaneCheck := CheckPaneActive
+	CheckTmuxWindow = func(workspaceName, projectDir string) (string, bool) { return "@500", true }
+	CheckPaneActive = func(windowID string) bool { return true }
+	defer func() {
+		CheckTmuxWindow = oldCheck
+		CheckPaneActive = oldPaneCheck
+	}()
+
 	staleTime := time.Now().Add(-15 * time.Minute).Format(time.RFC3339)
 	issues := []beads.Issue{
 		{ID: "orch-go-1310", Title: "Active agent with phase", Status: "in_progress"},
@@ -498,11 +613,14 @@ func TestJoinWithReasonCodes_ClaudeBackendNeverStartedWithPhase(t *testing.T) {
 	if r.Status != "active" {
 		t.Errorf("expected Status active, got %s", r.Status)
 	}
-	if r.Reason != "phase_reported" {
-		t.Errorf("expected Reason phase_reported, got %q", r.Reason)
+	if r.Reason != "tmux_pane_active" {
+		t.Errorf("expected Reason tmux_pane_active, got %q", r.Reason)
 	}
 	if r.NeverStarted {
 		t.Error("expected NeverStarted=false for agent with phase")
+	}
+	if !r.IsProcessing {
+		t.Error("expected IsProcessing=true for active agent")
 	}
 }
 
@@ -820,6 +938,61 @@ func TestJoinWithReasonCodes_MultipleAgents(t *testing.T) {
 	}
 	if !results[2].SessionDead {
 		t.Error("agent 603: expected SessionDead=true")
+	}
+}
+
+func TestJoinWithReasonCodes_OpenCodeBusyIsProcessing(t *testing.T) {
+	// Verify that OpenCode agents with busy session get IsProcessing=true
+	issues := []beads.Issue{
+		{ID: "orch-go-850", Title: "Busy OpenCode agent", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-850": {
+			BeadsID:   "orch-go-850",
+			SessionID: "sess-busy",
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{
+		"sess-busy": {Type: "busy"},
+	}
+
+	results := JoinWithReasonCodes(issues, manifests, liveness, nil)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if !r.IsProcessing {
+		t.Error("expected IsProcessing=true for busy OpenCode agent")
+	}
+	if r.Status != "active" {
+		t.Errorf("expected Status active, got %s", r.Status)
+	}
+}
+
+func TestJoinWithReasonCodes_OpenCodeIdleNotProcessing(t *testing.T) {
+	// Verify that OpenCode agents with idle session get IsProcessing=false
+	issues := []beads.Issue{
+		{ID: "orch-go-860", Title: "Idle OpenCode agent", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-860": {
+			BeadsID:   "orch-go-860",
+			SessionID: "sess-idle",
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{
+		"sess-idle": {Type: "idle"},
+	}
+
+	results := JoinWithReasonCodes(issues, manifests, liveness, nil)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.IsProcessing {
+		t.Error("expected IsProcessing=false for idle OpenCode agent")
 	}
 }
 

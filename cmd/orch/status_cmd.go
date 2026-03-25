@@ -241,26 +241,9 @@ func runStatus(serverURL string) error {
 		}
 	}
 
-	// Claude IsProcessing override: use live tmux pane signal instead of static phase-based status.
-	// OpenCode agents get their IsProcessing overridden above via session API. Claude agents
-	// have no OpenCode session, so IsProcessing from agentStatusToAgentInfo (status="active" →
-	// IsProcessing=true) is a static signal from historical phase comments. A dead Claude agent
-	// with a stale phase comment would be permanently masked as "processing."
-	// Check IsPaneActive as the live equivalent of OpenCode's IsBusy().
-	for i := range agents {
-		agent := &agents[i]
-		if agent.Mode != "claude" || agent.IsCompleted || agent.IsPhantom {
-			continue
-		}
-		// trackedAgents and agents are 1:1 aligned (built in same loop above)
-		tracked := trackedAgents[i]
-		windowID, alive := discovery.CheckTmuxWindow(tracked.WorkspaceName, tracked.ProjectDir)
-		if !alive {
-			agent.IsProcessing = false
-			continue
-		}
-		agent.IsProcessing = discovery.CheckPaneActive(windowID)
-	}
+	// Claude IsProcessing is now set by discovery's composed liveness detection
+	// (IsPaneActive check in JoinWithReasonCodes). No consumer override needed.
+	// OpenCode agents still get a fresher override above via session API.
 
 	// Determine phantom and completed status from the query engine's reason codes
 	for i := range agents {
@@ -479,14 +462,17 @@ func agentStatusToAgentInfo(tracked discovery.AgentStatus, now time.Time) AgentI
 		Task:       truncate(tracked.Title, 40),
 	}
 
-	// Map status from query engine to display flags
+	// Map status and IsProcessing from query engine to display flags.
+	// Discovery now provides IsProcessing directly (from IsPaneActive for Claude,
+	// from session status for OpenCode) — no need to derive from Status.
+	info.IsProcessing = tracked.IsProcessing
 	switch tracked.Status {
 	case "active":
-		info.IsProcessing = true
+		// IsProcessing already set from discovery
 	case "idle":
 		// idle but not phantom (has session)
 	case "retrying":
-		info.IsProcessing = true // show as running with annotation
+		// IsProcessing already set from discovery
 	case "completed":
 		info.IsCompleted = true
 	case "dead":

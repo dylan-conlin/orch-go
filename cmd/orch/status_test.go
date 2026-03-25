@@ -196,20 +196,22 @@ func TestTerminalWidthConstants(t *testing.T) {
 	}
 }
 
-// TestAgentStatusToAgentInfo_ClaudeProcessingFromStatus verifies that Claude agents
-// with status="active" from phase_reported get IsProcessing=true from the conversion,
-// which is then eligible for live override by the consumer's IsPaneActive check.
-func TestAgentStatusToAgentInfo_ClaudeProcessingFromStatus(t *testing.T) {
+// TestAgentStatusToAgentInfo_ClaudeProcessingFromDiscovery verifies that Claude agents
+// get IsProcessing directly from discovery's composed liveness detection
+// (IsPaneActive for Claude, session status for OpenCode).
+func TestAgentStatusToAgentInfo_ClaudeProcessingFromDiscovery(t *testing.T) {
 	now := time.Now()
 
-	t.Run("claude active agent gets IsProcessing from status mapping", func(t *testing.T) {
+	t.Run("claude active agent gets IsProcessing from discovery", func(t *testing.T) {
 		tracked := discovery.AgentStatus{
-			BeadsID:   "orch-go-test1",
-			Title:     "Test claude agent",
-			Status:    "active",
-			Reason:    "phase_reported",
-			SpawnMode: "claude",
-			Phase:     "Implementing - working",
+			BeadsID:      "orch-go-test1",
+			Title:        "Test claude agent",
+			Status:       "active",
+			Reason:       "tmux_pane_active",
+			SpawnMode:    "claude",
+			Phase:        "Implementing - working",
+			IsProcessing: true,
+			TmuxWindowID: "@42",
 		}
 		info := agentStatusToAgentInfo(tracked, now)
 		if !info.IsProcessing {
@@ -222,12 +224,13 @@ func TestAgentStatusToAgentInfo_ClaudeProcessingFromStatus(t *testing.T) {
 
 	t.Run("claude dead agent does not get IsProcessing", func(t *testing.T) {
 		tracked := discovery.AgentStatus{
-			BeadsID:   "orch-go-test2",
-			Title:     "Dead claude agent",
-			Status:    "dead",
-			Reason:    "tmux_pane_idle",
-			SpawnMode: "claude",
-			Phase:     "Planning - reading code",
+			BeadsID:      "orch-go-test2",
+			Title:        "Dead claude agent",
+			Status:       "dead",
+			Reason:       "tmux_pane_idle",
+			SpawnMode:    "claude",
+			Phase:        "Planning - reading code",
+			IsProcessing: false,
 		}
 		info := agentStatusToAgentInfo(tracked, now)
 		if info.IsProcessing {
@@ -237,12 +240,13 @@ func TestAgentStatusToAgentInfo_ClaudeProcessingFromStatus(t *testing.T) {
 
 	t.Run("claude completed agent does not get IsProcessing", func(t *testing.T) {
 		tracked := discovery.AgentStatus{
-			BeadsID:   "orch-go-test3",
-			Title:     "Completed claude agent",
-			Status:    "completed",
-			Reason:    "phase_complete",
-			SpawnMode: "claude",
-			Phase:     "Complete - done",
+			BeadsID:      "orch-go-test3",
+			Title:        "Completed claude agent",
+			Status:       "completed",
+			Reason:       "phase_complete",
+			SpawnMode:    "claude",
+			Phase:        "Complete - done",
+			IsProcessing: false,
 		}
 		info := agentStatusToAgentInfo(tracked, now)
 		if info.IsProcessing {

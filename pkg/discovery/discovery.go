@@ -53,6 +53,10 @@ type AgentStatus struct {
 	// Liveness (from OpenCode or tmux, depending on backend)
 	Status string `json:"status"` // "active", "idle", "retrying", "completed", "dead", "unknown"
 
+	// Composed liveness (from tmux pane or OpenCode session)
+	TmuxWindowID string `json:"tmux_window_id,omitempty"` // Tmux window ID for Claude agents, if window exists
+	IsProcessing bool   `json:"is_processing,omitempty"`  // True if agent is actively generating output
+
 	// Reason codes for missing/partial data
 	MissingBinding bool `json:"missing_binding,omitempty"`
 	MissingSession bool `json:"missing_session,omitempty"`
@@ -405,24 +409,22 @@ func JoinWithReasonCodes(
 		}
 
 		// Step 2: Route by spawn backend
-		// Claude-backend agents use phase comments + tmux window/pane for liveness.
+		// Claude-backend agents use tmux pane liveness as the primary signal.
+		// Phase is metadata (categorization), NOT a liveness signal — a stale phase
+		// comment from a dead agent must not mask its death.
 		// Signal priority:
-		//   1. Phase reported → active (strongest signal)
-		//   2. Recently spawned (<5 min) → active (grace period)
-		//   3. Never started (>10 min, no phase) → dead (overrides tmux)
-		//   4. Tmux window + active pane → active (process still running)
-		//   5. Tmux window + idle pane → dead (process exited, shell remains)
-		//   6. No tmux window → dead
+		//   1. Recently spawned (<5 min) → active (grace period, tmux may not be ready)
+		//   2. Never started (>10 min, no phase) → dead (overrides tmux)
+		//   3. Tmux window + active pane → active (primary liveness signal)
+		//   4. Tmux window + idle pane → dead (process exited, shell remains)
+		//   5. No tmux window → dead (regardless of phase)
 		if manifest.SpawnMode == "claude" && manifest.WorkspaceName != "" {
 			spawnTime := manifest.ParseSpawnTime()
 
-			if agent.Phase != "" {
-				agent.Status = "active"
-				agent.Reason = "phase_reported"
-			} else if !spawnTime.IsZero() && time.Since(spawnTime) < 5*time.Minute {
+			if !spawnTime.IsZero() && time.Since(spawnTime) < 5*time.Minute {
 				agent.Status = "active"
 				agent.Reason = "recently_spawned"
-			} else if !spawnTime.IsZero() && time.Since(spawnTime) >= neverStartedThreshold {
+			} else if !spawnTime.IsZero() && time.Since(spawnTime) >= neverStartedThreshold && agent.Phase == "" {
 				// Agent allocated 10+ min ago, never reported phase.
 				// Override tmux window check — a live window does not mean a live agent.
 				agent.Status = "dead"
@@ -430,9 +432,11 @@ func JoinWithReasonCodes(
 				agent.NeverStarted = true
 			} else if windowID, alive := CheckTmuxWindow(manifest.WorkspaceName, manifest.ProjectDir); alive {
 				// Window exists — check if pane has an active process
+				agent.TmuxWindowID = windowID
 				if CheckPaneActive(windowID) {
 					agent.Status = "active"
 					agent.Reason = "tmux_pane_active"
+					agent.IsProcessing = true
 				} else {
 					agent.Status = "dead"
 					agent.Reason = "tmux_pane_idle"
@@ -467,12 +471,14 @@ func JoinWithReasonCodes(
 		switch statusInfo.Type {
 		case "busy":
 			agent.Status = "active"
+			agent.IsProcessing = true
 		case "idle":
 			agent.SessionDead = true
 			agent.Status = "idle"
 			agent.Reason = "session_idle"
 		case "retry":
 			agent.Status = "retrying"
+			agent.IsProcessing = true
 			agent.Reason = "session_retrying"
 		case "unknown":
 			agent.Status = "unknown"

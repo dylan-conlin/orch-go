@@ -576,6 +576,17 @@ func TestFilterActiveIssues(t *testing.T) {
 }
 
 func TestJoinWithReasonCodes_ClaudeBackendWithPhase(t *testing.T) {
+	// After signal reorder: tmux pane is the primary liveness signal for Claude agents.
+	// Phase is metadata, not a liveness signal. Must mock tmux to get active status.
+	oldCheck := discovery.CheckTmuxWindow
+	oldPaneCheck := discovery.CheckPaneActive
+	discovery.CheckTmuxWindow = func(workspaceName, projectDir string) (string, bool) { return "@100", true }
+	discovery.CheckPaneActive = func(windowID string) bool { return true }
+	defer func() {
+		discovery.CheckTmuxWindow = oldCheck
+		discovery.CheckPaneActive = oldPaneCheck
+	}()
+
 	issues := []beads.Issue{
 		{ID: "orch-go-1100", Title: "Claude agent with phase", Status: "in_progress"},
 	}
@@ -602,10 +613,10 @@ func TestJoinWithReasonCodes_ClaudeBackendWithPhase(t *testing.T) {
 	}
 	r := results[0]
 	if r.Status != "active" {
-		t.Errorf("expected Status active for claude agent with phase, got %s", r.Status)
+		t.Errorf("expected Status active for claude agent with active pane, got %s", r.Status)
 	}
-	if r.Reason != "phase_reported" {
-		t.Errorf("expected Reason phase_reported, got %q", r.Reason)
+	if r.Reason != "tmux_pane_active" {
+		t.Errorf("expected Reason tmux_pane_active, got %q", r.Reason)
 	}
 	if r.MissingSession {
 		t.Error("claude-backend agent should not be marked MissingSession")
@@ -615,6 +626,9 @@ func TestJoinWithReasonCodes_ClaudeBackendWithPhase(t *testing.T) {
 	}
 	if r.Phase != "Implementing - Working on feature" {
 		t.Errorf("expected Phase 'Implementing - Working on feature', got %q", r.Phase)
+	}
+	if !r.IsProcessing {
+		t.Error("expected IsProcessing=true for active claude agent")
 	}
 }
 
@@ -773,14 +787,21 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
 	}
 }
 
-func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackNotCheckedWhenPhaseExists(t *testing.T) {
+func TestJoinWithReasonCodes_ClaudeBackendTmuxCheckedEvenWhenPhaseExists(t *testing.T) {
+	// After signal reorder: tmux IS checked even when phase exists (tmux is primary, not fallback).
+	// This is the core behavior change — phase no longer masks dead agents.
 	oldCheck := discovery.CheckTmuxWindow
+	oldPaneCheck := discovery.CheckPaneActive
 	tmuxCalled := false
 	discovery.CheckTmuxWindow = func(workspaceName, projectDir string) (string, bool) {
 		tmuxCalled = true
 		return "@999", true
 	}
-	defer func() { discovery.CheckTmuxWindow = oldCheck }()
+	discovery.CheckPaneActive = func(windowID string) bool { return true }
+	defer func() {
+		discovery.CheckTmuxWindow = oldCheck
+		discovery.CheckPaneActive = oldPaneCheck
+	}()
 
 	issues := []beads.Issue{
 		{ID: "orch-go-1260", Title: "Agent with phase", Status: "in_progress"},
@@ -809,11 +830,11 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackNotCheckedWhenPhaseExists(
 	if results[0].Status != "active" {
 		t.Errorf("expected Status active, got %s", results[0].Status)
 	}
-	if results[0].Reason != "phase_reported" {
-		t.Errorf("expected Reason phase_reported, got %q", results[0].Reason)
+	if results[0].Reason != "tmux_pane_active" {
+		t.Errorf("expected Reason tmux_pane_active, got %q", results[0].Reason)
 	}
-	if tmuxCalled {
-		t.Error("tmux check should NOT be called when phase is present -- tmux is only a fallback")
+	if !tmuxCalled {
+		t.Error("tmux check SHOULD be called even when phase is present — tmux is the primary liveness signal")
 	}
 }
 
