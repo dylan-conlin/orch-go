@@ -2,7 +2,7 @@
 
 **Purpose:** Reference for all event types logged to `~/.orch/events.jsonl` for stats aggregation.
 
-**Last verified:** 2026-03-24 (artifact sync: added audit.passed/failed, spawn.bypass)
+**Last verified:** 2026-03-25
 
 ---
 

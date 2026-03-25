@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for the orch-go CLI. Read this before debugging CLI issues or adding new commands.
 
-**Last verified:** 2026-03-24 (artifact sync: daemon subcommands, spawn/complete flags, subcommand descriptions)
+**Last verified:** 2026-03-25 (artifact sync: --headless complete flag, daemon subcommands, spawn/complete flags)
 
 **Supersedes:** 16 CLI investigations from Dec 19 - Jan 4 (see History section)
 
@@ -211,8 +211,9 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 
 | Flag | Purpose |
 |------|---------|
-| `--force` | Force completion without verification |
+| `--force` | Force completion without verification (deprecated) |
 | `--reason` | Reason for force completion |
+| `--headless` | Non-interactive mode (auto-skips explain-back, forces review-tier=auto, auto-generates brief) |
 | `--approve` | Approve visual changes for UI tasks |
 | `--workdir` | Cross-project completion |
 | `--explain` | Explanation for explain-back gate |

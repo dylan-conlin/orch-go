@@ -2,7 +2,7 @@
 
 **Purpose:** Descriptions of key orch-go packages — their responsibilities, main types, and APIs.
 
-**Last verified:** 2026-03-24
+**Last verified:** 2026-03-25
 
 ---
 
@@ -321,6 +321,13 @@
 - Challenge artifact generation with severity codes (ENDOGENOUS_EVIDENCE, VOCABULARY_INFLATION, etc.)
 - Publication readiness validation
 - Claim quality enforcement
+
+## pkg/tree/ (Knowledge Lineage Tree)
+
+- Parses investigation files and builds knowledge lineage graph
+- Node types: investigations, guides, models, decisions
+- Relationship extraction from Prior-Work tables and Synthesized-From headers
+- Powers `orch tree` visualization
 
 ## pkg/certs/ (TLS Certificates)
 

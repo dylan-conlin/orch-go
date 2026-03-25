@@ -23,6 +23,7 @@ orch work proj-123 --inline                               # Blocking TUI (--inli
 orch account switch work                                  # Switch accounts
 orch wait proj-123 --timeout 30m                          # Wait for completion
 orch complete proj-123                                    # Verify and close
+orch complete proj-123 --headless                         # Non-interactive (daemon-triggered)
 orch clean                                                # Clean up finished agents
 orch thread new "How X relates to Y"                      # Create living thread
 orch thread list                                          # List threads with status

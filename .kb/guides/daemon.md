@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for the orch daemon's autonomous agent spawning system. This guide synthesizes learnings from 33 investigations conducted between Dec 2025 - Jan 2026.
 
-**Last verified:** Mar 22, 2026
+**Last verified:** Mar 25, 2026
 
 ---
 
@@ -358,9 +358,19 @@ The daemon polls beads for `Phase: Complete` comments instead of relying on sess
 2. `ListCompletedAgents()` finds issues with `Phase: Complete` comment
 3. `VerifyCompletionFull()` checks workspace artifacts
 4. `DetermineEscalationFromCompletion()` decides if auto-close is safe
-5. If `ShouldAutoComplete()` → closes beads issue with reason
+5. If `ShouldAutoComplete()` → runs `orch complete --headless` (non-interactive)
 6. Releases pool slot
 7. Logs auto-completion event
+
+### Headless Orchestrator Wakeup
+
+When an agent completes, the daemon can wake a headless orchestrator instance to run `orch complete --headless`. This mode:
+- Forces review tier to `auto` (no interactive prompts)
+- Auto-skips explain-back gate
+- Auto-generates brief from SYNTHESIS.md to `.kb/briefs/<beads-id>.md`
+- Auto-files discovered work without prompting
+
+**Code reference:** `pkg/daemon/auto_complete.go`, `cmd/orch/complete_cmd.go`
 
 ---
 

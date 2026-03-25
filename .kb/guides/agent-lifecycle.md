@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for agent state management, display, and coordination in the orch-go system.
 
-**Last verified:** Feb 26, 2026
+**Last verified:** Mar 25, 2026
 
 **Synthesized from:** 45+ investigations (Dec 20, 2025 - Jan 17, 2026)
 
@@ -132,6 +132,19 @@ The system uses two modes that serve different needs:
 - Neither can replace the other - they serve complementary needs
 
 **The "return to tmux" pattern** happens because orchestrators need to SEE what agents are doing. HTTP API gives you data; tmux gives you visibility.
+
+### Headless Completion
+
+When the daemon detects an agent has reported `Phase: Complete`, it can trigger `orch complete --headless` to close the work without human interaction:
+
+- Review tier forced to `auto` (no interactive prompts)
+- Explain-back gate auto-skipped
+- Brief auto-generated from SYNTHESIS.md to `.kb/briefs/<beads-id>.md`
+- Discovered work auto-filed without prompting
+
+This enables fully autonomous agent lifecycle: daemon spawns → agent works → agent reports Phase: Complete → daemon completes.
+
+**Code reference:** `cmd/orch/complete_cmd.go` (headless flag), `pkg/daemon/auto_complete.go` (daemon trigger)
 
 ---
 
