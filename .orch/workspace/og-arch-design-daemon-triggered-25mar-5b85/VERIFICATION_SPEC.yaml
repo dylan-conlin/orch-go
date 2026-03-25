@@ -1,0 +1,51 @@
+verification_spec:
+  version: "1.0"
+  agent: og-arch-design-daemon-triggered-25mar-5b85
+  issue: orch-go-exgxp
+  skill: architect
+
+  # Architect deliverables are investigations + questions, not code
+  verification_type: design_review
+
+  gates:
+    investigation_complete:
+      status: pass
+      evidence: ".kb/investigations/2026-03-25-inv-design-daemon-triggered-headless-orchestrator.md exists with Status: Complete"
+
+    findings_documented:
+      status: pass
+      evidence: "6 findings with evidence, source, and significance sections"
+
+    blocking_questions_created:
+      status: pass
+      evidence: "3 beads question entities created: orch-go-e9zpl, orch-go-fc1xv, orch-go-y9ey6"
+
+    defect_class_analysis:
+      status: pass
+      evidence: "5 defect classes evaluated, Class 5 (Contradictory Authority) identified as highest risk with mitigation"
+
+    substrate_consultation:
+      status: pass
+      evidence: "Principles (Provenance, Session Amnesia), models (defect-class-taxonomy, orchestrator-session-lifecycle), decisions (plan-mode-incompatible), guides (headless, completion, daemon, spawned-orchestrator-pattern) all referenced"
+
+    implementation_sequence:
+      status: pass
+      evidence: "3-phase implementation recommended: (1) orch complete --headless, (2) daemon integration, (3) two-state comprehension labels"
+
+    synthesis_md:
+      status: pass
+      evidence: "SYNTHESIS.md created with Plain-Language Summary, Delta, Evidence, Architectural Choices, Verification Contract"
+
+    brief_md:
+      status: pass
+      evidence: "BRIEF.md created with Frame/Resolution/Tension, writing primers followed"
+
+  manual_verification_required:
+    - "Dylan reviews blocking questions (orch-go-e9zpl, orch-go-fc1xv, orch-go-y9ey6)"
+    - "Orchestrator confirms investigation quality via explain-back gate"
+
+  migration_status:
+    designed: "Daemon-triggered headless orchestrator with on-demand resume, two-state comprehension labels, source-verified brief generation"
+    implemented: "none — design only"
+    deployed: "none"
+    remaining: "All 3 implementation phases pending Dylan's answers to blocking questions"
