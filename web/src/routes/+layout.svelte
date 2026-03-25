@@ -74,6 +74,11 @@
 							aria-current={$page.url.pathname === '/knowledge-tree' ? 'page' : undefined}
 						><span class="sm:hidden">KB</span><span class="hidden sm:inline">Knowledge Tree</span></a>
 						<a
+							href="/briefs"
+							class="px-1.5 sm:px-2 py-1 text-xs font-medium transition-colors {$page.url.pathname === '/briefs' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+							aria-current={$page.url.pathname === '/briefs' ? 'page' : undefined}
+						><span class="sm:hidden">B</span><span class="hidden sm:inline">Briefs</span></a>
+						<a
 							href="/harness"
 							class="px-1.5 sm:px-2 py-1 text-xs font-medium transition-colors {$page.url.pathname === '/harness' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}"
 							aria-current={$page.url.pathname === '/harness' ? 'page' : undefined}
