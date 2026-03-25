@@ -112,8 +112,8 @@
 				{@const isExpanded = expandedId === item.beads_id}
 				{@const isLoading = briefLoading.has(item.beads_id)}
 				<button
-					class="w-full text-left rounded-md border border-border p-3 transition-colors hover:border-foreground/15
-						{isExpanded ? 'border-foreground/15' : ''}"
+					class="w-full text-left rounded-md border border-border p-3 cursor-pointer
+						{isExpanded ? 'border-foreground/10' : ''}"
 					onclick={() => toggleExpand(item)}
 					data-testid="brief-item-{item.beads_id}"
 				>
