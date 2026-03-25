@@ -177,6 +177,9 @@ func runServe(portNum int) error {
 		fmt.Printf("Resolved bd path: %s\n", bdPath)
 	}
 
+	// Load persisted brief read state from disk.
+	loadBriefReadState()
+
 	// Initialize persistent beads client with auto-reconnect.
 	// This avoids per-request connection overhead and handles daemon restarts.
 	// Use 5s timeout (not 30s default) to fail fast when daemon dies.

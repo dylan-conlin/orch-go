@@ -184,6 +184,7 @@ func TestHandleBriefMethodNotAllowed(t *testing.T) {
 }
 
 func TestHandleBriefMarkAsRead(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // isolate state file writes
 	oldSourceDir := sourceDir
 	defer func() { sourceDir = oldSourceDir }()
 	sourceDir = t.TempDir()
@@ -328,7 +329,110 @@ func TestHandleBriefsListWithProjectDir(t *testing.T) {
 	}
 }
 
+func TestBriefReadStatePersistence(t *testing.T) {
+	// Save and restore global state
+	briefReadStateMu.Lock()
+	savedState := make(map[string]bool)
+	for k, v := range briefReadState {
+		savedState[k] = v
+	}
+	briefReadState = make(map[string]bool)
+	briefReadStateMu.Unlock()
+	defer func() {
+		briefReadStateMu.Lock()
+		briefReadState = savedState
+		briefReadStateMu.Unlock()
+	}()
+
+	// Override HOME to isolate the state file
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	orchDir := filepath.Join(tmpHome, ".orch")
+	os.MkdirAll(orchDir, 0755)
+
+	// Set up a project with a brief
+	oldSourceDir := sourceDir
+	defer func() { sourceDir = oldSourceDir }()
+	sourceDir = t.TempDir()
+
+	briefsDir := filepath.Join(sourceDir, ".kb", "briefs")
+	os.MkdirAll(briefsDir, 0755)
+	os.WriteFile(filepath.Join(briefsDir, "orch-go-persist1.md"), []byte("brief"), 0644)
+
+	// Mark as read via POST (triggers saveBriefReadState)
+	req := httptest.NewRequest(http.MethodPost, "/api/briefs/orch-go-persist1", nil)
+	w := httptest.NewRecorder()
+	handleBrief(w, req)
+
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("Mark as read returned %d", w.Result().StatusCode)
+	}
+
+	// Verify state file was written
+	stateFile := filepath.Join(orchDir, "briefs-read-state.json")
+	data, err := os.ReadFile(stateFile)
+	if err != nil {
+		t.Fatalf("State file not written: %v", err)
+	}
+	var persisted map[string]bool
+	if err := json.Unmarshal(data, &persisted); err != nil {
+		t.Fatalf("State file invalid JSON: %v", err)
+	}
+	key := briefReadKey(sourceDir, "orch-go-persist1")
+	if !persisted[key] {
+		t.Error("Expected persisted state to contain the marked-read brief")
+	}
+
+	// Simulate restart: clear in-memory state, then load from disk
+	briefReadStateMu.Lock()
+	briefReadState = make(map[string]bool)
+	briefReadStateMu.Unlock()
+
+	loadBriefReadState()
+
+	// Verify the state survived the "restart"
+	briefReadStateMu.RLock()
+	restored := briefReadState[key]
+	briefReadStateMu.RUnlock()
+	if !restored {
+		t.Error("Expected brief read state to survive simulated restart")
+	}
+}
+
+func TestBriefReadStateCorruptFile(t *testing.T) {
+	briefReadStateMu.Lock()
+	savedState := make(map[string]bool)
+	for k, v := range briefReadState {
+		savedState[k] = v
+	}
+	briefReadState = make(map[string]bool)
+	briefReadStateMu.Unlock()
+	defer func() {
+		briefReadStateMu.Lock()
+		briefReadState = savedState
+		briefReadStateMu.Unlock()
+	}()
+
+	// Override HOME with corrupt state file
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	orchDir := filepath.Join(tmpHome, ".orch")
+	os.MkdirAll(orchDir, 0755)
+	os.WriteFile(filepath.Join(orchDir, "briefs-read-state.json"), []byte("not json"), 0644)
+
+	// Should not panic, just start with empty state
+	loadBriefReadState()
+
+	briefReadStateMu.RLock()
+	count := len(briefReadState)
+	briefReadStateMu.RUnlock()
+	if count != 0 {
+		t.Errorf("Expected empty state after corrupt file, got %d entries", count)
+	}
+}
+
 func TestHandleBriefReadStateIsolation(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // isolate state file writes
 	// Two projects sharing the same beads ID should have independent read state
 	projectA := t.TempDir()
 	projectB := t.TempDir()

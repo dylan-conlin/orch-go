@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -44,6 +45,68 @@ var (
 // briefReadKey returns the map key for briefReadState, scoped by project.
 func briefReadKey(projectDir, beadsID string) string {
 	return projectDir + ":" + beadsID
+}
+
+// briefReadStatePath returns the path to the persistent read state file.
+func briefReadStatePath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".orch", "briefs-read-state.json")
+}
+
+// loadBriefReadState loads persisted read state from disk.
+// Called once at server startup. Missing or corrupt file is not an error — starts fresh.
+func loadBriefReadState() {
+	path := briefReadStatePath()
+	if path == "" {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return // file doesn't exist yet — normal on first run
+	}
+	var loaded map[string]bool
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		log.Printf("Warning: could not parse %s: %v (starting with empty read state)", path, err)
+		return
+	}
+	briefReadStateMu.Lock()
+	for k, v := range loaded {
+		briefReadState[k] = v
+	}
+	briefReadStateMu.Unlock()
+}
+
+// saveBriefReadState persists the current read state to disk.
+// Called after each mark-as-read. Writes atomically via temp file + rename.
+func saveBriefReadState() {
+	path := briefReadStatePath()
+	if path == "" {
+		return
+	}
+	briefReadStateMu.RLock()
+	data, err := json.Marshal(briefReadState)
+	briefReadStateMu.RUnlock()
+	if err != nil {
+		log.Printf("Warning: could not marshal brief read state: %v", err)
+		return
+	}
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		log.Printf("Warning: could not create directory for %s: %v", path, err)
+		return
+	}
+	// Atomic write: temp file + rename
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		log.Printf("Warning: could not write %s: %v", tmp, err)
+		return
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		log.Printf("Warning: could not rename %s to %s: %v", tmp, path, err)
+	}
 }
 
 // validBeadsID matches beads IDs like "orch-go-abc12" or "project-name-xyz99"
@@ -123,6 +186,8 @@ func handleBriefMarkRead(w http.ResponseWriter, beadsID, projectDir string) {
 	briefReadStateMu.Lock()
 	briefReadState[key] = true
 	briefReadStateMu.Unlock()
+
+	saveBriefReadState()
 
 	resp := BriefMarkReadResponse{
 		Success: true,
