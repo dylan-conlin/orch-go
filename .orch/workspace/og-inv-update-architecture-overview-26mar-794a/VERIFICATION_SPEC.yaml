@@ -1,0 +1,53 @@
+verification:
+  type: documentation
+  issue: orch-go-bw0y6
+
+  checks:
+    - name: architecture-overview-updated
+      description: Architecture guide reflects core/substrate/adjacent boundary
+      command: "head -20 .kb/guides/architecture-overview.md"
+      expectation: "Opens with 'coordination and comprehension layer' framing, not spawn/execution"
+      status: pass
+
+    - name: product-boundary-present
+      description: Product boundary section with core/substrate/adjacent tables exists
+      command: "grep -c '### Core\\|### Substrate\\|### Adjacent' .kb/guides/architecture-overview.md"
+      expectation: "3 (one for each boundary category)"
+      status: pass
+
+    - name: layered-system-diagram
+      description: System diagram shows CORE → SUBSTRATE → EXTERNAL layers
+      command: "grep -c 'CORE\\|SUBSTRATE\\|EXTERNAL SERVICES' .kb/guides/architecture-overview.md"
+      expectation: "3 layer labels present"
+      status: pass
+
+    - name: directory-structure-organized-by-layer
+      description: Directory listing annotated with Core and Substrate sections
+      command: "grep -c '── Core ──\\|── Substrate ──' .kb/guides/architecture-overview.md"
+      expectation: "4 (2 in cmd/orch section, 2 in pkg/ section)"
+      status: pass
+
+    - name: execution-detail-preserved
+      description: Spawn backends, architectural principles, and spawn flow retained
+      command: "grep -c 'Spawn Backends\\|Backend Independence\\|Pain as Signal\\|Spawn Flow' .kb/guides/architecture-overview.md"
+      expectation: "4 (all original sections preserved)"
+      status: pass
+
+    - name: aligns-with-decision
+      description: Guide references the source decision document
+      command: "grep '2026-03-26-thread-comprehension-layer-is-primary-product' .kb/guides/architecture-overview.md"
+      expectation: "Reference present in revised-date line"
+      status: pass
+
+    - name: investigation-complete
+      description: Investigation file has Status Complete
+      command: "grep 'Status:' .kb/investigations/2026-03-26-inv-update-architecture-overview-reflect-core.md"
+      expectation: "Status: Complete"
+      status: pass
+
+  manual_steps: []
+
+  summary: |
+    Architecture overview rewritten to lead with product identity (coordination/comprehension layer),
+    add core/substrate/adjacent boundary tables, layered system diagram, and organized directory listing.
+    All execution substrate detail preserved and correctly positioned.
