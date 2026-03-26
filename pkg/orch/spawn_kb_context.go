@@ -87,14 +87,30 @@ func runPreSpawnKBCheckFull(task, orientationFrame, projectDir string, staleness
 		return gcr
 	}
 	if result == nil || !result.HasMatches {
+		// Preserve timeout signal from primary search
+		primaryTimedOut := result != nil && result.TimedOut
 		firstKeyword := spawn.ExtractKeywords(task, 1)
 		if firstKeyword != "" && firstKeyword != keywords {
 			fmt.Printf("Trying broader search for: %q\n", firstKeyword)
-			result, err = spawn.RunKBContextCheckForDir(firstKeyword, projectDir)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: kb context check failed: %v\n", err)
+			fallbackResult, fallbackErr := spawn.RunKBContextCheckForDir(firstKeyword, projectDir)
+			if fallbackErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: kb context check failed: %v\n", fallbackErr)
 				return gcr
 			}
+			// Only overwrite if fallback got real matches; don't lose timeout signal
+			if fallbackResult != nil && fallbackResult.HasMatches {
+				result = fallbackResult
+			} else if fallbackResult != nil && fallbackResult.TimedOut {
+				primaryTimedOut = true
+			}
+		}
+		// Propagate timeout signal when no matches found from either search
+		if (result == nil || !result.HasMatches) && primaryTimedOut {
+			if result == nil {
+				result = &spawn.KBContextResult{Query: keywords}
+			}
+			result.TimedOut = true
+			fmt.Fprintf(os.Stderr, "⚠️  KB context check timed out for %q\n", keywords)
 		}
 	}
 	gcr.GapAnalysis = spawn.AnalyzeGaps(result, keywords, projectDir)

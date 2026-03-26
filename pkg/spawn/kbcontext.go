@@ -48,6 +48,7 @@ type KBContextResult struct {
 	HasMatches bool
 	Matches    []KBContextMatch
 	RawOutput  string
+	TimedOut   bool // True when the query was terminated by timeout, not by absence of matches
 }
 
 // KBContextFormatResult holds the formatted context and truncation information.
@@ -78,10 +79,16 @@ func RunKBContextCheck(query string) (*KBContextResult, error) {
 // When empty, falls back to os.Getwd().
 // Returns nil if no matches found or if kb command fails.
 func RunKBContextCheckForDir(query string, projectDir string) (*KBContextResult, error) {
+	// Track whether any query timed out across the search chain
+	anyTimedOut := false
+
 	// Step 1: Try current project first (no --global flag)
 	result, err := runKBContextQuery(query, false, projectDir)
 	if err != nil {
 		return nil, err
+	}
+	if result != nil && result.TimedOut {
+		anyTimedOut = true
 	}
 
 	// Step 2: If local search is sparse, expand to global with group-aware filter
@@ -89,6 +96,9 @@ func RunKBContextCheckForDir(query string, projectDir string) (*KBContextResult,
 		globalResult, err := runKBContextQuery(query, true, projectDir)
 		if err != nil {
 			return nil, err
+		}
+		if globalResult != nil && globalResult.TimedOut {
+			anyTimedOut = true
 		}
 
 		if globalResult != nil && len(globalResult.Matches) > 0 {
@@ -123,20 +133,34 @@ func RunKBContextCheckForDir(query string, projectDir string) (*KBContextResult,
 	}
 
 	if result == nil || !result.HasMatches {
+		// Preserve timeout signal even when no matches found
+		if anyTimedOut {
+			if result == nil {
+				result = &KBContextResult{Query: query}
+			}
+			result.TimedOut = true
+			return result, nil
+		}
 		return nil, nil
+	}
+
+	// Clear timeout flag when we got real matches (timeout was not the limiting factor)
+	if result != nil {
+		result.TimedOut = false
 	}
 
 	return result, nil
 }
 
 // runKBContextQuery runs a single kb context query with optional --global flag.
-// Uses a 5-second timeout to prevent infinite hangs from kb context --global
-// scanning large directories like ~/Documents.
+// Uses a 10-second timeout to prevent infinite hangs from kb context --global
+// scanning large directories like ~/Documents. Raised from 5s because real queries
+// on large knowledge bases (280+ investigations) take 5.8-8.8s.
 // projectDir sets the working directory for the kb command. When non-empty,
 // local (non-global) queries search the target project's .kb/ instead of process CWD.
 func runKBContextQuery(query string, global bool, projectDir string) (*KBContextResult, error) {
 	// Create context with timeout to prevent hangs
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	var cmd *exec.Cmd
@@ -153,8 +177,14 @@ func runKBContextQuery(query string, global bool, projectDir string) (*KBContext
 
 	output, err := cmd.Output()
 	if err != nil {
-		// If kb command fails (not found, no matches, timeout, etc.), return nil
-		// This is not an error - just means no context available
+		// Distinguish timeout from other failures
+		if ctx.Err() == context.DeadlineExceeded {
+			return &KBContextResult{
+				Query:    query,
+				TimedOut: true,
+			}, nil
+		}
+		// Other failures (command not found, no matches, etc.) — no context available
 		return nil, nil
 	}
 

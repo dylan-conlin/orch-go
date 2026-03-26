@@ -37,6 +37,10 @@ const (
 
 	// GapTypeWrongProject indicates matches were found from a different project than the target.
 	GapTypeWrongProject GapType = "wrong_project"
+
+	// GapTypeTimeout indicates the KB context check timed out before completing.
+	// This is distinct from no_context: timeout means "we don't know" not "nothing exists".
+	GapTypeTimeout GapType = "timeout"
 )
 
 // GapSeverity indicates how significant the detected gap is.
@@ -104,12 +108,23 @@ func AnalyzeGaps(result *KBContextResult, query string, projectDir string) *GapA
 	if result == nil || !result.HasMatches || len(result.Matches) == 0 {
 		analysis.HasGaps = true
 		analysis.ContextQuality = 0
-		analysis.Gaps = append(analysis.Gaps, Gap{
-			Type:        GapTypeNoContext,
-			Severity:    GapSeverityCritical,
-			Description: fmt.Sprintf("No prior knowledge found for query %q", query),
-			Suggestion:  "Consider running 'kb context' manually to verify, or add relevant kn entries/investigations",
-		})
+
+		// Distinguish timeout from genuine absence
+		if result != nil && result.TimedOut {
+			analysis.Gaps = append(analysis.Gaps, Gap{
+				Type:        GapTypeTimeout,
+				Severity:    GapSeverityWarning,
+				Description: fmt.Sprintf("KB context check timed out for query %q — agent may be missing historical context", query),
+				Suggestion:  "KB lookup was slow, not empty. Context may exist but wasn't retrieved in time.",
+			})
+		} else {
+			analysis.Gaps = append(analysis.Gaps, Gap{
+				Type:        GapTypeNoContext,
+				Severity:    GapSeverityCritical,
+				Description: fmt.Sprintf("No prior knowledge found for query %q", query),
+				Suggestion:  "Consider running 'kb context' manually to verify, or add relevant kn entries/investigations",
+			})
+		}
 		return analysis
 	}
 
@@ -398,6 +413,11 @@ func (g *GapAnalysis) FormatGapSummary() string {
 		return ""
 	}
 
+	// Timeout gets its own message — distinct from "no knowledge"
+	if g.hasOnlyTimeoutGaps() {
+		return "⚠️ KB context check timed out — agent may be missing historical context"
+	}
+
 	if g.ContextQuality == 0 {
 		return "⚠️ No prior knowledge found - agent starting without historical context"
 	}
@@ -443,11 +463,32 @@ const (
 
 // ShouldBlockSpawn returns true if the context quality is too low and spawn should be blocked.
 // Threshold can be customized; default is DefaultGateThreshold.
+// Timeout gaps are exempt: "we don't know" should not block, only "we know it's missing" should.
 func (g *GapAnalysis) ShouldBlockSpawn(threshold int) bool {
 	if threshold <= 0 {
 		threshold = DefaultGateThreshold
 	}
-	return g.ContextQuality < threshold
+	if g.ContextQuality >= threshold {
+		return false
+	}
+	// Don't block if timeout is the only gap type — absence of evidence ≠ evidence of absence
+	if g.hasOnlyTimeoutGaps() {
+		return false
+	}
+	return true
+}
+
+// hasOnlyTimeoutGaps returns true when all gaps are GapTypeTimeout.
+func (g *GapAnalysis) hasOnlyTimeoutGaps() bool {
+	if len(g.Gaps) == 0 {
+		return false
+	}
+	for _, gap := range g.Gaps {
+		if gap.Type != GapTypeTimeout {
+			return false
+		}
+	}
+	return true
 }
 
 // HasCriticalGaps returns true if there are any critical-severity gaps.

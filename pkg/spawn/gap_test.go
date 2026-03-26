@@ -950,6 +950,110 @@ func TestCalculateContextQuality_WrongProject(t *testing.T) {
 	}
 }
 
+func TestAnalyzeGaps_TimedOut(t *testing.T) {
+	// A timed-out result with no matches should produce GapTypeTimeout, not GapTypeNoContext
+	result := &KBContextResult{
+		Query:      "verify dao claim",
+		HasMatches: false,
+		Matches:    []KBContextMatch{},
+		TimedOut:   true,
+	}
+
+	analysis := AnalyzeGaps(result, "verify dao claim", "")
+
+	if !analysis.HasGaps {
+		t.Error("expected HasGaps=true for timed-out result")
+	}
+	if analysis.ContextQuality != 0 {
+		t.Errorf("expected ContextQuality=0 for timed-out result, got %d", analysis.ContextQuality)
+	}
+
+	// Should have GapTypeTimeout, NOT GapTypeNoContext
+	foundTimeout := false
+	foundNoContext := false
+	for _, gap := range analysis.Gaps {
+		if gap.Type == GapTypeTimeout {
+			foundTimeout = true
+			if gap.Severity != GapSeverityWarning {
+				t.Errorf("expected GapSeverityWarning for timeout, got %s", gap.Severity)
+			}
+		}
+		if gap.Type == GapTypeNoContext {
+			foundNoContext = true
+		}
+	}
+	if !foundTimeout {
+		t.Error("expected GapTypeTimeout gap for timed-out result")
+	}
+	if foundNoContext {
+		t.Error("should NOT produce GapTypeNoContext for timed-out result")
+	}
+}
+
+func TestAnalyzeGaps_TimedOutNilResult(t *testing.T) {
+	// nil result (not timed out) should still produce GapTypeNoContext
+	analysis := AnalyzeGaps(nil, "test", "")
+
+	foundNoContext := false
+	for _, gap := range analysis.Gaps {
+		if gap.Type == GapTypeNoContext {
+			foundNoContext = true
+		}
+	}
+	if !foundNoContext {
+		t.Error("nil result should still produce GapTypeNoContext")
+	}
+}
+
+func TestShouldBlockSpawn_TimeoutExempt(t *testing.T) {
+	// Gap gate should NOT block when the only issue is a timeout
+	analysis := &GapAnalysis{
+		HasGaps:        true,
+		ContextQuality: 0,
+		Gaps: []Gap{
+			{
+				Type:     GapTypeTimeout,
+				Severity: GapSeverityWarning,
+			},
+		},
+	}
+
+	if analysis.ShouldBlockSpawn(DefaultGateThreshold) {
+		t.Error("ShouldBlockSpawn should return false when only gap is timeout")
+	}
+}
+
+func TestShouldBlockSpawn_TimeoutWithOtherGaps(t *testing.T) {
+	// If there are other critical gaps alongside timeout, blocking should still work
+	analysis := &GapAnalysis{
+		HasGaps:        true,
+		ContextQuality: 0,
+		Gaps: []Gap{
+			{Type: GapTypeTimeout, Severity: GapSeverityWarning},
+			{Type: GapTypeWrongProject, Severity: GapSeverityCritical},
+		},
+	}
+
+	if !analysis.ShouldBlockSpawn(DefaultGateThreshold) {
+		t.Error("ShouldBlockSpawn should still block when non-timeout critical gaps exist")
+	}
+}
+
+func TestFormatGapSummary_Timeout(t *testing.T) {
+	analysis := &GapAnalysis{
+		HasGaps:        true,
+		ContextQuality: 0,
+		Gaps: []Gap{
+			{Type: GapTypeTimeout, Severity: GapSeverityWarning},
+		},
+	}
+
+	summary := analysis.FormatGapSummary()
+	if !strings.Contains(summary, "timed out") {
+		t.Errorf("expected timeout message in summary, got %q", summary)
+	}
+}
+
 // Helper function for string containment check
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
