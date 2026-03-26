@@ -1,0 +1,38 @@
+verification:
+  automated:
+    - command: "go test ./pkg/bench/... -count=1"
+      expected: "PASS"
+      description: "All 32 bench package tests pass (config, engine, report)"
+    - command: "go build ./cmd/orch/..."
+      expected: "exit 0"
+      description: "CLI builds successfully with updated bench_cmd.go"
+
+  manual:
+    - step: "Run orch bench run with a real config to verify report.json output"
+      description: "Verify end-to-end: results.jsonl, summary.json, report.json, config.yaml all written"
+    - step: "Check human-readable output includes per-model breakdown and verdict"
+      description: "Verify FormatReport output renders correctly in terminal"
+
+  artifacts:
+    created:
+      - path: "pkg/bench/report.go"
+        description: "Report types, generation, compliance signals, verdicts, formatting"
+      - path: "pkg/bench/report_test.go"
+        description: "15 tests covering model/scenario summaries, compliance, verdicts, I/O"
+    modified:
+      - path: "pkg/bench/config.go"
+        description: "Added Thresholds struct with pass_rate, max_error_rate, max_rework_rate"
+      - path: "pkg/bench/config_test.go"
+        description: "Added threshold parsing and default tests"
+      - path: "pkg/bench/results.go"
+        description: "Added Model field to TrialResult"
+      - path: "pkg/bench/engine.go"
+        description: "Propagated model from scenario to trial result"
+      - path: "cmd/orch/bench_cmd.go"
+        description: "Wired report generation, git metadata, config snapshot, artifact listing"
+
+  run_directory_artifacts:
+    - "results.jsonl    — per-trial JSONL (existing)"
+    - "summary.json     — aggregate stats (existing)"
+    - "report.json      — full report with per-model, compliance, verdicts (NEW)"
+    - "config.yaml      — config snapshot for reproducibility (NEW)"

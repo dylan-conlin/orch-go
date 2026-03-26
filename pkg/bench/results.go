@@ -12,6 +12,7 @@ import (
 type TrialResult struct {
 	Scenario   string        `json:"scenario"`
 	Trial      int           `json:"trial"`
+	Model      string        `json:"model,omitempty"`
 	BeadsID    string        `json:"beads_id,omitempty"`
 	Status     string        `json:"status"` // "pass", "fail", "error", "timeout"
 	Reworks    int           `json:"reworks"`

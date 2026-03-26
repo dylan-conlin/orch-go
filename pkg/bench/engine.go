@@ -80,6 +80,7 @@ func (e *Engine) runTrial(s Scenario, trial int) TrialResult {
 	tr := TrialResult{
 		Scenario:  s.Name,
 		Trial:     trial,
+		Model:     s.Model,
 		StartedAt: start,
 	}
 

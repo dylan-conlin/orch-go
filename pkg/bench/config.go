@@ -11,10 +11,18 @@ import (
 
 // Config defines a benchmark suite with scenarios to execute.
 type Config struct {
-	Name      string     `yaml:"name"`
-	Trials    int        `yaml:"trials"`
-	Parallel  int        `yaml:"parallel"`
-	Scenarios []Scenario `yaml:"scenarios"`
+	Name       string     `yaml:"name"`
+	Trials     int        `yaml:"trials"`
+	Parallel   int        `yaml:"parallel"`
+	Scenarios  []Scenario `yaml:"scenarios"`
+	Thresholds Thresholds `yaml:"thresholds,omitempty"`
+}
+
+// Thresholds defines configurable verdict boundaries for benchmark evaluation.
+type Thresholds struct {
+	PassRate      float64 `yaml:"pass_rate" json:"pass_rate"`             // minimum pass rate for PASS verdict (default: 0.8)
+	MaxErrorRate  float64 `yaml:"max_error_rate" json:"max_error_rate"`   // maximum error rate before FAIL (default: 0.1)
+	MaxReworkRate float64 `yaml:"max_rework_rate" json:"max_rework_rate"` // warn if rework rate exceeds this (default: 0.5)
 }
 
 // Scenario defines a single benchmark case: a skill+task to spawn,
@@ -62,6 +70,15 @@ func (c *Config) applyDefaults() {
 		if c.Scenarios[i].Timeout == "" {
 			c.Scenarios[i].Timeout = "30m"
 		}
+	}
+	if c.Thresholds.PassRate == 0 {
+		c.Thresholds.PassRate = 0.8
+	}
+	if c.Thresholds.MaxErrorRate == 0 {
+		c.Thresholds.MaxErrorRate = 0.1
+	}
+	if c.Thresholds.MaxReworkRate == 0 {
+		c.Thresholds.MaxReworkRate = 0.5
 	}
 }
 

@@ -104,7 +104,7 @@ func runBench(configPath string) error {
 		return fmt.Errorf("benchmark failed: %w", err)
 	}
 
-	// Write results
+	// Write raw results
 	resultsPath := filepath.Join(outDir, "results.jsonl")
 	summaryPath := filepath.Join(outDir, "summary.json")
 
@@ -115,16 +115,38 @@ func runBench(configPath string) error {
 		return fmt.Errorf("writing summary: %w", err)
 	}
 
-	// Print summary
-	s := result.Summary()
-	fmt.Printf("\n--- Results ---\n")
-	fmt.Printf("  Total: %d  Pass: %d  Fail: %d  Error: %d  Timeout: %d\n",
-		s.Total, s.Passed, s.Failed, s.Errors, s.Timeouts)
-	fmt.Printf("  Pass rate: %.0f%%\n", s.PassRate*100)
-	fmt.Printf("  Total reworks: %d\n", s.TotalReworks)
-	fmt.Printf("  Avg duration: %s\n", s.AvgDuration.Round(time.Second))
-	fmt.Printf("  Results: %s\n", resultsPath)
-	fmt.Printf("  Summary: %s\n", summaryPath)
+	// Write config snapshot for reproducibility
+	configSnapshotPath := filepath.Join(outDir, "config.yaml")
+	if err := bench.WriteConfigSnapshot(cfg, configSnapshotPath); err != nil {
+		return fmt.Errorf("writing config snapshot: %w", err)
+	}
+
+	// Collect run metadata
+	runID := filepath.Base(outDir)
+	meta := bench.RunMetadata{
+		RunID:     runID,
+		GitSHA:    gitOutput(projectDir, "rev-parse", "HEAD"),
+		GitBranch: gitOutput(projectDir, "rev-parse", "--abbrev-ref", "HEAD"),
+		StartedAt: result.StartedAt,
+		ConfigRef: "config.yaml",
+	}
+
+	// Generate and write report
+	report := bench.GenerateReport(result, cfg, meta)
+	reportPath := filepath.Join(outDir, "report.json")
+	if err := bench.WriteReport(report, reportPath); err != nil {
+		return fmt.Errorf("writing report: %w", err)
+	}
+
+	// Print human-readable report
+	fmt.Println()
+	fmt.Print(bench.FormatReport(report))
+	fmt.Printf("\nArtifacts:\n")
+	fmt.Printf("  %s/\n", outDir)
+	fmt.Printf("    results.jsonl    — per-trial JSONL\n")
+	fmt.Printf("    summary.json     — aggregate stats\n")
+	fmt.Printf("    report.json      — full report with verdicts\n")
+	fmt.Printf("    config.yaml      — config snapshot\n")
 
 	// Log event
 	logger := events.NewLogger(events.DefaultLogPath())
@@ -133,16 +155,28 @@ func runBench(configPath string) error {
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
 			"name":      cfg.Name,
-			"total":     s.Total,
-			"passed":    s.Passed,
-			"failed":    s.Failed,
-			"pass_rate": s.PassRate,
-			"reworks":   s.TotalReworks,
+			"total":     report.Summary.Total,
+			"passed":    report.Summary.Passed,
+			"failed":    report.Summary.Failed,
+			"pass_rate": report.Summary.PassRate,
+			"reworks":   report.Summary.TotalReworks,
 			"duration":  result.Duration.Seconds(),
+			"verdict":   report.Verdict.Overall,
 		},
 	})
 
 	return nil
+}
+
+// gitOutput runs a git command and returns trimmed stdout, or empty string on error.
+func gitOutput(dir string, args ...string) string {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // makeBenchSpawnFn returns a SpawnFunc that shells out to `orch spawn`.

@@ -146,6 +146,60 @@ func TestParseConfig_ValidationErrors(t *testing.T) {
 	}
 }
 
+func TestParseConfig_Thresholds(t *testing.T) {
+	input := `
+name: with-thresholds
+thresholds:
+  pass_rate: 0.9
+  max_error_rate: 0.05
+  max_rework_rate: 0.3
+scenarios:
+  - name: test
+    skill: feature-impl
+    task: "do thing"
+    eval: "echo ok"
+`
+	cfg, err := ParseConfig([]byte(input))
+	if err != nil {
+		t.Fatalf("ParseConfig failed: %v", err)
+	}
+
+	if cfg.Thresholds.PassRate != 0.9 {
+		t.Errorf("PassRate = %f, want 0.9", cfg.Thresholds.PassRate)
+	}
+	if cfg.Thresholds.MaxErrorRate != 0.05 {
+		t.Errorf("MaxErrorRate = %f, want 0.05", cfg.Thresholds.MaxErrorRate)
+	}
+	if cfg.Thresholds.MaxReworkRate != 0.3 {
+		t.Errorf("MaxReworkRate = %f, want 0.3", cfg.Thresholds.MaxReworkRate)
+	}
+}
+
+func TestParseConfig_ThresholdDefaults(t *testing.T) {
+	input := `
+name: no-thresholds
+scenarios:
+  - name: test
+    skill: feature-impl
+    task: "do thing"
+    eval: "echo ok"
+`
+	cfg, err := ParseConfig([]byte(input))
+	if err != nil {
+		t.Fatalf("ParseConfig failed: %v", err)
+	}
+
+	if cfg.Thresholds.PassRate != 0.8 {
+		t.Errorf("default PassRate = %f, want 0.8", cfg.Thresholds.PassRate)
+	}
+	if cfg.Thresholds.MaxErrorRate != 0.1 {
+		t.Errorf("default MaxErrorRate = %f, want 0.1", cfg.Thresholds.MaxErrorRate)
+	}
+	if cfg.Thresholds.MaxReworkRate != 0.5 {
+		t.Errorf("default MaxReworkRate = %f, want 0.5", cfg.Thresholds.MaxReworkRate)
+	}
+}
+
 func TestParseConfigFile_NotFound(t *testing.T) {
 	_, err := ParseConfigFile("/nonexistent/path.yaml")
 	if err == nil {
