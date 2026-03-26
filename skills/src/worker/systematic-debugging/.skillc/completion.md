@@ -21,7 +21,7 @@ Before marking complete, verify ALL:
 bd comments add <beads-id> "Phase: Complete - Root cause: [X], Fix: [Y], Tests: go test ./... - 23 passed, 0 failed"
 
 # 2. Commit any final changes
-git add . && git commit -m "fix: [description]"
+git add <files> && git commit -m "fix: [description]"
 
 # 3. Session complete — no further actions needed.
 ```

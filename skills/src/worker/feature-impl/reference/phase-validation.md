@@ -68,7 +68,7 @@ bd comments add <beads-id> "BLOCKED: UI changes require visual verification but 
 **Workflow:**
 
 1. Confirm changes are complete
-2. **Commit all changes** - `git add -A && git commit -m "[type]: [description]"`
+2. **Commit all changes** - `git add <files> && git commit -m "[type]: [description]"`
 3. **Verify commit** - `git status` shows "nothing to commit"
 4. Report completion: `bd comments add <beads-id> "Phase: Complete - [brief summary]"`
 5. **Session complete** — no further actions needed.
@@ -85,7 +85,7 @@ bd comments add <beads-id> "BLOCKED: UI changes require visual verification but 
 
 1. **Run test suite** - Use project-specific test command (see reference for examples by language)
 2. **Verify all tests pass** - All green, no errors/warnings, adequate coverage
-3. **Commit all changes** - `git add -A && git commit -m "[type]: [description]"`
+3. **Commit all changes** - `git add <files> && git commit -m "[type]: [description]"`
 4. **Verify commit** - `git status` shows "nothing to commit"
 5. **Report completion with test evidence** - `bd comments add <beads-id> "Phase: Complete - Tests: <command> - <actual output>"`
 6. **Session complete** — no further actions needed.
@@ -115,7 +115,7 @@ Your completion comment MUST include actual test output, not just "tests passing
 2. **Load feature** - Start dev server, open browser/API client/CLI (see reference for commands)
 3. **Verify manually** - Use checklist for Web UI, API, or CLI verification (see reference)
 4. **Capture evidence** - Screenshot for UI, request/response for API/CLI
-5. **Commit all changes** - `git add -A && git commit -m "[type]: [description]"`
+5. **Commit all changes** - `git add <files> && git commit -m "[type]: [description]"`
 6. **Verify commit** - `git status` shows "nothing to commit"
 7. **Report completion with evidence** - `bd comments add <beads-id> "Phase: Complete - Tests: <command> - <output>. Smoke test: [verification summary]"`
 8. **Session complete** — no further actions needed.
@@ -140,7 +140,7 @@ Your completion comment MUST include actual test output, not just "tests passing
 
 1. **Run test suite** - Verify automated tests pass
 2. **Smoke test (if UI)** - Perform manual verification if feature includes UI
-3. **Commit all changes** - `git add -A && git commit -m "[type]: [description]"`
+3. **Commit all changes** - `git add <files> && git commit -m "[type]: [description]"`
 4. **Verify commit** - `git status` shows "nothing to commit"
 5. **Report awaiting validation** - `bd comments add <beads-id> "AWAITING_VALIDATION - [phase details, evidence summary]"`
 6. **STOP** - Wait for orchestrator approval. DO NOT proceed to next phase
