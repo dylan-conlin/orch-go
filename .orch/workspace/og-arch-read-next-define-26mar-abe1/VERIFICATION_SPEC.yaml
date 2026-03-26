@@ -1,0 +1,33 @@
+verification_spec:
+  type: architect-investigation
+  issue: orch-go-1r7ih
+
+  outcomes:
+    - name: "Investigation produced with concrete recommendations"
+      verified: true
+      evidence: ".kb/investigations/2026-03-26-design-ranking-attention-layer-boundary.md exists with Complete status"
+
+    - name: "Probe extends dashboard-architecture model"
+      verified: true
+      evidence: ".kb/models/dashboard-architecture/probes/2026-03-26-probe-ranking-attention-layer-boundary.md exists with Complete status"
+
+    - name: "Probe findings merged into parent model"
+      verified: true
+      evidence: "model.md updated with attention gap paragraph, merged probes table updated from 15 to 16"
+
+    - name: "3-layer decomposition with product classification"
+      verified: true
+      evidence: "Investigation Finding 2 maps each ranking signal through the 4-question structural test"
+
+    - name: "Concrete Layer 2 implementation spec"
+      verified: true
+      evidence: "Investigation Recommended Approach specifies BriefListItem enrichment, reverse-lookup function, tension detection, and sort change"
+
+    - name: "Correction to openness boundary matrix"
+      verified: true
+      evidence: "Investigation Synthesis section includes explicit matrix correction table splitting held-back surface"
+
+  manual_verification:
+    - "Confirm thread-grouping classification as method-core (not held-back) aligns with product intent"
+    - "Confirm tension surfacing as method-core aligns with uncertainty-treatment commitment"
+    - "Decide whether Layer 2 implementation should proceed immediately or after other thread-home work"
