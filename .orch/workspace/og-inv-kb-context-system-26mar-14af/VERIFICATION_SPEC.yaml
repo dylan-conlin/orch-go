@@ -1,0 +1,29 @@
+version: 1
+scope:
+  beads_id: orch-go-nid7l
+  workspace: og-inv-kb-context-system-26mar-14af
+  skill: investigation
+verification:
+  - id: verify-spawn-context-trace
+    method: cli_smoke
+    tier: full
+    command: go test ./pkg/spawn -run 'Test(GenerateContext_InvestigationDeliverableGating|GenerateContext_ProcessesSkillContentTemplates|WriteContext_FullTierCreatesSynthesisTemplate|FilterForScopedTask)$'
+    cwd: /Users/dylanconlin/Documents/personal/orch-go
+    timeout_seconds: 120
+    expect:
+      exit_code: 0
+      stdout_contains:
+        - ok
+  - id: verify-orch-trace-support
+    method: cli_smoke
+    tier: full
+    command: go test ./pkg/orch -run 'Test(.*Spawn.*|.*KB.*)'
+    cwd: /Users/dylanconlin/Documents/personal/orch-go
+    timeout_seconds: 120
+    expect:
+      exit_code: 0
+      stdout_contains:
+        - ok
+manual_verification:
+  - Confirm `cmd/orch/spawn_cmd.go`, `pkg/orch/spawn_kb_context.go`, `pkg/spawn/kbcontext*.go`, `pkg/orch/spawn_pipeline.go`, `pkg/spawn/context.go`, and `pkg/spawn/worker_template.go` match the documented trace in the investigation.
+  - Confirm `SPAWN_CONTEXT.md` in this workspace contains the injected prior-knowledge section shape described in the investigation.
