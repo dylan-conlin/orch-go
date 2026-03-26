@@ -110,7 +110,7 @@ But it does NOT validate whether the specific model ID exists in OpenCode's prov
 
 The codex session (gpt-5.2-codex) with 11 messages showed the agent reading SPAWN_CONTEXT.md, attempting to follow phase reporting protocol, and making tool calls. This confirms GPT-5.2-codex CAN process spawn contexts and follow protocol when the model is properly configured.
 
-However, the prior probe (2026-02-19) found GPT-5.2-codex unreliable with large spawn contexts (63-76KB), hallucinating constraints and exhausting context windows. The "hello" skill with minimal context (small spawn context) is a much easier case.
+However, the prior probe (2026-02-19) found GPT-5.2-codex unreliable with the large spawn contexts of that era (63-76KB, ~40-50K GPT tokens). Current SPAWN_CONTEXT sizes are materially smaller (~8-17K tokens). The "hello" skill with minimal context (small spawn context) is a much easier case.
 
 ---
 

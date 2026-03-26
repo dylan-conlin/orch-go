@@ -228,11 +228,11 @@ claims:
     tensions: []
 
   - id: DAO-13
-    text: "Non-Anthropic models (GPT-5.2-codex) have 63-87% stall rates on daemon spawns due to context window consumption by SPAWN_CONTEXT (63-76KB files consume 40-50K GPT tokens)"
+    text: "GPT-5.2-codex had 63-87% stall rates on daemon spawns (2026-02 era). Historical prompt sizes were 63-76KB / ~40-50K GPT tokens; current SPAWN_CONTEXT sizes are ~8-17K tokens (chars/4). The stall-rate evidence is model-era-specific; prompt-size pressure is no longer the primary GPT viability concern — protocol compliance, silent-death frequency, and scope control matter more for GPT-5.4-era routing."
     confidence: confirmed
     priority: supporting
     created: "2026-03-19"
-    last_validated: "2026-03-17"
+    last_validated: "2026-03-26"
     evidence:
       - source: "GPT-5.2-codex failure modes: hallucinated constraints, 145K token consumption, silent termination"
         date: "2026-03-17"
@@ -240,7 +240,13 @@ claims:
       - source: "Config resolution bug: user config default_model bypasses project config opencode.model override"
         date: "2026-03-17"
         verdict: confirms
-    domain_tags: ["daemon", "model", "GPT", "context-window", "stall"]
+      - source: "Current SPAWN_CONTEXT sizes measured at ~8-17K tokens (chars/4), not 40-50K — historical framing is stale"
+        date: "2026-03-26"
+        verdict: refines
+      - source: "GPT-5.4 benchmark: 80% first-attempt, 100% with retry on N=5 feature-impl tasks"
+        date: "2026-03-26"
+        verdict: refines
+    domain_tags: ["daemon", "model", "GPT", "context-window", "stall", "historical"]
     falsifies_if: "Non-Anthropic models achieve >80% completion rate on protocol-heavy daemon spawns (N>30)"
     tensions: []
 

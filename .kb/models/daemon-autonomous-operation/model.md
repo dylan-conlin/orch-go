@@ -368,7 +368,7 @@ The convenience constructor `New()` uses `DefaultConfig()` correctly, but it's n
 2. Excessive token consumption: 145K tokens on exploration, hit context window, session terminated mid-exploration
 3. Silent session termination: no error message, no completion report
 
-**Root cause:** 63-76KB SPAWN_CONTEXT files consume ~40-50K GPT tokens (GPT tokenizes ~2x more than Claude). Combined with tool definitions and CLAUDE.md, the initial context can consume 60-80% of GPT-5.2's context window before the agent starts working.
+**Root cause (GPT-5.2 era, 2026-02):** Historical SPAWN_CONTEXT files were 63-76KB (~40-50K GPT tokens). Combined with tool definitions and CLAUDE.md, the initial context consumed 60-80% of GPT-5.2's context window before the agent started working. **Note (2026-03-26):** Current SPAWN_CONTEXT sizes are materially smaller (~8-17K tokens via chars/4 estimator). Prompt-size pressure is no longer the primary explanation for GPT model viability; current routing decisions should weight protocol compliance, silent-death frequency, and scope control more heavily than context-window consumption.
 
 **Config resolution bug:** `runWork()` injects user config `default_model` as CLI-flag priority, bypassing project config's `opencode.model` override. The project config `opencode.model: flash` is never applied when `default_model: codex` is set in user config.
 

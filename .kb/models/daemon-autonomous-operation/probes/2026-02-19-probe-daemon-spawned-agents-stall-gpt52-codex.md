@@ -123,6 +123,8 @@ User config: default_model: codex
 4. **Model suitability gate**: Block daemon spawning with models that don't support the worker protocol (GPT models with 63-76KB spawn contexts)
 5. **Daemon-specific model config**: Add `daemon.model` in user config to decouple daemon model selection from interactive default
 
-### SPAWN_CONTEXT size concern
+### SPAWN_CONTEXT size concern (historical — GPT-5.2 era, 2026-02)
 
 All 3 agents received 63-76KB spawn contexts. This is ~20-25K tokens for Claude but closer to 40-50K tokens for GPT tokenizers. Combined with CLAUDE.md, skill instructions, and tool definitions, the initial context could consume 60-80% of GPT-5.2's context window before the agent even starts working.
+
+**Update (2026-03-26):** These measurements are from early SPAWN_CONTEXT designs. Current SPAWN_CONTEXT sizes are ~8-17K tokens (chars/4 estimator), materially smaller. The stall-rate evidence remains valid for GPT-5.2-codex but the prompt-size framing should not be projected onto GPT-5.4-era routing decisions.
