@@ -1,0 +1,19 @@
+version: 1
+summary: Document existing liveness state-machine semantics and validate them against implementation and tests.
+commands:
+  - command: "pwd"
+    purpose: "Verify work ran in the expected repo"
+    outcome: "passed"
+    evidence: "/Users/dylanconlin/Documents/personal/orch-go"
+  - command: "go test ./pkg/verify -run 'TestVerifyLiveness|TestLivenessResult_Warning|TestVerifyLivenessGracePeriod'"
+    purpose: "Validate all liveness branches, warning formatting, and grace-period boundary"
+    outcome: "passed"
+    evidence: "ok github.com/dylan-conlin/orch-go/pkg/verify 0.307s"
+expectations:
+  - "`VerifyLiveness` returns `completed/phase_complete` when the latest parsed phase is `Complete` case-insensitively."
+  - "`VerifyLiveness` returns `active/phase_reported` for any latest parsed non-complete phase."
+  - "`VerifyLiveness` returns `active/recently_spawned` only when no phase exists and `Now - SpawnTime` is strictly less than 5 minutes."
+  - "`VerifyLiveness` returns `dead/no_phase_reported` when no phase exists and spawn time is unknown or at least 5 minutes old."
+manual_checks:
+  - "Cross-check downstream caller behavior in `cmd/orch/complete_verification.go` and `cmd/orch/abandon_cmd.go` against the documented transition table."
+remaining_manual_steps: []
