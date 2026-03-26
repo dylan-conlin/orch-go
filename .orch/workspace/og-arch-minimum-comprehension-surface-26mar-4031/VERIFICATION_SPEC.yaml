@@ -1,0 +1,39 @@
+name: minimum-comprehension-surface
+issue: orch-go-f8y50
+type: architect
+outcome: investigation-with-recommendations
+
+verification:
+  automated:
+    - command: "test -f .kb/investigations/2026-03-26-design-minimum-comprehension-surface.md"
+      expect: "file exists"
+      result: "pass"
+    - command: "test -f .kb/models/dashboard-architecture/probes/2026-03-26-probe-minimum-comprehension-surface-product-identity.md"
+      expect: "probe file exists"
+      result: "pass"
+    - command: "grep -c 'Content mode vs metadata mode' .kb/models/dashboard-architecture/model.md"
+      expect: "1 (invariant merged into model)"
+      result: "pass"
+
+  manual:
+    - description: "Investigation defines exactly three essential elements (thread entries, brief content, tension text)"
+      verified: true
+    - description: "Investigation provides elimination analysis showing each element is necessary"
+      verified: true
+    - description: "Probe findings merged into dashboard-architecture model (invariant 10, evolution section, merged probes table)"
+      verified: true
+    - description: "Investigation includes implementation recommendations with Svelte line estimates"
+      verified: true
+    - description: "Product-surface boundary rule defined (content mode = product clarification, metadata mode = dashboard improvement)"
+      verified: true
+
+deliverables:
+  - path: ".kb/investigations/2026-03-26-design-minimum-comprehension-surface.md"
+    type: investigation
+    status: complete
+  - path: ".kb/models/dashboard-architecture/probes/2026-03-26-probe-minimum-comprehension-surface-product-identity.md"
+    type: probe
+    status: complete
+  - path: ".kb/models/dashboard-architecture/model.md"
+    type: model-update
+    status: complete

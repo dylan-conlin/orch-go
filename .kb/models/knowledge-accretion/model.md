@@ -1,7 +1,7 @@
 # Model: Knowledge Accretion
 
 **Domain:** Multi-Agent Knowledge Systems
-**Last Updated:** 2026-03-20
+**Last Updated:** 2026-03-26
 **Validation Status:** WORKING HYPOTHESIS — not externally validated. Built by one person with AI agents that optimize for coherence. Independent external review (Codex, Mar 10) identified core claims as restatements of existing governance/coordination concepts (Ostrom, Conway, Brooks) with agent vocabulary. Observations are real; theoretical framing is overclaimed. See `.kb/threads/2026-03-10-closed-loop-risk-ai-agents.md`.
 **Synthesized From:**
 - `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-accretion-accretion-attractor-gate-dynamics.md` — Empirical measurement across 1,166 investigations, 32 models, 187 probes
@@ -84,6 +84,8 @@ Accretion is entropy: individually correct contributions compose into structural
 **Key finding:** The original sample-based estimate (~20% genuinely lost) was too conservative. Automated content analysis shows 85.5% of orphans have positive findings that aren't connected to any model, decision, or guide. The negative-result rate (12.4%) is higher than the sample estimated (5-7%), confirming that automated detection catches more signals than filename-based sampling.
 
 **Natural baseline: 40-50% orphan rate is healthy.** The actionable signal is the positive-unlinked rate (78.4% of total investigations), not the raw orphan rate. However, most positive-unlinked orphans are pre-model era implementation work that was structurally impossible to connect at creation time.
+
+**Composition model invisibility (2026-03-26 probe):** A contributing factor to high orphan rates is that the composition model — how artifacts relate to each other (thread → investigation → probe → model → brief → decision) — is implicit in the CLI tooling and never documented for agents or users. When the linking relationships aren't visible in the artifacts themselves, agents and humans don't link artifacts because they don't know where each finding should go. This parallels the code finding that packages-as-attractors reduce code accretion by making destination explicit; knowledge artifacts without visible composition relationships lack an equivalent structural attractor. Evidence: scored 7 artifact types for standalone comprehensibility (avg 2.6/5); the KB README documents 4 of 7+ artifact types; threads and briefs — the most method-defining artifacts — are missing from the official onboarding documentation.
 
 **Knowledge accretion signatures:**
 - **Orphan investigations** — work product with no structural connection to synthesized understanding (models). 87.6% overall, but 52.0% in the model era. Pre-model era (83% of corpus) inflates the aggregate.
@@ -622,6 +624,9 @@ kb reflect --type stale
 **Threads:**
 - `.kb/threads/2026-03-09-knowledge-accretion-does-knowledge-have.md` — Initial question formulation
 - `.kb/threads/2026-03-10-kind-theory-this-ostrom-scale.md` — Theory type resolved: diagnostic framework (Ostrom-scale), not natural law
+
+**Probes:**
+- 2026-03-26: Minimum Open Release Bundle Definition — Artifact formats score 2.6/5 for standalone comprehensibility; composition model invisibility identified as contributing factor to orphan rates. Extends the model's understanding of why knowledge attractors are weaker than structural (code) attractors.
 
 ## Auto-Linked Investigations
 

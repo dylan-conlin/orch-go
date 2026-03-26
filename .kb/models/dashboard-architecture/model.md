@@ -1,8 +1,8 @@
 # Model: Dashboard Architecture
 
 **Domain:** Dashboard / Web UI
-**Last Updated:** 2026-03-06
-**Synthesized From:** 62 investigations (Dec 21, 2025 - Jan 8, 2026) + 14 probes (Feb 2026)
+**Last Updated:** 2026-03-26
+**Synthesized From:** 62 investigations (Dec 21, 2025 - Jan 8, 2026) + 15 probes (Feb-Mar 2026)
 
 ---
 
@@ -10,8 +10,9 @@
 
 The dashboard is a **3-page SPA** (Svelte 5 + SvelteKit, adapter-static) served by `orch serve` (Go backend on port 3348) with a Vite dev server on port 5188 proxying to the backend.
 
-**Three views, three distinct purposes:**
-- `/` (Dashboard) — Agent monitoring: real-time swarm status, health coaching, performance
+**Five routes, two rendering modes:**
+- `/` (Threads/Home) — Thread-first comprehension surface: active thread entries, latest brief inline, open tensions, condensed operational summary (redesigned 2026-03-26)
+- `/briefs` — Brief reading queue: agent-produced comprehension artifacts with mark-as-read
 - `/work-graph` — Work tracking: beads issue tree with dependencies, attention signals, verification gates
 - `/knowledge-tree` — Knowledge browsing: .kb/ artifact tree, session timeline (3 tabs: Knowledge/Work/Timeline)
 
@@ -88,6 +89,11 @@ The architecture uses a **two-mode design** (Operational/Historical) to separate
 - `cmd/orch/serve.go` - HTTP server setup, routing
 - `cmd/orch/serve_tree.go` - Knowledge tree API + `/api/events/tree` SSE endpoint (polls filesystem every 2s)
 - `pkg/attention/` - 11 signal collectors feeding `/api/attention`
+- `cmd/orch/serve_briefs.go` - Brief list/fetch/mark-read API (reading surface)
+- `pkg/daemon/comprehension_queue.go` - Two-state comprehension lifecycle
+
+**Attention gap — work vs reading:**
+The attention pipeline (`pkg/attention/`) serves exclusively *work* signals (stuck agents, ready issues, verify failures). The reading/comprehension surface (`serve_briefs.go`) has no equivalent attention system — briefs sort by file modification time only. Thread-grouping and tension surfacing are method-expressing ordering signals that belong in the reading surface but have no implementation. See probe `2026-03-26-probe-ranking-attention-layer-boundary.md` for the 3-layer decomposition: substrate ordering (exists), method-expressing ordering (missing), learned ranking (future).
 
 ### State Transitions
 
@@ -134,6 +140,7 @@ Remaining 4-5 slots for API fetches
 7. **buildActiveAgentMap() is local-project-scoped** - Cross-project graph requests get nodes but NOT active agent enrichment. Any cross-project in_progress issue shows 'unassigned' as a result.
 8. **Promoted sections must participate in pinnedTreeIds deduplication** - Any section that pulls items out of the work-graph tree must register IDs in `pinnedTreeIds` to prevent double-rendering. Currently only the WIP section does this; Ready to Complete does not.
 9. **State persistence: localStorage primary, URL hash for deep-linking** - UI state (expansion, tab selection, view mode) persists in localStorage; URL hash used additionally for bookmarkable views (knowledge-tree tabs).
+10. **Content mode vs metadata mode** - Comprehension surfaces must render *content* (prose, synthesis, question text) not *metadata* (counts, badges, titles). The product feel requires content mode for the comprehension layer; metadata mode is appropriate for operational/execution surfaces. (Evidence: 2026-03-26 probe — all three identity-defining elements existed as metadata, product feel only emerged when rendering switched to content.)
 
 ---
 
@@ -381,6 +388,15 @@ Plugin error → OpenCode internal 500 → orch status fails → API can't get a
 - Knowledge-tree: SSR guard fix, tab persistence (URL hash + localStorage), duplicate deduplication (`cloneNodeRecursiveWithDedup`, first-parent-wins)
 - `buildActiveAgentMap()` identified as local-only; cross-project active-agent gap documented (fix available: `listSessionsAcrossProjects`)
 
+**Mar 2026: Thread-First Comprehension Surface + Product Identity Shift**
+- Product decision: thread/comprehension layer is primary, execution is substrate
+- Root route redesigned: threads above operations, nav reordered (Threads | Briefs | Knowledge | Work | Harness)
+- Thread API endpoints added (`GET /api/threads`, `GET /api/threads/{slug}`)
+- Briefs route added (`/briefs`) with agent-produced BRIEF.md artifacts
+- Thread home surface refined: status-bucket ordering, expand affordance, status labels
+- Minimum comprehension surface defined: product triangle (thread entries + brief content + tension text), all rendered as content not metadata
+- Content mode vs metadata mode invariant established (invariant 10)
+
 ---
 
 ## References
@@ -427,7 +443,7 @@ Plugin error → OpenCode internal 500 → orch status fails → API can't get a
 
 ### Merged Probes
 
-All 14 probes merged into this model on 2026-03-06:
+16 probes merged into this model (14 on 2026-03-06, 2 on 2026-03-26):
 
 | Probe | Verdict | Summary |
 |-------|---------|---------|
@@ -445,6 +461,8 @@ All 14 probes merged into this model on 2026-03-06:
 | `2026-02-17-knowledge-tree-duplicate-fix` | CONFIRMS | Deduplication already fixed via `cloneNodeRecursiveWithDedup()`; first-parent-wins strategy |
 | `2026-02-25-probe-work-graph-unassigned-cross-project` | EXTENDS | `buildActiveAgentMap()` local-only; cross-project in_progress issues always show 'unassigned' |
 | `2026-02-25-probe-dashboard-web-ui-framework-and-responsive-patterns` | EXTENDS | Full tech stack: shadcn-svelte + Tailwind v3 + 28 themes + 25 stores + 5-tier responsive grid |
+| `2026-03-26-probe-minimum-comprehension-surface-product-identity` | EXTENDS | Product triangle (threads + briefs + tensions) rendered as content, not metadata. Content mode vs metadata mode is the product/dashboard distinction. Invariant 10 added. |
+| `2026-03-26-probe-ranking-attention-layer-boundary` | EXTENDS + CONTRADICTS | Attention pipeline is exclusively work-focused; reading surface has no ordering intelligence beyond mod-time. "Ranking intelligence" decomposes into 3 layers: substrate (exists), method-expressing (missing — thread-grouping, tension surfacing), learned (future). Partially contradicts treating ranking as single held-back surface. |
 
 ## Auto-Linked Investigations
 
