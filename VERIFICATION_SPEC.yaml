@@ -1,42 +1,39 @@
-issue: orch-go-r7avo
-title: "Add daemon model-routing config and observability"
+issue: orch-go-xxtaa
+title: "Redesign root route as thread-first home surface"
+type: feature
 tier: light
 
 verification:
   automated:
-    - command: "go test ./pkg/daemonconfig/ -run TestModelRouting -v"
-      expect: "8 tests pass (combo-first resolution, nil safety, IsConfigured)"
-    - command: "go test ./pkg/events/ -count=1"
-      expect: "all events tests pass, new model_route event type compiles"
-    - command: "go test ./pkg/daemon/ -count=1"
-      expect: "all daemon tests pass including preview with ModelRoute field"
-    - command: "go build ./..."
-      expect: "clean build, no compilation errors"
+    - command: "go test ./cmd/orch/ -run TestHandleThreads -count=1"
+      expected: "PASS"
+      actual: "PASS (4 tests)"
+    - command: "go build ./cmd/orch/"
+      expected: "clean build"
+      actual: "clean build"
+    - command: "cd web && npm run build"
+      expected: "built successfully"
+      actual: "built in 8.23s"
+
+  visual:
+    - description: "Root route shows Threads section above operational view"
+      evidence: "/tmp/thread-first-home-dev.png"
+      verified: true
+    - description: "Nav reads: Threads | Briefs | Knowledge | Work | Harness"
+      evidence: "/tmp/thread-first-home-dev.png"
+      verified: true
 
   manual:
-    - step: "Add model_routing section to .orch/config.yaml and run orch daemon preview"
-      expect: "Preview shows Route source, Base model → Effective model, and Reason"
+    - description: "Verify thread cards populate when orch serve is running"
+      command: "orch-dashboard start && open http://localhost:5199"
+    - description: "Click a thread card to expand entries"
+      expected: "Thread expands showing up to 5 recent entries"
 
 deliverables:
-  - path: pkg/daemonconfig/model_routing.go
-    description: "ModelRoutingConfig with combo-first Resolve() mirroring ComplianceConfig"
-  - path: pkg/daemonconfig/model_routing_test.go
-    description: "8 tests covering combo>skill>model>default precedence, nil safety, IsConfigured"
-  - path: pkg/userconfig/daemon_config.go
-    description: "ModelRoutingYAMLConfig type + DaemonModelRoutingConfig() accessor"
-  - path: pkg/daemonconfig/convert.go
-    description: "modelRoutingFromYAML conversion wired into FromUserConfig"
-  - path: pkg/daemonconfig/config.go
-    description: "ModelRouting *ModelRoutingConfig field on runtime Config"
-  - path: pkg/events/model_route.go
-    description: "spawn.model_route event type with ModelRouteData + LogModelRoute"
-  - path: pkg/events/logger.go
-    description: "EventTypeModelRoute constant"
-  - path: pkg/daemon/preview.go
-    description: "ModelRoute field on PreviewResult, populated when config is active"
-  - path: pkg/daemon/ooda.go
-    description: "Config override applied in Decide phase after RouteModel"
-  - path: cmd/orch/daemon_handlers.go
-    description: "Route source/reason displayed in preview and dry-run output"
-  - path: cmd/orch/daemon_loop.go
-    description: "spawn.model_route event logged on each spawn"
+  - web/src/lib/stores/threads.ts (new Svelte store)
+  - web/src/routes/+page.svelte (redesigned root route)
+  - web/src/routes/+layout.svelte (nav reorder)
+
+notes: |
+  Thread API endpoints (serve_threads.go) already existed.
+  Pre-existing test failures: TestEnforcePhaseCompleteSkipsPrintMode, TestHandleAgentlogJSONResponse (unrelated).

@@ -59,9 +59,9 @@
 					</a>
 					<nav class="flex items-center gap-0.5 sm:gap-1" aria-label="Main navigation">
 						<a
-							href="/thinking"
-							class="px-1.5 sm:px-2 py-1 text-xs font-medium transition-colors {$page.url.pathname === '/thinking' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}"
-							aria-current={$page.url.pathname === '/thinking' ? 'page' : undefined}
+							href="/"
+							class="px-1.5 sm:px-2 py-1 text-xs font-medium transition-colors {$page.url.pathname === '/' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+							aria-current={$page.url.pathname === '/' ? 'page' : undefined}
 						><span class="sm:hidden">T</span><span class="hidden sm:inline">Threads</span></a>
 						<a
 							href="/briefs"
