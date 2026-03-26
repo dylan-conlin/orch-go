@@ -1,0 +1,66 @@
+verification:
+  type: investigation
+  issue: orch-go-ff21f
+  workspace: og-inv-verify-dao-13-26mar-04eb
+
+  automated_checks:
+    - name: "Investigation file exists"
+      command: "test -f .kb/investigations/2026-03-26-inv-verify-dao-13-claim-measure.md"
+      expected: "exit 0"
+      result: "PASS"
+
+    - name: "SYNTHESIS.md exists"
+      command: "test -f .orch/workspace/og-inv-verify-dao-13-26mar-04eb/SYNTHESIS.md"
+      expected: "exit 0"
+      result: "PASS"
+
+    - name: "BRIEF.md exists"
+      command: "test -f .orch/workspace/og-inv-verify-dao-13-26mar-04eb/BRIEF.md"
+      expected: "exit 0"
+      result: "PASS"
+
+    - name: "Investigation has D.E.K.N. summary"
+      command: >-
+        grep -F '**Delta:**' .kb/investigations/2026-03-26-inv-verify-dao-13-claim-measure.md &&
+        grep -F '**Evidence:**' .kb/investigations/2026-03-26-inv-verify-dao-13-claim-measure.md &&
+        grep -F '**Knowledge:**' .kb/investigations/2026-03-26-inv-verify-dao-13-claim-measure.md &&
+        grep -F '**Next:**' .kb/investigations/2026-03-26-inv-verify-dao-13-claim-measure.md
+      expected: "exit 0"
+      result: "PASS"
+
+    - name: "Spawn estimator tests pass"
+      command: "go test ./pkg/spawn -run 'TestEstimateTokens|TestEstimateContentTokens|TestEstimateContextTokens'"
+      expected: "ok"
+      result: "PASS"
+
+    - name: "Measured workspace size is captured in investigation"
+      command: "grep -F '37,930 bytes, which estimates to `9,482` tokens' .kb/investigations/2026-03-26-inv-verify-dao-13-claim-measure.md"
+      expected: "matching line present"
+      result: "PASS"
+
+  evidence_summary:
+    data_sources:
+      - ".orch/workspace/**/SPAWN_CONTEXT.md (1,442 files measured before workspace cleanup)"
+      - "pkg/spawn/tokens.go"
+      - "pkg/spawn/kbcontext.go"
+      - "pkg/spawn/tokens_test.go"
+      - ".kb/models/daemon-autonomous-operation/claims.yaml"
+
+    key_findings:
+      - "Measured workspace size was 37,930 bytes, estimated at 9,482 tokens via chars/4"
+      - "March 26 active workspaces ranged from 37,930 to 41,980 bytes, estimated at 9.5-10.5K tokens"
+      - "Active workspace median was 47,404 bytes, estimated at 11,851 tokens"
+      - "Only 1 active workspace fell in DAO-13's old 63-76 KB size band"
+      - "Largest observed workspace across active + archived was 145,931 bytes, estimated at 36,482 tokens"
+
+  manual_verification_required:
+    - description: "Run a model-native GPT-5.4 tokenizer against current SPAWN_CONTEXT.md files if exact OpenAI token counts are required"
+      reason: "The repo only contains a generic chars/4 estimator, not a GPT-specific tokenizer"
+
+  deliverables:
+    - path: ".kb/investigations/2026-03-26-inv-verify-dao-13-claim-measure.md"
+      description: "Investigation with measurements, synthesis, and recommendation"
+    - path: ".orch/workspace/og-inv-verify-dao-13-26mar-04eb/SYNTHESIS.md"
+      description: "Session synthesis with plain-language summary and verification contract"
+    - path: ".orch/workspace/og-inv-verify-dao-13-26mar-04eb/BRIEF.md"
+      description: "Comprehension brief for Dylan"
