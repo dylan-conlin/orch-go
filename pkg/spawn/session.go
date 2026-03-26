@@ -210,6 +210,10 @@ type AgentManifest struct {
 	// Determines how thoroughly the orchestrator reviews completion.
 	// Empty for pre-review-tier workspaces (falls back to inference from skill).
 	ReviewTier string `json:"review_tier,omitempty"`
+
+	// RoutingImpact captures any provider-driven routing changes applied during resolution.
+	// Present only when auto-routing changed the backend or model from their configured values.
+	RoutingImpact *RoutingImpact `json:"routing_impact,omitempty"`
 }
 
 // WriteAgentManifest writes the agent manifest JSON to the workspace directory.

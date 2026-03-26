@@ -181,6 +181,27 @@ func runSpawnDryRun(serverURL, skillName, task string) error {
 		fmt.Printf("  --max-turns:    %d\n", spawnMaxTurns)
 	}
 
+	// Show routing impact when provider-driven routing was applied
+	routingImpact := spawn.BuildRoutingImpact(resolved.Settings)
+	if routingImpact.Triggered {
+		fmt.Println()
+		fmt.Println("--- Routing Impact ---")
+		fmt.Printf("  Trigger:          %s\n", routingImpact.Trigger)
+		if routingImpact.PreviousBackend != "" {
+			fmt.Printf("  Previous backend: %s\n", routingImpact.PreviousBackend)
+		}
+		fmt.Printf("  Resolved backend: %s\n", routingImpact.ResolvedBackend)
+		if routingImpact.PreviousModel != "" {
+			fmt.Printf("  Previous model:   %s\n", routingImpact.PreviousModel)
+		}
+		fmt.Printf("  Resolved model:   %s\n", routingImpact.ResolvedModel)
+		if routingImpact.Provider != "" {
+			fmt.Printf("  Provider:         %s\n", routingImpact.Provider)
+		}
+		fmt.Printf("  Automatic:        %v\n", routingImpact.Automatic)
+		fmt.Printf("  Explanation:      %s\n", routingImpact.Explanation)
+	}
+
 	if len(resolved.Settings.Warnings) > 0 {
 		fmt.Println()
 		fmt.Println("--- Warnings ---")

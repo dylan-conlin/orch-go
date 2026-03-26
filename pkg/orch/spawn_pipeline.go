@@ -231,6 +231,31 @@ func ResolveSpawnSettings(input spawn.ResolveInput) (ResolvedSpawnResult, error)
 		}
 	}
 
+	// Log routing impact event when provider-driven routing was applied.
+	// This makes routing changes durable and reviewable even when daemon discards stdout.
+	routingImpact := spawn.BuildRoutingImpact(settings)
+	if routingImpact.Triggered {
+		logger := events.NewLogger(events.DefaultLogPath())
+		event := events.Event{
+			Type:      "spawn.routing_impact",
+			Timestamp: time.Now().Unix(),
+			Data: map[string]interface{}{
+				"trigger":          routingImpact.Trigger,
+				"previous_backend": routingImpact.PreviousBackend,
+				"resolved_backend": routingImpact.ResolvedBackend,
+				"resolved_model":   routingImpact.ResolvedModel,
+				"provider":         routingImpact.Provider,
+				"automatic":        routingImpact.Automatic,
+				"explanation":      routingImpact.Explanation,
+				"beads_id":         input.BeadsID,
+				"skill":            input.SkillName,
+			},
+		}
+		if err := logger.Log(event); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to log routing impact: %v\n", err)
+		}
+	}
+
 	resolvedModel := model.ResolveWithConfig(settings.Model.Value, nil)
 	return ResolvedSpawnResult{Settings: settings, Model: resolvedModel}, nil
 }

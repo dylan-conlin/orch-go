@@ -266,6 +266,15 @@ func WriteContext(cfg *Config) error {
 	// Write agent manifest JSON for canonical agent identity and spawn-time metadata
 	// This provides a single source of truth for git-based scoping and verification gates
 	spawnTime := time.Now()
+	// Build routing impact report from resolved settings
+	var routingImpact *RoutingImpact
+	if cfg.ResolvedSettings.Backend.Value != "" {
+		ri := BuildRoutingImpact(cfg.ResolvedSettings)
+		if ri.Triggered {
+			routingImpact = &ri
+		}
+	}
+
 	manifest := AgentManifest{
 		WorkspaceName: cfg.WorkspaceName,
 		Skill:         cfg.SkillName,
@@ -278,6 +287,7 @@ func WriteContext(cfg *Config) error {
 		Model:         cfg.Model,
 		VerifyLevel:   cfg.VerifyLevel,
 		ReviewTier:    cfg.ReviewTier,
+		RoutingImpact: routingImpact,
 	}
 	if err := WriteAgentManifest(workspacePath, manifest); err != nil {
 		return fmt.Errorf("failed to write agent manifest: %w", err)
