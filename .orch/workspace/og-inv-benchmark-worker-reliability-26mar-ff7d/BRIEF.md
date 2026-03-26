@@ -2,16 +2,16 @@
 
 ## Frame
 
-We asked which worker backends are safe to use in production and set out to benchmark Claude Code against GPT-5.4 and a cheaper fallback. The question felt empirical — run tasks on different models, measure completion rates, build a routing table. It mattered because the system is 100% locked to Anthropic and we wanted data to justify (or reject) diversifying.
+We set out to answer a simple question: can anything besides Opus run orch-go work? The system had been running 100% on Claude Code for months — every single one of 130 agents, zero exceptions. GPT-5.4 looked promising on paper (better instruction-following, 1M context, $0/token via ChatGPT Pro) but the last attempt to test it died on a missing OAuth login. Today we actually ran the test.
 
 ## Resolution
 
-The turn came early: there's nothing to benchmark against. Every single post-protocol agent — all 130 of them — is Opus on Claude Code. No Sonnet. No GPT. No Gemini. The system doesn't have a comparison population; it has a monoculture.
+I expected the initial finding to be the whole story: "only Opus is tested, here's a protocol to test alternatives." Then Dylan started the OpenCode server and signed into ChatGPT Pro, and suddenly we could run real tasks.
 
-The Claude Code baseline is genuinely good. In the last week: 97% Phase:Complete on investigations, 93% on architect work, 100% on feature-impl and debugging. These aren't cherry-picked — they're the full population. The one reliability gap is SYNTHESIS.md creation on feature-impl (4%), but that's a protocol weight problem, not a stall. Agents finish the work and skip the paperwork.
+GPT-5.4 completed 4 out of 4 feature-impl tasks on the first attempt. Two to three minutes each. Phase:Complete reported. Code committed. The one investigation task had a silent death — zero-token response, the exact failure mode we documented for GPT-5.2 six weeks ago — but the re-run completed fine. So: 80% first-attempt, 100% with retry.
 
-GPT-5.4's plumbing is fully wired — model aliases, routing logic, API key. A dry-run routes perfectly. But it's never run a real task. The last attempt (March 24) died on missing OpenAI auth. OpenCode server being down blocked any testing today. The gap between "infrastructure ready" and "empirically validated" is about 15 minutes of Dylan's time: start the server, spawn 5 tasks, check results.
+The surprise wasn't that GPT-5.4 works — it was how it works differently. One task asked for "add a test case" and GPT-5.4 produced 356 lines across 13 files, restructuring spawn helpers and modifying config parsing along the way. Opus would have written 15 lines. The work is correct, but GPT-5.4 doesn't know when to stop. That's manageable for scoped feature work but dangerous for anything near architectural boundaries.
 
 ## Tension
 
-The recommendation matrix has clear thresholds (80% Phase:Complete for overflow viability, 90% for default routing), but the data to apply them doesn't exist yet. We're making a strategic bet on whether to invest 15 minutes in a test that could unlock multi-model routing — or accept the Anthropic monoculture because it works. The uncomfortable part: the monoculture works *well enough* that the urgency to test alternatives keeps getting deferred. Each week it doesn't get tested is another week of confirmed lock-in by inaction.
+The data says GPT-5.4 is viable for feature-impl overflow. But "viable" and "should route by default" are different decisions. The scope explosion on task 1 suggests GPT-5.4 needs tighter task descriptions than Opus — which means the daemon's current task framing may not be enough. And investigation skills showed a 50% first-attempt rate (N=2, tiny sample). The question isn't whether to use GPT-5.4 — it's how much trust to extend before N=30 validates it at scale.

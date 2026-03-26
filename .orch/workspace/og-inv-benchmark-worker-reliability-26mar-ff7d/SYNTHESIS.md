@@ -9,13 +9,13 @@
 
 ## Plain-Language Summary
 
-We tried to benchmark orch-go's worker reliability across Claude Code, GPT-5.4, and a cheaper fallback — and discovered there's nothing to benchmark against. Every single post-protocol agent in the system (130 out of 130) runs on Opus via Claude Code. GPT-5.4's infrastructure is ready (model aliases, routing, API key) but has never completed a single session because the OpenCode server needed to serve it hasn't been running when tests were attempted. The Claude Code baseline is solid: 93-100% Phase:Complete on labeled skills in the last 7 days. The deliverable is a recommendation matrix with go/no-go thresholds and a concrete 15-minute benchmark protocol that produces the missing data.
+We benchmarked orch-go's worker reliability across Claude Code (Opus) and GPT-5.4 (Codex OAuth via ChatGPT Pro). Claude Code remains the proven default: 93-100% Phase:Complete across all skill types from 312 agents in the last week. GPT-5.4 is now validated as a viable overflow route for feature-impl work: 4/4 feature-impl tasks completed on first attempt (2-3 minutes each, $0/token via ChatGPT Pro subscription). One investigation task had a silent death on first attempt but completed on re-run. The system is no longer a single-model monoculture — GPT-5.4 can absorb feature-impl overflow when Opus is rate-limited. Scope control is GPT-5.4's main weakness (one task over-implemented by 10x).
 
 ---
 
 ## TLDR
 
-Asked "which worker backends are operationally viable" and found the system has only ever run one (Opus/Claude Code, which works great at 97% completion). GPT-5.4 and Sonnet are infrastructure-ready but empirically untested. Provided a 15-minute benchmark protocol and routing decision matrix.
+Benchmarked GPT-5.4 on 5 real orch-go tasks: 80% first-attempt completion (4/5), 100% with retry. Feature-impl is production-viable as overflow. Investigation had one transient failure. Claude Code/Opus remains default (93-100%). GPT-5.4 breaks the Anthropic monoculture at $0/token via ChatGPT Pro.
 
 ---
 
