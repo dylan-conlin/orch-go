@@ -1,0 +1,23 @@
+verification:
+  type: investigation
+  commands_run:
+    - "go test ./pkg/spawn -run 'Test.*Gap|Test.*KBContext|Test.*gpt|Test.*GPT'"
+    - "orch spawn --dry-run --headless --model gpt-5.4 feature-impl 'add IsReasoningModel test for gpt-5.4 in model_test.go'"
+    - "python3 timing check for 'kb context' sample queries from zero-score GPT-5.4 spawn events"
+    - "python3 scan of ~/.orch/events-2026-03.jsonl for headless GPT-5.4 spawn gap data"
+  checks:
+    - description: "Spawn gap/context unit tests still pass in pkg/spawn"
+      result: "PASS - go test ./pkg/spawn -run 'Test.*Gap|Test.*KBContext|Test.*gpt|Test.*GPT' returned ok"
+    - description: "Dry-run reproduces the reported symptom"
+      result: "PASS - sample GPT-5.4 headless dry-run reported Context quality 0/100 and No prior knowledge found"
+    - description: "Manual kb context for the same derived queries returns real matches, but takes longer than the Go timeout"
+      result: "PASS - sampled queries completed in 5.834s to 8.786s and returned non-empty context"
+    - description: "Code path explains the false zero score"
+      result: "PASS - pkg/spawn/kbcontext.go uses context.WithTimeout(..., 5*time.Second) and returns nil on command error; pkg/orch/spawn_kb_context.go then feeds that nil result into AnalyzeGaps, producing no_context / 0 quality"
+    - description: "Issue scope captured for follow-up"
+      result: "PASS - created architect follow-up orch-go-k6c0v for hotspot-area design before implementation"
+  manual_steps: []
+  files_changed:
+    - .orch/workspace/og-debug-debug-investigate-kb-26mar-4427/VERIFICATION_SPEC.yaml
+    - .orch/workspace/og-debug-debug-investigate-kb-26mar-4427/SYNTHESIS.md
+    - .orch/workspace/og-debug-debug-investigate-kb-26mar-4427/BRIEF.md
