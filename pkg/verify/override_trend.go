@@ -1,9 +1,6 @@
 package verify
 
 import (
-	"bufio"
-	"encoding/json"
-	"os"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
@@ -20,20 +17,12 @@ type OverrideTrend struct {
 
 // CalculateOverrideTrend counts verification bypass events in the last N days
 // and compares to the previous N days to determine trend direction.
+// Uses ScanEventsFromPath to read only event files covering the relevant time
+// window, skipping the legacy events.jsonl when it predates the query range.
 func CalculateOverrideTrend(windowDays int) (*OverrideTrend, error) {
 	if windowDays <= 0 {
 		windowDays = 7
 	}
-
-	path := events.DefaultLogPath()
-	f, err := os.Open(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return &OverrideTrend{WindowDays: windowDays, Direction: "flat"}, nil
-		}
-		return nil, err
-	}
-	defer f.Close()
 
 	now := time.Now()
 	windowStart := now.AddDate(0, 0, -windowDays)
@@ -42,32 +31,18 @@ func CalculateOverrideTrend(windowDays int) (*OverrideTrend, error) {
 	current := 0
 	previous := 0
 
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
-		var event events.Event
-		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			continue
-		}
-
+	err := events.ScanEventsFromPath(events.DefaultLogPath(), previousStart, now, func(event events.Event) {
 		if event.Type != events.EventTypeVerificationBypassed {
-			continue
+			return
 		}
-
 		eventTime := time.Unix(event.Timestamp, 0)
-		if eventTime.After(windowStart) || eventTime.Equal(windowStart) {
+		if !eventTime.Before(windowStart) {
 			current++
-			continue
-		}
-		if eventTime.After(previousStart) || eventTime.Equal(previousStart) {
+		} else {
 			previous++
 		}
-	}
-	if err := scanner.Err(); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 

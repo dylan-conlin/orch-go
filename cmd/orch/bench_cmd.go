@@ -10,18 +10,23 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/bench"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/spf13/cobra"
 )
 
 var (
-	benchOutputDir string
-	benchDryRun    bool
+	benchOutputDir    string
+	benchDryRun       bool
+	benchModelOveride string
 )
 
 var benchCmd = &cobra.Command{
 	Use:   "bench",
 	Short: "Benchmark execution engine",
-	Long:  `Run benchmark scenarios using spawn/wait/eval/rework primitives.`,
+	Long: `Run benchmark scenarios using spawn/wait/eval/rework primitives.
+
+Model aliases (opus, sonnet, haiku, gpt-5, etc.) are resolved to full model
+IDs at config load time. Use --model to override the model for all scenarios.`,
 }
 
 var benchRunCmd = &cobra.Command{
@@ -32,8 +37,15 @@ var benchRunCmd = &cobra.Command{
 Each scenario spawns an agent, waits for completion, runs an eval command,
 and optionally reworks on failure. Results are written to JSONL + summary JSON.
 
+Model aliases are resolved automatically:
+  opus → claude-opus-4-5-20251101
+  sonnet → claude-sonnet-4-5-20250929
+  gpt-5 → gpt-5.2
+  etc.
+
 Example config:
   name: worker-reliability
+  default_model: opus
   trials: 3
   parallel: 2
   scenarios:
@@ -48,23 +60,67 @@ Example config:
 Examples:
   orch bench run benchmarks/reliability.yaml
   orch bench run benchmarks/reliability.yaml --output ./results
-  orch bench run benchmarks/reliability.yaml --dry-run`,
+  orch bench run benchmarks/reliability.yaml --dry-run
+  orch bench run benchmarks/reliability.yaml --model sonnet`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runBench(args[0])
 	},
 }
 
+var benchValidateCmd = &cobra.Command{
+	Use:   "validate <config.yaml>",
+	Short: "Validate a benchmark config without executing",
+	Long:  `Parse and validate a benchmark YAML config. Reports errors or prints the resolved configuration.`,
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runBenchValidate(args[0])
+	},
+}
+
+var benchListCmd = &cobra.Command{
+	Use:   "list [directory]",
+	Short: "List benchmark suite files",
+	Long:  `Discover and list benchmark YAML files in a directory (default: ./benchmarks).`,
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		dir := "benchmarks"
+		if len(args) > 0 {
+			dir = args[0]
+		}
+		return runBenchList(dir)
+	},
+}
+
 func init() {
 	benchRunCmd.Flags().StringVar(&benchOutputDir, "output", "", "Output directory for results (default: ./bench-results/<timestamp>)")
 	benchRunCmd.Flags().BoolVar(&benchDryRun, "dry-run", false, "Parse and validate config without executing")
+	benchRunCmd.Flags().StringVar(&benchModelOveride, "model", "", "Override model for all scenarios (accepts aliases: opus, sonnet, etc.)")
 	benchCmd.AddCommand(benchRunCmd)
+	benchCmd.AddCommand(benchValidateCmd)
+	benchCmd.AddCommand(benchListCmd)
+}
+
+func loadAndResolveConfig(configPath string) (*bench.Config, error) {
+	cfg, err := bench.ParseConfigFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("loading config: %w", err)
+	}
+
+	// Apply CLI model override if provided
+	if benchModelOveride != "" {
+		cfg.ApplyModelOverride(benchModelOveride)
+	} else {
+		cfg.ResolveModels()
+	}
+
+	return cfg, nil
 }
 
 func runBench(configPath string) error {
-	cfg, err := bench.ParseConfigFile(configPath)
+	cfg, err := loadAndResolveConfig(configPath)
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		return err
 	}
 
 	totalRuns := len(cfg.Scenarios) * cfg.Trials
@@ -75,11 +131,7 @@ func runBench(configPath string) error {
 	fmt.Printf("  Total runs: %d\n", totalRuns)
 
 	if benchDryRun {
-		fmt.Println("\n--- DRY RUN (no agents spawned) ---")
-		for _, s := range cfg.Scenarios {
-			fmt.Printf("  %s: skill=%s model=%s eval=%q reworks=%d timeout=%s\n",
-				s.Name, s.Skill, s.Model, s.Eval, s.MaxReworks, s.Timeout)
-		}
+		printDryRun(cfg)
 		return nil
 	}
 
@@ -168,6 +220,89 @@ func runBench(configPath string) error {
 	return nil
 }
 
+func printDryRun(cfg *bench.Config) {
+	fmt.Println("\n--- DRY RUN (no agents spawned) ---")
+	for _, s := range cfg.Scenarios {
+		resolved := "(default)"
+		if s.ResolvedModel.ModelID != "" {
+			resolved = s.ResolvedModel.Format()
+		}
+		fmt.Printf("\n  %s:\n", s.Name)
+		fmt.Printf("    skill:    %s\n", s.Skill)
+		fmt.Printf("    model:    %s → %s\n", displayModelInput(s.Model, cfg.DefaultModel), resolved)
+		fmt.Printf("    eval:     %s\n", s.Eval)
+		fmt.Printf("    reworks:  %d\n", s.MaxReworks)
+		fmt.Printf("    timeout:  %s\n", s.Timeout)
+	}
+	fmt.Println()
+	fmt.Printf("Thresholds:\n")
+	fmt.Printf("    pass_rate:      %.0f%%\n", cfg.Thresholds.PassRate*100)
+	fmt.Printf("    max_error_rate: %.0f%%\n", cfg.Thresholds.MaxErrorRate*100)
+	fmt.Printf("    max_rework_rate:%.0f%%\n", cfg.Thresholds.MaxReworkRate*100)
+}
+
+// displayModelInput returns the model alias as written, or notes the default source.
+func displayModelInput(scenarioModel, defaultModel string) string {
+	if scenarioModel != "" {
+		return scenarioModel
+	}
+	if defaultModel != "" {
+		return defaultModel + " (suite default)"
+	}
+	return "(none)"
+}
+
+func runBenchValidate(configPath string) error {
+	cfg, err := loadAndResolveConfig(configPath)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Config: %s ✓\n", configPath)
+	fmt.Printf("  Name:      %s\n", cfg.Name)
+	fmt.Printf("  Scenarios: %d\n", len(cfg.Scenarios))
+	fmt.Printf("  Trials:    %d\n", cfg.Trials)
+	fmt.Printf("  Parallel:  %d\n", cfg.Parallel)
+	if cfg.DefaultModel != "" {
+		spec := model.Resolve(cfg.DefaultModel)
+		fmt.Printf("  Default model: %s → %s\n", cfg.DefaultModel, spec.Format())
+	}
+
+	fmt.Println("\nScenarios:")
+	for _, s := range cfg.Scenarios {
+		resolved := "(default)"
+		if s.ResolvedModel.ModelID != "" {
+			resolved = s.ResolvedModel.Format()
+		}
+		fmt.Printf("  %-20s model=%s  eval=%q  timeout=%s\n",
+			s.Name, resolved, s.Eval, s.Timeout)
+	}
+	return nil
+}
+
+func runBenchList(dir string) error {
+	suites, err := bench.ListSuites(dir)
+	if err != nil {
+		return err
+	}
+
+	if len(suites) == 0 {
+		fmt.Printf("No benchmark suites found in %s/\n", dir)
+		return nil
+	}
+
+	fmt.Printf("Benchmark suites in %s/:\n\n", dir)
+	for _, s := range suites {
+		if s.Error != "" {
+			fmt.Printf("  %-30s  ✗ %s\n", filepath.Base(s.Path), s.Error)
+			continue
+		}
+		fmt.Printf("  %-30s  %s (%d scenarios × %d trials)\n",
+			filepath.Base(s.Path), s.Name, s.Scenarios, s.Trials)
+	}
+	return nil
+}
+
 // gitOutput runs a git command and returns trimmed stdout, or empty string on error.
 func gitOutput(dir string, args ...string) string {
 	cmd := exec.Command("git", args...)
@@ -181,15 +316,15 @@ func gitOutput(dir string, args ...string) string {
 
 // makeBenchSpawnFn returns a SpawnFunc that shells out to `orch spawn`.
 func makeBenchSpawnFn(projectDir string) bench.SpawnFunc {
-	return func(skill, task, model string) (string, error) {
+	return func(skill, task, modelSpec string) (string, error) {
 		args := []string{"spawn", skill, task,
 			"--bypass-triage",
 			"--reason", "benchmark-execution-engine",
 			"--light",
 			"--no-track",
 		}
-		if model != "" {
-			args = append(args, "--model", model)
+		if modelSpec != "" {
+			args = append(args, "--model", modelSpec)
 		}
 
 		cmd := exec.Command("orch", args...)

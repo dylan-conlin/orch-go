@@ -164,7 +164,8 @@ func TestScanEvents_TimeFiltered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Legacy file is always included (no month metadata), but event-level filter catches it
+	// Legacy file is included (mtime is "now" which is after the query bound),
+	// but event-level filter skips the old event.
 	if count != 1 {
 		t.Errorf("expected 1 event in March, got %d", count)
 	}
@@ -246,6 +247,57 @@ func TestComputeLearning_WithRotatedFiles(t *testing.T) {
 	}
 	if sl.SuccessCount != 1 {
 		t.Errorf("SuccessCount = %d, want 1", sl.SuccessCount)
+	}
+}
+
+func TestEventFiles_LegacySkippedByMtime(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a legacy file and set its mtime to January 2025
+	legacy := filepath.Join(dir, "events.jsonl")
+	os.WriteFile(legacy, []byte(`{"type":"test","timestamp":1}`+"\n"), 0644)
+	oldTime := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+	os.Chtimes(legacy, oldTime, oldTime)
+
+	// Create a rotated file for March 2026
+	rot := filepath.Join(dir, "events-2026-03.jsonl")
+	os.WriteFile(rot, []byte(""), 0644)
+
+	// Query with after=March 1 2026 — legacy file (mtime Jan 2025) should be skipped
+	after := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	files, err := EventFiles(dir, after, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 {
+		t.Errorf("expected 1 file (only rotated), got %d: %v", len(files), files)
+	}
+	if len(files) > 0 && files[0] != rot {
+		t.Errorf("expected %s, got %s", rot, files[0])
+	}
+}
+
+func TestEventFiles_LegacyIncludedWhenRecent(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a legacy file with recent mtime (default — "now")
+	legacy := filepath.Join(dir, "events.jsonl")
+	os.WriteFile(legacy, []byte(`{"type":"test","timestamp":1}`+"\n"), 0644)
+
+	// Query with after=7 days ago — legacy file mtime is "now", should be included
+	after := time.Now().AddDate(0, 0, -7)
+	files, err := EventFiles(dir, after, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, f := range files {
+		if f == legacy {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected legacy file to be included when mtime is recent, got: %v", files)
 	}
 }
 

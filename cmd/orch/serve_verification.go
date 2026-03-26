@@ -26,41 +26,60 @@ type VerificationAPIResponse struct {
 }
 
 // overrideTrendCache caches CalculateOverrideTrend results to avoid re-reading
-// the entire events.jsonl file (62MB, 181K lines, ~750ms) on every request.
-// Override trends change very slowly (counts events over 7+ days), so a 60s TTL
-// eliminates >98% of file reads with negligible staleness.
+// event files on every request. Override trends change very slowly (counts events
+// over 7+ days), so a 10m TTL eliminates >99% of file reads.
+//
+// Stampede protection: when the cache expires, only one goroutine recomputes.
+// Concurrent requests during recomputation get the stale cached value instead
+// of all triggering their own full file scan.
 type overrideTrendCache struct {
-	mu        sync.RWMutex
+	mu        sync.Mutex
 	trend     *verify.OverrideTrend
 	fetchedAt time.Time
 	ttl       time.Duration
-	days      int // track which window was cached
+	days      int  // track which window was cached
+	computing bool // true while one goroutine is recomputing
 }
 
 var globalOverrideTrendCache = &overrideTrendCache{
-	ttl: 60 * time.Second,
+	ttl: 10 * time.Minute,
 }
 
 func (c *overrideTrendCache) get(days int) (*verify.OverrideTrend, error) {
-	c.mu.RLock()
+	c.mu.Lock()
+
+	// Cache hit — fresh data
 	if c.trend != nil && c.days == days && time.Since(c.fetchedAt) < c.ttl {
 		result := c.trend
-		c.mu.RUnlock()
+		c.mu.Unlock()
 		return result, nil
 	}
-	c.mu.RUnlock()
+
+	// Cache miss but another goroutine is already recomputing — return stale data
+	if c.computing && c.trend != nil {
+		result := c.trend
+		c.mu.Unlock()
+		return result, nil
+	}
+
+	// We're the one to recompute
+	c.computing = true
+	c.mu.Unlock()
 
 	trend, err := verify.CalculateOverrideTrend(days)
+
+	c.mu.Lock()
+	c.computing = false
+	if err == nil {
+		c.trend = trend
+		c.days = days
+		c.fetchedAt = time.Now()
+	}
+	c.mu.Unlock()
+
 	if err != nil {
 		return nil, err
 	}
-
-	c.mu.Lock()
-	c.trend = trend
-	c.days = days
-	c.fetchedAt = time.Now()
-	c.mu.Unlock()
-
 	return trend, nil
 }
 

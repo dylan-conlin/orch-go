@@ -1,0 +1,46 @@
+verification:
+  automated:
+    - name: "bench package tests"
+      command: "go test ./pkg/bench/ -count=1"
+      expected: "PASS (39 tests)"
+      status: pass
+
+    - name: "build succeeds"
+      command: "go build ./cmd/orch/"
+      expected: "no errors"
+      status: pass
+
+    - name: "bench validate subcommand"
+      command: "go run ./cmd/orch bench validate benchmarks/worker-reliability.yaml"
+      expected: "Config: benchmarks/worker-reliability.yaml ✓ with resolved models"
+      status: pass
+
+    - name: "bench list subcommand"
+      command: "go run ./cmd/orch bench list benchmarks/"
+      expected: "Lists worker-reliability.yaml with 3 scenarios × 3 trials"
+      status: pass
+
+    - name: "bench dry-run with model resolution"
+      command: "go run ./cmd/orch bench run benchmarks/worker-reliability.yaml --dry-run"
+      expected: "Shows opus → anthropic/claude-opus-4-5-20251101 resolution"
+      status: pass
+
+    - name: "bench dry-run with --model override"
+      command: "go run ./cmd/orch bench run benchmarks/worker-reliability.yaml --dry-run --model gpt-5"
+      expected: "All scenarios show gpt-5 → openai/gpt-5.2"
+      status: pass
+
+  manual:
+    - name: "live benchmark execution"
+      description: "Run bench with real agents to verify spawn/wait/eval cycle"
+      status: not-tested
+      reason: "Requires live OpenCode server and agent infrastructure"
+
+  key_behaviors:
+    - "Model aliases (opus, sonnet, gpt-5, etc.) resolve to full provider/model IDs"
+    - "Suite-level default_model applies to scenarios without explicit model"
+    - "--model CLI flag overrides all scenario models"
+    - "Duplicate scenario names are rejected at parse time"
+    - "Invalid timeout formats are rejected at parse time"
+    - "bench list discovers YAML files and shows suite metadata"
+    - "Dry-run shows full resolution chain (alias → provider/modelID)"

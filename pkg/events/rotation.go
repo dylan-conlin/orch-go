@@ -31,10 +31,15 @@ func EventFiles(dir string, after, before time.Time) ([]string, error) {
 	// Collect candidate files
 	var files []string
 
-	// Legacy events.jsonl (contains events from before rotation started)
+	// Legacy events.jsonl (contains events from before rotation started).
+	// Skip it when its mtime is before the query's "after" bound — if no new
+	// events have been written to the legacy file since before the window,
+	// it cannot contain any relevant events.
 	legacy := filepath.Join(dir, "events.jsonl")
-	if _, err := os.Stat(legacy); err == nil {
-		files = append(files, legacy)
+	if info, err := os.Stat(legacy); err == nil {
+		if after.IsZero() || !info.ModTime().Before(after) {
+			files = append(files, legacy)
+		}
 	}
 
 	// Rotated files: events-YYYY-MM.jsonl
