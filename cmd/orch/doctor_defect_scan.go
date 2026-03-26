@@ -175,8 +175,6 @@ var (
 		"checkStalledSessions":   true, // intentionally OpenCode-only (OpenCode sessions)
 		"runSessionsCrossReference": true,
 		// Backend-specific helpers (intentionally single-backend by design)
-		"verifyOpencodeDeliverables":  true, // backend-specific verification
-		"verifyTmuxDeliverables":      true, // backend-specific verification
 		"SpawnClaude":                 true, // Claude CLI spawn (tmux by design)
 		"AbandonClaude":              true, // Claude CLI cleanup (tmux by design)
 		"startHeadlessSession":       true, // OpenCode headless (by design)

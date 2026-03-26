@@ -227,11 +227,11 @@ func TestParseFunctions(t *testing.T) {
 	content := `package main
 
 func simpleFunc() {
-	client.ListSessions("")
+	client.ListSessions(context.Background(), "")
 }
 
 func dualFunc() {
-	client.ListSessions("")
+	client.ListSessions(context.Background(), "")
 	tmux.ListWindows("workers")
 }
 
@@ -309,7 +309,7 @@ func TestScanForDefects_Integration(t *testing.T) {
 	testFile := `package main
 
 func countActiveSessions() {
-	client.ListSessions("")
+	client.ListSessions(context.Background(), "")
 	// No tmux check - Class 2 blind spot
 }
 

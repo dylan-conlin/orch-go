@@ -234,9 +234,9 @@ func isOrchestrator(tier string) bool {
 // manage sessions rather than issues.
 //
 // The projectDir is used to verify that constraint patterns match actual files.
-func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier, serverURL string) (VerificationResult, error) {
+func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (VerificationResult, error) {
 	// Delegate to the cached version without pre-fetched comments
-	return VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, serverURL, nil)
+	return VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, nil)
 }
 
 // VerifyCompletionForReview is a lightweight verification for orch review command.
@@ -246,7 +246,7 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier, serverURL st
 //
 // Uses the level-aware verification path (V0-V3) for consistent gate behavior
 // with VerifyCompletionFullWithComments used by orch complete.
-func VerifyCompletionForReview(beadsID, workspacePath, tier, serverURL string, comments []Comment) (VerificationResult, error) {
+func VerifyCompletionForReview(beadsID, workspacePath, tier string, comments []Comment) (VerificationResult, error) {
 	// Determine tier if not provided
 	if tier == "" && workspacePath != "" {
 		tier = ReadTierFromWorkspace(workspacePath)
@@ -266,14 +266,6 @@ func VerifyCompletionForReview(beadsID, workspacePath, tier, serverURL string, c
 
 	result.VerifyLevel = verifyLevel
 
-	// Verify backend deliverables (opencode transcript or tmux capture)
-	if !isOrchestrator(tier) && workspacePath != "" && result.Passed {
-		backendResult := VerifyBackendDeliverables(workspacePath, beadsID, serverURL, "")
-		if backendResult != nil {
-			result.Warnings = append(result.Warnings, backendResult.Warnings...)
-		}
-	}
-
 	return result, nil
 }
 
@@ -285,7 +277,7 @@ func VerifyCompletionForReview(beadsID, workspacePath, tier, serverURL string, c
 // Each level is a strict superset: V0 ⊂ V1 ⊂ V2 ⊂ V3.
 // The level is read from the workspace manifest; if not set, it falls back to
 // inference from skill name (for backward compatibility with pre-V0-V3 workspaces).
-func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, serverURL string, comments []Comment) (VerificationResult, error) {
+func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier string, comments []Comment) (VerificationResult, error) {
 	// Determine tier if not provided (needed for orchestrator check below)
 	if tier == "" && workspacePath != "" {
 		tier = ReadTierFromWorkspace(workspacePath)
@@ -318,15 +310,6 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 	// Continue checking ALL gates even if earlier ones failed.
 	// This collects all failures at once so callers can fix everything in one pass
 	// instead of retrying 8+ times for sequential gate failures.
-
-	// Verify backend deliverables (opencode transcript or tmux capture)
-	// This is informational (warnings only), not gated by level
-	if !isOrchestrator(tier) && workspacePath != "" {
-		backendResult := VerifyBackendDeliverables(workspacePath, beadsID, serverURL, "")
-		if backendResult != nil {
-			result.Warnings = append(result.Warnings, backendResult.Warnings...)
-		}
-	}
 
 	// Skip remaining gates if no workspace or project dir
 	if workspacePath == "" || projectDir == "" {

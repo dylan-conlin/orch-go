@@ -231,7 +231,6 @@ func VerifyCompletionCompliance(agent CompletedAgent, config CompletionConfig) C
 		agent.WorkspacePath,
 		effectiveProjectDir,
 		tier,
-		config.ServerURL,
 		comments,
 	)
 	if err != nil {

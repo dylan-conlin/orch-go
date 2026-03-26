@@ -1728,7 +1728,7 @@ func TestVerifyCompletionFullCollectsAllGateFailures(t *testing.T) {
 			{Text: "Phase: Planning - just started"},
 		}
 
-		result, err := VerifyCompletionFullWithComments("test-123", workspacePath, tmpDir, "", "", comments)
+		result, err := VerifyCompletionFullWithComments("test-123", workspacePath, tmpDir, "", comments)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1780,7 +1780,7 @@ func TestVerifyCompletionFullCollectsAllGateFailures(t *testing.T) {
 			{Text: "Phase: Implementing - still working"},
 		}
 
-		result, err := VerifyCompletionFullWithComments("test-123", workspacePath, tmpDir, "", "", comments)
+		result, err := VerifyCompletionFullWithComments("test-123", workspacePath, tmpDir, "", comments)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
