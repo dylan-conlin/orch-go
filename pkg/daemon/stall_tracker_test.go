@@ -110,6 +110,74 @@ func TestStallTracker_CleanStale(t *testing.T) {
 	}
 }
 
+// TestStallTracker_FrequentPollingDetectsStall verifies that stall detection works
+// even when Update is called more frequently than the threshold. Before the fix,
+// each Update call would reset the snapshot timestamp, preventing stall detection
+// when poll interval < threshold.
+func TestStallTracker_FrequentPollingDetectsStall(t *testing.T) {
+	tracker := NewStallTracker(500 * time.Millisecond)
+
+	sessionID := "test-frequent-poll"
+	tokens := &execution.TokenStats{
+		InputTokens:  1000,
+		OutputTokens: 500,
+	}
+
+	// First update - establishes baseline
+	if tracker.Update(sessionID, tokens) {
+		t.Error("First update should not be stalled")
+	}
+
+	// Poll rapidly with unchanged tokens — simulates dashboard polling
+	for i := 0; i < 5; i++ {
+		time.Sleep(50 * time.Millisecond)
+		tracker.Update(sessionID, tokens)
+	}
+
+	// At this point ~250ms have elapsed — should NOT be stalled yet
+	if tracker.IsStalled(sessionID, tokens) {
+		t.Error("Should not be stalled before threshold (only ~250ms elapsed)")
+	}
+
+	// Wait for remaining time to exceed threshold
+	time.Sleep(300 * time.Millisecond)
+
+	// Now ~550ms have elapsed with unchanged tokens — SHOULD be stalled
+	isStalled := tracker.Update(sessionID, tokens)
+	if !isStalled {
+		t.Error("Agent with no token progress should be stalled after threshold, even with frequent polling")
+	}
+}
+
+// TestStallTracker_SlowButActiveNotStalled verifies that agents making occasional
+// progress (tokens increase periodically) are NOT flagged as stalled, even when
+// their rate is slow.
+func TestStallTracker_SlowButActiveNotStalled(t *testing.T) {
+	tracker := NewStallTracker(500 * time.Millisecond)
+
+	sessionID := "test-slow-active"
+	tokens := &execution.TokenStats{
+		InputTokens:  1000,
+		OutputTokens: 500,
+	}
+
+	// First update
+	tracker.Update(sessionID, tokens)
+
+	// Agent emits activity every ~400ms (just under threshold)
+	for i := 0; i < 5; i++ {
+		time.Sleep(400 * time.Millisecond)
+		tokens = &execution.TokenStats{
+			InputTokens:  1000 + (i+1)*100, // Slow but steady progress
+			OutputTokens: 500,
+		}
+		isStalled := tracker.Update(sessionID, tokens)
+		if isStalled {
+			t.Errorf("Iteration %d: agent making progress should not be stalled", i)
+		}
+	}
+}
+
 func TestStallTracker_MultipleAgents(t *testing.T) {
 	tracker := NewStallTracker(1 * time.Second)
 

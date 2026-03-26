@@ -54,23 +54,26 @@ func (st *StallTracker) Update(sessionID string, tokens *execution.TokenStats) b
 	// Check if we have a previous snapshot
 	prev, exists := st.snapshots[sessionID]
 
-	// Store current snapshot
-	st.snapshots[sessionID] = TokenSnapshot{
-		TotalTokens: totalTokens,
-		Timestamp:   now,
-	}
-
-	// If no previous snapshot, agent is not stalled (first time seeing it)
+	// If no previous snapshot, store initial snapshot (first time seeing this agent)
 	if !exists {
+		st.snapshots[sessionID] = TokenSnapshot{
+			TotalTokens: totalTokens,
+			Timestamp:   now,
+		}
 		return false
 	}
 
-	// If tokens have increased, agent is making progress (not stalled)
+	// If tokens have increased, agent is making progress — reset the timer
 	if totalTokens > prev.TotalTokens {
+		st.snapshots[sessionID] = TokenSnapshot{
+			TotalTokens: totalTokens,
+			Timestamp:   now,
+		}
 		return false
 	}
 
-	// Tokens unchanged - check how long it's been stalled
+	// Tokens unchanged — do NOT update the snapshot timestamp.
+	// This lets the stall duration accumulate across multiple polls.
 	timeSinceLastChange := now.Sub(prev.Timestamp)
 	return timeSinceLastChange >= st.stallThreshold
 }
