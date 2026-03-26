@@ -1,161 +1,160 @@
 # orch-go
 
-Go CLI for OpenCode orchestration - spawn sessions, monitor events, query sessions, and manage agent lifecycle.
+A coordination and comprehension layer for multi-model AI agent work.
 
-## Installation
+Most agent tooling treats agent output as disposable: run the agent, get the code change, discard the context. orch-go treats what agents *learn* as a first-class resource. Threads organize questions. Synthesis and briefs make agent work legible without re-reading sessions. Claims, models, and decisions accumulate structured knowledge over time. The system answers three questions every day: **what changed? what was learned? what remains open?**
 
-Build the CLI using the Cobra-based implementation (recommended):
+Execution (spawning agents, routing to models, managing sessions) is necessary substrate, but it is not the center. The center is making agent output compound into durable understanding that survives model changes, client migrations, and context window limits.
 
-```bash
-# Build from cmd/orch directory
-go build -o orch-go ./cmd/orch
+## How It Works
 
-# Or use make
-make build
-```
+### Threads: the organizing spine
 
-The legacy monolithic `main.go` at project root is deprecated and only supports `spawn`, `monitor`, and `ask` commands.
-
-## Usage
-
-All commands support a global `--server` flag to specify the OpenCode server URL (default: `http://localhost:4096`).
-
-### Spawn a new session
-
-Spawn a new OpenCode session with skill context. By default, spawns the agent in a tmux window and returns immediately. Use `--inline` to run in the current terminal (blocking).
+Work exists in service of questions, not the other way around. A thread tracks a line of thinking across multiple agent sessions, investigations, and decisions. When an agent finishes, its findings feed back into the thread that motivated the work.
 
 ```bash
-# Basic spawn with a task
-orch-go spawn investigation "explore the codebase"
-
-# Spawn with feature-impl phases
-orch-go spawn feature-impl "add new spawn command" --phases implementation,validation
-
-# Spawn linked to a beads issue
-orch-go spawn --issue proj-123 feature-impl "implement the feature"
-
-# Run inline (blocking)
-orch-go spawn --inline investigation "explore codebase"
+orch thread new "How does token refresh interact with multi-account routing?"
+orch thread list                    # See active threads with linked work
+orch thread show <thread-id>        # Thread with evidence, decisions, open questions
 ```
 
-**Flags:**
-- `--issue <id>`: Beads issue ID for tracking
-- `--phases <list>`: Feature-impl phases (e.g., implementation,validation)
-- `--mode <tdd|direct>`: Implementation mode (default: tdd)
-- `--validation <none|tests|smoke-test>`: Validation level (default: tests)
-- `--inline`: Run inline (blocking) instead of in tmux
+### Synthesis and briefs: async comprehension
 
-### Send a message to an existing session
-
-Send a message to an existing OpenCode session. The session can be running or completed. Response text is streamed to stdout as it's received.
+Every agent session that completes produces a brief — a half-page narrative of what happened, what was learned, and what tension remains. Briefs are written for a human reading without context, not for the agent that produced them.
 
 ```bash
-# Using 'send' command
-orch-go send ses_abc123 "what files did you modify?"
-
-# Using 'ask' (alias for send)
-orch-go ask ses_xyz789 "can you explain the changes?"
+orch comprehension                  # Pending items in the comprehension queue
+orch review done                    # Batch review of completed work
+orch review synthesize              # Synthesize patterns across recent completions
 ```
 
-### Monitor sessions for completion
+### Knowledge composition: claims, models, decisions
 
-Monitor the OpenCode server for session events and send notifications on completion.
+Agents produce investigations. Investigations generate probes against models (structured claims about how the system works). Probes that confirm or contradict claims update the model. Decisions record resolved branches. The knowledge base grows through use, not through documentation sprints.
 
 ```bash
-orch-go monitor
-
-# Output:
-# Monitoring SSE events at http://localhost:4096/event...
-# [session.status] {"status":"busy","session_id":"ses_abc123"}
-# [session.status] {"status":"idle","session_id":"ses_abc123"}
-# Session ses_abc123 completed!
+orch kb ask "how does spawn routing work?"   # Query the knowledge base
+orch kb claims                               # View tracked claims
+orch kb audit                                # Check knowledge health
 ```
 
-### List active sessions
+### Verification and routing: trust layer
 
-List all active OpenCode sessions with their status, title, directory, and last update time.
+Completion isn't just "agent said it's done." The verification pipeline checks phase reporting, test evidence, synthesis quality, duplication, and accretion boundaries before closing work. This is how comprehension stays trustworthy.
 
 ```bash
-orch-go status
-
-# Output (example):
-# SESSION ID                         TITLE                          DIRECTORY                                 UPDATED
-# ------------------------------------------------------------------------------------------------------------------
-# ses_abc123                         orch-go-1703001600             /Users/me/project                         2025-12-19 14:30:05
-# ses_xyz789                         investigation-explore          /Users/me/other                          2025-12-19 14:25:10
+orch complete proj-123              # Verify and close (two human gates)
+orch complete proj-123 --headless   # Non-interactive (daemon-triggered)
 ```
 
-### Complete an agent and close beads issue
+## Execution Substrate
 
-Complete an agent's work by verifying Phase: Complete and closing the beads issue. Checks that the agent has reported "Phase: Complete" via beads comments before closing.
+The system spawns agents, routes them to models, manages sessions, and monitors progress. This layer is designed to be portable — it should not depend on any single model provider or agent client.
+
+### Spawning agents
 
 ```bash
-# Complete with verification
-orch-go complete proj-123
-
-# Complete with custom reason
-orch-go complete proj-123 --reason "All tests passing"
-
-# Force complete (skip phase verification)
-orch-go complete proj-123 --force
+orch spawn feature-impl "implement X" --issue proj-123   # Spawn from issue
+orch spawn investigation "how does X work?" --explore     # Parallel decomposition
+orch work proj-123 --inline                               # Blocking TUI
 ```
 
-**Flags:**
-- `--force`, `-f`: Skip phase verification
-- `--reason <text>`, `-r`: Reason for closing (default: uses phase summary)
-
-### View ecosystem changelog
-
-Aggregate git commits across all repos in Dylan's orchestration ecosystem, grouped by date and categorized by type (skills, kb, cmd, pkg, etc.).
+### Monitoring and lifecycle
 
 ```bash
-# Show last 7 days across all ecosystem repos
-orch-go changelog
-
-# Show last 14 days
-orch-go changelog --days 14
-
-# Filter to a specific repo
-orch-go changelog --project orch-go
-
-# Output as JSON (for scripting)
-orch-go changelog --json
+orch status                         # Active agents across projects
+orch daemon run                     # Autonomous triage and spawn
+orch wait proj-123 --timeout 30m    # Wait for completion
+orch clean                          # Clean up finished agents
 ```
 
-**Flags:**
-- `--days <n>`: Number of days to include (default: 7)
-- `--project <name>`: Project to filter, or "all" for all repos (default: all)
-- `--json`: Output as JSON instead of human-readable format
+### Backend routing
 
-**Output includes:**
-- Summary statistics (total commits, repo count)
-- Commits grouped by date
-- Category breakdown (skills, kb, cmd, pkg, web, docs, config)
-- Semantic labels for breaking changes, behavioral vs documentation changes
-- Blast radius indicators (local, cross-skill, infrastructure)
+Agents route to different backends based on model:
+- **Claude CLI** (default) — Anthropic models via tmux, crash-resistant
+- **OpenCode API** — non-Anthropic models, headless, high concurrency
 
-See [Changelog System Documentation](docs/changelog-system.md) for details on semantic parsing, adding new repos, and API integration.
+```bash
+orch spawn --model gpt-5 feature-impl "task"   # Routes to OpenCode
+orch account switch work                         # Switch accounts
+```
 
-## Event Logging
+## Architecture
 
-All events are logged to `~/.orch/events.jsonl` in JSONL format:
+```
+                ┌─────────────────────────────────┐
+                │           CORE                   │
+                │                                  │
+                │  threads ─ synthesis ─ briefs    │
+                │  claims ─ models ─ decisions     │
+                │  comprehension queue ─ review    │
+                │  verification ─ routing          │
+                │                                  │
+                │   "what changed? what was        │
+                │    learned? what remains open?"   │
+                └──────────────┬───────────────────┘
+                               │
+                ┌─────────────┴───────────────────┐
+                │         SUBSTRATE                │
+                │                                  │
+                │  spawn ─ daemon ─ backends       │
+                │  tmux ─ opencode ─ accounts      │
+                │  beads ─ execution observability  │
+                └──────────────┬───────────────────┘
+                               │
+                ┌─────────────┴───────────────────┐
+                │       EXTERNAL SERVICES          │
+                │                                  │
+                │  Claude API / OpenAI / Gemini    │
+                │  OpenCode Server (:4096)         │
+                │  bd CLI (beads issue tracking)   │
+                └─────────────────────────────────┘
+```
 
-```json
-{"type":"session.spawned","session_id":"ses_abc123","timestamp":1703001600,"data":{"prompt":"say hello","title":"orch-go-1703001600"}}
-{"type":"session.status","session_id":"ses_abc123","timestamp":1703001601,"data":{"status":"idle"}}
-{"type":"session.completed","session_id":"ses_abc123","timestamp":1703001602}
+The core layer is where the differentiated value lives. The substrate is portable and replaceable. Many tools can run agents — few treat agent-produced knowledge as composable.
+
+## Development
+
+```bash
+make build      # Build
+make test       # Test
+make install    # Install to ~/bin/orch
+orch version    # Verify version
+```
+
+### Project structure
+
+```
+cmd/orch/           # CLI commands (Cobra-based)
+pkg/                # Library packages
+  thread/           # Thread management
+  claims/           # Claim tracking
+  completion/       # Completion pipeline
+  verify/           # Verification gates
+  digest/           # Knowledge artifact change digest
+  spawn/            # Spawn context and gates
+  model/            # Model alias resolution
+  daemon/           # Autonomous processing
+  opencode/         # OpenCode HTTP client
+  ...
+.kb/                # Project knowledge base (models, guides, decisions, investigations)
+.kb/global/         # Cross-project knowledge (shared models and guides)
+skills/src/         # Skill sources (deployed via skillc)
+.orch/              # Orchestration state (workspaces, config, templates)
 ```
 
 ## Requirements
 
-- OpenCode running at `http://localhost:4096` (default)
-- macOS for desktop notifications (uses beeep library)
+- Go 1.21+
+- macOS (desktop notifications via beeep)
+- `bd` CLI for issue tracking (beads)
+- Claude Code CLI or OpenCode server for agent execution
 
-## API Patterns
+## Further Reading
 
-Based on validated manual testing:
-
-1. **Spawn**: `opencode run --attach http://localhost:4096 --format json --title "title" "prompt"`
-2. **Q&A**: `opencode run --attach http://localhost:4096 --session ses_xxx --format json "question"`
-3. **SSE**: `curl http://localhost:4096/event` (server.connected, session.status, etc.)
-4. **Completion**: Watch for `session.status` changing from `busy` to `idle`
+- `.kb/guides/architecture-overview.md` — full system architecture with core/substrate/adjacent boundary
+- `.kb/guides/cli.md` — complete CLI reference
+- `.kb/guides/spawn.md` — spawn flow, flags, and context generation
+- `.kb/guides/agent-lifecycle.md` — agent states and transitions
+- `.kb/guides/daemon.md` — autonomous triage and OODA loop
+- `.kb/decisions/2026-03-26-thread-comprehension-layer-is-primary-product.md` — the product boundary decision
