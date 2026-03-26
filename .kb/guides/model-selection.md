@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for model selection, aliases, and provider architecture in orch-go. Synthesized from 10 investigations spanning Dec 20, 2025 - Jan 4, 2026.
 
-**Last verified:** Feb 26, 2026
+**Last verified:** Mar 26, 2026
 
 ---
 
@@ -18,6 +18,7 @@
 | `flash` | google/gemini-2.5-flash | Cost-sensitive, alternative provider |
 | `flash3` | google/gemini-3-flash-preview | Alternative Gemini 3 flash alias |
 | `pro` | google/gemini-2.0-pro | Gemini with higher reasoning capability |
+| `gpt-5.4` / `gpt5-latest` | openai/gpt-5.4 | OpenAI frontier model with 1.05M context |
 
 ### Spawn Examples
 
@@ -233,6 +234,14 @@ When Claude Max hits rate limits:
 | Pro 2.0 | ~$1.25-2.00/MTok | Variable |
 
 **Gemini advantage:** Much cheaper for large context work.
+
+### OpenAI Pricing
+
+| Model | Input | Cached Input | Output | Context | Notes |
+|-------|-------|--------------|--------|---------|-------|
+| GPT-5.4 | $2.50/MTok | $0.25/MTok | $15.00/MTok | 1.05M | >272K input tokens trigger 2x input / 1.5x output long-context pricing for the full session |
+
+**When to use:** `gpt-5.4` / `gpt5-latest` is the highest-context OpenAI option currently exposed in orch-go. Prefer it when you specifically need OpenAI behavior or a >200K context window on the OpenCode backend.
 
 ---
 
