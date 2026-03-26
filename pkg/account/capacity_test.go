@@ -830,3 +830,50 @@ func TestAutoSwitchCustomThresholds(t *testing.T) {
 		t.Errorf("6%% improvement SHOULD trigger with 5%% delta requirement")
 	}
 }
+
+func TestCapacityInfo_IsOpusHealthy(t *testing.T) {
+	tests := []struct {
+		name     string
+		capacity CapacityInfo
+		want     bool
+	}{
+		{
+			name:     "opus healthy",
+			capacity: CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 60, SevenDayOpusUsed: 40, SevenDayOpusRemaining: 60},
+			want:     true,
+		},
+		{
+			name:     "opus exhausted",
+			capacity: CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 60, SevenDayOpusUsed: 95, SevenDayOpusRemaining: 5},
+			want:     false,
+		},
+		{
+			name:     "opus at threshold",
+			capacity: CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 60, SevenDayOpusUsed: 90, SevenDayOpusRemaining: 10},
+			want:     false, // threshold is >10
+		},
+		{
+			name:     "no opus data falls back to generic health (healthy)",
+			capacity: CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 60},
+			want:     true,
+		},
+		{
+			name:     "no opus data falls back to generic health (unhealthy)",
+			capacity: CapacityInfo{FiveHourRemaining: 10, SevenDayRemaining: 10},
+			want:     false,
+		},
+		{
+			name:     "error returns false",
+			capacity: CapacityInfo{Error: "auth failed"},
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.capacity.IsOpusHealthy(); got != tt.want {
+				t.Errorf("IsOpusHealthy() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

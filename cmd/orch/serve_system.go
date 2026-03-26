@@ -68,6 +68,14 @@ func handleUsage(w http.ResponseWriter, r *http.Request) {
 		if weeklyReset != "" {
 			resp.WeeklyReset = weeklyReset
 		}
+		// Populate Opus-specific weekly usage if available
+		if capacity.SevenDayOpusUsed > 0 || capacity.SevenDayOpusRemaining > 0 {
+			resp.WeeklyOpus = &capacity.SevenDayOpusUsed
+			opusReset := timeUntilReset(capacity.SevenDayOpusResets)
+			if opusReset != "" {
+				resp.WeeklyOpusReset = opusReset
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

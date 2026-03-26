@@ -37,6 +37,16 @@ type CapacityInfo struct {
 	// SevenDayResets is when the weekly limit resets.
 	SevenDayResets *time.Time
 
+	// SevenDayOpusUsed is the Opus-specific weekly utilization (0-100).
+	// This tracks Opus usage separately from generic Claude capacity.
+	// When SevenDayOpusRemaining is low but SevenDayRemaining is healthy,
+	// Sonnet is still viable on the same account.
+	SevenDayOpusUsed float64
+	// SevenDayOpusRemaining is the remaining Opus-specific weekly capacity (0-100).
+	SevenDayOpusRemaining float64
+	// SevenDayOpusResets is when the Opus-specific weekly limit resets.
+	SevenDayOpusResets *time.Time
+
 	// Email is the account email (if available).
 	Email string
 	// Error is set if capacity fetch failed.
@@ -65,6 +75,20 @@ func (c *CapacityInfo) IsCritical() bool {
 		return true
 	}
 	return c.FiveHourRemaining < 5 || c.SevenDayRemaining < 5
+}
+
+// IsOpusHealthy returns true if the Opus-specific weekly capacity is above 10%.
+// When Opus capacity data is not available (SevenDayOpusUsed == 0 and SevenDayOpusRemaining == 0),
+// falls back to the generic IsHealthy check (assumes Opus is available if Claude is healthy).
+func (c *CapacityInfo) IsOpusHealthy() bool {
+	if c.Error != "" {
+		return false
+	}
+	// If the API didn't return Opus-specific data, fall back to generic health
+	if c.SevenDayOpusUsed == 0 && c.SevenDayOpusRemaining == 0 {
+		return c.IsHealthy()
+	}
+	return c.SevenDayOpusRemaining > 10
 }
 
 // usageAPIResponse represents the raw API response structure.
@@ -242,6 +266,17 @@ func fetchCapacityWithToken(accessToken string) (*CapacityInfo, error) {
 		if apiResp.SevenDay.ResetsAt != "" {
 			if t, err := time.Parse(time.RFC3339, apiResp.SevenDay.ResetsAt); err == nil {
 				capacity.SevenDayResets = &t
+			}
+		}
+	}
+
+	// Parse 7-day Opus-specific limit
+	if apiResp.SevenDayOpus != nil {
+		capacity.SevenDayOpusUsed = apiResp.SevenDayOpus.Utilization
+		capacity.SevenDayOpusRemaining = 100.0 - apiResp.SevenDayOpus.Utilization
+		if apiResp.SevenDayOpus.ResetsAt != "" {
+			if t, err := time.Parse(time.RFC3339, apiResp.SevenDayOpus.ResetsAt); err == nil {
+				capacity.SevenDayOpusResets = &t
 			}
 		}
 	}
