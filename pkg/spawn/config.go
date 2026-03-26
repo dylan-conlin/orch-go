@@ -284,8 +284,16 @@ type Config struct {
 	// When 0, no limit is applied (Claude CLI default).
 	MaxTurns int
 
-	// SpawnMode specifies the spawn backend: "opencode" or "claude"
+	// SpawnMode specifies the spawn backend: "opencode", "claude", or "openclaw"
 	SpawnMode string
+
+	// OpenClawURL is the WebSocket URL for the OpenClaw gateway (e.g., "ws://127.0.0.1:18789").
+	// Only used when SpawnMode is "openclaw".
+	OpenClawURL string
+
+	// OpenClawToken is the auth token for the OpenClaw gateway.
+	// Only used when SpawnMode is "openclaw".
+	OpenClawToken string
 
 	// Scope specifies the session scope: "small", "medium", or "large"
 	// Parsed from task description or set via --scope flag

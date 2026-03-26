@@ -30,6 +30,7 @@ func projectMetaFromConfig(meta *config.ConfigMeta) spawn.ProjectConfigMeta {
 		SpawnMode:     meta.Explicit["spawn_mode"],
 		ClaudeModel:   meta.ExplicitClaude["model"],
 		OpenCodeModel: meta.ExplicitOpenCode["model"],
+		OpenClawModel: meta.ExplicitOpenClaw["model"],
 		Models:        meta.Explicit["models"],
 	}
 }
@@ -235,5 +236,21 @@ func resolveOpsecPort(projectCfg *config.Config) int {
 		return projectCfg.Opsec.ProxyPort
 	}
 	return spawn.DefaultOpsecPort
+}
+
+// resolveOpenClawURL returns the OpenClaw gateway URL from project config, or empty if not set.
+func resolveOpenClawURL(projectCfg *config.Config) string {
+	if projectCfg != nil && projectCfg.OpenClaw.URL != "" {
+		return projectCfg.OpenClaw.URL
+	}
+	return ""
+}
+
+// resolveOpenClawToken returns the OpenClaw auth token from project config, or empty if not set.
+func resolveOpenClawToken(projectCfg *config.Config) string {
+	if projectCfg != nil && projectCfg.OpenClaw.Token != "" {
+		return projectCfg.OpenClaw.Token
+	}
+	return ""
 }
 

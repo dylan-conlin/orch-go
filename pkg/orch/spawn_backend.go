@@ -24,8 +24,8 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 	explicitModel := spawnModel != "" || userDefaultModelExplicit
 	if explicitBackend {
 		backend = backendFlag
-		if backend != "claude" && backend != "opencode" {
-			return "", fmt.Errorf("invalid --backend value: %s (must be 'claude' or 'opencode')", backend)
+		if backend != "claude" && backend != "opencode" && backend != "openclaw" {
+			return "", fmt.Errorf("invalid --backend value: %s (must be 'claude', 'opencode', or 'openclaw')", backend)
 		}
 		if isInfrastructureWork(task, beadsID) && backend != "claude" {
 			fmt.Fprintf(os.Stderr, "⚠️  Infrastructure work detected but respecting explicit --backend %s\n", backend)

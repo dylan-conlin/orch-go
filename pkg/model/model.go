@@ -48,11 +48,13 @@ func (m ModelSpec) IsAnthropicModel() bool {
 }
 
 // IsReasoningModel returns true if the model has reasoning/chain-of-thought capability.
-// This includes o3, o3-mini, deepseek-reasoner, and codex models.
+// This includes o3, o3-mini, deepseek-reasoner, codex models, and gpt-5.4.
 func (m ModelSpec) IsReasoningModel() bool {
 	id := strings.ToLower(m.ModelID)
 	switch {
 	case strings.HasPrefix(id, "o3"):
+		return true
+	case id == "gpt-5.4":
 		return true
 	case id == "deepseek-reasoner":
 		return true

@@ -60,6 +60,7 @@ const (
 const (
 	BackendClaude   = "claude"
 	BackendOpenCode = "opencode"
+	BackendOpenClaw = "openclaw"
 
 	SpawnModeHeadless = "headless"
 	SpawnModeTmux     = "tmux"
@@ -111,6 +112,7 @@ type ProjectConfigMeta struct {
 	SpawnMode     bool
 	ClaudeModel   bool
 	OpenCodeModel bool
+	OpenClawModel bool
 	Models        bool
 }
 
@@ -205,8 +207,9 @@ func Resolve(input ResolveInput) (ResolvedSpawnSettings, error) {
 	// the backend. This generalizes the BugClass14 symmetric auto-resolve to work
 	// for any backend source (project config, user config, heuristic, default).
 	// CLI --backend remains as hard override.
+	// OpenClaw supports all providers natively, so skip routing when openclaw is selected.
 	// Decision: kb-2d62ef
-	if result.Backend.Source != SourceCLI {
+	if result.Backend.Source != SourceCLI && result.Backend.Value != BackendOpenClaw {
 		if required, ok := modelBackendRequirement(resolvedModel); ok && required != result.Backend.Value {
 			// Skip auto-routing if user explicitly allows anthropic on opencode
 			if !(resolvedModel.Provider == "anthropic" && allowAnthropicOpenCode) {
@@ -270,7 +273,7 @@ func resolveBackend(input ResolveInput, resolvedModel model.ModelSpec, modelSet 
 
 	if input.CLI.Backend != "" {
 		backend := strings.ToLower(input.CLI.Backend)
-		if backend != BackendClaude && backend != BackendOpenCode {
+		if backend != BackendClaude && backend != BackendOpenCode && backend != BackendOpenClaw {
 			return ResolvedSetting{}, nil, fmt.Errorf("invalid backend: %s", input.CLI.Backend)
 		}
 		if input.InfrastructureDetected && backend != BackendClaude {
@@ -290,7 +293,7 @@ func resolveBackend(input ResolveInput, resolvedModel model.ModelSpec, modelSet 
 
 	if input.ProjectConfig != nil && input.ProjectConfigMeta.SpawnMode && input.ProjectConfig.SpawnMode != "" {
 		backend := strings.ToLower(input.ProjectConfig.SpawnMode)
-		if backend != BackendClaude && backend != BackendOpenCode {
+		if backend != BackendClaude && backend != BackendOpenCode && backend != BackendOpenClaw {
 			return ResolvedSetting{}, nil, fmt.Errorf("invalid project spawn_mode: %s", input.ProjectConfig.SpawnMode)
 		}
 		if input.InfrastructureDetected && backend != BackendClaude {
@@ -301,7 +304,7 @@ func resolveBackend(input ResolveInput, resolvedModel model.ModelSpec, modelSet 
 
 	if input.UserConfig != nil && input.UserConfigMeta.Backend && input.UserConfig.Backend != "" {
 		backend := strings.ToLower(input.UserConfig.Backend)
-		if backend != BackendClaude && backend != BackendOpenCode {
+		if backend != BackendClaude && backend != BackendOpenCode && backend != BackendOpenClaw {
 			return ResolvedSetting{}, nil, fmt.Errorf("invalid user config backend: %s", input.UserConfig.Backend)
 		}
 		if input.InfrastructureDetected && backend != BackendClaude {
@@ -338,6 +341,12 @@ func resolveModel(input ResolveInput, backend string, aliasMap map[string]string
 			}
 			// Fall through: project config model rejected by validation (e.g., flash blocked for agents).
 			// Try next precedence level instead of hard-failing.
+		}
+		if backend == BackendOpenClaw && input.ProjectConfigMeta.OpenClawModel && input.ProjectConfig.OpenClaw.Model != "" {
+			resolved := model.ResolveWithConfig(input.ProjectConfig.OpenClaw.Model, aliasMap)
+			if err := validateModel(resolved); err == nil {
+				return ResolvedSetting{Value: resolved.Format(), Source: SourceProjectConfig}, nil
+			}
 		}
 	}
 
@@ -625,6 +634,7 @@ func validateModelCompatibility(backend string, resolvedModel model.ModelSpec, a
 	if backend == BackendClaude && resolvedModel.Provider != "anthropic" {
 		return fmt.Errorf("backend %s does not support provider %s", backend, resolvedModel.Provider)
 	}
+	// OpenClaw supports all providers natively via multi-model routing
 	return nil
 }
 

@@ -48,6 +48,8 @@ type SpawnContext struct {
 	Account            string
 	AccountConfigDir   string
 	SpawnBackend       string
+	OpenClawURL        string
+	OpenClawToken      string
 	Tier               string
 	VerifyLevel        string
 	ReviewTier         string

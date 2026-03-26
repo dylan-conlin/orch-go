@@ -1,11 +1,13 @@
 package orch
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/openclaw"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -24,13 +26,13 @@ func DispatchSpawn(input *SpawnInput, cfg *spawn.Config, minimalPrompt, beadsID,
 	// OpenCode reads MCP config from opencode.json in the project directory.
 	// Browser automation via playwright-cli is handled separately via BrowserTool field
 	// and context injection, not through MCP config.
-	if cfg.MCP != "" && cfg.SpawnMode != "claude" {
+	if cfg.MCP != "" && cfg.SpawnMode != "claude" && cfg.SpawnMode != "openclaw" {
 		if err := spawn.EnsureOpenCodeMCP(cfg.ProjectDir, cfg.MCP); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to inject MCP config into opencode.json: %v\n", err)
 		}
 	}
 
-	// Spawn mode: inline (blocking TUI), tmux (opt-in for workers, default for orchestrators), claude (tmux), or headless (default for workers)
+	// Spawn mode: inline (blocking TUI), tmux (opt-in for workers, default for orchestrators), claude (tmux), openclaw (headless WebSocket), or headless (default for workers)
 	if input.Inline {
 		// Inline mode (blocking) - run in current terminal with TUI
 		return runSpawnInline(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
@@ -39,6 +41,11 @@ func DispatchSpawn(input *SpawnInput, cfg *spawn.Config, minimalPrompt, beadsID,
 	// Explicit --headless flag overrides all other mode decisions
 	if input.Headless {
 		return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+	}
+
+	// OpenClaw mode: Use WebSocket gateway (headless, no OpenCode dependency)
+	if cfg.SpawnMode == "openclaw" {
+		return runSpawnOpenClaw(cfg, minimalPrompt, beadsID, skillName, task)
 	}
 
 	// Claude mode: Use tmux + claude CLI
@@ -529,6 +536,111 @@ func runSpawnClaude(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 			return fmt.Errorf("failed to attach to tmux: %w", err)
 		}
 	}
+
+	return nil
+}
+
+// runSpawnOpenClaw spawns the agent via the OpenClaw WebSocket gateway.
+// Uses the openclaw.Client to send an agent request and returns immediately
+// (the gateway manages the agent lifecycle).
+func runSpawnOpenClaw(cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
+	// Resolve OpenClaw gateway URL and token
+	gatewayURL := cfg.OpenClawURL
+	if gatewayURL == "" {
+		gatewayURL = openclaw.DefaultURL
+	}
+	token := cfg.OpenClawToken
+
+	// Connect to gateway
+	client := openclaw.NewClient(openclaw.Options{
+		URL:   gatewayURL,
+		Token: token,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := client.Connect(ctx); err != nil {
+		return fmt.Errorf("openclaw connect failed: %w\n\nRecovery: Check if gateway is running at %s\n  Start it: openclaw gateway --port 18789", err, gatewayURL)
+	}
+	defer client.Close()
+
+	// Build idempotency key from beads ID to prevent duplicate spawns
+	idempotencyKey := fmt.Sprintf("orch-%s-%d", beadsID, time.Now().UnixNano())
+
+	// Build agent params
+	agentParams := openclaw.AgentParams{
+		Message:        minimalPrompt,
+		IdempotencyKey: idempotencyKey,
+		Label:          fmt.Sprintf("%s:%s", skillName, beadsID),
+	}
+
+	// Set model if specified
+	if cfg.Model != "" {
+		agentParams.Model = cfg.Model
+	}
+
+	// Send agent request
+	result, err := client.Agent(ctx, agentParams)
+	if err != nil {
+		return fmt.Errorf("openclaw agent spawn failed: %w", err)
+	}
+
+	runID := result.RunID
+	sessionKey := result.SessionKey
+
+	// Atomic spawn Phase 2: update manifest with run ID
+	openclawAtomicOpts := &spawn.AtomicSpawnOpts{Config: cfg, BeadsID: beadsID}
+	if err := spawn.AtomicSpawnPhase2(openclawAtomicOpts, runID); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to update manifest with run ID: %v\n", err)
+	}
+
+	// Log the session creation
+	logger := events.NewLogger(events.DefaultLogPath())
+	eventData := map[string]interface{}{
+		"skill":               skillName,
+		"task":                task,
+		"workspace":           cfg.WorkspaceName,
+		"beads_id":            beadsID,
+		"run_id":              runID,
+		"session_key":         sessionKey,
+		"spawn_mode":          "openclaw",
+		"model":               cfg.Model,
+		"gateway_url":         gatewayURL,
+		"no_track":            cfg.NoTrack,
+		"skip_artifact_check": cfg.SkipArtifactCheck,
+	}
+	if cfg.MCP != "" {
+		eventData["mcp"] = cfg.MCP
+	}
+	addGapAnalysisToEventData(eventData, cfg.GapAnalysis)
+	addUsageInfoToEventData(eventData, cfg.UsageInfo)
+	event := events.Event{
+		Type:      "session.spawned",
+		SessionID: runID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	}
+	if err := logger.Log(event); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+	}
+
+	// Print spawn summary
+	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
+
+	fmt.Printf("Spawned agent via OpenClaw:\n")
+	fmt.Printf("  Run ID:     %s\n", runID)
+	if sessionKey != "" {
+		fmt.Printf("  Session:    %s\n", sessionKey)
+	}
+	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
+	fmt.Printf("  Beads ID:   %s\n", beadsID)
+	fmt.Printf("  Model:      %s\n", cfg.Model)
+	fmt.Printf("  Gateway:    %s\n", gatewayURL)
+	if cfg.NoTrack {
+		fmt.Printf("  Tracking:   disabled (--no-track)\n")
+	}
+	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
 
 	return nil
 }

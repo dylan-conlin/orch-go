@@ -19,12 +19,13 @@ import (
 
 // Config represents the project configuration.
 type Config struct {
-	SpawnMode string            `yaml:"spawn_mode"`         // "claude" | "opencode"
-	Models    map[string]string `yaml:"models,omitempty"`   // Model aliases (e.g., "opus": "anthropic/claude-opus-4-6")
-	Claude    ClaudeConfig      `yaml:"claude,omitempty"`   // Claude mode settings
-	OpenCode  OpenCodeConfig    `yaml:"opencode,omitempty"` // OpenCode mode settings
+	SpawnMode string            `yaml:"spawn_mode"`          // "claude" | "opencode" | "openclaw"
+	Models    map[string]string `yaml:"models,omitempty"`    // Model aliases (e.g., "opus": "anthropic/claude-opus-4-6")
+	Claude    ClaudeConfig      `yaml:"claude,omitempty"`    // Claude mode settings
+	OpenCode  OpenCodeConfig    `yaml:"opencode,omitempty"`  // OpenCode mode settings
+	OpenClaw  OpenClawConfig    `yaml:"openclaw,omitempty"`  // OpenClaw mode settings
 	Servers   map[string]int    `yaml:"servers,omitempty"`
-	Opsec     OpsecConfig       `yaml:"opsec,omitempty"`    // OPSEC sandbox settings
+	Opsec     OpsecConfig       `yaml:"opsec,omitempty"`     // OPSEC sandbox settings
 }
 
 // OpsecConfig holds settings for network sandbox enforcement.
@@ -39,6 +40,7 @@ type ConfigMeta struct {
 	Explicit         map[string]bool
 	ExplicitClaude   map[string]bool
 	ExplicitOpenCode map[string]bool
+	ExplicitOpenClaw map[string]bool
 }
 
 // ClaudeConfig holds settings for Claude mode spawning.
@@ -51,6 +53,13 @@ type ClaudeConfig struct {
 type OpenCodeConfig struct {
 	Model  string `yaml:"model"`  // default model for spawns
 	Server string `yaml:"server"` // HTTP server URL
+}
+
+// OpenClawConfig holds settings for OpenClaw mode spawning.
+type OpenClawConfig struct {
+	URL   string `yaml:"url"`   // WebSocket gateway URL (default: ws://127.0.0.1:18789)
+	Token string `yaml:"token"` // Auth token for gateway
+	Model string `yaml:"model"` // default model for spawns
 }
 
 // DefaultPath returns the default config file path for a project directory.
@@ -101,6 +110,7 @@ func LoadWithMeta(projectDir string) (*Config, *ConfigMeta, error) {
 		Explicit:         explicitKeys(raw),
 		ExplicitClaude:   explicitKeys(raw["claude"]),
 		ExplicitOpenCode: explicitKeys(raw["opencode"]),
+		ExplicitOpenClaw: explicitKeys(raw["openclaw"]),
 	}
 
 	// Apply defaults for backward compatibility
@@ -153,6 +163,11 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.OpenCode.Server == "" {
 		c.OpenCode.Server = "http://127.0.0.1:4096"
+	}
+
+	// Default OpenClaw settings
+	if c.OpenClaw.URL == "" {
+		c.OpenClaw.URL = "ws://127.0.0.1:18789"
 	}
 
 	// Initialize servers map if nil

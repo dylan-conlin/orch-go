@@ -1719,3 +1719,136 @@ func TestIsValidEffort(t *testing.T) {
 		})
 	}
 }
+
+// --- OpenClaw Backend Tests ---
+
+func TestResolve_OpenClawBackendCLI(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Backend = BackendOpenClaw
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve failed: %v", err)
+	}
+	if settings.Backend.Value != BackendOpenClaw {
+		t.Fatalf("Backend.Value = %q, want %q", settings.Backend.Value, BackendOpenClaw)
+	}
+	if settings.Backend.Source != SourceCLI {
+		t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceCLI)
+	}
+}
+
+func TestResolve_OpenClawBackendProjectConfig(t *testing.T) {
+	input := baseResolveInput()
+	input.ProjectConfig = &config.Config{SpawnMode: BackendOpenClaw}
+	input.ProjectConfigMeta = ProjectConfigMeta{SpawnMode: true}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve failed: %v", err)
+	}
+	if settings.Backend.Value != BackendOpenClaw {
+		t.Fatalf("Backend.Value = %q, want %q", settings.Backend.Value, BackendOpenClaw)
+	}
+	if settings.Backend.Source != SourceProjectConfig {
+		t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceProjectConfig)
+	}
+}
+
+func TestResolve_OpenClawBackendUserConfig(t *testing.T) {
+	input := baseResolveInput()
+	input.UserConfig = &userconfig.Config{Backend: BackendOpenClaw}
+	input.UserConfigMeta = UserConfigMeta{Backend: true}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve failed: %v", err)
+	}
+	if settings.Backend.Value != BackendOpenClaw {
+		t.Fatalf("Backend.Value = %q, want %q", settings.Backend.Value, BackendOpenClaw)
+	}
+	if settings.Backend.Source != SourceUserConfig {
+		t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceUserConfig)
+	}
+}
+
+func TestResolve_OpenClawProjectModelResolution(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Backend = BackendOpenClaw
+	input.ProjectConfig = &config.Config{
+		SpawnMode: BackendOpenClaw,
+		OpenClaw:  config.OpenClawConfig{Model: "anthropic/claude-sonnet-4-5-20251022"},
+	}
+	input.ProjectConfigMeta = ProjectConfigMeta{SpawnMode: true, OpenClawModel: true}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve failed: %v", err)
+	}
+	if settings.Backend.Value != BackendOpenClaw {
+		t.Fatalf("Backend.Value = %q, want %q", settings.Backend.Value, BackendOpenClaw)
+	}
+	if settings.Model.Source != SourceProjectConfig {
+		t.Fatalf("Model.Source = %q, want %q (should resolve from openclaw project config)", settings.Model.Source, SourceProjectConfig)
+	}
+}
+
+func TestResolve_OpenClawAcceptsAllProviders(t *testing.T) {
+	// OpenClaw supports all providers natively — no compatibility error for anthropic
+	input := baseResolveInput()
+	input.CLI.Backend = BackendOpenClaw
+	input.CLI.Model = "opus"
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve failed: %v (openclaw should accept anthropic models)", err)
+	}
+	if settings.Backend.Value != BackendOpenClaw {
+		t.Fatalf("Backend.Value = %q, want %q", settings.Backend.Value, BackendOpenClaw)
+	}
+}
+
+func TestResolve_OpenClawAcceptsOpenAIModels(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Backend = BackendOpenClaw
+	input.CLI.Model = "openai/gpt-4o"
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve failed: %v (openclaw should accept openai models)", err)
+	}
+	if settings.Backend.Value != BackendOpenClaw {
+		t.Fatalf("Backend.Value = %q, want %q", settings.Backend.Value, BackendOpenClaw)
+	}
+}
+
+func TestResolve_InvalidBackendRejected(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Backend = "notabackend"
+
+	_, err := Resolve(input)
+	if err == nil {
+		t.Fatal("expected error for invalid backend")
+	}
+	if !strings.Contains(err.Error(), "invalid backend") {
+		t.Fatalf("expected 'invalid backend' error, got: %v", err)
+	}
+}
+
+func TestResolve_OpenClawInfrastructureEscapeHatchWarning(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Backend = BackendOpenClaw
+	input.InfrastructureDetected = true
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve failed: %v", err)
+	}
+	// Should warn about infrastructure work but respect explicit backend
+	if settings.Backend.Value != BackendOpenClaw {
+		t.Fatalf("Backend.Value = %q, want %q", settings.Backend.Value, BackendOpenClaw)
+	}
+	if !containsWarning(settings.Warnings, "infrastructure work detected") {
+		t.Fatal("expected infrastructure warning when using openclaw for infra work")
+	}
+}

@@ -328,6 +328,8 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp, browserT
 		AccountConfigDir:   ctx.AccountConfigDir,
 		Effort:             ctx.ResolvedSettings.Effort.Value,
 		SpawnMode:          ctx.SpawnBackend,
+		OpenClawURL:        ctx.OpenClawURL,
+		OpenClawToken:      ctx.OpenClawToken,
 		HotspotArea:          ctx.HotspotArea,
 		HotspotFiles:         ctx.HotspotFiles,
 		HotspotDefectClasses: ctx.HotspotDefectClasses,

@@ -91,8 +91,9 @@ This creates friction to encourage the preferred daemon-driven workflow.
 Backend Modes (--backend):
   claude:   Uses Claude Code CLI in tmux (Max subscription, unlimited Opus) (default)
   opencode: Uses OpenCode HTTP API
+  openclaw: Uses OpenClaw WebSocket gateway (multi-model, headless)
 
-  Config can set default mode (orch config set spawn_mode claude|opencode).
+  Config can set default mode (orch config set spawn_mode claude|opencode|openclaw).
   The --backend flag overrides the config setting for this spawn only.
 
 Spawn Modes:
@@ -172,7 +173,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnIssue, "issue", "", "Beads issue ID for tracking")
 	spawnCmd.Flags().StringVar(&spawnPhases, "phases", "", "Feature-impl phases (e.g., implementation,validation)")
 	orch.RegisterModeFlag(spawnCmd)
-	spawnCmd.Flags().StringVar(&spawnBackendFlag, "backend", "", "Spawn backend: claude (tmux + Claude CLI) or opencode (HTTP API). Overrides config and auto-selection.")
+	spawnCmd.Flags().StringVar(&spawnBackendFlag, "backend", "", "Spawn backend: claude (tmux + Claude CLI), opencode (HTTP API), or openclaw (WebSocket gateway). Overrides config and auto-selection.")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
 	spawnCmd.Flags().BoolVar(&spawnHeadless, "headless", false, "Run headless via HTTP API (default behavior, flag is redundant)")
 	spawnCmd.Flags().BoolVar(&spawnTmux, "tmux", false, "Run in tmux window (opt-in for visual monitoring)")
@@ -506,6 +507,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		Account:            resolvedAccountName,
 		AccountConfigDir:   resolvedAccountConfigDir,
 		SpawnBackend:       resolved.Settings.Backend.Value,
+		OpenClawURL:        resolveOpenClawURL(projectCfg),
+		OpenClawToken:      resolveOpenClawToken(projectCfg),
 		Tier:               resolved.Settings.Tier.Value,
 		VerifyLevel:        spawnVerifyLevel,
 		ReviewTier:         spawnReviewTier,

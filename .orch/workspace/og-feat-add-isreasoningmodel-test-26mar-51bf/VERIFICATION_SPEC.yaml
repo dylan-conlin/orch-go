@@ -1,0 +1,33 @@
+# Verification Specification: IsReasoningModel gpt-5.4 reasoning coverage
+# Issue: orch-go-w2j2f
+# Type: feature-impl
+
+verification:
+  type: tdd-regression
+  outcome: pass
+
+deliverables:
+  task_requirement:
+    path: pkg/model/model_test.go
+    status: complete
+    evidence:
+      - "TestModelSpec_IsReasoningModel now expects {Provider: \"openai\", ModelID: \"gpt-5.4\"} to return true"
+      - "pkg/model/model.go recognizes gpt-5.4 as a reasoning model"
+
+commands_run:
+  - command: pwd
+    expectation: "/Users/dylanconlin/Documents/personal/orch-go"
+    result: pass
+  - command: go test ./pkg/model -run TestModelSpec_IsReasoningModel
+    expectation: "the targeted gpt-5.4 reasoning-model regression test fails before the implementation change and passes after the fix"
+    result: pass
+  - command: go test ./pkg/model
+    expectation: "pkg/model tests pass"
+    result: pass
+
+manual_verification:
+  - "Review pkg/model/model_test.go and pkg/model/model.go to confirm gpt-5.4 is treated as a reasoning model in both test coverage and implementation"
+
+notes:
+  - "The initial TDD step changed the test expectation for gpt-5.4 and exposed the missing IsReasoningModel behavior"
+  - "No discovered work"

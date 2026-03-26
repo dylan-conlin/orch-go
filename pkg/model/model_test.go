@@ -307,10 +307,10 @@ func TestModelSpec_IsReasoningModel(t *testing.T) {
 		{ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}, false},
 		{ModelSpec{Provider: "openai", ModelID: "gpt-4o"}, false},
 		{ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}, false},
-		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}, false},
+		{ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}, true},
 		{ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}, false},
 		{ModelSpec{Provider: "deepseek", ModelID: "deepseek-chat"}, false},
-		{ModelSpec{Provider: "", ModelID: "o3"}, true},  // ModelID-based, not provider-based
+		{ModelSpec{Provider: "", ModelID: "o3"}, true}, // ModelID-based, not provider-based
 	}
 
 	for _, tt := range tests {
