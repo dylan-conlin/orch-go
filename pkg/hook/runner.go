@@ -188,6 +188,26 @@ func getwd() string {
 	return dir
 }
 
+// RunHookWithLogging executes a hook and writes a trace entry to the trace file.
+// If tracePath is empty, uses DefaultTracePath().
+func RunHookWithLogging(hook ResolvedHook, opts RunOptions, sessionID, tracePath string) *RunResult {
+	result := RunHook(hook, opts)
+
+	if opts.DryRun {
+		return result
+	}
+
+	// Write trace entry
+	if tracePath == "" {
+		tracePath = DefaultTracePath()
+	}
+	entry := TraceEntryFromResult(result, sessionID)
+	// Best-effort logging — don't fail the hook if trace write fails
+	_ = WriteTrace(tracePath, entry)
+
+	return result
+}
+
 // CommandBasename extracts the filename from a hook command path.
 func CommandBasename(cmd string) string {
 	expanded := expandCommand(cmd)

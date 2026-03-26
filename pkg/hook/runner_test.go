@@ -215,6 +215,68 @@ echo "{\"context\": \"$CLAUDE_CONTEXT\"}"
 	}
 }
 
+func TestRunHookWithLogging_WritesTrace(t *testing.T) {
+	dir := t.TempDir()
+	tracePath := filepath.Join(dir, "trace.jsonl")
+
+	// Create a simple hook
+	script := filepath.Join(dir, "log-test.sh")
+	content := `#!/bin/sh
+echo '{}'`
+	if err := os.WriteFile(script, []byte(content), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	hook := ResolvedHook{
+		Event:       "PreToolUse",
+		Command:     script,
+		ExpandedCmd: script,
+		Matcher:     "Bash",
+		Timeout:     5,
+	}
+
+	result := RunHookWithLogging(hook, RunOptions{
+		Input: BuildInput("PreToolUse", "Bash", nil),
+	}, "test-session-123", tracePath)
+
+	if result.Error != nil {
+		t.Fatalf("unexpected error: %v", result.Error)
+	}
+
+	// Verify trace was written
+	entries, err := ReadTrace(tracePath, TraceOptions{})
+	if err != nil {
+		t.Fatalf("failed to read trace: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 trace entry, got %d", len(entries))
+	}
+	if entries[0].Session != "test-session-123" {
+		t.Errorf("expected session 'test-session-123', got '%s'", entries[0].Session)
+	}
+	if entries[0].Event != "PreToolUse" {
+		t.Errorf("expected event 'PreToolUse', got '%s'", entries[0].Event)
+	}
+}
+
+func TestRunHookWithLogging_DryRunSkipsTrace(t *testing.T) {
+	dir := t.TempDir()
+	tracePath := filepath.Join(dir, "trace.jsonl")
+
+	hook := ResolvedHook{
+		Event:       "PreToolUse",
+		Command:     "echo test",
+		ExpandedCmd: "echo test",
+	}
+
+	RunHookWithLogging(hook, RunOptions{DryRun: true}, "sess", tracePath)
+
+	// Trace file should not exist
+	if _, err := os.Stat(tracePath); !os.IsNotExist(err) {
+		t.Error("expected no trace file for dry run")
+	}
+}
+
 func TestCommandBasename(t *testing.T) {
 	tests := []struct {
 		cmd  string

@@ -115,6 +115,40 @@ Examples:
 	},
 }
 
+// ============================================================================
+// orch hook selftest
+// ============================================================================
+
+var (
+	hookSelftestVerbose  bool
+	hookSelftestSettings string
+)
+
+var hookSelftestCmd = &cobra.Command{
+	Use:   "selftest",
+	Short: "Run all hooks with synthetic input to verify they work",
+	Long: `Self-test validates every configured hook by running it with synthetic input.
+
+For each hook, selftest checks:
+  - Script file exists and is executable
+  - Hook executes without errors
+  - Hook exits cleanly (exit code 0) for synthetic input
+  - Output format matches expected schema for the event type
+
+This is useful after modifying hooks or settings.json to catch:
+  - Missing or moved script files
+  - Broken shebang lines or syntax errors
+  - Output format regressions
+
+Examples:
+  orch hook selftest
+  orch hook selftest --verbose
+  orch hook selftest --settings ~/.claude/settings.json`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runHookSelftest()
+	},
+}
+
 func init() {
 	// hook test flags
 	hookTestCmd.Flags().StringVar(&hookTestTool, "tool", "", "Tool name for matcher resolution (Bash, Read, Edit, Task, etc.)")
@@ -136,9 +170,14 @@ func init() {
 	hookTraceCmd.Flags().StringVar(&hookTraceEvent, "event", "", "Filter by event type")
 	hookTraceCmd.Flags().StringVar(&hookTracePath, "path", "", "Path to trace file (default: ~/.orch/hooks/trace.jsonl)")
 
+	// hook selftest flags
+	hookSelftestCmd.Flags().BoolVar(&hookSelftestVerbose, "verbose", false, "Show full output for each hook")
+	hookSelftestCmd.Flags().StringVar(&hookSelftestSettings, "settings", "", "Path to settings.json (default: ~/.claude/settings.json)")
+
 	hookCmd.AddCommand(hookTestCmd)
 	hookCmd.AddCommand(hookValidateCmd)
 	hookCmd.AddCommand(hookTraceCmd)
+	hookCmd.AddCommand(hookSelftestCmd)
 }
 
 // ============================================================================
@@ -441,6 +480,74 @@ func runHookTrace() error {
 	}
 
 	fmt.Print(hook.FormatTraceEntries(entries))
+	return nil
+}
+
+func runHookSelftest() error {
+	settingsPath := hookSelftestSettings
+	if settingsPath == "" {
+		settingsPath = hook.DefaultSettingsPath()
+	}
+
+	settings, err := hook.LoadSettingsFromPath(settingsPath)
+	if err != nil {
+		return fmt.Errorf("failed to load settings: %w", err)
+	}
+
+	fmt.Printf("Running hook self-test from %s...\n\n", settingsPath)
+
+	results := hook.SelfTest(settings, hook.SelfTestOptions{
+		Verbose: hookSelftestVerbose,
+	})
+
+	if len(results) == 0 {
+		fmt.Println("No hooks configured.")
+		return nil
+	}
+
+	// Print results
+	for _, r := range results {
+		matcherStr := r.Matcher
+		if matcherStr == "" {
+			matcherStr = "*"
+		}
+
+		status := "PASS"
+		if !r.Passed {
+			status = "FAIL"
+		}
+
+		fmt.Printf("  [%s] %s (%s, matcher: %s)", status, r.HookName, r.Event, matcherStr)
+		if r.Duration > 0 {
+			fmt.Printf(" %v", r.Duration.Round(100*1000))
+		}
+		fmt.Println()
+
+		if !r.Passed {
+			fmt.Printf("         %s\n", r.Summary)
+		}
+
+		for _, w := range r.Warnings {
+			fmt.Printf("         WARNING: %s\n", w)
+		}
+
+		if hookSelftestVerbose && r.Result != nil {
+			if r.Result.Stdout != "" {
+				fmt.Printf("         stdout: %s\n", strings.TrimSpace(r.Result.Stdout))
+			}
+			if r.Result.Stderr != "" {
+				fmt.Printf("         stderr: %s\n", strings.TrimSpace(r.Result.Stderr))
+			}
+		}
+	}
+
+	summary := hook.FormatSelfTestSummary(results)
+	fmt.Printf("\nSelf-test summary: %d hooks, %d passed, %d failed, %d warnings\n",
+		summary.Total, summary.Passed, summary.Failed, summary.Warnings)
+
+	if !summary.AllPassed {
+		return fmt.Errorf("%d hook(s) failed self-test", summary.Failed)
+	}
 	return nil
 }
 

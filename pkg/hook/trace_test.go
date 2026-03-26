@@ -1,6 +1,7 @@
 package hook
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -140,5 +141,119 @@ func TestFormatTraceEntries_WithEntries(t *testing.T) {
 	}
 	if !containsStr(result, "ALLOW") {
 		t.Errorf("expected ALLOW in output, got: %s", result)
+	}
+}
+
+func TestWriteTrace_CreatesFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "subdir", "trace.jsonl")
+
+	entry := TraceEntry{
+		Timestamp:  1709157600,
+		Hook:       "test-hook.py",
+		Event:      "PreToolUse",
+		Tool:       "Bash",
+		Decision:   "ALLOW",
+		DurationMs: 12.5,
+		Session:    "test-session",
+	}
+
+	err := WriteTrace(path, entry)
+	if err != nil {
+		t.Fatalf("WriteTrace failed: %v", err)
+	}
+
+	// Read it back
+	entries, err := ReadTrace(path, TraceOptions{})
+	if err != nil {
+		t.Fatalf("ReadTrace failed: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Hook != "test-hook.py" {
+		t.Errorf("expected hook 'test-hook.py', got '%s'", entries[0].Hook)
+	}
+	if entries[0].DurationMs != 12.5 {
+		t.Errorf("expected duration 12.5ms, got %f", entries[0].DurationMs)
+	}
+}
+
+func TestWriteTrace_AppendsToExisting(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "trace.jsonl")
+
+	// Write two entries
+	err := WriteTrace(path, TraceEntry{Hook: "first", Event: "PreToolUse"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = WriteTrace(path, TraceEntry{Hook: "second", Event: "PostToolUse"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := ReadTrace(path, TraceOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].Hook != "first" {
+		t.Errorf("expected 'first', got '%s'", entries[0].Hook)
+	}
+	if entries[1].Hook != "second" {
+		t.Errorf("expected 'second', got '%s'", entries[1].Hook)
+	}
+}
+
+func TestTraceEntryFromResult(t *testing.T) {
+	result := &RunResult{
+		Hook: ResolvedHook{
+			Event:   "PreToolUse",
+			Command: "$HOME/.claude/hooks/gate-git-add-all.py",
+			Matcher: "Bash",
+		},
+		Duration: 45300000, // 45.3ms in nanoseconds
+		Validation: &ValidationResult{
+			Decision: DecisionAllow,
+		},
+	}
+
+	entry := TraceEntryFromResult(result, "test-session")
+	if entry.Hook != "gate-git-add-all.py" {
+		t.Errorf("expected hook basename 'gate-git-add-all.py', got '%s'", entry.Hook)
+	}
+	if entry.Event != "PreToolUse" {
+		t.Errorf("expected event 'PreToolUse', got '%s'", entry.Event)
+	}
+	if entry.Decision != "ALLOW" {
+		t.Errorf("expected decision 'ALLOW', got '%s'", entry.Decision)
+	}
+	if entry.Session != "test-session" {
+		t.Errorf("expected session 'test-session', got '%s'", entry.Session)
+	}
+	if entry.Timestamp == 0 {
+		t.Error("expected non-zero timestamp")
+	}
+}
+
+func TestTraceEntryFromResult_WithError(t *testing.T) {
+	result := &RunResult{
+		Hook: ResolvedHook{
+			Event:   "PreToolUse",
+			Command: "test-hook.sh",
+		},
+		Duration: 100000000,
+		Error:    fmt.Errorf("hook timed out after 5s"),
+	}
+
+	entry := TraceEntryFromResult(result, "sess")
+	if entry.Decision != "ERROR" {
+		t.Errorf("expected decision 'ERROR', got '%s'", entry.Decision)
+	}
+	if entry.OutputPreview != "hook timed out after 5s" {
+		t.Errorf("expected error in preview, got '%s'", entry.OutputPreview)
 	}
 }

@@ -1,39 +1,33 @@
-issue: orch-go-xxtaa
-title: "Redesign root route as thread-first home surface"
+issue: orch-go-rppz0
+title: "Add hook invocation logging and self-test to hook runtime infrastructure"
 type: feature
 tier: light
 
 verification:
   automated:
-    - command: "go test ./cmd/orch/ -run TestHandleThreads -count=1"
+    - command: "go test ./pkg/hook/ -count=1"
       expected: "PASS"
-      actual: "PASS (4 tests)"
+      actual: "PASS (41 tests, 0 failed)"
     - command: "go build ./cmd/orch/"
       expected: "clean build"
       actual: "clean build"
-    - command: "cd web && npm run build"
-      expected: "built successfully"
-      actual: "built in 8.23s"
-
-  visual:
-    - description: "Root route shows Threads section above operational view"
-      evidence: "/tmp/thread-first-home-dev.png"
-      verified: true
-    - description: "Nav reads: Threads | Briefs | Knowledge | Work | Harness"
-      evidence: "/tmp/thread-first-home-dev.png"
-      verified: true
 
   manual:
-    - description: "Verify thread cards populate when orch serve is running"
-      command: "orch-dashboard start && open http://localhost:5199"
-    - description: "Click a thread card to expand entries"
-      expected: "Thread expands showing up to 5 recent entries"
+    - description: "Run orch hook selftest against real settings"
+      command: "orch hook selftest"
+      expected: "Runs all configured hooks, reports PASS/FAIL per hook with summary"
+    - description: "Run orch hook selftest --verbose"
+      command: "orch hook selftest --verbose"
+      expected: "Includes stdout/stderr for each hook"
 
 deliverables:
-  - web/src/lib/stores/threads.ts (new Svelte store)
-  - web/src/routes/+page.svelte (redesigned root route)
-  - web/src/routes/+layout.svelte (nav reorder)
+  - pkg/hook/trace.go          # Added WriteTrace, TraceEntryFromResult
+  - pkg/hook/runner.go         # Added RunHookWithLogging
+  - pkg/hook/selftest.go       # New: SelfTest, SelfTestResult, FormatSelfTestSummary
+  - pkg/hook/trace_test.go     # Tests for WriteTrace, TraceEntryFromResult
+  - pkg/hook/runner_test.go    # Tests for RunHookWithLogging
+  - pkg/hook/selftest_test.go  # New: Tests for SelfTest
+  - cmd/orch/hook_cmd.go       # Added orch hook selftest subcommand
 
 notes: |
-  Thread API endpoints (serve_threads.go) already existed.
-  Pre-existing test failures: TestEnforcePhaseCompleteSkipsPrintMode, TestHandleAgentlogJSONResponse (unrelated).
+  Pre-existing test failure: TestExploreNoJudgeModelOmitsFlag in pkg/spawn (unrelated).

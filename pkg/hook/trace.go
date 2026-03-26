@@ -101,6 +101,59 @@ func FormatTraceEntry(entry TraceEntry) string {
 		ts, entry.Hook, entry.Event, entry.Tool, entry.Decision, entry.DurationMs)
 }
 
+// WriteTrace appends a single trace entry to the trace file.
+// Creates the directory and file if they don't exist.
+func WriteTrace(path string, entry TraceEntry) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create trace directory: %w", err)
+	}
+
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("failed to marshal trace entry: %w", err)
+	}
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open trace file: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := f.Write(append(data, '\n')); err != nil {
+		return fmt.Errorf("failed to write trace entry: %w", err)
+	}
+	return nil
+}
+
+// TraceEntryFromResult builds a TraceEntry from a RunResult.
+func TraceEntryFromResult(result *RunResult, sessionID string) TraceEntry {
+	entry := TraceEntry{
+		Timestamp:  float64(time.Now().Unix()),
+		Hook:       CommandBasename(result.Hook.Command),
+		Event:      result.Hook.Event,
+		Tool:       result.Hook.Matcher,
+		DurationMs: float64(result.Duration) / float64(time.Millisecond),
+		Session:    sessionID,
+	}
+
+	if result.Error != nil {
+		entry.Decision = "ERROR"
+		entry.OutputPreview = result.Error.Error()
+	} else if result.Validation != nil {
+		entry.Decision = string(result.Validation.Decision)
+		if result.Stdout != "" {
+			preview := strings.TrimSpace(result.Stdout)
+			if len(preview) > 100 {
+				preview = preview[:100] + "..."
+			}
+			entry.OutputPreview = preview
+		}
+	}
+
+	return entry
+}
+
 // FormatTraceEntries formats multiple trace entries for display.
 func FormatTraceEntries(entries []TraceEntry) string {
 	if len(entries) == 0 {
