@@ -431,6 +431,11 @@ func runServe(portNum int) error {
 
 
 
+	// GET /api/threads - list all threads sorted by updated date
+	mux.HandleFunc("/api/threads", corsHandler(handleThreadsList))
+	// GET /api/threads/{slug} - full thread content by slug
+	mux.HandleFunc("/api/threads/", corsHandler(handleThreadShow))
+
 	// GET /api/briefs - list all briefs sorted newest-first
 	mux.HandleFunc("/api/briefs", corsHandler(handleBriefsList))
 	// GET/POST /api/briefs/{beads-id} - brief content and mark-as-read
