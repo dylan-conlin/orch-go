@@ -627,6 +627,50 @@ func extractSlug(filename string) string {
 	return name
 }
 
+// ThreadLink represents a thread's connection to a beads ID.
+type ThreadLink struct {
+	Slug  string `json:"slug"`
+	Title string `json:"title"`
+}
+
+// FindThreadForBeadsID scans all threads in threadsDir for ones that reference
+// beadsID in their active_work or resolved_by lists. Returns the first match.
+func FindThreadForBeadsID(threadsDir, beadsID string) *ThreadLink {
+	entries, err := os.ReadDir(threadsDir)
+	if err != nil {
+		return nil
+	}
+
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(threadsDir, e.Name()))
+		if err != nil {
+			continue
+		}
+
+		thread, err := ParseThread(string(data))
+		if err != nil {
+			continue
+		}
+
+		for _, aw := range thread.ActiveWork {
+			if aw == beadsID {
+				return &ThreadLink{Slug: extractSlug(e.Name()), Title: thread.Title}
+			}
+		}
+		for _, rb := range thread.ResolvedBy {
+			if rb == beadsID {
+				return &ThreadLink{Slug: extractSlug(e.Name()), Title: thread.Title}
+			}
+		}
+	}
+
+	return nil
+}
+
 // truncate limits a string to maxLen characters, adding "..." if truncated.
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {

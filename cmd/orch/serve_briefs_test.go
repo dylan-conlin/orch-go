@@ -329,6 +329,173 @@ func TestHandleBriefsListWithProjectDir(t *testing.T) {
 	}
 }
 
+func TestHandleBriefsListEnrichedFields(t *testing.T) {
+	oldSourceDir := sourceDir
+	defer func() { sourceDir = oldSourceDir }()
+	sourceDir = t.TempDir()
+
+	// Create briefs directory
+	briefsDir := filepath.Join(sourceDir, ".kb", "briefs")
+	if err := os.MkdirAll(briefsDir, 0755); err != nil {
+		t.Fatalf("Failed to create briefs dir: %v", err)
+	}
+
+	// Create threads directory with a thread that references a beads ID
+	threadsDir := filepath.Join(sourceDir, ".kb", "threads")
+	if err := os.MkdirAll(threadsDir, 0755); err != nil {
+		t.Fatalf("Failed to create threads dir: %v", err)
+	}
+
+	// Brief WITH tension section
+	briefWithTension := `# Brief: orch-go-aaa11
+
+## Frame
+
+Something was investigated.
+
+## Resolution
+
+It was resolved.
+
+## Tension
+
+But this question remains open.
+`
+	if err := os.WriteFile(filepath.Join(briefsDir, "orch-go-aaa11.md"), []byte(briefWithTension), 0644); err != nil {
+		t.Fatalf("Failed to write brief: %v", err)
+	}
+
+	// Brief WITHOUT tension section
+	briefNoTension := `# Brief: orch-go-bbb22
+
+## Frame
+
+Something simple.
+
+## Resolution
+
+Done.
+`
+	if err := os.WriteFile(filepath.Join(briefsDir, "orch-go-bbb22.md"), []byte(briefNoTension), 0644); err != nil {
+		t.Fatalf("Failed to write brief: %v", err)
+	}
+
+	// Thread with active_work referencing orch-go-aaa11
+	threadContent := `---
+title: "Test Thread"
+status: forming
+created: 2026-03-26
+updated: 2026-03-26
+resolved_to: ""
+active_work:
+  - "orch-go-aaa11"
+---
+
+# Test Thread
+
+## 2026-03-26
+
+Entry about something.
+`
+	if err := os.WriteFile(filepath.Join(threadsDir, "2026-03-26-test-thread.md"), []byte(threadContent), 0644); err != nil {
+		t.Fatalf("Failed to write thread: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/briefs", nil)
+	w := httptest.NewRecorder()
+
+	handleBriefsList(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	var items []BriefListItem
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if len(items) != 2 {
+		t.Fatalf("Expected 2 briefs, got %d", len(items))
+	}
+
+	// Find items by beads_id (order depends on mod time)
+	var aaa, bbb *BriefListItem
+	for i := range items {
+		switch items[i].BeadsID {
+		case "orch-go-aaa11":
+			aaa = &items[i]
+		case "orch-go-bbb22":
+			bbb = &items[i]
+		}
+	}
+
+	if aaa == nil || bbb == nil {
+		t.Fatalf("Missing expected briefs, got %v", items)
+	}
+
+	// aaa11 should have thread linkage and tension
+	if aaa.ThreadSlug != "test-thread" {
+		t.Errorf("Expected thread_slug 'test-thread', got %q", aaa.ThreadSlug)
+	}
+	if aaa.ThreadTitle != "Test Thread" {
+		t.Errorf("Expected thread_title 'Test Thread', got %q", aaa.ThreadTitle)
+	}
+	if !aaa.HasTension {
+		t.Error("Expected has_tension=true for brief with ## Tension section")
+	}
+
+	// bbb22 should have no thread linkage and no tension
+	if bbb.ThreadSlug != "" {
+		t.Errorf("Expected empty thread_slug, got %q", bbb.ThreadSlug)
+	}
+	if bbb.ThreadTitle != "" {
+		t.Errorf("Expected empty thread_title, got %q", bbb.ThreadTitle)
+	}
+	if bbb.HasTension {
+		t.Error("Expected has_tension=false for brief without ## Tension section")
+	}
+}
+
+func TestBriefHasTension(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{
+			name:    "with tension content",
+			content: "## Frame\n\nStuff.\n\n## Tension\n\nOpen question here.\n",
+			want:    true,
+		},
+		{
+			name:    "empty tension section",
+			content: "## Frame\n\nStuff.\n\n## Tension\n\n## Next\n\nMore.\n",
+			want:    false,
+		},
+		{
+			name:    "no tension section",
+			content: "## Frame\n\nStuff.\n\n## Resolution\n\nDone.\n",
+			want:    false,
+		},
+		{
+			name:    "tension with only whitespace",
+			content: "## Frame\n\nStuff.\n\n## Tension\n\n   \n\n",
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := briefHasTension(tt.content)
+			if got != tt.want {
+				t.Errorf("briefHasTension() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBriefReadStatePersistence(t *testing.T) {
 	// Save and restore global state
 	briefReadStateMu.Lock()

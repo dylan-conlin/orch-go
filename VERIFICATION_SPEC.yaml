@@ -1,33 +1,25 @@
-issue: orch-go-rppz0
-title: "Add hook invocation logging and self-test to hook runtime infrastructure"
+issue: orch-go-xc0jx
+title: "Enrich GET /api/briefs with thread_slug, thread_title, has_tension"
 type: feature
 tier: light
 
 verification:
   automated:
-    - command: "go test ./pkg/hook/ -count=1"
+    - command: "go test ./cmd/orch/ -run 'TestHandleBriefsListEnrichedFields|TestBriefHasTension' -v"
       expected: "PASS"
-      actual: "PASS (41 tests, 0 failed)"
-    - command: "go build ./cmd/orch/"
-      expected: "clean build"
-      actual: "clean build"
-
-  manual:
-    - description: "Run orch hook selftest against real settings"
-      command: "orch hook selftest"
-      expected: "Runs all configured hooks, reports PASS/FAIL per hook with summary"
-    - description: "Run orch hook selftest --verbose"
-      command: "orch hook selftest --verbose"
-      expected: "Includes stdout/stderr for each hook"
+      actual: "PASS (2 tests, 4 subtests)"
+    - command: "go test ./cmd/orch/ -run 'TestHandleBrief|TestBrief|TestReviewQueue' -v"
+      expected: "PASS"
+      actual: "PASS (21 tests)"
+    - command: "go test ./pkg/thread/ -v"
+      expected: "PASS"
+      actual: "PASS (all thread tests)"
 
 deliverables:
-  - pkg/hook/trace.go          # Added WriteTrace, TraceEntryFromResult
-  - pkg/hook/runner.go         # Added RunHookWithLogging
-  - pkg/hook/selftest.go       # New: SelfTest, SelfTestResult, FormatSelfTestSummary
-  - pkg/hook/trace_test.go     # Tests for WriteTrace, TraceEntryFromResult
-  - pkg/hook/runner_test.go    # Tests for RunHookWithLogging
-  - pkg/hook/selftest_test.go  # New: Tests for SelfTest
-  - cmd/orch/hook_cmd.go       # Added orch hook selftest subcommand
+  - cmd/orch/serve_briefs.go       # Added thread_slug, thread_title, has_tension to BriefListItem; buildThreadIndex, briefHasTension helpers
+  - cmd/orch/serve_briefs_test.go  # Added TestHandleBriefsListEnrichedFields, TestBriefHasTension
+  - pkg/thread/thread.go           # Added ThreadLink struct and FindThreadForBeadsID function
 
 notes: |
-  Pre-existing test failure: TestExploreNoJudgeModelOmitsFlag in pkg/spawn (unrelated).
+  Pre-existing test failures (TestEnforcePhaseCompleteSkipsPrintMode, TestHandleAgentlogJSONResponse) are unrelated.
+  Thread index built once per list request for O(threads) not O(briefs*threads) performance.

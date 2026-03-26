@@ -11,12 +11,18 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/dylan-conlin/orch-go/pkg/daemon"
+	"github.com/dylan-conlin/orch-go/pkg/thread"
 )
 
 // BriefListItem is the JSON structure for each item in the GET /api/briefs list.
 type BriefListItem struct {
-	BeadsID    string `json:"beads_id"`
-	MarkedRead bool   `json:"marked_read"`
+	BeadsID     string `json:"beads_id"`
+	MarkedRead  bool   `json:"marked_read"`
+	ThreadSlug  string `json:"thread_slug,omitempty"`
+	ThreadTitle string `json:"thread_title,omitempty"`
+	HasTension  bool   `json:"has_tension"`
 }
 
 // BriefAPIResponse is the JSON structure returned by GET /api/briefs/{beads-id}.
@@ -189,6 +195,12 @@ func handleBriefMarkRead(w http.ResponseWriter, beadsID, projectDir string) {
 
 	saveBriefReadState()
 
+	// Also clear the comprehension:processed label so the hook count stays accurate.
+	// Fire-and-forget: label removal is best-effort (bd CLI may not be available).
+	go func() {
+		_ = daemon.RemoveComprehensionProcessedInDir(beadsID, projectDir)
+	}()
+
 	resp := BriefMarkReadResponse{
 		Success: true,
 		Message: fmt.Sprintf("Brief %s marked as read", beadsID),
@@ -247,19 +259,103 @@ func handleBriefsList(w http.ResponseWriter, r *http.Request) {
 		return items[i].modTime > items[j].modTime
 	})
 
+	// Build thread index: beadsID -> ThreadLink (scan once, O(threads) not O(briefs*threads))
+	threadsDir := filepath.Join(projectDir, ".kb", "threads")
+	threadIndex := buildThreadIndex(threadsDir)
+
 	briefReadStateMu.RLock()
 	result := make([]BriefListItem, len(items))
 	for i, item := range items {
 		key := briefReadKey(projectDir, item.beadsID)
-		result[i] = BriefListItem{
+		bli := BriefListItem{
 			BeadsID:    item.beadsID,
 			MarkedRead: briefReadState[key],
 		}
+
+		// Thread linkage
+		if link, ok := threadIndex[item.beadsID]; ok {
+			bli.ThreadSlug = link.Slug
+			bli.ThreadTitle = link.Title
+		}
+
+		// Tension detection — check brief content for ## Tension section
+		briefPath := filepath.Join(briefsDir, item.beadsID+".md")
+		if content, err := os.ReadFile(briefPath); err == nil {
+			bli.HasTension = briefHasTension(string(content))
+		}
+
+		result[i] = bli
 	}
 	briefReadStateMu.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+// buildThreadIndex scans all threads and builds a map from beadsID to ThreadLink.
+// Checks both active_work and resolved_by fields.
+func buildThreadIndex(threadsDir string) map[string]thread.ThreadLink {
+	index := make(map[string]thread.ThreadLink)
+	entries, err := os.ReadDir(threadsDir)
+	if err != nil {
+		return index
+	}
+
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(threadsDir, e.Name()))
+		if err != nil {
+			continue
+		}
+
+		t, err := thread.ParseThread(string(data))
+		if err != nil {
+			continue
+		}
+
+		slug := strings.TrimSuffix(e.Name(), ".md")
+		// Remove date prefix (YYYY-MM-DD-)
+		if len(slug) > 11 && slug[4] == '-' && slug[7] == '-' && slug[10] == '-' {
+			slug = slug[11:]
+		}
+
+		link := thread.ThreadLink{Slug: slug, Title: t.Title}
+		for _, id := range t.ActiveWork {
+			index[id] = link
+		}
+		for _, id := range t.ResolvedBy {
+			index[id] = link
+		}
+	}
+
+	return index
+}
+
+// briefHasTension returns true if the brief content contains a ## Tension section
+// with non-empty content after it.
+func briefHasTension(content string) bool {
+	lines := strings.Split(content, "\n")
+	inTension := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "## Tension" {
+			inTension = true
+			continue
+		}
+		if inTension {
+			// Stop at the next heading
+			if strings.HasPrefix(trimmed, "## ") || strings.HasPrefix(trimmed, "# ") {
+				return false
+			}
+			if trimmed != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // hasBriefFile checks if a brief file exists for the given beads ID in the given project.

@@ -291,7 +291,12 @@ func TestExploreNoJudgeModelOmitsFlag(t *testing.T) {
 	if strings.Contains(content, "Judge Model:**") {
 		t.Error("Judge Model should not appear when ExploreJudgeModel is empty")
 	}
-	if strings.Contains(content, "--model") {
-		t.Error("--model flag should not appear in judge spawn command when ExploreJudgeModel is empty")
+	// Check that the judge spawn command specifically has no --model flag.
+	// Other parts of the context may legitimately contain "--model" (e.g.,
+	// "kb create investigation ... --model <model-name>").
+	for _, line := range strings.Split(content, "\n") {
+		if strings.Contains(line, "exploration-judge") && strings.Contains(line, "--model") {
+			t.Error("--model flag should not appear in judge spawn command when ExploreJudgeModel is empty")
+		}
 	}
 }
