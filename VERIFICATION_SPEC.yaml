@@ -1,33 +1,24 @@
-issue: orch-go-8e15i
-title: "Add StallReason string field to deconflate IsStalled boolean"
-type: feature
+issue: orch-go-36uco
+title: "Method composition guide documenting artifact cycle"
+type: documentation
 tier: light
 
 verification:
   automated:
-    - command: "go test ./cmd/orch/ -run TestAgentAPIResponseStallReason -v"
+    - command: "test -f .kb/GUIDE.md && echo PASS"
       expected: "PASS"
-      actual: "PASS (5 subtests: empty_omitted, phase_stall, token_stall, never_started, spawn_stale)"
-    - command: "go test ./pkg/attention/ -run TestStuckCollector_StallReasonInMetadata -v"
-      expected: "PASS"
-      actual: "PASS"
-    - command: "go test ./cmd/orch/ -run 'TestAgentAPIResponse|TestHandleAgents' -count=1"
-      expected: "PASS"
-      actual: "PASS (11 tests)"
-    - command: "go test ./pkg/attention/ -count=1"
-      expected: "PASS"
-      actual: "PASS (all tests)"
+    - command: "grep -c '### Thread\\|### Investigation\\|### Probe\\|### Model\\|### Brief\\|### Decision' .kb/GUIDE.md"
+      expected: "6"
+  manual:
+    - check: "Guide uses teaching voice, not reference style"
+    - check: "Diagram shows composition cycle clearly"
+    - check: "Standalone-readable without CLI context"
 
 deliverables:
-  - cmd/orch/serve_agents_types.go       # Added StallReason to AgentAPIResponse
-  - cmd/orch/serve_agents_handlers.go    # Set StallReason at 4 setter sites
-  - cmd/orch/status_cmd.go              # Added StallReason to AgentInfo, set at 1 site
-  - pkg/attention/stuck_collector.go     # Added StallReason to StuckAgentItem, added to metadata
-  - cmd/orch/serve_agents_types_test.go  # TestAgentAPIResponseStallReason
-  - cmd/orch/serve_agents_handlers_test.go # Existing tests pass (no changes needed)
-  - pkg/attention/stuck_collector_test.go  # TestStuckCollector_StallReasonInMetadata
+  - .kb/GUIDE.md  # Method composition guide (artifact cycle teaching doc)
 
 notes: |
-  4 stall reasons: phase_stall (same phase 15+ min), token_stall (no token progress),
-  never_started (spawned 10+ min no phase), spawn_stale (no phase past threshold).
-  StallReason is omitempty so it's absent from JSON when not stalled.
+  Written as teaching doc per writing-style model primers (story first, earn
+  abstractions, the turn is the piece). Addresses gap identified in probe
+  orch-go-ehper: composition model was never documented anywhere. No orch-specific
+  IDs or jargon — readable by someone who has never used the CLI.
