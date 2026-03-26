@@ -1,30 +1,16 @@
-issue: orch-go-phbzy
-title: Wire one-shot retry handoff for classified empty-execution failures
+issue: orch-go-6k6o8
+title: "Integration: prove zero-token empty-execution retries recover once and escalate on repeat"
 tier: light
 
 verification:
   automated:
-    - command: "go test ./pkg/daemon/ -run 'TestEmptyExecution|TestOrphanDetection_Empty|TestOrphanDetection_Normal|TestOrphanDetection_Classifier' -v"
-      expect: "11 tests pass: tracker CRUD, first-attempt retry, second-attempt escalation, no-classifier fallback, classifier-error fallback, non-empty classification, mixed scenarios"
-    - command: "go test ./pkg/daemon/ -run 'TestDaemon_RunPeriodicOrphanDetection' -v"
-      expect: "All 14 existing orphan detector tests pass (no regressions)"
+    - command: "go test ./pkg/daemon/ -run TestIntegration_ -v"
+      expect: "8 integration tests pass: full cycle retry→escalate, recovery clears tracker, no duplicate work, GPT-5.4 session replays (zero assistant msgs, whitespace response, error termination), fault injection (classifier down, nil response)"
     - command: "go test ./pkg/daemon/"
-      expect: "All daemon package tests pass including wiring test"
-    - command: "go build ./..."
-      expect: "Clean build across all packages"
+      expect: "All daemon package tests pass (no regressions)"
 
-  manual:
-    - step: "Verify empty-execution classifier interface is optional (nil-safe)"
-      evidence: "TestOrphanDetection_NormalOrphan_NoClassifier passes — nil classifier falls back to existing behavior"
+  manual: []
 
 deliverables:
-  - path: pkg/daemon/empty_execution_retry.go
-    description: "EmptyExecutionRetryTracker (thread-safe), EmptyExecutionClassifier interface, EmptyExecutionRetryRecord type"
-  - path: pkg/daemon/empty_execution_retry_test.go
-    description: "11 tests covering tracker CRUD, retry/escalation flow, classifier error handling, mixed scenarios"
-  - path: pkg/daemon/orphan_detector.go
-    description: "Wired classification into orphan detection loop with one-shot retry and escalation"
-  - path: pkg/daemon/daemon.go
-    description: "Added EmptyExecutionRetryTracker and EmptyExecutionClassifier fields to Daemon struct"
-  - path: pkg/daemon/wiring_test.go
-    description: "Marked EmptyExecutionClassifier as optional in wiring test"
+  - path: pkg/daemon/empty_execution_integration_test.go
+    description: "8 integration tests proving end-to-end retry→escalate cycle with GPT-5.4 session replay and fault injection"
