@@ -3,7 +3,7 @@
 **Agent:** `og-inv-daemon-decide-whether-26mar-ccf5`
 **Issue:** `orch-go-zaeiu`
 **Duration:** 2026-03-26 -> 2026-03-26
-**Outcome:** blocked
+**Outcome:** success
 
 ---
 
@@ -29,7 +29,7 @@ The daemon only auto-spawns issues that survive cycle-level gates, issue-level c
 - None.
 
 ### Commits
-- Pending local commit for this investigation session.
+- `edc708675` - Session artifacts were committed locally during the subsequent repository commit flow.
 
 ---
 
@@ -81,12 +81,13 @@ No architectural choices - task was within existing patterns.
 
 ## Next (What Should Happen)
 
-**Recommendation:** resume
+**Recommendation:** close
 
-### If Resume
-- Commit is blocked by unrelated pre-commit compilation failures in `cmd/orch`.
-- Investigation and workspace artifacts are authored and ready to commit once the repo builds again.
-- Resume by re-staging this session's four files plus the investigation file and retrying the same commit.
+### If Close
+- [x] All deliverables complete
+- [x] Tests passing
+- [x] Investigation file has `Phase: Complete`
+- [x] Ready for `orch complete orch-go-zaeiu`
 
 ---
 
@@ -99,7 +100,7 @@ No architectural choices - task was within existing patterns.
 
 ## Friction
 
-Tooling - pre-commit compilation gate failed on unrelated repository changes, so the investigation cannot be committed yet.
+Tooling - an earlier pre-commit failure briefly blocked the task, but the artifacts are now committed and the session can close.
 
 ---
 
