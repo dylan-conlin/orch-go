@@ -94,8 +94,37 @@
 		}
 	}
 
-	// Derived: active threads (non-resolved)
-	$: activeThreads = $threads.filter(t => t.status !== 'resolved');
+	function getStatusLabel(status: string): string {
+		switch (status) {
+			case 'forming': return 'forming';
+			case 'active': return 'active';
+			case 'converged': return 'converged';
+			case 'resolved': return 'resolved';
+			case 'subsumed': return 'subsumed';
+			default: return status;
+		}
+	}
+
+	// Status bucket ordering: active thinking first, then forming, then converged
+	function statusOrder(status: string): number {
+		switch (status) {
+			case 'active': return 0;
+			case 'forming': return 1;
+			case 'converged': return 2;
+			case 'subsumed': return 3;
+			case 'resolved': return 4;
+			default: return 5;
+		}
+	}
+
+	// Derived: active threads (non-resolved), sorted by status bucket then updated desc
+	$: activeThreads = $threads
+		.filter(t => t.status !== 'resolved')
+		.sort((a, b) => {
+			const bucketDiff = statusOrder(a.status) - statusOrder(b.status);
+			if (bucketDiff !== 0) return bucketDiff;
+			return b.updated.localeCompare(a.updated);
+		});
 	$: unreadBriefCount = $briefs.filter(b => !b.marked_read).length;
 
 	// Filter and sort state
@@ -482,7 +511,16 @@
 						>
 							<div class="flex items-center justify-between gap-2">
 								<div class="flex items-center gap-2 min-w-0">
-									<span class="text-xs font-mono {getStatusColor(t.status)}" title={t.status}>{getStatusIcon(t.status)}</span>
+									<svg
+										class="h-3 w-3 flex-shrink-0 transition-transform duration-150 text-muted-foreground {expandedThread === t.name ? 'rotate-90' : ''}"
+										viewBox="0 0 16 16"
+										fill="currentColor"
+									>
+										<path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/>
+									</svg>
+									<span class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium leading-none {getStatusColor(t.status)} bg-current/10"
+										style="background-color: color-mix(in srgb, currentColor 10%, transparent);"
+									>{getStatusLabel(t.status)}</span>
 									<span class="text-sm font-medium truncate">{t.title}</span>
 								</div>
 								<div class="flex items-center gap-2 flex-shrink-0">
@@ -491,7 +529,7 @@
 								</div>
 							</div>
 							{#if t.latest_entry}
-								<p class="mt-1 text-xs text-muted-foreground truncate">{t.latest_entry}</p>
+								<p class="mt-1 text-xs text-muted-foreground truncate ml-5">{t.latest_entry}</p>
 							{/if}
 						</button>
 						{#if expandedThread === t.name && $threadDetail}
