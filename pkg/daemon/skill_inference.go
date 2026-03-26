@@ -256,40 +256,144 @@ func InferSkillFromIssue(issue *Issue) (string, error) {
 	return inferredSkill, nil
 }
 
-// skillModelMapping is intentionally sparse: it only covers skills where the
-// daemon has strong evidence that paying for the heavier reasoning model is
-// worth it. Those skills produce better results when they can spend tokens on
-// analysis and synthesis, so pinning them here keeps overnight routing
-// predictable.
+// --- Capability classes ---
 //
-// Implementation-heavy skills like feature-impl are deliberately excluded even
-// when they sometimes benefit from a stronger model. The daemon makes this
-// inference before pkg/spawn/resolve.go applies account config, repo defaults,
-// or per-user overrides, so returning "" here is the escape hatch that lets the
-// resolve pipeline honor those downstream settings instead of silently
-// hardcoding opus for every spawn.
-var skillModelMapping = map[string]string{
-	"systematic-debugging": "opus",
-	"investigation":        "opus",
-	"architect":            "opus",
-	"codebase-audit":       "opus",
-	"research":             "opus",
+// Each skill belongs to a capability class that determines its model requirements.
+// Deep-reasoning skills need sustained analysis and synthesis (opus).
+// Implementation skills can use lighter models when effort is bounded.
+
+const (
+	// CapabilityDeepReasoning requires models with strong analysis/synthesis.
+	// Skills: architect, investigation, systematic-debugging, research, codebase-audit.
+	CapabilityDeepReasoning = "deep-reasoning"
+
+	// CapabilityImplementation handles code changes. Model depends on effort.
+	// Skills: feature-impl, reliability-testing.
+	CapabilityImplementation = "implementation"
+
+	// CapabilityLight handles lightweight tasks with no model requirement.
+	// Skills: issue-creation, and unknown/unmapped skills.
+	CapabilityLight = "light"
+)
+
+// skillCapabilityClass maps skills to their capability class.
+var skillCapabilityClass = map[string]string{
+	"systematic-debugging": CapabilityDeepReasoning,
+	"investigation":        CapabilityDeepReasoning,
+	"architect":            CapabilityDeepReasoning,
+	"codebase-audit":       CapabilityDeepReasoning,
+	"research":             CapabilityDeepReasoning,
+	"feature-impl":         CapabilityImplementation,
+	"reliability-testing":  CapabilityImplementation,
+	"issue-creation":       CapabilityLight,
 }
 
-// InferModelFromSkill returns the appropriate model alias for a given skill.
-// Deep reasoning skills (debugging, investigation, architecture) → opus.
-// Implementation skills (feature-impl, issue-creation) → empty string (use resolve pipeline defaults).
-// Unknown skills → empty string (use resolve pipeline defaults).
-//
-// Returns empty string when the skill has no explicit model requirement.
-// This allows the resolve pipeline (pkg/spawn/resolve.go) to respect user config
-// default_model instead of the daemon overriding it with a hardcoded default.
-// Only skills with explicit requirements in skillModelMapping get a model override.
-func InferModelFromSkill(skill string) string {
-	if model, ok := skillModelMapping[skill]; ok {
-		return model
+// SkillCapability returns the capability class for a skill.
+// Returns CapabilityLight for unknown skills.
+func SkillCapability(skill string) string {
+	if cap, ok := skillCapabilityClass[skill]; ok {
+		return cap
 	}
-	return "" // Let resolve pipeline handle default model selection
+	return CapabilityLight
+}
+
+// --- Model routing ---
+
+// ModelRoute is the result of capability-aware model routing.
+// Contains both the model alias and a human-readable reason for the choice.
+type ModelRoute struct {
+	// Model is the model alias (e.g., "opus", "gpt-5.4", or "" for resolve pipeline default).
+	Model string
+	// Reason explains why this model was chosen (for daemon logs and status display).
+	Reason string
+}
+
+// RouteModel selects a model based on skill capability class, issue effort labels,
+// and escalation state. This replaces the skill-only InferModelFromSkill with
+// issue-aware routing.
+//
+// Routing rules:
+//   - Deep-reasoning skills (architect, investigation, debugging, research) → opus
+//   - Implementation skills + effort:small or effort:medium → gpt-5.4
+//   - Implementation skills + effort:large or no effort label → "" (resolve pipeline default)
+//   - Light/unknown skills → "" (resolve pipeline default)
+//
+// The resolve pipeline (pkg/spawn/resolve.go) still applies account config,
+// repo defaults, and per-user overrides on top of this inference.
+func RouteModel(skill string, issue *Issue) ModelRoute {
+	capability := SkillCapability(skill)
+
+	switch capability {
+	case CapabilityDeepReasoning:
+		return ModelRoute{
+			Model:  "opus",
+			Reason: fmt.Sprintf("deep-reasoning skill (%s) requires opus", skill),
+		}
+
+	case CapabilityImplementation:
+		if issue == nil {
+			return ModelRoute{
+				Model:  "",
+				Reason: fmt.Sprintf("implementation skill (%s), no issue context", skill),
+			}
+		}
+
+		effort := InferEffortFromLabels(issue.Labels)
+		switch effort {
+		case "small":
+			return ModelRoute{
+				Model:  "gpt-5.4",
+				Reason: fmt.Sprintf("implementation skill (%s) + effort:small → gpt-5.4", skill),
+			}
+		case "medium":
+			return ModelRoute{
+				Model:  "gpt-5.4",
+				Reason: fmt.Sprintf("implementation skill (%s) + effort:medium → gpt-5.4", skill),
+			}
+		case "large":
+			return ModelRoute{
+				Model:  "",
+				Reason: fmt.Sprintf("implementation skill (%s) + effort:large → resolve pipeline default", skill),
+			}
+		default:
+			return ModelRoute{
+				Model:  "",
+				Reason: fmt.Sprintf("implementation skill (%s), no effort label → resolve pipeline default", skill),
+			}
+		}
+
+	default: // CapabilityLight or unmapped
+		return ModelRoute{
+			Model:  "",
+			Reason: fmt.Sprintf("light skill (%s) → resolve pipeline default", skill),
+		}
+	}
+}
+
+// InferEffortFromLabels extracts the effort level from labels.
+// Returns "small", "medium", "large", or "" if no effort label is present.
+func InferEffortFromLabels(labels []string) string {
+	for _, label := range labels {
+		switch {
+		case strings.EqualFold(label, LabelEffortSmall):
+			return "small"
+		case strings.EqualFold(label, LabelEffortMedium):
+			return "medium"
+		case strings.EqualFold(label, LabelEffortLarge):
+			return "large"
+		}
+	}
+	return ""
+}
+
+// InferModelFromSkill returns the model alias for a given skill (without issue context).
+// This is the backward-compatible wrapper used by coordination.go for extraction/escalation
+// paths where issue context is not relevant (the skill alone determines the model).
+//
+// For issue-aware routing, use RouteModel instead.
+func InferModelFromSkill(skill string) string {
+	route := RouteModel(skill, nil)
+	return route.Model
 }
 
 // logSkillInference logs a skill inference event to events.jsonl.

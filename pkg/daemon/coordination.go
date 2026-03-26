@@ -19,6 +19,10 @@ type SkillRoute struct {
 	Skill string
 	Model string
 
+	// ModelRouteReason explains why this model was selected.
+	// Set by RouteModel and updated if routing overrides the model.
+	ModelRouteReason string
+
 	// ExtractionSpawned indicates an extraction agent was spawned instead.
 	ExtractionSpawned bool
 	// ExtractionIssueID is the ID of the created extraction issue.
@@ -37,10 +41,11 @@ type SkillRoute struct {
 // RouteIssueForSpawn determines the effective skill and model for an issue,
 // applying hotspot extraction and architect escalation.
 // This is a coordination decision that consumes hotspot compliance signals.
-func (d *Daemon) RouteIssueForSpawn(issue *Issue, skill, inferredModel string) (SkillRoute, error) {
+func (d *Daemon) RouteIssueForSpawn(issue *Issue, skill, inferredModel string, routeReason string) (SkillRoute, error) {
 	route := SkillRoute{
-		Skill: skill,
-		Model: inferredModel,
+		Skill:            skill,
+		Model:            inferredModel,
+		ModelRouteReason: routeReason,
 	}
 
 	// Check for critical hotspots requiring pre-extraction.
@@ -73,6 +78,7 @@ func (d *Daemon) RouteIssueForSpawn(issue *Issue, skill, inferredModel string) (
 			}
 			route.Skill = "feature-impl"
 			route.Model = InferModelFromSkill(route.Skill)
+			route.ModelRouteReason = "extraction task → feature-impl default"
 			return route, nil
 		}
 	}
@@ -92,6 +98,7 @@ func (d *Daemon) RouteIssueForSpawn(issue *Issue, skill, inferredModel string) (
 				}
 				route.Skill = "architect"
 				route.Model = InferModelFromSkill(route.Skill)
+				route.ModelRouteReason = fmt.Sprintf("architect escalation (hotspot %s) → opus", escalationDetail.HotspotFile)
 				route.ArchitectEscalated = true
 			}
 		}

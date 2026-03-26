@@ -584,6 +584,191 @@ func TestQuestionTypeRoutesToArchitect(t *testing.T) {
 	}
 }
 
+// --- Capability-aware model routing tests ---
+
+func TestSkillCapability(t *testing.T) {
+	tests := []struct {
+		skill string
+		want  string
+	}{
+		{"architect", CapabilityDeepReasoning},
+		{"investigation", CapabilityDeepReasoning},
+		{"systematic-debugging", CapabilityDeepReasoning},
+		{"research", CapabilityDeepReasoning},
+		{"codebase-audit", CapabilityDeepReasoning},
+		{"feature-impl", CapabilityImplementation},
+		{"reliability-testing", CapabilityImplementation},
+		{"issue-creation", CapabilityLight},
+		{"unknown-skill", CapabilityLight},
+		{"", CapabilityLight},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.skill, func(t *testing.T) {
+			got := SkillCapability(tt.skill)
+			if got != tt.want {
+				t.Errorf("SkillCapability(%q) = %q, want %q", tt.skill, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestInferEffortFromLabels(t *testing.T) {
+	tests := []struct {
+		name   string
+		labels []string
+		want   string
+	}{
+		{"effort:small", []string{"effort:small"}, "small"},
+		{"effort:medium", []string{"triage:ready", "effort:medium"}, "medium"},
+		{"effort:large", []string{"effort:large", "skill:feature-impl"}, "large"},
+		{"no effort label", []string{"triage:ready", "skill:feature-impl"}, ""},
+		{"empty labels", []string{}, ""},
+		{"nil labels", nil, ""},
+		{"case insensitive", []string{"EFFORT:SMALL"}, "small"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := InferEffortFromLabels(tt.labels)
+			if got != tt.want {
+				t.Errorf("InferEffortFromLabels(%v) = %q, want %q", tt.labels, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRouteModel_DeepReasoningSkills(t *testing.T) {
+	// All deep-reasoning skills should route to opus regardless of effort
+	deepSkills := []string{"architect", "investigation", "systematic-debugging", "research", "codebase-audit"}
+
+	for _, skill := range deepSkills {
+		t.Run(skill, func(t *testing.T) {
+			// Without issue
+			route := RouteModel(skill, nil)
+			if route.Model != "opus" {
+				t.Errorf("RouteModel(%q, nil) Model = %q, want %q", skill, route.Model, "opus")
+			}
+			if route.Reason == "" {
+				t.Error("RouteModel should provide a reason")
+			}
+
+			// With issue (effort label shouldn't matter for deep-reasoning)
+			issue := &Issue{Labels: []string{"effort:small"}}
+			route = RouteModel(skill, issue)
+			if route.Model != "opus" {
+				t.Errorf("RouteModel(%q, effort:small) Model = %q, want %q", skill, route.Model, "opus")
+			}
+		})
+	}
+}
+
+func TestRouteModel_FeatureImpl_EffortSmall(t *testing.T) {
+	issue := &Issue{
+		ID:     "test-1",
+		Labels: []string{"effort:small", "triage:ready"},
+	}
+	route := RouteModel("feature-impl", issue)
+	if route.Model != "gpt-5.4" {
+		t.Errorf("RouteModel(feature-impl, effort:small) Model = %q, want %q", route.Model, "gpt-5.4")
+	}
+	if route.Reason == "" {
+		t.Error("RouteModel should provide a reason")
+	}
+}
+
+func TestRouteModel_FeatureImpl_EffortMedium(t *testing.T) {
+	issue := &Issue{
+		ID:     "test-2",
+		Labels: []string{"effort:medium"},
+	}
+	route := RouteModel("feature-impl", issue)
+	if route.Model != "gpt-5.4" {
+		t.Errorf("RouteModel(feature-impl, effort:medium) Model = %q, want %q", route.Model, "gpt-5.4")
+	}
+}
+
+func TestRouteModel_FeatureImpl_EffortLarge(t *testing.T) {
+	issue := &Issue{
+		ID:     "test-3",
+		Labels: []string{"effort:large"},
+	}
+	route := RouteModel("feature-impl", issue)
+	if route.Model != "" {
+		t.Errorf("RouteModel(feature-impl, effort:large) Model = %q, want empty (resolve pipeline default)", route.Model)
+	}
+}
+
+func TestRouteModel_FeatureImpl_NoEffortLabel(t *testing.T) {
+	issue := &Issue{
+		ID:     "test-4",
+		Labels: []string{"triage:ready"},
+	}
+	route := RouteModel("feature-impl", issue)
+	if route.Model != "" {
+		t.Errorf("RouteModel(feature-impl, no effort) Model = %q, want empty (resolve pipeline default)", route.Model)
+	}
+}
+
+func TestRouteModel_FeatureImpl_NilIssue(t *testing.T) {
+	// When no issue context is available, implementation skills use resolve pipeline default
+	route := RouteModel("feature-impl", nil)
+	if route.Model != "" {
+		t.Errorf("RouteModel(feature-impl, nil) Model = %q, want empty", route.Model)
+	}
+}
+
+func TestRouteModel_LightSkills(t *testing.T) {
+	lightSkills := []string{"issue-creation", "unknown-skill", ""}
+	for _, skill := range lightSkills {
+		t.Run(skill, func(t *testing.T) {
+			route := RouteModel(skill, nil)
+			if route.Model != "" {
+				t.Errorf("RouteModel(%q, nil) Model = %q, want empty", skill, route.Model)
+			}
+		})
+	}
+}
+
+func TestRouteModel_ReasonAlwaysPopulated(t *testing.T) {
+	tests := []struct {
+		skill string
+		issue *Issue
+	}{
+		{"architect", nil},
+		{"feature-impl", &Issue{Labels: []string{"effort:small"}}},
+		{"feature-impl", &Issue{Labels: []string{"effort:large"}}},
+		{"feature-impl", &Issue{Labels: []string{}}},
+		{"feature-impl", nil},
+		{"issue-creation", nil},
+		{"unknown", nil},
+	}
+
+	for _, tt := range tests {
+		name := tt.skill
+		if tt.issue != nil && len(tt.issue.Labels) > 0 {
+			name += "+" + tt.issue.Labels[0]
+		}
+		t.Run(name, func(t *testing.T) {
+			route := RouteModel(tt.skill, tt.issue)
+			if route.Reason == "" {
+				t.Errorf("RouteModel(%q, ...) Reason is empty, should always have a reason", tt.skill)
+			}
+		})
+	}
+}
+
+func TestInferModelFromSkill_BackwardCompat(t *testing.T) {
+	// InferModelFromSkill is the backward-compatible wrapper. It should still
+	// return "opus" for deep-reasoning skills and "" for implementation skills.
+	if got := InferModelFromSkill("architect"); got != "opus" {
+		t.Errorf("InferModelFromSkill(architect) = %q, want opus", got)
+	}
+	if got := InferModelFromSkill("feature-impl"); got != "" {
+		t.Errorf("InferModelFromSkill(feature-impl) = %q, want empty", got)
+	}
+}
+
 // TestOriginalBugReproduction verifies the fix for orch-go-4mu.
 // Issue titled "Architect: Design accretion gravity enforcement infrastructure"
 // was incorrectly inferred as "investigation" instead of "architect".

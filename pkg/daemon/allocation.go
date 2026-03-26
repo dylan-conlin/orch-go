@@ -46,7 +46,8 @@ type IssueScore struct {
 // - weight: how much success rate can modulate the base score (±20% at weight=0.4)
 func ScoreIssue(issue Issue, learning *events.LearningStore) IssueScore {
 	skill := inferSkillForScoring(issue)
-	model := InferModelFromSkill(skill)
+	modelRoute := RouteModel(skill, &issue)
+	model := modelRoute.Model
 
 	successRate := lookupSuccessRate(skill, learning)
 

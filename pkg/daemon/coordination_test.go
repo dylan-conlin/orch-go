@@ -71,7 +71,7 @@ func TestPrioritizeIssues_SortsByPriority(t *testing.T) {
 func TestRouteIssueForSpawn_NoHotspotChecker(t *testing.T) {
 	d := &Daemon{}
 	issue := &Issue{ID: "proj-1", Title: "Test", IssueType: "feature"}
-	route, err := d.RouteIssueForSpawn(issue, "feature-impl", "opus")
+	route, err := d.RouteIssueForSpawn(issue, "feature-impl", "opus", "test")
 	if err != nil {
 		t.Fatalf("RouteIssueForSpawn() error: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestSkillRoute_PassthroughWhenNoHotspot(t *testing.T) {
 		HotspotChecker: &mockHotspotChecker{hotspots: nil},
 	}
 	issue := &Issue{ID: "proj-1", Title: "Test", IssueType: "feature"}
-	route, err := d.RouteIssueForSpawn(issue, "feature-impl", "opus")
+	route, err := d.RouteIssueForSpawn(issue, "feature-impl", "opus", "test")
 	if err != nil {
 		t.Fatalf("RouteIssueForSpawn() error: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestRouteIssueForSpawn_RelaxedComplianceSkipsArchitectEscalation(t *testing
 		Title:     "Fix daemon.go retry logic",
 		IssueType: "feature",
 	}
-	route, err := d.RouteIssueForSpawn(issue, "feature-impl", "opus")
+	route, err := d.RouteIssueForSpawn(issue, "feature-impl", "opus", "test")
 	if err != nil {
 		t.Fatalf("RouteIssueForSpawn() error: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestRouteIssueForSpawn_StrictComplianceAllowsArchitectEscalation(t *testing
 		Title:     "Fix daemon.go retry logic",
 		IssueType: "feature",
 	}
-	route, err := d.RouteIssueForSpawn(issue, "feature-impl", "opus")
+	route, err := d.RouteIssueForSpawn(issue, "feature-impl", "opus", "test")
 	if err != nil {
 		t.Fatalf("RouteIssueForSpawn() error: %v", err)
 	}
@@ -293,7 +293,7 @@ func TestRouteIssueForSpawn_PerSkillComplianceOverride(t *testing.T) {
 		Title:     "Fix daemon.go retry logic",
 		IssueType: "feature",
 	}
-	route, err := d.RouteIssueForSpawn(issue, "feature-impl", "opus")
+	route, err := d.RouteIssueForSpawn(issue, "feature-impl", "opus", "test")
 	if err != nil {
 		t.Fatalf("RouteIssueForSpawn() error: %v", err)
 	}
