@@ -4,14 +4,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 )
 
 func TestStallTracker_NoProgressDetection(t *testing.T) {
 	tracker := NewStallTracker(1 * time.Second) // Use short threshold for testing
 
 	sessionID := "test-session-1"
-	tokens := &opencode.TokenStats{
+	tokens := &execution.TokenStats{
 		InputTokens:  1000,
 		OutputTokens: 500,
 	}
@@ -36,7 +36,7 @@ func TestStallTracker_ProgressDetection(t *testing.T) {
 	tracker := NewStallTracker(1 * time.Second)
 
 	sessionID := "test-session-2"
-	tokens1 := &opencode.TokenStats{
+	tokens1 := &execution.TokenStats{
 		InputTokens:  1000,
 		OutputTokens: 500,
 	}
@@ -48,7 +48,7 @@ func TestStallTracker_ProgressDetection(t *testing.T) {
 	time.Sleep(1100 * time.Millisecond)
 
 	// Second update with INCREASED tokens - should NOT be stalled
-	tokens2 := &opencode.TokenStats{
+	tokens2 := &execution.TokenStats{
 		InputTokens:  1000,
 		OutputTokens: 600, // Increased by 100
 	}
@@ -62,7 +62,7 @@ func TestStallTracker_GetStallDuration(t *testing.T) {
 	tracker := NewStallTracker(500 * time.Millisecond)
 
 	sessionID := "test-session-3"
-	tokens := &opencode.TokenStats{
+	tokens := &execution.TokenStats{
 		InputTokens:  1000,
 		OutputTokens: 500,
 	}
@@ -87,7 +87,7 @@ func TestStallTracker_CleanStale(t *testing.T) {
 	tracker := NewStallTracker(1 * time.Second)
 
 	sessionID := "test-session-4"
-	tokens := &opencode.TokenStats{
+	tokens := &execution.TokenStats{
 		InputTokens:  1000,
 		OutputTokens: 500,
 	}
@@ -115,7 +115,7 @@ func TestStallTracker_MultipleAgents(t *testing.T) {
 
 	session1 := "test-session-5"
 	session2 := "test-session-6"
-	tokens := &opencode.TokenStats{
+	tokens := &execution.TokenStats{
 		InputTokens:  1000,
 		OutputTokens: 500,
 	}
@@ -133,7 +133,7 @@ func TestStallTracker_MultipleAgents(t *testing.T) {
 	time.Sleep(1100 * time.Millisecond)
 
 	// Only session1 makes progress
-	tokensProgress := &opencode.TokenStats{
+	tokensProgress := &execution.TokenStats{
 		InputTokens:  1000,
 		OutputTokens: 600,
 	}

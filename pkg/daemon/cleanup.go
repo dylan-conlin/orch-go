@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,7 +10,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
@@ -208,16 +209,16 @@ func listOpenBeadsIDs() (map[string]bool, error) {
 }
 
 func cleanStaleTmuxWindows(serverURL string, preserveOrchestrator bool) (int, error) {
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
+	ctx := context.Background()
 	now := time.Now()
 
 	// Source 1: OpenCode sessions (headless/tmux backend)
 	activeOpenCodeIDs := make(map[string]bool)
-	sessions, err := client.ListSessions("")
+	sessions, err := client.ListSessions(ctx, "")
 	if err == nil {
 		for _, s := range sessions {
-			updatedAt := time.Unix(s.Time.Updated/1000, 0)
-			if now.Sub(updatedAt) <= cleanupMaxIdleTime {
+			if now.Sub(s.Updated) <= cleanupMaxIdleTime {
 				beadsID := extractBeadsIDFromTitle(s.Title)
 				if beadsID != "" {
 					activeOpenCodeIDs[beadsID] = true

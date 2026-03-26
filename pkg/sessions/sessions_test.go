@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 )
 
 func TestDefaultStoragePath(t *testing.T) {
@@ -47,7 +47,7 @@ func TestNewStore(t *testing.T) {
 	})
 
 	t.Run("with client", func(t *testing.T) {
-		client := opencode.NewClient("http://localhost:3000")
+		client := execution.NewOpenCodeAdapter("http://localhost:3000")
 		store := NewStore("", client)
 		if store.client != client {
 			t.Error("NewStore did not store client correctly")

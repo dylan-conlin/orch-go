@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/sessions"
 	"github.com/spf13/cobra"
 )
@@ -131,7 +131,7 @@ func init() {
 }
 
 func runSessionsList() error {
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 	store := sessions.NewStore("", client)
 
 	opts := sessions.ListOptions{
@@ -212,7 +212,7 @@ func runSessionsList() error {
 }
 
 func runSessionsSearch(query string) error {
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 	store := sessions.NewStore("", client)
 
 	opts := sessions.SearchOptions{
@@ -293,7 +293,7 @@ func runSessionsSearch(query string) error {
 }
 
 func runSessionsShow(sessionID string) error {
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 	store := sessions.NewStore("", client)
 
 	session, messages, err := store.Show(sessionID)
@@ -319,12 +319,10 @@ func runSessionsShow(sessionID string) error {
 	fmt.Printf("--- Messages (%d) ---\n\n", len(messages))
 
 	for _, msg := range messages {
-		role := msg.Info.Role
+		role := msg.Role
 		roleLabel := strings.ToUpper(role[:1]) + role[1:]
 
-		created := time.Unix(msg.Info.Time.Created/1000, 0)
-
-		fmt.Printf("[%s] %s\n", roleLabel, created.Format("15:04:05"))
+		fmt.Printf("[%s] %s\n", roleLabel, msg.Created.Format("15:04:05"))
 
 		for _, part := range msg.Parts {
 			if part.Type == "text" && part.Text != "" {

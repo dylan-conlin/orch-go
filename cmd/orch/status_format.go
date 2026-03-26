@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"golang.org/x/term"
 )
@@ -490,7 +490,7 @@ func formatTokenCount(count int) string {
 }
 
 // formatTokenStats returns a formatted string of token usage.
-func formatTokenStats(tokens *opencode.TokenStats) string {
+func formatTokenStats(tokens *execution.TokenStats) string {
 	if tokens == nil {
 		return "-"
 	}
@@ -504,7 +504,7 @@ func formatTokenStats(tokens *opencode.TokenStats) string {
 
 // formatTokenStatsCompact returns a compact formatted string of token usage for table display.
 // Shows total tokens with input/output breakdown: "12.5K (8K/4K)"
-func formatTokenStatsCompact(tokens *opencode.TokenStats) string {
+func formatTokenStatsCompact(tokens *execution.TokenStats) string {
 	if tokens == nil {
 		return "-"
 	}

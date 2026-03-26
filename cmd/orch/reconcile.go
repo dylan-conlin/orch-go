@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"bufio"
 	"encoding/json"
 	"fmt"
@@ -13,7 +14,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -270,13 +271,13 @@ func findZombieIssuesFallback(projectDir string) ([]ZombieIssue, error) {
 func filterZombies(projectDir string, issues []beads.Issue) ([]ZombieIssue, error) {
 	now := time.Now()
 	var zombies []ZombieIssue
-	ocClient := opencode.NewClient(serverURL)
+	ocClient := execution.NewOpenCodeAdapter(serverURL)
 
-	var activeSessions []opencode.Session
+	var activeSessions []execution.SessionInfo
 	seenSessionIDs := make(map[string]bool)
 
 	if projectDir != "" {
-		dirSessions, _ := ocClient.ListSessions(projectDir)
+		dirSessions, _ := ocClient.ListSessions(context.Background(), projectDir)
 		for _, s := range dirSessions {
 			if !seenSessionIDs[s.ID] {
 				seenSessionIDs[s.ID] = true
@@ -284,7 +285,7 @@ func filterZombies(projectDir string, issues []beads.Issue) ([]ZombieIssue, erro
 			}
 		}
 	}
-	globalSessions, _ := ocClient.ListSessions("")
+	globalSessions, _ := ocClient.ListSessions(context.Background(), "")
 	for _, s := range globalSessions {
 		if !seenSessionIDs[s.ID] {
 			seenSessionIDs[s.ID] = true
@@ -296,7 +297,7 @@ func filterZombies(projectDir string, issues []beads.Issue) ([]ZombieIssue, erro
 	activeBeadsIDs := make(map[string]bool)
 
 	for _, s := range activeSessions {
-		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		updatedAt := s.Updated
 		if now.Sub(updatedAt) <= maxIdleTime {
 			beadsID := extractBeadsIDFromTitle(s.Title)
 			if beadsID != "" {

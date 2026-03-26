@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
@@ -144,8 +145,8 @@ func handleSessionMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := opencode.NewClient(serverURL)
-	messages, err := client.GetMessages(sessionID)
+	client := execution.NewOpenCodeAdapter(serverURL)
+	messages, err := client.GetMessages(context.Background(), execution.SessionHandle(sessionID))
 	if err != nil {
 		// OpenCode API failed (session may be deleted/cleaned up).
 		// Fall back to ACTIVITY.json if available in the workspace.
@@ -195,14 +196,15 @@ func handleSessionMessages(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			partID := part.CallID // Use CallID as part identifier (ID not available in execution types)
 			response := MessagePartResponse{
-				ID:   part.ID,
+				ID:   partID,
 				Type: "message.part", // Match SSE event type
 				Properties: MessagePartProperties{
 					SessionID: sessionID,
-					MessageID: msg.Info.ID,
+					MessageID: msg.ID,
 					Part: PartDetails{
-						ID:        part.ID,
+						ID:        partID,
 						Type:      partType,
 						Text:      part.Text,
 						SessionID: sessionID,
@@ -210,7 +212,7 @@ func handleSessionMessages(w http.ResponseWriter, r *http.Request) {
 						State:     state,     // Add tool state (input/output)
 					},
 				},
-				Timestamp: msg.Info.Time.Created,
+				Timestamp: msg.Created.UnixMilli(),
 			}
 			parts = append(parts, response)
 		}

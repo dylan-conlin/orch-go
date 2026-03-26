@@ -3,11 +3,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/question"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -33,7 +34,7 @@ Examples:
 }
 
 func runQuestion(beadsID string) error {
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 	projectDir, _ := os.Getwd()
 
 	// Strategy: Workspace file first (fast path), then derived lookups
@@ -53,9 +54,9 @@ func runQuestion(beadsID string) error {
 
 	// If we have a session ID (from workspace file), try OpenCode API first
 	if sessionID != "" {
-		messages, err := client.GetMessages(sessionID)
+		messages, err := client.GetMessages(context.Background(), execution.SessionHandle(sessionID))
 		if err == nil && len(messages) > 0 {
-			textLines := opencode.ExtractRecentText(messages, 100)
+			textLines := execution.ExtractRecentText(messages, 100)
 			content := strings.Join(textLines, "\n")
 			q := question.Extract(content)
 			if q != "" {
@@ -82,14 +83,14 @@ func runQuestion(beadsID string) error {
 		// Found tmux window - try to find matching OpenCode session first
 		// This gives us richer message history than just pane capture
 		if sessionID == "" {
-			allSessions, err := client.ListSessions(projectDir)
+			allSessions, err := client.ListSessions(context.Background(), projectDir)
 			if err == nil {
 				for _, s := range allSessions {
 					// Match session by title containing beadsID or workspace name
 					if strings.Contains(s.Title, beadsID) || extractBeadsIDFromTitle(s.Title) == beadsID {
-						messages, err := client.GetMessages(s.ID)
+						messages, err := client.GetMessages(context.Background(), execution.SessionHandle(s.ID))
 						if err == nil && len(messages) > 0 {
-							textLines := opencode.ExtractRecentText(messages, 100)
+							textLines := execution.ExtractRecentText(messages, 100)
 							content := strings.Join(textLines, "\n")
 							q := question.Extract(content)
 							if q != "" {

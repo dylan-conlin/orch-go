@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -30,7 +30,7 @@ type AgentAPIResponse struct {
 	Synthesis            *SynthesisResponse   `json:"synthesis,omitempty"`
 	CloseReason          string               `json:"close_reason,omitempty"`          // Beads close reason, fallback when synthesis is null
 	GapAnalysis          *GapAPIResponse      `json:"gap_analysis,omitempty"`          // Context gap analysis from spawn time
-	Tokens               *opencode.TokenStats `json:"tokens,omitempty"`                // Token usage for the session
+	Tokens               *execution.TokenStats `json:"tokens,omitempty"`                // Token usage for the session
 	InvestigationPath    string               `json:"investigation_path,omitempty"`    // Path to investigation file from beads comments
 	ProjectDir           string               `json:"project_dir,omitempty"`           // Project directory for the agent
 	SynthesisContent     string               `json:"synthesis_content,omitempty"`     // Raw SYNTHESIS.md content for inline rendering

@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"bufio"
 	"fmt"
 	"net/http"
@@ -17,7 +18,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/kbmetrics"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
@@ -454,8 +455,8 @@ func collectCompletionTelemetry(workspacePath string, forced bool, verificationP
 
 	sessionID := spawn.ReadSessionID(workspacePath)
 	if sessionID != "" {
-		client := opencode.NewClient("http://127.0.0.1:4096")
-		if tokenStats, err := client.GetSessionTokens(sessionID); err == nil && tokenStats != nil {
+		client := execution.NewOpenCodeAdapter("http://127.0.0.1:4096")
+		if tokenStats, err := client.GetSessionTokens(context.Background(), execution.SessionHandle(sessionID)); err == nil && tokenStats != nil {
 			tokensInput = tokenStats.InputTokens
 			tokensOutput = tokenStats.OutputTokens
 		}

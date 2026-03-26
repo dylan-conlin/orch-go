@@ -9,6 +9,7 @@
 package discovery
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -16,7 +17,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
@@ -118,13 +119,14 @@ func QueryTrackedAgents(projectDirs []string) ([]AgentStatus, error) {
 	phases, phaseTimestamps := ExtractLatestPhases(beadsIDs)
 
 	sessionIDs := ExtractSessionIDs(manifests)
-	var liveness map[string]opencode.SessionStatusInfo
+	ctx := context.Background()
+	var liveness map[string]execution.SessionStatusInfo
 	if len(sessionIDs) > 0 {
-		client := opencode.NewClient(opencode.DefaultServerURL)
-		if !client.IsReachable() {
+		client := execution.NewOpenCodeAdapter(execution.DefaultServerURL)
+		if !client.IsReachable(ctx) {
 			liveness = UnknownLiveness(sessionIDs)
 		} else {
-			liveness, err = client.GetSessionStatusByIDs(sessionIDs)
+			liveness, err = client.GetSessionStatusByIDs(ctx, sessionIDs)
 			if err != nil {
 				log.Printf("Warning: OpenCode session status query failed: %v", err)
 				liveness = UnknownLiveness(sessionIDs)
@@ -327,10 +329,10 @@ func LatestPhaseWithTimestamp(comments []beads.Comment) (string, time.Time) {
 
 // UnknownLiveness creates a liveness map where every session has "unknown" status.
 // Used as degraded mode when OpenCode is unreachable.
-func UnknownLiveness(sessionIDs []string) map[string]opencode.SessionStatusInfo {
-	result := make(map[string]opencode.SessionStatusInfo, len(sessionIDs))
+func UnknownLiveness(sessionIDs []string) map[string]execution.SessionStatusInfo {
+	result := make(map[string]execution.SessionStatusInfo, len(sessionIDs))
 	for _, id := range sessionIDs {
-		result[id] = opencode.SessionStatusInfo{Type: "unknown"}
+		result[id] = execution.SessionStatusInfo{Type: "unknown"}
 	}
 	return result
 }
@@ -344,7 +346,7 @@ func UnknownLiveness(sessionIDs []string) map[string]opencode.SessionStatusInfo 
 func JoinWithReasonCodes(
 	issues []beads.Issue,
 	manifests map[string]*spawn.AgentManifest,
-	liveness map[string]opencode.SessionStatusInfo,
+	liveness map[string]execution.SessionStatusInfo,
 	phases map[string]string,
 	phaseTimestamps ...map[string]time.Time,
 ) []AgentStatus {

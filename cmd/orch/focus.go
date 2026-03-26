@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,7 +13,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/discovery"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/spf13/cobra"
 )
 
@@ -399,8 +400,8 @@ func printDriftAnalysis(a DriftAnalysis) {
 
 // countUntrackedSessions counts OpenCode sessions that don't map to tracked beads issues.
 func countUntrackedSessions(projectDir string) int {
-	client := opencode.NewClient(opencode.DefaultServerURL)
-	sessions, err := client.ListSessions(projectDir)
+	client := execution.NewOpenCodeAdapter(execution.DefaultServerURL)
+	sessions, err := client.ListSessions(context.Background(), projectDir)
 	if err != nil {
 		return 0
 	}
@@ -424,8 +425,8 @@ func getActiveWork() []focus.ActiveWork {
 	}
 
 	// Use default OpenCode server URL
-	client := opencode.NewClient("http://127.0.0.1:4096")
-	sessions, err := client.ListSessions(projectDir)
+	client := execution.NewOpenCodeAdapter("http://127.0.0.1:4096")
+	sessions, err := client.ListSessions(context.Background(), projectDir)
 	if err != nil {
 		return nil
 	}

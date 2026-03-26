@@ -1,12 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
@@ -30,7 +31,7 @@ func runSessionsCrossReference() error {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 	report := &SessionsCrossReferenceReport{}
 
 	// Step 1: Build map of workspace → session IDs
@@ -64,7 +65,7 @@ func runSessionsCrossReference() error {
 	report.WorkspaceCount = len(workspaceToSession)
 
 	// Step 2: Get all OpenCode sessions for this project
-	sessions, err := client.ListDiskSessions(projectDir)
+	sessions, err := client.ListDiskSessions(context.Background(), projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to list sessions: %w", err)
 	}
@@ -72,7 +73,7 @@ func runSessionsCrossReference() error {
 
 	// Build session ID set and map for quick lookup
 	sessionIDSet := make(map[string]bool)
-	sessionByID := make(map[string]opencode.Session)
+	sessionByID := make(map[string]execution.SessionInfo)
 	for _, s := range sessions {
 		sessionIDSet[s.ID] = true
 		sessionByID[s.ID] = s
@@ -101,7 +102,7 @@ func runSessionsCrossReference() error {
 	const zombieThreshold = 30 * time.Minute
 	now := time.Now()
 	for _, s := range sessions {
-		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		updatedAt := s.Updated
 		idleTime := now.Sub(updatedAt)
 
 		// Session is potentially a zombie if:
@@ -121,7 +122,7 @@ func runSessionsCrossReference() error {
 }
 
 // printSessionsCrossReferenceReport prints the cross-reference report in a clean format
-func printSessionsCrossReferenceReport(report *SessionsCrossReferenceReport, projectDir string, sessionByID map[string]opencode.Session, workspaceBeadsID map[string]string) {
+func printSessionsCrossReferenceReport(report *SessionsCrossReferenceReport, projectDir string, sessionByID map[string]execution.SessionInfo, workspaceBeadsID map[string]string) {
 	fmt.Println("orch doctor --sessions")
 	fmt.Printf("Workspaces: %d\n", report.WorkspaceCount)
 	fmt.Printf("Sessions: %d active\n", report.SessionCount)
@@ -161,7 +162,7 @@ func printSessionsCrossReferenceReport(report *SessionsCrossReferenceReport, pro
 			if title == "" {
 				title = "(untitled)"
 			}
-			age := time.Since(time.Unix(s.Time.Created/1000, 0))
+			age := time.Since(s.Created)
 			fmt.Printf("  - %s: %s (%.0f days old)\n", shortID(sessionID), title, age.Hours()/24)
 		}
 		fmt.Println()
@@ -175,7 +176,7 @@ func printSessionsCrossReferenceReport(report *SessionsCrossReferenceReport, pro
 			if title == "" {
 				title = "(untitled)"
 			}
-			idleTime := time.Since(time.Unix(s.Time.Updated/1000, 0))
+			idleTime := time.Since(s.Updated)
 			fmt.Printf("  - %s: %s (idle %.0f min)\n", shortID(sessionID), title, idleTime.Minutes())
 		}
 		fmt.Println()

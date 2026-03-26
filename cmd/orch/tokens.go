@@ -1,12 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/spf13/cobra"
 )
 
@@ -62,7 +63,7 @@ type TokensSessionInfo struct {
 	Title        string               `json:"title"`
 	Status       string               `json:"status"` // active, idle, completed
 	Runtime      string               `json:"runtime"`
-	Tokens       *opencode.TokenStats `json:"tokens"`
+	Tokens       *execution.TokenStats `json:"tokens"`
 }
 
 // TokensTotal represents aggregate token totals.
@@ -76,11 +77,11 @@ type TokensTotal struct {
 }
 
 func runTokensSummary() error {
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 	now := time.Now()
 
 	// List all sessions
-	sessions, err := client.ListSessions("")
+	sessions, err := client.ListSessions(context.Background(), "")
 	if err != nil {
 		return fmt.Errorf("failed to list sessions: %w", err)
 	}
@@ -90,8 +91,8 @@ func runTokensSummary() error {
 	var total TokensTotal
 
 	for _, s := range sessions {
-		updatedAt := time.Unix(s.Time.Updated/1000, 0)
-		createdAt := time.Unix(s.Time.Created/1000, 0)
+		updatedAt := s.Updated
+		createdAt := s.Created
 		idleTime := now.Sub(updatedAt)
 
 		// Skip old sessions unless --all is set
@@ -116,7 +117,7 @@ func runTokensSummary() error {
 		}
 
 		// Fetch token usage for this session
-		tokens, err := client.GetSessionTokens(s.ID)
+		tokens, err := client.GetSessionTokens(context.Background(), execution.SessionHandle(s.ID))
 		if err != nil {
 			// Skip sessions with token fetch errors
 			continue
@@ -238,28 +239,28 @@ func runTokensDetail(identifier string) error {
 		return fmt.Errorf("failed to resolve session: %w", err)
 	}
 
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 
 	// Get session info
-	session, err := client.GetSession(sessionID)
+	session, err := client.GetSession(context.Background(), execution.SessionHandle(sessionID))
 	if err != nil {
 		return fmt.Errorf("failed to get session: %w", err)
 	}
 
 	// Get messages for detailed breakdown
-	messages, err := client.GetMessages(sessionID)
+	messages, err := client.GetMessages(context.Background(), execution.SessionHandle(sessionID))
 	if err != nil {
 		return fmt.Errorf("failed to get messages: %w", err)
 	}
 
 	// Aggregate tokens
-	tokens := opencode.AggregateTokens(messages)
+	tokens := execution.AggregateTokens(messages)
 
 	if tokensJSON {
 		output := struct {
-			Session  *opencode.Session    `json:"session"`
+			Session  *execution.SessionInfo    `json:"session"`
 			Messages int                  `json:"message_count"`
-			Tokens   opencode.TokenStats  `json:"tokens"`
+			Tokens   execution.TokenStats  `json:"tokens"`
 		}{
 			Session:  session,
 			Messages: len(messages),
@@ -299,7 +300,7 @@ func runTokensDetail(identifier string) error {
 	// Show per-message breakdown if there are messages with tokens
 	hasPerMsgTokens := false
 	for _, msg := range messages {
-		if msg.Info.Tokens != nil && (msg.Info.Tokens.Input > 0 || msg.Info.Tokens.Output > 0) {
+		if msg.Tokens != nil && (msg.Tokens.Input > 0 || msg.Tokens.Output > 0) {
 			hasPerMsgTokens = true
 			break
 		}
@@ -311,17 +312,17 @@ func runTokensDetail(identifier string) error {
 		fmt.Printf("  %s\n", strings.Repeat("-", 60))
 
 		for i, msg := range messages {
-			if msg.Info.Tokens == nil {
+			if msg.Tokens == nil {
 				continue
 			}
-			t := msg.Info.Tokens
+			t := msg.Tokens
 			reasoning := "-"
 			if t.Reasoning > 0 {
 				reasoning = formatTokenCount(t.Reasoning)
 			}
 			fmt.Printf("  %-6d %-10s %-12s %-12s %s\n",
 				i+1,
-				msg.Info.Role,
+				msg.Role,
 				formatTokenCount(t.Input),
 				formatTokenCount(t.Output),
 				reasoning)

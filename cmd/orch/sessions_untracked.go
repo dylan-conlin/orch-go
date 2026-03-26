@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/spf13/cobra"
 )
 
@@ -66,7 +66,7 @@ type UntrackedSessionOutput struct {
 }
 
 func runUntrackedSessions(serverURL string) error {
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 	projectDir, _ := os.Getwd()
 
 	untracked, err := listUntrackedSessions(client, projectDir)

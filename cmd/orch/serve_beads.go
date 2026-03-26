@@ -10,7 +10,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/discovery"
 	"github.com/dylan-conlin/orch-go/pkg/graph"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -660,7 +660,7 @@ func buildActiveAgentMap() map[string]*ActiveAgentInfo {
 		err    error
 	}
 	type sessionsResult struct {
-		sessions []opencode.Session
+		sessions []execution.SessionInfo
 		err      error
 	}
 
@@ -676,7 +676,7 @@ func buildActiveAgentMap() map[string]*ActiveAgentInfo {
 
 	// Step 2: OpenCode sessions across all projects
 	go func() {
-		client := opencode.NewClient(serverURL)
+		client := execution.NewOpenCodeAdapter(serverURL)
 		sessions, err := listSessionsAcrossProjects(client, sourceDir)
 		sessionsCh <- sessionsResult{sessions: sessions, err: err}
 	}()
@@ -706,7 +706,7 @@ func buildActiveAgentMap() map[string]*ActiveAgentInfo {
 			if beadsID == "" || result[beadsID] != nil {
 				continue
 			}
-			createdAt := time.Unix(s.Time.Created/1000, 0)
+			createdAt := s.Created
 			result[beadsID] = &ActiveAgentInfo{
 				Runtime: formatDuration(now.Sub(createdAt)),
 			}
@@ -719,7 +719,7 @@ func buildActiveAgentMap() map[string]*ActiveAgentInfo {
 				continue
 			}
 			if info, ok := result[beadsID]; ok && info.Runtime == "" {
-				createdAt := time.Unix(s.Time.Created/1000, 0)
+				createdAt := s.Created
 				info.Runtime = formatDuration(now.Sub(createdAt))
 			}
 		}

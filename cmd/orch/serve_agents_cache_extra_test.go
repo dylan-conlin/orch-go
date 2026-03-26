@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 )
 
 func TestExtractUniqueProjectDirs(t *testing.T) {
@@ -62,9 +62,9 @@ func TestExtractUniqueProjectDirs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sessions := make([]opencode.Session, len(tt.sessionDirs))
+			sessions := make([]execution.SessionInfo, len(tt.sessionDirs))
 			for i, dir := range tt.sessionDirs {
-				sessions[i] = opencode.Session{Directory: dir}
+				sessions[i] = execution.SessionInfo{Directory: dir}
 			}
 
 			result := extractUniqueProjectDirs(sessions, tt.currentProjectDir)

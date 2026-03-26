@@ -1,6 +1,7 @@
 package orch
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,7 +10,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/beadsutil"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
@@ -200,11 +201,12 @@ func ResolveCrossRepoBeadsDir(beadsID, cwd, projectDir string, issueExists func(
 // spawns when the daemon has already picked up an issue via triage:ready.
 func CheckActiveAgent(beadsID, serverURL string) error {
 	// Check OpenCode sessions (headless backend)
-	client := opencode.NewClient(serverURL)
-	sessions, _ := client.ListSessions("")
+	client := execution.NewOpenCodeAdapter(serverURL)
+	ctx := context.Background()
+	sessions, _ := client.ListSessions(ctx, "")
 	for _, s := range sessions {
 		if strings.Contains(s.Title, beadsID) {
-			if client.IsSessionActive(s.ID, 30*time.Minute) {
+			if client.IsSessionActive(ctx, execution.SessionHandle(s.ID), 30*time.Minute) {
 				return fmt.Errorf("issue %s is already in_progress with active agent (session %s). Use 'orch send %s' to interact or 'orch abandon %s' to restart", beadsID, s.ID, s.ID, beadsID)
 			}
 			fmt.Fprintf(os.Stderr, "Note: found stale session %s for issue %s (no activity in 30m)\n", shortID(s.ID), beadsID)

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -10,7 +11,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/identity"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/spf13/cobra"
@@ -59,7 +60,7 @@ func runSend(serverURL, identifier, message string) error {
 		return fmt.Errorf("failed to resolve project directory: %w", err)
 	}
 
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 
 	// Strategy 1: Workspace lookup by beads ID (uses resolved project dir)
 	workspacePath, _ := findWorkspaceByBeadsID(projectDir, identifier)
@@ -89,7 +90,7 @@ func runSend(serverURL, identifier, message string) error {
 }
 
 // sendViaOpenCodeAPI sends a message using the OpenCode HTTP API.
-func sendViaOpenCodeAPI(client *opencode.Client, sessionID, identifier, message string) error {
+func sendViaOpenCodeAPI(client execution.SessionClient, sessionID, identifier, message string) error {
 	// Log the send event first (before streaming starts)
 	logger := events.NewLogger(events.DefaultLogPath())
 	event := events.Event{
@@ -109,7 +110,7 @@ func sendViaOpenCodeAPI(client *opencode.Client, sessionID, identifier, message 
 
 	if sendAsync {
 		// Send message asynchronously (non-blocking, no model for Q&A)
-		if err := client.SendMessageAsync(sessionID, message, ""); err != nil {
+		if err := client.SendMessageAsync(context.Background(), execution.SessionHandle(sessionID), message, ""); err != nil {
 			return fmt.Errorf("failed to send message asynchronously: %w", err)
 		}
 		fmt.Printf("✓ Message sent to session %s (via API)\n", sessionID)
@@ -117,7 +118,7 @@ func sendViaOpenCodeAPI(client *opencode.Client, sessionID, identifier, message 
 	}
 
 	// Send message and stream the response to stdout (blocking)
-	if err := client.SendMessageWithStreaming(sessionID, message, os.Stdout); err != nil {
+	if err := client.SendMessageWithStreaming(context.Background(), execution.SessionHandle(sessionID), message, os.Stdout); err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 

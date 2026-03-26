@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,7 +10,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/spf13/cobra"
 )
@@ -161,8 +162,8 @@ func runResumeByBeadsID(beadsID string) error {
 
 	// If workspace file doesn't have session_id, try to find via OpenCode API
 	if sessionID == "" {
-		client := opencode.NewClient(serverURL)
-		allSessions, err := client.ListSessions(projectDir)
+		client := execution.NewOpenCodeAdapter(serverURL)
+		allSessions, err := client.ListSessions(context.Background(), projectDir)
 		if err == nil {
 			for _, s := range allSessions {
 				if strings.Contains(s.Title, beadsID) || extractBeadsIDFromTitle(s.Title) == beadsID {
@@ -186,8 +187,8 @@ func runResumeByBeadsID(beadsID string) error {
 	prompt := GenerateResumePrompt(agentID, projectDir, beadsID)
 
 	// Send the resume message via OpenCode API (no model for resume)
-	client := opencode.NewClient(serverURL)
-	if err := client.SendMessageAsync(sessionID, prompt, ""); err != nil {
+	client := execution.NewOpenCodeAdapter(serverURL)
+	if err := client.SendMessageAsync(context.Background(), execution.SessionHandle(sessionID), prompt, ""); err != nil {
 		return fmt.Errorf("failed to send resume prompt: %w", err)
 	}
 
@@ -253,8 +254,8 @@ func runResumeByWorkspace(workspaceName string) error {
 	sessionID := spawn.ReadSessionID(workspacePath)
 	if sessionID == "" {
 		// Try to find via OpenCode API by workspace name in title
-		client := opencode.NewClient(serverURL)
-		allSessions, err := client.ListSessions(projectDir)
+		client := execution.NewOpenCodeAdapter(serverURL)
+		allSessions, err := client.ListSessions(context.Background(), projectDir)
 		if err == nil {
 			for _, s := range allSessions {
 				if strings.Contains(s.Title, workspaceName) {
@@ -282,8 +283,8 @@ func runResumeByWorkspace(workspaceName string) error {
 	}
 
 	// Send the resume message via OpenCode API
-	client := opencode.NewClient(serverURL)
-	if err := client.SendMessageAsync(sessionID, prompt, ""); err != nil {
+	client := execution.NewOpenCodeAdapter(serverURL)
+	if err := client.SendMessageAsync(context.Background(), execution.SessionHandle(sessionID), prompt, ""); err != nil {
 		return fmt.Errorf("failed to send resume prompt: %w", err)
 	}
 
@@ -328,8 +329,8 @@ func runResumeBySession(sessionID string) error {
 	projectName := filepath.Base(projectDir)
 
 	// Verify session exists
-	client := opencode.NewClient(serverURL)
-	if !client.SessionExists(sessionID) {
+	client := execution.NewOpenCodeAdapter(serverURL)
+	if !client.SessionExists(context.Background(), execution.SessionHandle(sessionID)) {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
@@ -337,7 +338,7 @@ func runResumeBySession(sessionID string) error {
 	prompt := GenerateSessionResumePrompt()
 
 	// Send the resume message via OpenCode API
-	if err := client.SendMessageAsync(sessionID, prompt, ""); err != nil {
+	if err := client.SendMessageAsync(context.Background(), execution.SessionHandle(sessionID), prompt, ""); err != nil {
 		return fmt.Errorf("failed to send resume prompt: %w", err)
 	}
 

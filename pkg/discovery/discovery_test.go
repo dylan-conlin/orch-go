@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
@@ -21,7 +21,7 @@ func TestJoinWithReasonCodes_FullyBound(t *testing.T) {
 			Skill:      "feature-impl",
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{
+	liveness := map[string]execution.SessionStatusInfo{
 		"sess-abc": {Type: "busy"},
 	}
 	phases := map[string]string{
@@ -59,7 +59,7 @@ func TestJoinWithReasonCodes_MissingBinding(t *testing.T) {
 		{ID: "orch-go-200", Title: "Missing manifest", Status: "in_progress"},
 	}
 	manifests := map[string]*spawn.AgentManifest{}
-	liveness := map[string]opencode.SessionStatusInfo{}
+	liveness := map[string]execution.SessionStatusInfo{}
 
 	results := JoinWithReasonCodes(issues, manifests, liveness, nil)
 
@@ -89,7 +89,7 @@ func TestJoinWithReasonCodes_MissingSession(t *testing.T) {
 			ProjectDir: "/tmp/project",
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{}
+	liveness := map[string]execution.SessionStatusInfo{}
 
 	results := JoinWithReasonCodes(issues, manifests, liveness, nil)
 
@@ -116,7 +116,7 @@ func TestJoinWithReasonCodes_SessionDead(t *testing.T) {
 			ProjectDir: "/tmp/project",
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{
+	liveness := map[string]execution.SessionStatusInfo{
 		"sess-dead": {Type: "idle"},
 	}
 
@@ -158,7 +158,7 @@ func TestJoinWithReasonCodes_ClaudeBackendWithPhaseAndActivePane(t *testing.T) {
 			SpawnTime:     "2026-02-24T10:00:00Z",
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{}
+	liveness := map[string]execution.SessionStatusInfo{}
 	phases := map[string]string{
 		"orch-go-1100": "Implementing - Working on feature",
 	}
@@ -288,7 +288,7 @@ func TestJoinWithReasonCodes_ClaudeBackendPhaseComplete(t *testing.T) {
 			SpawnTime:     "2026-02-24T08:00:00Z",
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{}
+	liveness := map[string]execution.SessionStatusInfo{}
 	phases := map[string]string{
 		"orch-go-1150": "Complete - All tests passing",
 	}
@@ -321,7 +321,7 @@ func TestJoinWithReasonCodes_ClaudeBackendRecentlySpawned(t *testing.T) {
 			SpawnTime:     recentTime,
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{}
+	liveness := map[string]execution.SessionStatusInfo{}
 
 	results := JoinWithReasonCodes(issues, manifests, liveness, nil)
 
@@ -355,7 +355,7 @@ func TestJoinWithReasonCodes_ClaudeBackendNoPhaseStale(t *testing.T) {
 			SpawnTime:     "2026-02-20T10:00:00Z",
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{}
+	liveness := map[string]execution.SessionStatusInfo{}
 
 	results := JoinWithReasonCodes(issues, manifests, liveness, nil)
 
@@ -393,7 +393,7 @@ func TestJoinWithReasonCodes_ClaudeBackendNoPhaseNoTmux(t *testing.T) {
 			SpawnTime:     recentTime,
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{}
+	liveness := map[string]execution.SessionStatusInfo{}
 
 	results := JoinWithReasonCodes(issues, manifests, liveness, nil)
 
@@ -437,7 +437,7 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
 			SpawnTime:     recentTime,
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{}
+	liveness := map[string]execution.SessionStatusInfo{}
 
 	results := JoinWithReasonCodes(issues, manifests, liveness, nil)
 
@@ -477,7 +477,7 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxPaneIdle(t *testing.T) {
 			SpawnTime:     recentTime,
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{}
+	liveness := map[string]execution.SessionStatusInfo{}
 
 	results := JoinWithReasonCodes(issues, manifests, liveness, nil)
 
@@ -554,7 +554,7 @@ func TestJoinWithReasonCodes_ClaudeBackendNeverStarted(t *testing.T) {
 			SpawnTime:     staleTime,
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{}
+	liveness := map[string]execution.SessionStatusInfo{}
 
 	results := JoinWithReasonCodes(issues, manifests, liveness, nil)
 
@@ -599,7 +599,7 @@ func TestJoinWithReasonCodes_ClaudeBackendNeverStartedWithPhase(t *testing.T) {
 			SpawnTime:     staleTime,
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{}
+	liveness := map[string]execution.SessionStatusInfo{}
 	phases := map[string]string{
 		"orch-go-1310": "Planning - Reading codebase",
 	}
@@ -639,7 +639,7 @@ func TestJoinWithReasonCodes_OpenCodePhaseComplete(t *testing.T) {
 		},
 	}
 	// Session is still busy in OpenCode, but agent reported Phase: Complete
-	liveness := map[string]opencode.SessionStatusInfo{
+	liveness := map[string]execution.SessionStatusInfo{
 		"sess-still-busy": {Type: "busy"},
 	}
 	phases := map[string]string{
@@ -675,7 +675,7 @@ func TestJoinWithReasonCodes_ClaudePhaseCompleteUniversal(t *testing.T) {
 			SpawnTime:     "2026-03-10T08:00:00Z",
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{}
+	liveness := map[string]execution.SessionStatusInfo{}
 	phases := map[string]string{
 		"orch-go-510": "Complete - Implemented and tested",
 	}
@@ -708,7 +708,7 @@ func TestJoinWithReasonCodes_NoSpawnModePhaseComplete(t *testing.T) {
 			// SpawnMode intentionally empty — old manifest format
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{
+	liveness := map[string]execution.SessionStatusInfo{
 		"sess-old": {Type: "busy"},
 	}
 	phases := map[string]string{
@@ -743,7 +743,7 @@ func TestJoinWithReasonCodes_PhaseTimestamps(t *testing.T) {
 			SessionID: "sess-1400",
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{
+	liveness := map[string]execution.SessionStatusInfo{
 		"sess-1400": {Type: "busy"},
 	}
 	phases := map[string]string{
@@ -778,8 +778,8 @@ func TestJoinWithReasonCodes_SessionRetrying(t *testing.T) {
 			SessionID: "sess-retry",
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{
-		"sess-retry": {Type: "retry", Attempt: 3},
+	liveness := map[string]execution.SessionStatusInfo{
+		"sess-retry": {Type: "retry", Message: "attempt 3"},
 	}
 
 	results := JoinWithReasonCodes(issues, manifests, liveness, nil)
@@ -916,7 +916,7 @@ func TestJoinWithReasonCodes_MultipleAgents(t *testing.T) {
 		"orch-go-601": {BeadsID: "orch-go-601", SessionID: "sess-1", ProjectDir: "/tmp/p1"},
 		"orch-go-603": {BeadsID: "orch-go-603", SessionID: "sess-3", ProjectDir: "/tmp/p3"},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{
+	liveness := map[string]execution.SessionStatusInfo{
 		"sess-1": {Type: "busy"},
 		"sess-3": {Type: "idle"},
 	}
@@ -952,7 +952,7 @@ func TestJoinWithReasonCodes_OpenCodeBusyIsProcessing(t *testing.T) {
 			SessionID: "sess-busy",
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{
+	liveness := map[string]execution.SessionStatusInfo{
 		"sess-busy": {Type: "busy"},
 	}
 
@@ -981,7 +981,7 @@ func TestJoinWithReasonCodes_OpenCodeIdleNotProcessing(t *testing.T) {
 			SessionID: "sess-idle",
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{
+	liveness := map[string]execution.SessionStatusInfo{
 		"sess-idle": {Type: "idle"},
 	}
 

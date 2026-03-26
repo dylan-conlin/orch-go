@@ -8,13 +8,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -97,13 +98,13 @@ func init() {
 
 // DefaultLivenessChecker checks if tmux windows and OpenCode sessions exist.
 type DefaultLivenessChecker struct {
-	client *opencode.Client
+	client execution.SessionClient
 }
 
 // NewDefaultLivenessChecker creates a new liveness checker.
 func NewDefaultLivenessChecker(serverURL string) *DefaultLivenessChecker {
 	return &DefaultLivenessChecker{
-		client: opencode.NewClient(serverURL),
+		client: execution.NewOpenCodeAdapter(serverURL),
 	}
 }
 
@@ -114,7 +115,7 @@ func (c *DefaultLivenessChecker) WindowExists(windowID string) bool {
 
 // SessionExists checks if an OpenCode session ID exists.
 func (c *DefaultLivenessChecker) SessionExists(sessionID string) bool {
-	return c.client.SessionExists(sessionID)
+	return c.client.SessionExists(context.Background(), execution.SessionHandle(sessionID))
 }
 
 // DefaultBeadsStatusChecker checks beads issue status using the verify package.

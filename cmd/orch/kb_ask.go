@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 )
@@ -373,14 +375,14 @@ func readArtifactSummary(path string) (string, error) {
 }
 
 // synthesizeAnswer sends context to LLM and gets synthesized answer.
-func synthesizeAnswer(question, context string) (string, error) {
+func synthesizeAnswer(question, kbContext string) (string, error) {
 	// Ensure OpenCode is running
 	if err := opencode.EnsureRunning(serverURL); err != nil {
 		return "", fmt.Errorf("OpenCode not available: %w", err)
 	}
 
 	// Build synthesis prompt
-	prompt := buildSynthesisPrompt(question, context)
+	prompt := buildSynthesisPrompt(question, kbContext)
 
 	// Resolve model - use sonnet by default for speed (cheaper, faster)
 	modelSpec := model.Resolve(kbAskModel)
@@ -389,7 +391,7 @@ func synthesizeAnswer(question, context string) (string, error) {
 	}
 
 	// Create a temporary session for synthesis
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 	projectDir, _ := os.Getwd()
 
 	// Create session with title indicating kb ask
@@ -397,14 +399,19 @@ func synthesizeAnswer(question, context string) (string, error) {
 	// kb ask sessions don't have beads tracking, so metadata is empty
 	// Set 4-hour TTL for automatic cleanup of temporary kb ask sessions
 	timeTTL := 4 * 60 * 60 // 4 hours in seconds
-	session, err := client.CreateSession(title, projectDir, modelSpec.Format(), nil, timeTTL)
+	sessionHandle, err := client.CreateSession(context.Background(), execution.SessionRequest{
+		Title:     title,
+		Directory: projectDir,
+		Model:     modelSpec.Format(),
+		TimeTTL:   timeTTL,
+	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create session: %w", err)
 	}
 
 	// Send message with model specified and wait for response
 	// SendMessageAsync doesn't pass model to prompt, so we use synchronous approach
-	if err := client.SendMessageAsync(session.ID, prompt, modelSpec.Format()); err != nil {
+	if err := client.SendMessageAsync(context.Background(), sessionHandle, prompt, modelSpec.Format()); err != nil {
 		return "", fmt.Errorf("failed to send prompt: %w", err)
 	}
 
@@ -417,7 +424,7 @@ func synthesizeAnswer(question, context string) (string, error) {
 		time.Sleep(pollInterval)
 
 		// Check session status via messages
-		messages, err := client.GetMessages(session.ID)
+		messages, err := client.GetMessages(context.Background(), sessionHandle)
 		if err != nil {
 			continue
 		}
@@ -425,7 +432,7 @@ func synthesizeAnswer(question, context string) (string, error) {
 		// Look for completed assistant message
 		for i := len(messages) - 1; i >= 0; i-- {
 			msg := messages[i]
-			if msg.Info.Role == "assistant" && msg.Info.Time.Completed > 0 {
+			if msg.Role == "assistant" && !msg.Completed.IsZero() {
 				// Found completed assistant message - extract text
 				var textParts []string
 				for _, part := range msg.Parts {
@@ -440,7 +447,7 @@ func synthesizeAnswer(question, context string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("timeout waiting for LLM response (session: %s)", session.ID)
+	return "", fmt.Errorf("timeout waiting for LLM response (session: %s)", sessionHandle)
 }
 
 // buildSynthesisPrompt creates the prompt for LLM synthesis.

@@ -3,6 +3,7 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,7 +11,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
@@ -110,8 +111,9 @@ func ResumeAgentByBeadsID(beadsID string) error {
 	}
 
 	if sessionID == "" {
-		client := opencode.NewClient(serverURL)
-		allSessions, err := client.ListSessions(projectDir)
+		client := execution.NewOpenCodeAdapter(serverURL)
+		ctx := context.Background()
+		allSessions, err := client.ListSessions(ctx, projectDir)
 		if err == nil {
 			for _, s := range allSessions {
 				if strings.Contains(s.Title, beadsID) {
@@ -149,8 +151,8 @@ func ResumeAgentByBeadsID(beadsID string) error {
 	}
 
 	// Send resume message via OpenCode API
-	client := opencode.NewClient(serverURL)
-	if err := client.SendMessageAsync(sessionID, prompt, ""); err != nil {
+	client := execution.NewOpenCodeAdapter(serverURL)
+	if err := client.SendMessageAsync(context.Background(), execution.SessionHandle(sessionID), prompt, ""); err != nil {
 		return fmt.Errorf("failed to send resume prompt: %w", err)
 	}
 

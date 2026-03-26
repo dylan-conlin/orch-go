@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"os"
@@ -12,7 +13,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/discovery"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -394,9 +395,9 @@ var getKBProjectsFn = getKBProjects
 // with "" only returns sessions for the server's default project. Cross-project agents
 // (e.g., price-watch agents spawned from orch-go) are invisible without this.
 // Fix: query the default project + all registered kb projects, then deduplicate by session ID.
-func listSessionsAcrossProjects(client *opencode.Client, currentProjectDir string) ([]opencode.Session, error) {
+func listSessionsAcrossProjects(client execution.SessionClient, currentProjectDir string) ([]execution.SessionInfo, error) {
 	// Start with default query (no directory header = server's default project)
-	sessions, err := client.ListSessions("")
+	sessions, err := client.ListSessions(context.Background(), "")
 	if err != nil {
 		return nil, err
 	}
@@ -414,7 +415,7 @@ func listSessionsAcrossProjects(client *opencode.Client, currentProjectDir strin
 			continue
 		}
 
-		projectSessions, err := client.ListSessions(projectDir)
+		projectSessions, err := client.ListSessions(context.Background(), projectDir)
 		if err != nil {
 			// Log but don't fail — graceful degradation
 			log.Printf("Warning: failed to list sessions for %s: %v", projectDir, err)
@@ -499,7 +500,7 @@ func getKBProjectsFromRegistry() []string {
 // and registered kb projects.
 // Returns a deduplicated slice of directory paths that have active agents or are registered projects.
 // This enables multi-project workspace aggregation for cross-project agent visibility.
-func extractUniqueProjectDirs(sessions []opencode.Session, currentProjectDir string) []string {
+func extractUniqueProjectDirs(sessions []execution.SessionInfo, currentProjectDir string) []string {
 	seen := make(map[string]bool)
 	var dirs []string
 

@@ -3,11 +3,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
@@ -92,21 +93,21 @@ func classifyTmuxWindows(
 // If preserveOrchestrator is true, windows in orchestrator/meta-orchestrator sessions are skipped.
 // Returns the number of windows closed and any error encountered.
 func cleanStaleTmuxWindows(serverURL string, projectDir string, dryRun bool, preserveOrchestrator bool) (int, error) {
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 	now := time.Now()
 	const maxIdleTime = 30 * time.Minute
 
 	fmt.Println("\nScanning for stale tmux windows...")
 
 	// Get all OpenCode sessions and build a map of recently active beads IDs
-	sessions, err := client.ListSessions("")
+	sessions, err := client.ListSessions(context.Background(), "")
 	if err != nil {
 		return 0, fmt.Errorf("failed to list sessions: %w", err)
 	}
 
 	activeBeadsIDs := make(map[string]bool)
 	for _, s := range sessions {
-		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		updatedAt := s.Updated
 		if now.Sub(updatedAt) <= maxIdleTime {
 			beadsID := extractBeadsIDFromTitle(s.Title)
 			if beadsID != "" {

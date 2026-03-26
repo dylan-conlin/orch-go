@@ -3,13 +3,14 @@
 package activity
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 )
 
 // ActivityFile represents the structure of ACTIVITY.json.
@@ -66,8 +67,8 @@ func ExportToWorkspace(sessionID, workspacePath, serverURL string) (string, erro
 	}
 
 	// Fetch messages from OpenCode API
-	client := opencode.NewClient(serverURL)
-	messages, err := client.GetMessages(sessionID)
+	client := execution.NewOpenCodeAdapter(serverURL)
+	messages, err := client.GetMessages(context.Background(), execution.SessionHandle(sessionID))
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch messages: %w", err)
 	}
@@ -102,9 +103,9 @@ func ExportToWorkspace(sessionID, workspacePath, serverURL string) (string, erro
 	return outputPath, nil
 }
 
-// TransformMessages converts OpenCode messages to SSE-compatible activity events.
+// TransformMessages converts messages to SSE-compatible activity events.
 // This matches the transformation done in serve_agents.go handleSessionMessages.
-func TransformMessages(sessionID string, messages []opencode.Message) []MessagePartResponse {
+func TransformMessages(sessionID string, messages []execution.Message) []MessagePartResponse {
 	var parts []MessagePartResponse
 
 	for _, msg := range messages {
@@ -134,13 +135,13 @@ func TransformMessages(sessionID string, messages []opencode.Message) []MessageP
 			}
 
 			response := MessagePartResponse{
-				ID:   part.ID,
+				ID:   part.CallID,
 				Type: "message.part", // Match SSE event type
 				Properties: MessagePartProperties{
 					SessionID: sessionID,
-					MessageID: msg.Info.ID,
+					MessageID: msg.ID,
 					Part: PartDetails{
-						ID:        part.ID,
+						ID:        part.CallID,
 						Type:      partType,
 						Text:      part.Text,
 						SessionID: sessionID,
@@ -148,7 +149,7 @@ func TransformMessages(sessionID string, messages []opencode.Message) []MessageP
 						State:     state,
 					},
 				},
-				Timestamp: msg.Info.Time.Created,
+				Timestamp: msg.Created.Unix(),
 			}
 			parts = append(parts, response)
 		}

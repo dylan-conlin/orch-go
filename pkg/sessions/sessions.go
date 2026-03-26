@@ -3,6 +3,7 @@
 package sessions
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -11,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 )
 
 // Pre-compiled regex patterns for sessions.go
@@ -85,17 +86,17 @@ type SearchOptions struct {
 	After         *time.Time
 	Before        *time.Time
 	Limit         int
-	Client        *opencode.Client
+	Client        execution.SessionClient
 }
 
 // Store provides access to OpenCode session storage.
 type Store struct {
 	storagePath string
-	client      *opencode.Client
+	client      execution.SessionClient
 }
 
 // NewStore creates a new session store.
-func NewStore(storagePath string, client *opencode.Client) *Store {
+func NewStore(storagePath string, client execution.SessionClient) *Store {
 	if storagePath == "" {
 		storagePath = DefaultStoragePath()
 	}
@@ -210,7 +211,7 @@ func (s *Store) Search(opts SearchOptions) ([]SearchResult, error) {
 			continue
 		}
 
-		messages, err := client.GetMessages(session.ID)
+		messages, err := client.GetMessages(context.Background(), execution.SessionHandle(session.ID))
 		if err != nil {
 			continue
 		}
@@ -278,27 +279,29 @@ func (s *Store) Search(opts SearchOptions) ([]SearchResult, error) {
 }
 
 // Show returns full session details including message content.
-func (s *Store) Show(sessionID string) (*StoredSession, []opencode.Message, error) {
+func (s *Store) Show(sessionID string) (*StoredSession, []execution.Message, error) {
 	if s.client == nil {
 		return nil, nil, os.ErrNotExist
 	}
 
-	apiSession, err := s.client.GetSession(sessionID)
+	ctx := context.Background()
+	apiSession, err := s.client.GetSession(ctx, execution.SessionHandle(sessionID))
 	if err != nil {
 		return nil, nil, err
 	}
 
 	session := StoredSession{
 		ID:        apiSession.ID,
-		ProjectID: apiSession.ProjectID,
 		Directory: apiSession.Directory,
 		Title:     apiSession.Title,
-		Created:   time.Unix(apiSession.Time.Created/1000, 0),
-		Updated:   time.Unix(apiSession.Time.Updated/1000, 0),
-		Summary:   apiSession.Summary,
+		Created:   apiSession.Created,
+		Updated:   apiSession.Updated,
 	}
+	session.Summary.Additions = apiSession.Summary.Additions
+	session.Summary.Deletions = apiSession.Summary.Deletions
+	session.Summary.Files = apiSession.Summary.Files
 
-	messages, err := s.client.GetMessages(sessionID)
+	messages, err := s.client.GetMessages(ctx, execution.SessionHandle(sessionID))
 	if err != nil {
 		return &session, nil, err
 	}

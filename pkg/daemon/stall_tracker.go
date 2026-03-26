@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 )
 
 // TokenSnapshot represents a point-in-time snapshot of an agent's token usage.
@@ -40,7 +40,7 @@ func NewStallTracker(threshold time.Duration) *StallTracker {
 
 // Update records a new token snapshot for the given session.
 // Returns true if the agent is stalled (no token progress for threshold duration).
-func (st *StallTracker) Update(sessionID string, tokens *opencode.TokenStats) bool {
+func (st *StallTracker) Update(sessionID string, tokens *execution.TokenStats) bool {
 	if st == nil || tokens == nil {
 		return false
 	}
@@ -77,7 +77,7 @@ func (st *StallTracker) Update(sessionID string, tokens *opencode.TokenStats) bo
 
 // IsStalled checks if an agent is stalled without updating the snapshot.
 // This is useful for read-only checks (e.g., in status displays).
-func (st *StallTracker) IsStalled(sessionID string, tokens *opencode.TokenStats) bool {
+func (st *StallTracker) IsStalled(sessionID string, tokens *execution.TokenStats) bool {
 	if st == nil || tokens == nil {
 		return false
 	}
@@ -127,7 +127,7 @@ func (st *StallTracker) CleanStale(maxAge time.Duration) {
 }
 
 // GetStallDuration returns how long an agent has been stalled, or 0 if not stalled.
-func (st *StallTracker) GetStallDuration(sessionID string, tokens *opencode.TokenStats) time.Duration {
+func (st *StallTracker) GetStallDuration(sessionID string, tokens *execution.TokenStats) time.Duration {
 	if st == nil || tokens == nil {
 		return 0
 	}

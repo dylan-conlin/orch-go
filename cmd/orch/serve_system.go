@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -17,7 +18,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
@@ -130,8 +131,8 @@ func handleFocus(w http.ResponseWriter, r *http.Request) {
 		resp.SetAt = f.SetAt
 
 		// Check drift by getting active agents from current sessions
-		client := opencode.NewClient(serverURL)
-		sessions, _ := client.ListSessions("")
+		client := execution.NewOpenCodeAdapter(serverURL)
+		sessions, _ := client.ListSessions(context.Background(), "")
 
 		var activeWork []focus.ActiveWork
 		for _, s := range sessions {

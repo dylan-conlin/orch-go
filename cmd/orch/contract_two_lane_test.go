@@ -14,7 +14,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/discovery"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
@@ -36,7 +36,7 @@ func TestContract_TrackedAgent_VisibleInStatus(t *testing.T) {
 			SpawnMode:     "opencode",
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{
+	liveness := map[string]execution.SessionStatusInfo{
 		"sess-c01": {Type: "busy"},
 	}
 	phases := map[string]string{
@@ -153,7 +153,7 @@ func TestContract_E2ELifecycle_SpawnVisibleCompleteGone(t *testing.T) {
 			SpawnMode:     "opencode",
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{
+	liveness := map[string]execution.SessionStatusInfo{
 		sessionID: {Type: "busy"},
 	}
 	phases := map[string]string{
@@ -197,7 +197,7 @@ func TestContract_NoTrack_NotInOrcheStatus(t *testing.T) {
 	manifests := map[string]*spawn.AgentManifest{
 		"orch-go-c03": {BeadsID: "orch-go-c03", SessionID: "sess-tracked", ProjectDir: "/tmp"},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{
+	liveness := map[string]execution.SessionStatusInfo{
 		"sess-tracked": {Type: "busy"},
 	}
 
@@ -216,7 +216,7 @@ func TestContract_NoTrack_NotInOrcheStatus(t *testing.T) {
 func TestContract_NoTrack_VisibleInSessions(t *testing.T) {
 	// A --no-track session has no_track=true in OpenCode metadata.
 	// classifyUntrackedSession must categorize it as "no-track".
-	session := opencode.Session{
+	session := execution.SessionInfo{
 		ID:    "sess-notrack",
 		Title: "Ad-hoc exploration",
 		Metadata: map[string]string{
@@ -238,7 +238,7 @@ func TestContract_NoTrack_VisibleInSessions(t *testing.T) {
 // --- Scenario 4: Orchestrator session → visible in orch sessions ---
 
 func TestContract_OrchestratorSession_VisibleInSessions(t *testing.T) {
-	session := opencode.Session{
+	session := execution.SessionInfo{
 		ID:    "sess-orch",
 		Title: "Orchestrator session",
 		Metadata: map[string]string{
@@ -258,7 +258,7 @@ func TestContract_OrchestratorSession_VisibleInSessions(t *testing.T) {
 
 func TestContract_OrchestratorSession_SkillInference(t *testing.T) {
 	// Orchestrator sessions can also be detected by skill name
-	session := opencode.Session{
+	session := execution.SessionInfo{
 		ID:    "sess-meta-orch",
 		Title: "Meta orchestrator",
 		Metadata: map[string]string{
@@ -353,7 +353,7 @@ func TestContract_WorkspaceMissing_ReasonCode(t *testing.T) {
 	}
 	// No manifest found for this agent
 	manifests := map[string]*spawn.AgentManifest{}
-	liveness := map[string]opencode.SessionStatusInfo{}
+	liveness := map[string]execution.SessionStatusInfo{}
 
 	results := discovery.JoinWithReasonCodes(issues, manifests, liveness, nil)
 
@@ -396,7 +396,7 @@ func TestContract_CrossProject_CorrectProjectDir(t *testing.T) {
 			Skill:      "feature-impl",
 		},
 	}
-	liveness := map[string]opencode.SessionStatusInfo{
+	liveness := map[string]execution.SessionStatusInfo{
 		"sess-cross": {Type: "busy"},
 	}
 
@@ -465,7 +465,7 @@ func TestContract_ConcurrentSpawns_NoDuplicates(t *testing.T) {
 	// because beads is the source of truth and issues are unique by ID.
 	issues := make([]beads.Issue, 5)
 	manifests := make(map[string]*spawn.AgentManifest, 5)
-	liveness := make(map[string]opencode.SessionStatusInfo, 5)
+	liveness := make(map[string]execution.SessionStatusInfo, 5)
 
 	for i := 0; i < 5; i++ {
 		id := "orch-go-c09" + string(rune('a'+i))
@@ -475,7 +475,7 @@ func TestContract_ConcurrentSpawns_NoDuplicates(t *testing.T) {
 			BeadsID:   id,
 			SessionID: sessID,
 		}
-		liveness[sessID] = opencode.SessionStatusInfo{Type: "busy"}
+		liveness[sessID] = execution.SessionStatusInfo{Type: "busy"}
 	}
 
 	results := discovery.JoinWithReasonCodes(issues, manifests, liveness, nil)
@@ -521,7 +521,7 @@ func TestContract_ServerRestart_NoGhosts(t *testing.T) {
 		"orch-go-c10b": {BeadsID: "orch-go-c10b", SessionID: "sess-dead", ProjectDir: "/tmp"},
 		// c10c has no manifest (workspace cleaned up)
 	}
-	liveness := map[string]opencode.SessionStatusInfo{
+	liveness := map[string]execution.SessionStatusInfo{
 		"sess-alive": {Type: "busy"},
 		// sess-dead not in liveness → idle
 	}
@@ -576,7 +576,7 @@ func TestContract_ServerRestart_NoGhosts(t *testing.T) {
 func TestContract_TrackedSessionExcludedFromSessions(t *testing.T) {
 	// A session with a beads_id that IS tracked should be excluded from
 	// the untracked sessions lane (category = "").
-	session := opencode.Session{
+	session := execution.SessionInfo{
 		ID:    "sess-tracked",
 		Title: "Tracked worker",
 		Metadata: map[string]string{
@@ -599,12 +599,12 @@ func TestContract_TwoLaneSplit_Comprehensive(t *testing.T) {
 	// exactly one of {tracked, orchestrator, no-track, ad-hoc, excluded}.
 	tests := []struct {
 		name         string
-		session      opencode.Session
+		session      execution.SessionInfo
 		wantCategory string
 	}{
 		{
 			name: "tracked (has beads_id, not orchestrator, not no-track)",
-			session: opencode.Session{
+			session: execution.SessionInfo{
 				ID:       "sess-1",
 				Metadata: map[string]string{"beads_id": "orch-go-999", "skill": "feature-impl"},
 			},
@@ -612,7 +612,7 @@ func TestContract_TwoLaneSplit_Comprehensive(t *testing.T) {
 		},
 		{
 			name: "orchestrator by role",
-			session: opencode.Session{
+			session: execution.SessionInfo{
 				ID:       "sess-2",
 				Metadata: map[string]string{"role": "orchestrator"},
 			},
@@ -620,7 +620,7 @@ func TestContract_TwoLaneSplit_Comprehensive(t *testing.T) {
 		},
 		{
 			name: "orchestrator by skill",
-			session: opencode.Session{
+			session: execution.SessionInfo{
 				ID:       "sess-3",
 				Metadata: map[string]string{"skill": "orchestrator"},
 			},
@@ -628,7 +628,7 @@ func TestContract_TwoLaneSplit_Comprehensive(t *testing.T) {
 		},
 		{
 			name: "no-track explicit",
-			session: opencode.Session{
+			session: execution.SessionInfo{
 				ID:       "sess-4",
 				Metadata: map[string]string{"no_track": "true"},
 			},
@@ -636,7 +636,7 @@ func TestContract_TwoLaneSplit_Comprehensive(t *testing.T) {
 		},
 		{
 			name: "ad-hoc (no beads_id, no role, no no_track)",
-			session: opencode.Session{
+			session: execution.SessionInfo{
 				ID:       "sess-5",
 				Metadata: map[string]string{},
 			},
@@ -644,7 +644,7 @@ func TestContract_TwoLaneSplit_Comprehensive(t *testing.T) {
 		},
 		{
 			name: "ad-hoc (nil metadata)",
-			session: opencode.Session{
+			session: execution.SessionInfo{
 				ID: "sess-6",
 			},
 			wantCategory: "ad-hoc",

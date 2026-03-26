@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,7 +14,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/identity"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -103,7 +104,7 @@ func runAbandon(beadsID, reason, workdir string, force bool) error {
 
 	// --- Phase 3: Discover agent resources ---
 
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 
 	var sessionID string
 	var workspacePath, agentName string
@@ -123,7 +124,7 @@ func runAbandon(beadsID, reason, workdir string, force bool) error {
 
 	if sessionID == "" {
 		// Fall back to OpenCode session search
-		allSessions, _ := client.ListSessions(projectDir)
+		allSessions, _ := client.ListSessions(context.Background(), projectDir)
 		for _, s := range allSessions {
 			if strings.Contains(s.Title, beadsID) || extractBeadsIDFromTitle(s.Title) == beadsID {
 				sessionID = s.ID
@@ -159,7 +160,7 @@ func runAbandon(beadsID, reason, workdir string, force bool) error {
 	// Transcript export must happen before the session is deleted.
 
 	if sessionID != "" && workspacePath != "" {
-		transcript, err := client.ExportSessionTranscript(sessionID)
+		transcript, err := client.ExportTranscript(context.Background(), execution.SessionHandle(sessionID))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to export session transcript: %v\n", err)
 		} else if transcript != "" {
@@ -338,8 +339,8 @@ func logAbandonmentTelemetry(beadsID, agentName, reason, workspacePath string) {
 
 		sessionIDStr := spawn.ReadSessionID(workspacePath)
 		if sessionIDStr != "" {
-			oc := opencode.NewClient("http://127.0.0.1:4096")
-			tokenStats, tokErr := oc.GetSessionTokens(sessionIDStr)
+			oc := execution.NewOpenCodeAdapter("http://127.0.0.1:4096")
+			tokenStats, tokErr := oc.GetSessionTokens(context.Background(), execution.SessionHandle(sessionIDStr))
 			if tokErr == nil && tokenStats != nil {
 				abandonedData.TokensInput = tokenStats.InputTokens
 				abandonedData.TokensOutput = tokenStats.OutputTokens

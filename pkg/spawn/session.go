@@ -2,6 +2,7 @@
 package spawn
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 )
 
 // SessionIDFilename is the name of the file storing the session ID in the workspace.
@@ -301,8 +302,8 @@ func readFromOpenCodeMetadata(workspacePath string) *AgentManifest {
 	}
 
 	// Try to get session from OpenCode
-	client := opencode.NewClient(opencode.DefaultServerURL)
-	session, err := client.GetSession(sessionID)
+	client := execution.NewOpenCodeAdapter(execution.DefaultServerURL)
+	session, err := client.GetSession(context.Background(), execution.SessionHandle(sessionID))
 	if err != nil {
 		return nil // OpenCode unreachable or session not found
 	}
@@ -332,8 +333,8 @@ func readFromOpenCodeMetadata(workspacePath string) *AgentManifest {
 	}
 
 	// Use session creation time as spawn time
-	if session.Time.Created > 0 {
-		manifest.SpawnTime = time.Unix(session.Time.Created, 0).Format(time.RFC3339)
+	if !session.Created.IsZero() {
+		manifest.SpawnTime = session.Created.Format(time.RFC3339)
 	}
 
 	return manifest

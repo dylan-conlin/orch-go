@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/openclaw"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
@@ -71,7 +71,8 @@ func DispatchSpawn(input *SpawnInput, cfg *spawn.Config, minimalPrompt, beadsID,
 // header, ensuring the session is created in the correct project directory.
 // Blocks until the session completes by watching SSE events.
 func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
+	ctx := context.Background()
 	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
 
 	// Step 1: Create session via HTTP API with correct directory
@@ -93,16 +94,22 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 		timeTTL = 0 // Orchestrator sessions persist until manually cleaned
 	}
 
-	session, err := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model, metadata, timeTTL)
+	handle, err := client.CreateSession(ctx, execution.SessionRequest{
+		Title:     sessionTitle,
+		Directory: cfg.ProjectDir,
+		Model:     cfg.Model,
+		Metadata:  metadata,
+		TimeTTL:   timeTTL,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
 
-	sessionID := session.ID
+	sessionID := handle.String()
 
 	// Step 2: Send the initial prompt with model selection and directory context
 	// The directory header ensures the server resolves the correct project context
-	if err := client.SendMessageInDirectory(sessionID, minimalPrompt, cfg.Model, cfg.ProjectDir); err != nil {
+	if err := client.SendMessageInDirectory(ctx, handle, minimalPrompt, cfg.Model, cfg.ProjectDir); err != nil {
 		return fmt.Errorf("failed to send prompt: %w", err)
 	}
 
@@ -110,7 +117,7 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 
 	// Step 3: Wait for session to complete (blocking)
 	// Watches SSE events for busy→idle transition to maintain inline mode's blocking behavior
-	if err := client.WaitForSessionIdle(sessionID); err != nil {
+	if err := client.WaitForIdle(ctx, handle); err != nil {
 		return fmt.Errorf("error waiting for session: %w", err)
 	}
 
@@ -166,7 +173,7 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 // (the HTTP API ignores the model parameter).
 // Includes retry logic for transient network failures.
 func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 
 	// Build opencode command using CLI (like inline mode) to support model selection
 	// The HTTP API ignores model parameter - only CLI mode honors --model flag
@@ -258,7 +265,9 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 // via x-opencode-directory header. This fixes cross-project spawns where --workdir differs
 // from the orchestrator's CWD.
 // Model selection is handled per-message by SendMessageInDirectory (providerID/modelID format).
-func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
+func startHeadlessSession(client execution.SessionClient, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
+	ctx := context.Background()
+
 	// Step 1: Create session via HTTP API with correct directory
 	// CreateSession passes x-opencode-directory header so the server uses the target project dir
 	metadata := map[string]string{
@@ -278,22 +287,30 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 		timeTTL = 0 // Orchestrator sessions persist until manually cleaned
 	}
 
-	session, err := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model, metadata, timeTTL)
+	handle, err := client.CreateSession(ctx, execution.SessionRequest{
+		Title:     sessionTitle,
+		Directory: cfg.ProjectDir,
+		Model:     cfg.Model,
+		Metadata:  metadata,
+		TimeTTL:   timeTTL,
+	})
 	if err != nil {
 		return nil, spawn.WrapSpawnError(err, "Failed to create session via API")
 	}
 
+	sessionID := handle.String()
+
 	// Step 2: Send the initial prompt with model selection and directory context
 	// The directory header ensures the server resolves the correct project context
-	if err := client.SendMessageInDirectory(session.ID, minimalPrompt, cfg.Model, cfg.ProjectDir); err != nil {
+	if err := client.SendMessageInDirectory(ctx, handle, minimalPrompt, cfg.Model, cfg.ProjectDir); err != nil {
 		return nil, spawn.WrapSpawnError(err, "Failed to send prompt to session")
 	}
-	if err := client.VerifySessionAfterPrompt(session.ID, cfg.ProjectDir, 3*time.Second); err != nil {
+	if err := client.VerifySessionAfterPrompt(ctx, handle, cfg.ProjectDir, 3*time.Second); err != nil {
 		return nil, spawn.WrapSpawnError(err, "Session failed verification after prompt")
 	}
 
 	return &headlessSpawnResult{
-		SessionID: session.ID,
+		SessionID: sessionID,
 	}, nil
 }
 
@@ -327,14 +344,19 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 	// opencode attach doesn't support --model, so we create the session first
 	// (HTTP API accepts model) and then attach to it by session ID.
 	var preCreatedSessionID string
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
+	ctx := context.Background()
 	if cfg.Model != "" {
 		sessionTitle := cfg.WorkspaceName
-		resp, err := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model, nil, 0)
+		handle, err := client.CreateSession(ctx, execution.SessionRequest{
+			Title:     sessionTitle,
+			Directory: cfg.ProjectDir,
+			Model:     cfg.Model,
+		})
 		if err != nil {
 			return fmt.Errorf("failed to pre-create session with model %s: %w", cfg.Model, err)
 		}
-		preCreatedSessionID = resp.ID
+		preCreatedSessionID = handle.String()
 	}
 
 	// Build opencode attach command (no --model; session ID used for pre-created sessions)
@@ -365,7 +387,8 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		// Capture session ID from API with retry (OpenCode may not have registered yet)
 		// Uses 3 attempts with 500ms initial delay, doubling each time (500ms, 1s, 2s)
 		// Matches by directory + creation time (within 30s), not by title
-		sessionID, _ = client.FindRecentSessionWithRetry(cfg.ProjectDir, 3, 500*time.Millisecond)
+		handle, _ := client.FindRecentSessionWithRetry(ctx, cfg.ProjectDir, 3, 500*time.Millisecond)
+		sessionID = handle.String()
 		// Note: We silently ignore errors here since window_id is sufficient for tmux monitoring
 	}
 
@@ -389,7 +412,7 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 			"skill":          cfg.SkillName,
 			"model":          cfg.Model,
 		}
-		if err := client.SetSessionMetadata(sessionID, metadata); err != nil {
+		if err := client.SetSessionMetadata(ctx, execution.SessionHandle(sessionID), metadata); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to set session metadata: %v\n", err)
 		}
 		tmuxAtomicOpts := &spawn.AtomicSpawnOpts{Config: cfg, BeadsID: beadsID}

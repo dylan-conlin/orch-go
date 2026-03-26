@@ -4,11 +4,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 )
 
 type untrackedSession struct {
-	Session       opencode.Session
+	Session       execution.SessionInfo
 	Category      string
 	Role          string
 	BeadsID       string
@@ -19,7 +19,7 @@ type untrackedSession struct {
 	WorkspacePath string
 }
 
-func listUntrackedSessions(client *opencode.Client, currentProjectDir string) ([]untrackedSession, error) {
+func listUntrackedSessions(client execution.SessionClient, currentProjectDir string) ([]untrackedSession, error) {
 	sessions, err := listSessionsAcrossProjects(client, currentProjectDir)
 	if err != nil {
 		return nil, err
@@ -57,7 +57,7 @@ type untrackedSessionMeta struct {
 	WorkspacePath string
 }
 
-func classifyUntrackedSession(session opencode.Session) (string, untrackedSessionMeta) {
+func classifyUntrackedSession(session execution.SessionInfo) (string, untrackedSessionMeta) {
 	meta := untrackedSessionMeta{}
 	if session.Metadata != nil {
 		meta.Role = strings.TrimSpace(session.Metadata["role"])
@@ -127,7 +127,7 @@ func (s untrackedSession) toOutput() UntrackedSessionOutput {
 		Model:         s.Model,
 		WorkspacePath: s.WorkspacePath,
 		ProjectDir:    s.Session.Directory,
-		CreatedAt:     formatSessionTime(s.Session.Time.Created),
-		UpdatedAt:     formatSessionTime(s.Session.Time.Updated),
+		CreatedAt:     formatSessionTime(s.Session.Created.UnixMilli()),
+		UpdatedAt:     formatSessionTime(s.Session.Updated.UnixMilli()),
 	}
 }

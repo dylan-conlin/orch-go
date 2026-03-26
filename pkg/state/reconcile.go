@@ -2,13 +2,14 @@
 package state
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
@@ -99,8 +100,8 @@ func GetLiveness(beadsID, serverURL, projectDir string) LivenessResult {
 	if serverURL != "" {
 		result.OpencodeLive, result.SessionID = checkOpenCodeSession(serverURL, projectDir, beadsID, workspacePath)
 		if result.OpencodeLive && result.SessionID != "" {
-			client := opencode.NewClient(serverURL)
-			result.IsProcessing = client.IsSessionProcessing(result.SessionID)
+			client := execution.NewOpenCodeAdapter(serverURL)
+			result.IsProcessing = client.IsSessionProcessing(context.Background(), execution.SessionHandle(result.SessionID))
 		}
 	}
 
@@ -122,14 +123,15 @@ const DefaultMaxIdleTime = 30 * time.Minute
 // NOTE: OpenCode persists sessions to disk, so we check activity time rather than
 // just existence. A session is considered "active" if updated within DefaultMaxIdleTime.
 func checkOpenCodeSession(serverURL, projectDir, beadsID, workspacePath string) (bool, string) {
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
+	ctx := context.Background()
 
 	// Try 1: Read session ID from workspace file
 	if workspacePath != "" {
 		sessionFile := filepath.Join(workspacePath, ".session_id")
 		if data, err := os.ReadFile(sessionFile); err == nil {
 			sessionID := strings.TrimSpace(string(data))
-			if sessionID != "" && client.IsSessionActive(sessionID, DefaultMaxIdleTime) {
+			if sessionID != "" && client.IsSessionActive(ctx, execution.SessionHandle(sessionID), DefaultMaxIdleTime) {
 				return true, sessionID
 			}
 		}
@@ -138,7 +140,7 @@ func checkOpenCodeSession(serverURL, projectDir, beadsID, workspacePath string) 
 	// Try 2: Search sessions by title/beads ID match
 	// Use ListSessions without directory to get in-memory sessions only
 	// (With directory header, OpenCode returns ALL disk-persisted sessions)
-	sessions, err := client.ListSessions("")
+	sessions, err := client.ListSessions(ctx, "")
 	if err != nil {
 		return false, ""
 	}
@@ -148,8 +150,7 @@ func checkOpenCodeSession(serverURL, projectDir, beadsID, workspacePath string) 
 		// Match by beads ID in title (common pattern: "... [beadsID]" or "og-feat-X-beadsID-date")
 		if strings.Contains(s.Title, beadsID) || extractBeadsIDFromTitle(s.Title) == beadsID {
 			// Verify the session is recently active
-			updatedAt := time.Unix(s.Time.Updated/1000, 0)
-			if now.Sub(updatedAt) <= DefaultMaxIdleTime {
+			if now.Sub(s.Updated) <= DefaultMaxIdleTime {
 				return true, s.ID
 			}
 		}

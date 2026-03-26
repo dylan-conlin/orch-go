@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -10,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -50,8 +51,8 @@ func checkOpenCode() ServiceStatus {
 		FixAction: "opencode serve --port 4096",
 	}
 
-	client := opencode.NewClient(serverURL)
-	_, err := client.ListSessions("")
+	client := execution.NewOpenCodeAdapter(serverURL)
+	_, err := client.ListSessions(context.Background(), "")
 	if err == nil {
 		status.Running = true
 		status.Details = "API responding"
@@ -277,10 +278,10 @@ func startOpenCode() error {
 	}
 
 	// Wait for it to be ready (poll for up to 10 seconds)
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 	for i := 0; i < 20; i++ {
 		time.Sleep(500 * time.Millisecond)
-		_, err := client.ListSessions("")
+		_, err := client.ListSessions(context.Background(), "")
 		if err == nil {
 			return nil
 		}
@@ -398,18 +399,18 @@ func checkStalledSessions() ServiceStatus {
 		FixAction: "Use 'orch status' to review stalled sessions, 'orch abandon' to clean up",
 	}
 
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 	now := time.Now()
 
 	// Get current project directory for session queries
 	projectDir, _ := os.Getwd()
 
 	// Fetch sessions
-	var sessions []opencode.Session
+	var sessions []execution.SessionInfo
 	seenSessionIDs := make(map[string]bool)
 
 	if projectDir != "" {
-		dirSessions, err := client.ListSessions(projectDir)
+		dirSessions, err := client.ListSessions(context.Background(), projectDir)
 		if err == nil {
 			for _, s := range dirSessions {
 				if !seenSessionIDs[s.ID] {
@@ -420,7 +421,7 @@ func checkStalledSessions() ServiceStatus {
 		}
 	}
 
-	globalSessions, err := client.ListSessions("")
+	globalSessions, err := client.ListSessions(context.Background(), "")
 	if err == nil {
 		for _, s := range globalSessions {
 			if !seenSessionIDs[s.ID] {
@@ -441,8 +442,8 @@ func checkStalledSessions() ServiceStatus {
 	var stalledSessions []string
 
 	for _, s := range sessions {
-		updatedAt := time.Unix(s.Time.Updated/1000, 0)
-		createdAt := time.Unix(s.Time.Created/1000, 0)
+		updatedAt := s.Updated
+		createdAt := s.Created
 
 		// Only check recently active sessions
 		if now.Sub(updatedAt) > maxIdleTime {

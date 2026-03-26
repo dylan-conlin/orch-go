@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/discovery"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 )
 
 // TestFormatDuration tests the formatDuration function.
@@ -45,7 +45,7 @@ func TestStatusUsesOpenCodeAPI(t *testing.T) {
 	//
 	// The runStatus function:
 	// 1. Creates an OpenCode client
-	// 2. Calls client.ListSessions()
+	// 2. Calls client.ListSessions(context.Background(), )
 	// 3. Filters for active sessions
 	// 4. Enriches with tmux window info if available
 	// 5. Displays results
@@ -422,7 +422,7 @@ func TestFormatTokenCount(t *testing.T) {
 func TestFormatTokenStats(t *testing.T) {
 	tests := []struct {
 		name     string
-		tokens   *opencode.TokenStats
+		tokens   *execution.TokenStats
 		expected string
 	}{
 		{
@@ -432,7 +432,7 @@ func TestFormatTokenStats(t *testing.T) {
 		},
 		{
 			name: "basic tokens",
-			tokens: &opencode.TokenStats{
+			tokens: &execution.TokenStats{
 				InputTokens:  8000,
 				OutputTokens: 4000,
 			},
@@ -440,7 +440,7 @@ func TestFormatTokenStats(t *testing.T) {
 		},
 		{
 			name: "with cache",
-			tokens: &opencode.TokenStats{
+			tokens: &execution.TokenStats{
 				InputTokens:     8000,
 				OutputTokens:    4000,
 				CacheReadTokens: 2000,
@@ -449,7 +449,7 @@ func TestFormatTokenStats(t *testing.T) {
 		},
 		{
 			name: "small counts",
-			tokens: &opencode.TokenStats{
+			tokens: &execution.TokenStats{
 				InputTokens:  500,
 				OutputTokens: 250,
 			},
@@ -471,7 +471,7 @@ func TestFormatTokenStats(t *testing.T) {
 func TestFormatTokenStatsCompact(t *testing.T) {
 	tests := []struct {
 		name     string
-		tokens   *opencode.TokenStats
+		tokens   *execution.TokenStats
 		expected string
 	}{
 		{
@@ -481,7 +481,7 @@ func TestFormatTokenStatsCompact(t *testing.T) {
 		},
 		{
 			name: "basic tokens with total",
-			tokens: &opencode.TokenStats{
+			tokens: &execution.TokenStats{
 				InputTokens:  8000,
 				OutputTokens: 4000,
 				TotalTokens:  12000,
@@ -490,7 +490,7 @@ func TestFormatTokenStatsCompact(t *testing.T) {
 		},
 		{
 			name: "tokens without total field",
-			tokens: &opencode.TokenStats{
+			tokens: &execution.TokenStats{
 				InputTokens:  5000,
 				OutputTokens: 2500,
 			},
@@ -498,7 +498,7 @@ func TestFormatTokenStatsCompact(t *testing.T) {
 		},
 		{
 			name: "zero tokens",
-			tokens: &opencode.TokenStats{
+			tokens: &execution.TokenStats{
 				InputTokens:  0,
 				OutputTokens: 0,
 			},
@@ -506,7 +506,7 @@ func TestFormatTokenStatsCompact(t *testing.T) {
 		},
 		{
 			name: "small counts",
-			tokens: &opencode.TokenStats{
+			tokens: &execution.TokenStats{
 				InputTokens:  500,
 				OutputTokens: 250,
 			},

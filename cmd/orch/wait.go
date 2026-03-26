@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,7 +12,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -129,8 +130,8 @@ func resolveBeadsID(serverURL, identifier string) (string, error) {
 
 	// Strategy 2: If it's a session ID, find workspace and extract beads ID from SPAWN_CONTEXT.md
 	if strings.HasPrefix(identifier, "ses_") {
-		client := opencode.NewClient(serverURL)
-		session, err := client.GetSession(identifier)
+		client := execution.NewOpenCodeAdapter(serverURL)
+		session, err := client.GetSession(context.Background(), execution.SessionHandle(identifier))
 		if err != nil {
 			return "", fmt.Errorf("session not found: %s", identifier)
 		}
@@ -187,8 +188,8 @@ func resolveBeadsID(serverURL, identifier string) (string, error) {
 	}
 
 	// Strategy 4: Search OpenCode sessions by title (workspace name)
-	client := opencode.NewClient(serverURL)
-	sessions, err := client.ListSessions(projectDir)
+	client := execution.NewOpenCodeAdapter(serverURL)
+	sessions, err := client.ListSessions(context.Background(), projectDir)
 	if err == nil {
 		for _, s := range sessions {
 			if strings.Contains(s.Title, identifier) {

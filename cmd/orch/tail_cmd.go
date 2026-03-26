@@ -3,11 +3,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/identity"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/spf13/cobra"
@@ -43,7 +44,7 @@ func init() {
 }
 
 func runTail(beadsID string, lines int) error {
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 	projectDir, err := identity.ResolveProject(beadsID, tailWorkdir)
 	if err != nil {
 		return fmt.Errorf("failed to resolve project directory: %w", err)
@@ -71,9 +72,9 @@ func runTail(beadsID string, lines int) error {
 
 	// If we have a session ID (from workspace file), try OpenCode API first
 	if sessionID != "" {
-		messages, err := client.GetMessages(sessionID)
+		messages, err := client.GetMessages(context.Background(), execution.SessionHandle(sessionID))
 		if err == nil && len(messages) > 0 {
-			textLines := opencode.ExtractRecentText(messages, lines)
+			textLines := execution.ExtractRecentText(messages, lines)
 			fmt.Printf("=== Output from %s (via API, last %d lines) ===\n", agentID, lines)
 			for _, line := range textLines {
 				fmt.Println(line)
@@ -99,14 +100,14 @@ func runTail(beadsID string, lines int) error {
 
 		// Found tmux window - try to find matching OpenCode session first
 		// This gives us richer output than just pane capture
-		allSessions, err := client.ListSessions(projectDir)
+		allSessions, err := client.ListSessions(context.Background(), projectDir)
 		if err == nil {
 			for _, s := range allSessions {
 				// Match session by title containing beadsID or workspace name
 				if strings.Contains(s.Title, beadsID) || extractBeadsIDFromTitle(s.Title) == beadsID {
-					messages, err := client.GetMessages(s.ID)
+					messages, err := client.GetMessages(context.Background(), execution.SessionHandle(s.ID))
 					if err == nil && len(messages) > 0 {
-						textLines := opencode.ExtractRecentText(messages, lines)
+						textLines := execution.ExtractRecentText(messages, lines)
 						fmt.Printf("=== Output from %s (via API, last %d lines) ===\n", agentID, lines)
 						for _, line := range textLines {
 							fmt.Println(line)

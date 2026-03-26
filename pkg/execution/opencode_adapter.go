@@ -171,6 +171,85 @@ func (a *OpenCodeAdapter) ExportTranscript(_ context.Context, handle SessionHand
 	return a.client.ExportSessionTranscript(string(handle))
 }
 
+func (a *OpenCodeAdapter) SendMessageAsync(_ context.Context, handle SessionHandle, content, model string) error {
+	return a.client.SendMessageAsync(string(handle), content, model)
+}
+
+func (a *OpenCodeAdapter) SendMessageInDirectory(_ context.Context, handle SessionHandle, content, model, directory string) error {
+	return a.client.SendMessageInDirectory(string(handle), content, model, directory)
+}
+
+func (a *OpenCodeAdapter) SessionExists(_ context.Context, handle SessionHandle) bool {
+	return a.client.SessionExists(string(handle))
+}
+
+func (a *OpenCodeAdapter) IsSessionActive(_ context.Context, handle SessionHandle, maxIdleTime time.Duration) bool {
+	return a.client.IsSessionActive(string(handle), maxIdleTime)
+}
+
+func (a *OpenCodeAdapter) IsSessionProcessing(_ context.Context, handle SessionHandle) bool {
+	return a.client.IsSessionProcessing(string(handle))
+}
+
+func (a *OpenCodeAdapter) GetSessionStatusByIDs(_ context.Context, sessionIDs []string) (map[string]SessionStatusInfo, error) {
+	statuses, err := a.client.GetSessionStatusByIDs(sessionIDs)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]SessionStatusInfo, len(statuses))
+	for id, s := range statuses {
+		result[id] = SessionStatusInfo{
+			Type:    s.Type,
+			Message: s.Message,
+		}
+	}
+	return result, nil
+}
+
+func (a *OpenCodeAdapter) ListDiskSessions(_ context.Context, directory string) ([]SessionInfo, error) {
+	sessions, err := a.client.ListDiskSessions(directory)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]SessionInfo, len(sessions))
+	for i := range sessions {
+		result[i] = *convertSession(&sessions[i])
+	}
+	return result, nil
+}
+
+func (a *OpenCodeAdapter) GetLastMessage(_ context.Context, handle SessionHandle) (*Message, error) {
+	msg, err := a.client.GetLastMessage(string(handle))
+	if err != nil {
+		return nil, err
+	}
+	if msg == nil {
+		return nil, nil
+	}
+	msgs := convertMessages([]opencode.Message{*msg})
+	return &msgs[0], nil
+}
+
+func (a *OpenCodeAdapter) SetSessionMetadata(_ context.Context, handle SessionHandle, metadata map[string]string) error {
+	return a.client.SetSessionMetadata(string(handle), metadata)
+}
+
+func (a *OpenCodeAdapter) WaitForSessionError(_ context.Context, handle SessionHandle, timeout time.Duration) (string, error) {
+	return a.client.WaitForSessionError(string(handle), timeout)
+}
+
+func (a *OpenCodeAdapter) VerifySessionAfterPrompt(_ context.Context, handle SessionHandle, directory string, timeout time.Duration) error {
+	return a.client.VerifySessionAfterPrompt(string(handle), directory, timeout)
+}
+
+func (a *OpenCodeAdapter) GetSessionInDirectory(_ context.Context, handle SessionHandle, directory string) (*SessionInfo, error) {
+	session, err := a.client.GetSessionInDirectory(string(handle), directory)
+	if err != nil {
+		return nil, err
+	}
+	return convertSession(session), nil
+}
+
 // --- Conversion helpers ---
 
 func convertSession(s *opencode.Session) *SessionInfo {

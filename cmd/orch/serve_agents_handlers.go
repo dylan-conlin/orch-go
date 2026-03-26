@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -12,7 +13,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/discovery"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
@@ -52,16 +53,16 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 
 	// Build session map for enrichment (runtime, processing status, tokens)
 	sessions, _ := listSessionsAcrossProjects(client, projectDir)
-	sessionByID := make(map[string]*opencode.Session)
+	sessionByID := make(map[string]*execution.SessionInfo)
 	for i := range sessions {
 		sessionByID[sessions[i].ID] = &sessions[i]
 	}
 
-	sessionStatusMap := make(map[string]opencode.SessionStatusInfo)
+	sessionStatusMap := make(map[string]execution.SessionStatusInfo)
 	if len(trackedAgents) > 0 {
 		seenIDs := make(map[string]struct{}, len(trackedAgents))
 		sessionIDs := make([]string, 0, len(trackedAgents))
@@ -76,7 +77,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			sessionIDs = append(sessionIDs, tracked.SessionID)
 		}
 		if len(sessionIDs) > 0 {
-			if status, err := client.GetSessionStatusByIDs(sessionIDs); err == nil {
+			if status, err := client.GetSessionStatusByIDs(context.Background(), sessionIDs); err == nil {
 				sessionStatusMap = status
 			}
 		}
@@ -101,8 +102,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		// Enrich from OpenCode session (runtime, processing, timestamps)
 		if tracked.SessionID != "" {
 			if s, ok := sessionByID[tracked.SessionID]; ok {
-				createdAt := time.Unix(s.Time.Created/1000, 0)
-				updatedAt := time.Unix(s.Time.Updated/1000, 0)
+				createdAt := s.Created
+				updatedAt := s.Updated
 				agent.Runtime = formatDuration(now.Sub(createdAt))
 				agent.UpdatedAt = updatedAt.Format(time.RFC3339)
 				if agent.SpawnedAt == "" {
@@ -113,7 +114,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				}
 
 				if statusInfo, ok := sessionStatusMap[s.ID]; ok {
-					agent.IsProcessing = statusInfo.IsBusy() || statusInfo.IsRetrying()
+					agent.IsProcessing = statusInfo.IsBusy() || statusInfo.Type == "retry"
 				}
 			}
 		}
@@ -396,8 +397,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// Fetch token usage and last activity (parallelized)
 	type sessionResult struct {
 		index    int
-		tokens   *opencode.TokenStats
-		activity *opencode.LastActivity
+		tokens   *execution.TokenStats
+		activity *execution.LastActivity
 	}
 	resultChan := make(chan sessionResult, len(agents))
 	const maxConcurrent = 20
@@ -413,12 +414,19 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			messages, err := client.GetMessages(sessionID)
+			messages, err := client.GetMessages(context.Background(), execution.SessionHandle(sessionID))
 			if err != nil || len(messages) == 0 {
 				return
 			}
 			result := sessionResult{index: idx}
-			tokenStats := opencode.AggregateTokens(messages)
+			ocTokenStats := execution.AggregateTokens(messages)
+			tokenStats := execution.TokenStats{
+				InputTokens:     ocTokenStats.InputTokens,
+				OutputTokens:    ocTokenStats.OutputTokens,
+				ReasoningTokens: ocTokenStats.ReasoningTokens,
+				CacheReadTokens: ocTokenStats.CacheReadTokens,
+				TotalTokens:     ocTokenStats.TotalTokens,
+			}
 			result.tokens = &tokenStats
 			result.activity = extractLastActivityFromMessages(messages)
 			resultChan <- result
@@ -441,7 +449,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		}
 		if result.activity != nil {
 			agents[result.index].CurrentActivity = result.activity.Text
-			agents[result.index].LastActivityAt = time.Unix(result.activity.Timestamp/1000, 0).Format(time.RFC3339)
+			agents[result.index].LastActivityAt = result.activity.Timestamp.Format(time.RFC3339)
 		}
 	}
 

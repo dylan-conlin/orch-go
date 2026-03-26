@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"time"
@@ -12,7 +13,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/agent"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
@@ -113,15 +114,15 @@ func (a *beadsAdapter) ListByLabel(label string) ([]agent.TrackedIssue, error) {
 
 // openCodeAdapter wraps opencode.Client to implement agent.OpenCodeClient.
 type openCodeAdapter struct {
-	client *opencode.Client
+	client execution.SessionClient
 }
 
 func newOpenCodeAdapter(serverURL string) *openCodeAdapter {
-	return &openCodeAdapter{client: opencode.NewClient(serverURL)}
+	return &openCodeAdapter{client: execution.NewOpenCodeAdapter(serverURL)}
 }
 
 func (a *openCodeAdapter) SessionExists(sessionID string) (bool, error) {
-	_, err := a.client.GetSession(sessionID)
+	_, err := a.client.GetSession(context.Background(), execution.SessionHandle(sessionID))
 	if err != nil {
 		// GetSession returns error for both "not found" and actual API errors.
 		// Treat all errors as "not existing" since the lifecycle manager
@@ -132,11 +133,11 @@ func (a *openCodeAdapter) SessionExists(sessionID string) (bool, error) {
 }
 
 func (a *openCodeAdapter) DeleteSession(sessionID string) error {
-	return a.client.DeleteSession(sessionID)
+	return a.client.DeleteSession(context.Background(), execution.SessionHandle(sessionID))
 }
 
 func (a *openCodeAdapter) ExportActivity(sessionID, outputPath string) error {
-	transcript, err := a.client.ExportSessionTranscript(sessionID)
+	transcript, err := a.client.ExportTranscript(context.Background(), execution.SessionHandle(sessionID))
 	if err != nil {
 		return err
 	}

@@ -17,7 +17,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/discovery"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
@@ -45,10 +45,10 @@ func generateMixedIssues(activeCount, closedCount int) []beads.Issue {
 }
 
 // buildJoinData creates test data for JoinWithReasonCodes at a given scale.
-func buildJoinData(n int) ([]beads.Issue, map[string]*spawn.AgentManifest, map[string]opencode.SessionStatusInfo, map[string]string) {
+func buildJoinData(n int) ([]beads.Issue, map[string]*spawn.AgentManifest, map[string]execution.SessionStatusInfo, map[string]string) {
 	issues := make([]beads.Issue, n)
 	manifests := make(map[string]*spawn.AgentManifest, n)
-	liveness := make(map[string]opencode.SessionStatusInfo, n)
+	liveness := make(map[string]execution.SessionStatusInfo, n)
 	phases := make(map[string]string, n)
 
 	for i := 0; i < n; i++ {
@@ -61,7 +61,7 @@ func buildJoinData(n int) ([]beads.Issue, map[string]*spawn.AgentManifest, map[s
 			ProjectDir: "/tmp/project",
 			Skill:      "feature-impl",
 		}
-		liveness[sessID] = opencode.SessionStatusInfo{Type: "busy"}
+		liveness[sessID] = execution.SessionStatusInfo{Type: "busy"}
 		phases[id] = fmt.Sprintf("Implementing - step %d", i)
 	}
 	return issues, manifests, liveness, phases
@@ -115,7 +115,7 @@ func TestPerfInvariance_FilterPipelineTiming(t *testing.T) {
 			issues := discovery.FilterActiveIssues(allIssues)
 			// Simulate downstream: build join data for active issues only
 			manifests := make(map[string]*spawn.AgentManifest, len(issues))
-			liveness := make(map[string]opencode.SessionStatusInfo, len(issues))
+			liveness := make(map[string]execution.SessionStatusInfo, len(issues))
 			phases := make(map[string]string, len(issues))
 			for _, issue := range issues {
 				sessID := "sess-" + issue.ID
@@ -123,7 +123,7 @@ func TestPerfInvariance_FilterPipelineTiming(t *testing.T) {
 					BeadsID:   issue.ID,
 					SessionID: sessID,
 				}
-				liveness[sessID] = opencode.SessionStatusInfo{Type: "busy"}
+				liveness[sessID] = execution.SessionStatusInfo{Type: "busy"}
 				phases[issue.ID] = "Implementing"
 			}
 			discovery.JoinWithReasonCodes(issues, manifests, liveness, phases)

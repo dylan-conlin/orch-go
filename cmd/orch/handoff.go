@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -15,7 +16,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/spf13/cobra"
 )
@@ -361,8 +362,8 @@ func gatherActiveAgents(projectDir string) []ActiveAgent {
 	}
 
 	// Also check OpenCode sessions for headless agents
-	client := opencode.NewClient(serverURL)
-	sessions, _ := client.ListSessions("")
+	client := execution.NewOpenCodeAdapter(serverURL)
+	sessions, _ := client.ListSessions(context.Background(), "")
 	sessionSet := make(map[string]bool)
 	for _, a := range agents {
 		if a.BeadsID != "" {
@@ -382,7 +383,7 @@ func gatherActiveAgents(projectDir string) []ActiveAgent {
 		}
 
 		// Only include recent sessions (last 30 min)
-		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		updatedAt := s.Updated
 		if time.Since(updatedAt) > 30*time.Minute {
 			continue
 		}

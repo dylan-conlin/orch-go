@@ -4,35 +4,30 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 )
 
 func TestTransformMessages(t *testing.T) {
 	sessionID := "ses_test123"
-	messages := []opencode.Message{
+	messages := []execution.Message{
 		{
-			Info: opencode.MessageInfo{
-				ID:        "msg_1",
-				SessionID: sessionID,
-				Role:      "assistant",
-				Time:      opencode.MessageTime{Created: 1737146700000},
-			},
-			Parts: []opencode.MessagePart{
+			ID:        "msg_1",
+			SessionID: sessionID,
+			Role:      "assistant",
+			Created:   time.Unix(1737146700, 0),
+			Parts: []execution.MessagePart{
 				{
-					ID:        "part_1",
-					SessionID: sessionID,
-					MessageID: "msg_1",
-					Type:      "text",
-					Text:      "Hello, I'll help you with that.",
+					CallID: "part_1",
+					Type:   "text",
+					Text:   "Hello, I'll help you with that.",
 				},
 				{
-					ID:        "part_2",
-					SessionID: sessionID,
-					MessageID: "msg_1",
-					Type:      "tool-invocation",
-					Tool:      "Bash",
-					State: &opencode.ToolState{
+					CallID: "part_2",
+					Type:   "tool-invocation",
+					Tool:   "Bash",
+					State: &execution.ToolState{
 						Status: "completed",
 						Title:  "List files",
 						Input:  map[string]interface{}{"command": "ls -la"},
@@ -40,11 +35,9 @@ func TestTransformMessages(t *testing.T) {
 					},
 				},
 				{
-					ID:        "part_3",
-					SessionID: sessionID,
-					MessageID: "msg_1",
-					Type:      "reasoning",
-					Text:      "Thinking about the next step...",
+					CallID: "part_3",
+					Type:   "reasoning",
+					Text:   "Thinking about the next step...",
 				},
 			},
 		},
@@ -90,35 +83,27 @@ func TestTransformMessages(t *testing.T) {
 
 func TestTransformMessages_FiltersInvalidTypes(t *testing.T) {
 	sessionID := "ses_test123"
-	messages := []opencode.Message{
+	messages := []execution.Message{
 		{
-			Info: opencode.MessageInfo{
-				ID:        "msg_1",
-				SessionID: sessionID,
-				Role:      "assistant",
-				Time:      opencode.MessageTime{Created: 1737146700000},
-			},
-			Parts: []opencode.MessagePart{
+			ID:        "msg_1",
+			SessionID: sessionID,
+			Role:      "assistant",
+			Created:   time.Unix(1737146700, 0),
+			Parts: []execution.MessagePart{
 				{
-					ID:        "part_1",
-					SessionID: sessionID,
-					MessageID: "msg_1",
-					Type:      "text",
-					Text:      "Valid text",
+					CallID: "part_1",
+					Type:   "text",
+					Text:   "Valid text",
 				},
 				{
-					ID:        "part_2",
-					SessionID: sessionID,
-					MessageID: "msg_1",
-					Type:      "unknown-type", // Should be filtered out
-					Text:      "Should not appear",
+					CallID: "part_2",
+					Type:   "unknown-type", // Should be filtered out
+					Text:   "Should not appear",
 				},
 				{
-					ID:        "part_3",
-					SessionID: sessionID,
-					MessageID: "msg_1",
-					Type:      "step-start", // Valid type
-					Text:      "Starting step",
+					CallID: "part_3",
+					Type:   "step-start", // Valid type
+					Text:   "Starting step",
 				},
 			},
 		},

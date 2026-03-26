@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,7 +15,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/beadsutil"
 	"github.com/dylan-conlin/orch-go/pkg/display"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -106,15 +107,15 @@ func resolveSessionID(serverURL, identifier string) (string, error) {
 		if len(suffix) < 8 {
 			return "", fmt.Errorf("invalid session ID format: %s (too short)", identifier)
 		}
-		client := opencode.NewClient(serverURL)
-		_, err := client.GetSession(identifier)
+		client := execution.NewOpenCodeAdapter(serverURL)
+		_, err := client.GetSession(context.Background(), execution.SessionHandle(identifier))
 		if err != nil {
 			return "", fmt.Errorf("session not found in OpenCode: %s", identifier)
 		}
 		return identifier, nil
 	}
 
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 	projectDir, _ := os.Getwd()
 
 	// Strategy 1: Use workspace.FindByBeadsID which scans SPAWN_CONTEXT.md
@@ -141,7 +142,7 @@ func resolveSessionID(serverURL, identifier string) (string, error) {
 	}
 
 	// Strategy 3: API lookup - search sessions by title containing identifier
-	allSessions, err := client.ListSessions(projectDir)
+	allSessions, err := client.ListSessions(context.Background(), projectDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to list sessions: %w", err)
 	}

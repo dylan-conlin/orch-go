@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
@@ -28,7 +28,7 @@ type headlessSpawnResult struct {
 
 // Spawn creates a new agent session in headless mode.
 func (b *HeadlessBackend) Spawn(ctx context.Context, req *SpawnRequest) (*Result, error) {
-	client := opencode.NewClient(req.ServerURL)
+	client := execution.NewOpenCodeAdapter(req.ServerURL)
 
 	// Format title with beads ID so orch status can match sessions
 	sessionTitle := FormatSessionTitle(req.Config.WorkspaceName, req.BeadsID)
@@ -87,7 +87,9 @@ func (b *HeadlessBackend) Spawn(ctx context.Context, req *SpawnRequest) (*Result
 // via x-opencode-directory header. This fixes cross-project spawns where --workdir differs
 // from the orchestrator's CWD.
 // Model selection is handled per-message by SendMessageInDirectory (providerID/modelID format).
-func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
+func startHeadlessSession(client execution.SessionClient, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
+	ctx := context.Background()
+
 	// Step 1: Create session via HTTP API with correct directory
 	// CreateSession passes x-opencode-directory header so the server uses the target project dir
 	metadata := map[string]string{
@@ -106,18 +108,26 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 		timeTTL = 0 // Orchestrator sessions persist until manually cleaned
 	}
 
-	session, err := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model, metadata, timeTTL)
+	handle, err := client.CreateSession(ctx, execution.SessionRequest{
+		Title:     sessionTitle,
+		Directory: cfg.ProjectDir,
+		Model:     cfg.Model,
+		Metadata:  metadata,
+		TimeTTL:   timeTTL,
+	})
 	if err != nil {
 		return nil, spawn.WrapSpawnError(err, "Failed to create session via API")
 	}
 
+	sessionID := handle.String()
+
 	// Step 2: Send the initial prompt with model selection and directory context
 	// The directory header ensures the server resolves the correct project context
-	if err := client.SendMessageInDirectory(session.ID, minimalPrompt, cfg.Model, cfg.ProjectDir); err != nil {
+	if err := client.SendMessageInDirectory(ctx, handle, minimalPrompt, cfg.Model, cfg.ProjectDir); err != nil {
 		return nil, spawn.WrapSpawnError(err, "Failed to send prompt to session")
 	}
 
 	return &headlessSpawnResult{
-		SessionID: session.ID,
+		SessionID: sessionID,
 	}, nil
 }

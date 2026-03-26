@@ -7,7 +7,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/coaching"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	orchpkg "github.com/dylan-conlin/orch-go/pkg/orch"
 	"github.com/dylan-conlin/orch-go/pkg/port"
 )
@@ -140,15 +140,15 @@ func determineAgentStatus(issueClosed bool, phaseComplete bool, workspacePath st
 // It looks for the most recent assistant message and extracts a summary of what
 // the agent is doing (tool use, text generation, etc.).
 // Returns nil if no activity can be extracted.
-func extractLastActivityFromMessages(messages []opencode.Message) *opencode.LastActivity {
+func extractLastActivityFromMessages(messages []execution.Message) *execution.LastActivity {
 	if len(messages) == 0 {
 		return nil
 	}
 
 	// Find the last assistant message (most relevant for activity)
-	var lastAssistantMsg *opencode.Message
+	var lastAssistantMsg *execution.Message
 	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Info.Role == "assistant" {
+		if messages[i].Role == "assistant" {
 			lastAssistantMsg = &messages[i]
 			break
 		}
@@ -203,14 +203,14 @@ func extractLastActivityFromMessages(messages []opencode.Message) *opencode.Last
 	}
 
 	// Use message completion time if available, otherwise created time
-	timestamp := lastAssistantMsg.Info.Time.Completed
-	if timestamp == 0 {
-		timestamp = lastAssistantMsg.Info.Time.Created
+	activityTime := lastAssistantMsg.Completed
+	if activityTime.IsZero() {
+		activityTime = lastAssistantMsg.Created
 	}
 
-	return &opencode.LastActivity{
+	return &execution.LastActivity{
 		Text:      activityText,
-		Timestamp: timestamp,
+		Timestamp: activityTime,
 	}
 }
 

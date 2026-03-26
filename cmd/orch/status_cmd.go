@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,7 +14,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/discovery"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/dylan-conlin/orch-go/pkg/workspace"
@@ -106,7 +107,7 @@ type AgentInfo struct {
 	IsCompleted     bool                          `json:"is_completed,omitempty"`      // True if beads issue is closed
 	IsStalled       bool                          `json:"is_stalled,omitempty"`        // True if no token progress for 3+ minutes
 	IsUnresponsive  bool                          `json:"is_unresponsive,omitempty"`   // True if no phase update for 30+ minutes
-	Tokens          *opencode.TokenStats          `json:"tokens,omitempty"`            // Token usage for the session
+	Tokens          *execution.TokenStats          `json:"tokens,omitempty"`            // Token usage for the session
 	ContextRisk     *verify.ContextExhaustionRisk `json:"context_risk,omitempty"`      // Context exhaustion risk assessment
 	PhaseReportedAt *time.Time                    `json:"phase_reported_at,omitempty"` // Timestamp when latest phase was reported
 	LastActivity    time.Time                     `json:"last_activity,omitempty"`     // Timestamp of last activity (for ghost filtering)
@@ -156,22 +157,22 @@ type StatusOutput struct {
 // isSessionLikelyProcessing checks if a session might be processing based on its last update time.
 // Only makes the expensive IsSessionProcessing HTTP call for recently updated sessions.
 // For sessions not updated recently, assumes they are idle (saves ~100ms per call).
-func isSessionLikelyProcessing(client *opencode.Client, sessionID string, lastUpdated time.Time, now time.Time) bool {
+func isSessionLikelyProcessing(client execution.SessionClient, sessionID string, lastUpdated time.Time, now time.Time) bool {
 	// If the session hasn't been updated in the last 5 minutes, it's definitely not processing
 	if now.Sub(lastUpdated) > processingCheckMaxAge {
 		return false
 	}
 	// For recently active sessions, make the HTTP call to check processing status
-	return client.IsSessionProcessing(sessionID)
+	return client.IsSessionProcessing(context.Background(), execution.SessionHandle(sessionID))
 }
 
 func runStatus(serverURL string) error {
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 	now := time.Now()
 
 	// Fast connectivity check: probe OpenCode server before making HTTP calls.
 	// When unreachable, skip all OpenCode enrichment to avoid multiple 10s timeouts.
-	opencodeReachable := client.IsReachable()
+	opencodeReachable := client.IsReachable(context.Background(), )
 
 	// Get current project directory
 	projectDir, _ := os.Getwd()
@@ -196,8 +197,8 @@ func runStatus(serverURL string) error {
 
 	// Enrich with session data for runtime/processing status.
 	// Skip when OpenCode is unreachable — local discovery still provides agent list.
-	sessionMap := make(map[string]*opencode.Session)
-	sessionStatusMap := make(map[string]opencode.SessionStatusInfo)
+	sessionMap := make(map[string]*execution.SessionInfo)
+	sessionStatusMap := make(map[string]execution.SessionStatusInfo)
 
 	if opencodeReachable {
 		sessions, _ := listSessionsAcrossProjects(client, projectDir)
@@ -212,7 +213,7 @@ func runStatus(serverURL string) error {
 			}
 		}
 		if len(statusIDs) > 0 {
-			if status, err := client.GetSessionStatusByIDs(statusIDs); err == nil {
+			if status, err := client.GetSessionStatusByIDs(context.Background(), statusIDs); err == nil {
 				sessionStatusMap = status
 			}
 		}
@@ -224,15 +225,15 @@ func runStatus(serverURL string) error {
 			continue
 		}
 		if s, ok := sessionMap[agent.SessionID]; ok {
-			createdAt := time.Unix(s.Time.Created/1000, 0)
-			updatedAt := time.Unix(s.Time.Updated/1000, 0)
+			createdAt := s.Created
+			updatedAt := s.Updated
 			agent.Runtime = formatDuration(now.Sub(createdAt))
 			agent.LastActivity = updatedAt
 			// Don't override processing status for completed agents — their session
 			// may still be technically alive, but the agent has reported Phase: Complete.
 			if !agent.IsCompleted {
 				if statusInfo, ok := sessionStatusMap[s.ID]; ok {
-					agent.IsProcessing = statusInfo.IsBusy() || statusInfo.IsRetrying()
+					agent.IsProcessing = statusInfo.IsBusy() || statusInfo.Type == "retry"
 				}
 			}
 		}
@@ -346,8 +347,15 @@ func runStatus(serverURL string) error {
 			if !statusAll && !agent.IsProcessing {
 				continue
 			}
-			tokens, err := client.GetSessionTokens(agent.SessionID)
-			if err == nil && tokens != nil {
+			ocTokens, err := client.GetSessionTokens(context.Background(), execution.SessionHandle(agent.SessionID))
+			if err == nil && ocTokens != nil {
+				tokens := &execution.TokenStats{
+					InputTokens:     ocTokens.InputTokens,
+					OutputTokens:    ocTokens.OutputTokens,
+					ReasoningTokens: ocTokens.ReasoningTokens,
+					CacheReadTokens: ocTokens.CacheReadTokens,
+					TotalTokens:     ocTokens.TotalTokens,
+				}
 				agent.Tokens = tokens
 				if agent.IsProcessing && !agent.IsPhantom && !agent.IsCompleted {
 					isStalled := globalStallTracker.Update(agent.SessionID, tokens)

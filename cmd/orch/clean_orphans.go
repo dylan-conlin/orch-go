@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,7 +13,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/agent"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
@@ -180,7 +181,7 @@ func runOrphanGC(projectDir string, dryRun bool, preserveOrchestrator bool) (for
 // orch status with no way to dismiss them.
 func cleanGhostAgents(currentProjectDir string, dryRun bool) (int, error) {
 	projectDirs := getKBProjectsFn()
-	client := opencode.NewClient(opencode.DefaultServerURL)
+	client := execution.NewOpenCodeAdapter(execution.DefaultServerURL)
 	cleaned := 0
 
 	// Phase 1: Clean stale orch:agent labels on closed issues in the local project.
@@ -240,7 +241,7 @@ func cleanGhostAgents(currentProjectDir string, dryRun bool) (int, error) {
 				if wPath != "" {
 					sessionID := spawn.ReadSessionID(wPath)
 					if sessionID != "" {
-						hasSession = client.SessionExists(sessionID)
+						hasSession = client.SessionExists(context.Background(), execution.SessionHandle(sessionID))
 					}
 				}
 

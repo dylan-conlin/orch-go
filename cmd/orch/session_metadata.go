@@ -4,10 +4,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 )
 
-func workspacePathFromSession(session *opencode.Session) string {
+func workspacePathFromSession(session *execution.SessionInfo) string {
 	if session == nil || session.Metadata == nil {
 		return ""
 	}
@@ -17,7 +17,7 @@ func workspacePathFromSession(session *opencode.Session) string {
 	return ""
 }
 
-func workspaceNameFromSession(session *opencode.Session) string {
+func workspaceNameFromSession(session *execution.SessionInfo) string {
 	if session == nil {
 		return ""
 	}
@@ -27,7 +27,7 @@ func workspaceNameFromSession(session *opencode.Session) string {
 	return session.Title
 }
 
-func beadsIDFromSession(session *opencode.Session) string {
+func beadsIDFromSession(session *execution.SessionInfo) string {
 	if session == nil {
 		return ""
 	}

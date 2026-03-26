@@ -1,15 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"sort"
-	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 )
 
 // SessionAPIResponse is the JSON structure returned by /api/sessions.
@@ -52,14 +52,14 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 		projectDir, _ = os.Getwd()
 	}
 
-	client := opencode.NewClient(serverURL)
+	client := execution.NewOpenCodeAdapter(serverURL)
 
 	untracked, err := listUntrackedSessions(client, projectDir)
 	if err != nil {
 		log.Printf("Warning: failed to list sessions: %v", err)
 	}
 
-	sessionStatusMap := make(map[string]opencode.SessionStatusInfo)
+	sessionStatusMap := make(map[string]execution.SessionStatusInfo)
 	if len(untracked) > 0 {
 		seenIDs := make(map[string]struct{}, len(untracked))
 		sessionIDs := make([]string, 0, len(untracked))
@@ -74,7 +74,7 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 			sessionIDs = append(sessionIDs, entry.Session.ID)
 		}
 		if len(sessionIDs) > 0 {
-			if status, err := client.GetSessionStatusByIDs(sessionIDs); err != nil {
+			if status, err := client.GetSessionStatusByIDs(context.Background(), sessionIDs); err != nil {
 				log.Printf("Warning: failed to fetch session status: %v", err)
 			} else {
 				sessionStatusMap = status
@@ -84,8 +84,8 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 
 	responses := make([]SessionAPIResponse, 0, len(untracked))
 	for _, entry := range untracked {
-		updatedAt := time.Unix(entry.Session.Time.Updated/1000, 0)
-		createdAt := time.Unix(entry.Session.Time.Created/1000, 0)
+		updatedAt := entry.Session.Updated
+		createdAt := entry.Session.Created
 		sessionTime := updatedAt
 		if sessionTime.IsZero() {
 			sessionTime = createdAt
@@ -101,7 +101,7 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 		status := "idle"
 		isProcessing := false
 		if statusInfo, ok := sessionStatusMap[entry.Session.ID]; ok {
-			isProcessing = statusInfo.IsBusy() || statusInfo.IsRetrying()
+			isProcessing = statusInfo.IsBusy() || statusInfo.Type == "retry"
 			if isProcessing {
 				status = "active"
 			}
@@ -121,8 +121,8 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 			ProjectDir:    entry.Session.Directory,
 			Status:        status,
 			IsProcessing:  isProcessing,
-			CreatedAt:     formatSessionTime(entry.Session.Time.Created),
-			UpdatedAt:     formatSessionTime(entry.Session.Time.Updated),
+			CreatedAt:     formatSessionTime(entry.Session.Created.UnixMilli()),
+			UpdatedAt:     formatSessionTime(entry.Session.Updated.UnixMilli()),
 		})
 	}
 

@@ -14,7 +14,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/discovery"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
@@ -58,7 +58,7 @@ func TestE2ELifecycle_SingleAgent(t *testing.T) {
 				SpawnMode:     "opencode",
 			},
 		}
-		liveness := map[string]opencode.SessionStatusInfo{
+		liveness := map[string]execution.SessionStatusInfo{
 			sessionID: {Type: "busy"},
 		}
 		phases := map[string]string{
@@ -101,7 +101,7 @@ func TestE2ELifecycle_SingleAgent(t *testing.T) {
 			manifests := map[string]*spawn.AgentManifest{
 				beadsID: {BeadsID: beadsID, SessionID: sessionID, ProjectDir: "/tmp"},
 			}
-			liveness := map[string]opencode.SessionStatusInfo{
+			liveness := map[string]execution.SessionStatusInfo{
 				sessionID: {Type: "busy"},
 			}
 			phaseMap := map[string]string{
@@ -200,7 +200,7 @@ func TestE2ELifecycle_MultipleAgents(t *testing.T) {
 			"orch-go-multi-2": {BeadsID: "orch-go-multi-2", SessionID: "sess-m2", ProjectDir: "/tmp/p2", Skill: "feature-impl"},
 			"orch-go-multi-3": {BeadsID: "orch-go-multi-3", SessionID: "sess-m3", ProjectDir: "/tmp/p3", Skill: "investigation"},
 		}
-		liveness := map[string]opencode.SessionStatusInfo{
+		liveness := map[string]execution.SessionStatusInfo{
 			"sess-m1": {Type: "busy"},
 			"sess-m2": {Type: "busy"},
 			"sess-m3": {Type: "idle"}, // Session went idle after Phase: Complete
