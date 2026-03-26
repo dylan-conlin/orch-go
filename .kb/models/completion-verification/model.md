@@ -1,8 +1,8 @@
 # Model: Completion Verification Architecture
 
 **Domain:** Completion / Verification / Quality Gates
-**Last Updated:** 2026-03-22
-**Synthesized From:** 31 investigations, 25 probes, completion.md guide, end-to-end infrastructure audit (Feb 20, 2026), code review gate design (Feb 25, 2026)
+**Last Updated:** 2026-03-26
+**Synthesized From:** 31 investigations, 26 probes, completion.md guide, end-to-end infrastructure audit (Feb 20, 2026), code review gate design (Feb 25, 2026)
 
 ---
 
@@ -336,7 +336,21 @@ Completed agent activity remains viewable via hybrid persistent layer:
 
 **Source:** Probe `probes/2026-03-20-probe-human-feedback-channel-structural-disuse.md`, probe `probes/2026-03-22-probe-open-loop-infrastructure-code-audit.md`
 
-### 8. Consumer-Last Construction (Systemic Open Loops)
+### 8. Split Commit — Callers Committed Without Implementations
+
+**What happens:** An agent commits files that call new functions/use new types, but does NOT commit the files that define those functions/types. The committed code does not compile. The issue is closed anyway.
+
+**Concrete instance (2026-03-26):** Commit `da9b666b4` (orch-go-r7avo) modified `ooda.go` and `preview.go` to call `RouteModel()` and a 4-arg `RouteIssueForSpawn()`, but the implementations (in `skill_inference.go`, `coordination.go`) were left in the dirty working tree. Build errors: `undefined: RouteModel`, `too many arguments`. Issue was marked closed. Build was broken for an unknown duration.
+
+**Root cause:** The completion pipeline's Build gate (#10) runs `go build` on the *working tree*, not on the *committed code*. When an agent has staged some files and left others dirty, `go build` passes (because all files are present in the working tree) but the committed state is broken. The Build gate verifies workability, not commit integrity.
+
+**Why this wasn't caught:** (1) No CI/CD runs on commits. (2) The Build gate runs against the working tree, not `git stash && go build`. (3) `orch complete` for orch-go-r7avo passed all gates because the agent's working tree compiled fine. (4) Pre-commit hook also builds the working tree, not the staged set.
+
+**Proposed fix:** Either (a) pre-commit hook should `git stash -k` (stash unstaged) before building, or (b) completion verification should check `git diff --name-only HEAD` for compilation-breaking asymmetry (callers committed, implementations not).
+
+**Source:** Probe `probes/2026-03-26-probe-dirty-worktree-closed-issue-reconciliation.md`
+
+### 9. Consumer-Last Construction (Systemic Open Loops)
 
 **What happens:** The completion/daemon pipeline contains **10 concrete open loops** where infrastructure is built on the emission side (events logged, labels added, config fields defined, scheduler tasks registered) but the consumption side (daemon reads signal and changes behavior) is missing. The pipe is built on both ends but not connected in the middle.
 
@@ -532,6 +546,7 @@ Empirically confirmed that `feature-impl` spawned with V2 + TierLight creates co
 | `2026-02-28-probe-synthesis-gate-light-tier-empirical-failures.md` | extends | 100% feature-impl failure rate on Feb 28 (3/3); agents correctly followed instructions but verification demanded missing SYNTHESIS.md |
 | `2026-03-01-probe-hotspot-blind-spot-analysis.md` | extends | 5 blind spot categories with codebase evidence; 4 existing bugs found including private key in git and blocked agents invisible on dashboard |
 | `2026-03-01-probe-cross-model-blind-spots.md` | extends | Cross-model review escapes blind spot loop (6-model benchmark: Codex/DeepSeek found backend root cause that Opus/Sonnet missed); skill-frame divergence within same model also produces different blind spots; provenance objection still applies |
+| `2026-03-26-probe-dirty-worktree-closed-issue-reconciliation.md` | extends | Split-commit failure mode: agent committed callers (ooda.go) without implementations (skill_inference.go), broke build. Build gate runs on working tree not committed code — cannot detect this. New "Why This Fails" §8. |
 
 **Models:**
 - `.kb/models/completion-lifecycle.md` — Where completion fits in agent lifecycle
