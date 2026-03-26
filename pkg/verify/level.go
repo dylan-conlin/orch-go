@@ -25,6 +25,7 @@ var gatesByLevel = map[string][]string{
 		GateBuild,
 		GateVet,
 		GateAccretion,
+		GateOwnershipReconciliation,
 	},
 	spawn.VerifyV3: {
 		GateVisualVerify,

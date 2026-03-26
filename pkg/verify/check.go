@@ -458,6 +458,21 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier s
 		}
 	}
 
+	// Ownership reconciliation gate (V2+)
+	// Verifies all tracked dirty files since baseline are committed or in allowed-residue classes
+	if !isOrch && ShouldRunGate(verifyLevel, GateOwnershipReconciliation) {
+		result.GatesRun = append(result.GatesRun, GateOwnershipReconciliation)
+		ownershipResult := VerifyOwnershipReconciliation(workspacePath, projectDir)
+		if ownershipResult != nil {
+			if !ownershipResult.Passed {
+				result.Passed = false
+				result.Errors = append(result.Errors, ownershipResult.Errors...)
+				result.GatesFailed = append(result.GatesFailed, GateOwnershipReconciliation)
+			}
+			result.Warnings = append(result.Warnings, ownershipResult.Warnings...)
+		}
+	}
+
 	// Accretion gate (V2+)
 	if !isOrch && ShouldRunGate(verifyLevel, GateAccretion) {
 		result.GatesRun = append(result.GatesRun, GateAccretion)

@@ -18,7 +18,7 @@ func TestGatesForLevel_V0(t *testing.T) {
 
 func TestGatesForLevel_V1(t *testing.T) {
 	gates := GatesForLevel(spawn.VerifyV1)
-	// V1 (Artifacts): V0 + Handoff Content, Skill Output, Phase Gates, Constraint, Decision Patch Limit, Architectural Choices, Probe Model Merge, Architect Handoff
+	// V1 (Artifacts): V0 + artifact gates
 	expected := map[string]bool{
 		GatePhaseComplete:        true,
 		GateHandoffContent:       true,
@@ -28,52 +28,57 @@ func TestGatesForLevel_V1(t *testing.T) {
 		GateArchitectHandoff:     true,
 		GateConsequenceSensor:    true,
 		GateArtifact:             true,
+		GateDecisionEnforcement:  true,
 	}
 	assertGateSet(t, "V1", gates, expected)
 }
 
 func TestGatesForLevel_V2(t *testing.T) {
 	gates := GatesForLevel(spawn.VerifyV2)
-	// V2 (Evidence): V1 + Test Evidence, Git Diff, Build, Vet, Accretion
+	// V2 (Evidence): V1 + evidence gates
 	expected := map[string]bool{
-		GatePhaseComplete:        true,
-		GateSynthesis:            true,
-		GateHandoffContent:       true,
-		GateDecisionPatchLimit:   true,
-		GateArchitecturalChoices: true,
-		GateProbeModelMerge:      true,
-		GateArchitectHandoff:     true,
-		GateConsequenceSensor:    true,
-		GateArtifact:             true,
-		GateTestEvidence:         true,
-		GateGitDiff:              true,
-		GateBuild:                true,
-		GateVet:                  true,
-		GateAccretion:            true,
+		GatePhaseComplete:           true,
+		GateSynthesis:               true,
+		GateHandoffContent:          true,
+		GateDecisionPatchLimit:      true,
+		GateArchitecturalChoices:    true,
+		GateProbeModelMerge:         true,
+		GateArchitectHandoff:        true,
+		GateConsequenceSensor:       true,
+		GateArtifact:                true,
+		GateDecisionEnforcement:     true,
+		GateTestEvidence:            true,
+		GateGitDiff:                 true,
+		GateBuild:                   true,
+		GateVet:                     true,
+		GateAccretion:               true,
+		GateOwnershipReconciliation: true,
 	}
 	assertGateSet(t, "V2", gates, expected)
 }
 
 func TestGatesForLevel_V3(t *testing.T) {
 	gates := GatesForLevel(spawn.VerifyV3)
-	// V3 (Behavioral): V2 + Visual Verification, Explain-Back
+	// V3 (Behavioral): V2 + behavioral gates
 	expected := map[string]bool{
-		GatePhaseComplete:        true,
-		GateSynthesis:            true,
-		GateHandoffContent:       true,
-		GateDecisionPatchLimit:   true,
-		GateArchitecturalChoices: true,
-		GateProbeModelMerge:      true,
-		GateArchitectHandoff:     true,
-		GateConsequenceSensor:    true,
-		GateArtifact:             true,
-		GateTestEvidence:         true,
-		GateGitDiff:              true,
-		GateBuild:                true,
-		GateVet:                  true,
-		GateAccretion:            true,
-		GateVisualVerify:         true,
-		GateExplainBack:          true,
+		GatePhaseComplete:           true,
+		GateSynthesis:               true,
+		GateHandoffContent:          true,
+		GateDecisionPatchLimit:      true,
+		GateArchitecturalChoices:    true,
+		GateProbeModelMerge:         true,
+		GateArchitectHandoff:        true,
+		GateConsequenceSensor:       true,
+		GateArtifact:                true,
+		GateDecisionEnforcement:     true,
+		GateTestEvidence:            true,
+		GateGitDiff:                 true,
+		GateBuild:                   true,
+		GateVet:                     true,
+		GateAccretion:               true,
+		GateOwnershipReconciliation: true,
+		GateVisualVerify:            true,
+		GateExplainBack:             true,
 	}
 	assertGateSet(t, "V3", gates, expected)
 }
