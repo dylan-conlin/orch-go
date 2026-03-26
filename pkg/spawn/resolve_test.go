@@ -991,6 +991,76 @@ func TestResolve_BugClass15_ModelAwareBackendRouting(t *testing.T) {
 			t.Fatalf("Model.Value = %q, want %q (model should not be overridden)", settings.Model.Value, "openai/gpt-4o")
 		}
 	})
+
+	t.Run("explicit unknown openai provider model routes to opencode backend", func(t *testing.T) {
+		input := baseResolveInput()
+		input.CLI.Model = "openai/o4-mini-2026-01-15"
+
+		settings, err := Resolve(input)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if settings.Backend.Value != BackendOpenCode {
+			t.Fatalf("Backend.Value = %q, want %q (explicit openai provider/model should route to opencode)", settings.Backend.Value, BackendOpenCode)
+		}
+		if settings.Backend.Source != SourceDerived {
+			t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceDerived)
+		}
+		if settings.Backend.Detail != "model-requirement" {
+			t.Fatalf("Backend.Detail = %q, want %q", settings.Backend.Detail, "model-requirement")
+		}
+		if settings.Model.Value != "openai/o4-mini-2026-01-15" {
+			t.Fatalf("Model.Value = %q, want %q", settings.Model.Value, "openai/o4-mini-2026-01-15")
+		}
+	})
+
+	t.Run("unknown openai user default model auto-routes backend", func(t *testing.T) {
+		input := baseResolveInput()
+		input.UserConfig = &userconfig.Config{DefaultModel: "openai/o4-mini-2026-01-15"}
+		input.UserConfigMeta = UserConfigMeta{DefaultModel: true}
+
+		settings, err := Resolve(input)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if settings.Backend.Value != BackendOpenCode {
+			t.Fatalf("Backend.Value = %q, want %q (unknown openai user default should auto-route to opencode)", settings.Backend.Value, BackendOpenCode)
+		}
+		if settings.Backend.Source != SourceDerived {
+			t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceDerived)
+		}
+		if settings.Model.Value != "openai/o4-mini-2026-01-15" {
+			t.Fatalf("Model.Value = %q, want %q", settings.Model.Value, "openai/o4-mini-2026-01-15")
+		}
+		if settings.Model.Source != SourceUserConfig {
+			t.Fatalf("Model.Source = %q, want %q", settings.Model.Source, SourceUserConfig)
+		}
+	})
+
+	t.Run("explicit unknown anthropic provider model routes to claude backend", func(t *testing.T) {
+		input := baseResolveInput()
+		input.CLI.Model = "anthropic/claude-sonnet-5-20260101"
+
+		settings, err := Resolve(input)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if settings.Backend.Value != BackendClaude {
+			t.Fatalf("Backend.Value = %q, want %q (explicit anthropic provider/model should route to claude)", settings.Backend.Value, BackendClaude)
+		}
+		if settings.Backend.Source != SourceDerived {
+			t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceDerived)
+		}
+		if settings.Backend.Detail != "model-requirement" {
+			t.Fatalf("Backend.Detail = %q, want %q", settings.Backend.Detail, "model-requirement")
+		}
+		if settings.Model.Value != "anthropic/claude-sonnet-5-20260101" {
+			t.Fatalf("Model.Value = %q, want %q", settings.Model.Value, "anthropic/claude-sonnet-5-20260101")
+		}
+		if settings.SpawnMode.Value != SpawnModeTmux {
+			t.Fatalf("SpawnMode.Value = %q, want %q (claude backend requires tmux)", settings.SpawnMode.Value, SpawnModeTmux)
+		}
+	})
 }
 
 // TestResolve_AccountCLIFlag tests that --account CLI flag is resolved correctly.
