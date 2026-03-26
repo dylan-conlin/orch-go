@@ -2,6 +2,8 @@ package model
 
 import "testing"
 
+var gpt54Spec = ModelSpec{Provider: "openai", ModelID: "gpt-5.4", ContextWindow: 1050000}
+
 func TestResolve_Empty(t *testing.T) {
 	result := Resolve("")
 	if result != DefaultModel {
@@ -40,8 +42,8 @@ func TestResolve_Aliases(t *testing.T) {
 		{"gpt-5", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
 		{"gpt-5.1", ModelSpec{Provider: "openai", ModelID: "gpt-5.1"}},
 		{"gpt-5.2", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
-		{"gpt-5.4", ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}},
-		{"gpt5-latest", ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}},
+		{"gpt-5.4", gpt54Spec},
+		{"gpt5-latest", gpt54Spec},
 		{"gpt5-mini", ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex-mini"}},
 		{"o3", ModelSpec{Provider: "openai", ModelID: "o3"}},
 
@@ -49,10 +51,10 @@ func TestResolve_Aliases(t *testing.T) {
 		{"codex", ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}},
 		{"codex-mini", ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex-mini"}},
 		{"codex-max", ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex-max"}},
-		{"codex-latest", ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}},
+		{"codex-latest", gpt54Spec},
 		{"codex-5.1", ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex"}},
 		{"codex-5.2", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
-		{"codex-5.4", ModelSpec{Provider: "openai", ModelID: "gpt-5.4"}},
+		{"codex-5.4", gpt54Spec},
 		{"CODEX", ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}},
 
 		// DeepSeek aliases
@@ -78,6 +80,7 @@ func TestResolve_ProviderModelFormat(t *testing.T) {
 		{"anthropic/claude-opus-4-5-20251101", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}},
 		{"google/gemini-2.5-flash", ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}},
 		{"openai/gpt-4o", ModelSpec{Provider: "openai", ModelID: "gpt-4o"}},
+		{"openai/gpt-5.4", gpt54Spec},
 	}
 
 	for _, tt := range tests {
@@ -105,6 +108,7 @@ func TestResolve_ModelIDOnly(t *testing.T) {
 
 		// GPT models default to openai
 		{"gpt-5-20251215", ModelSpec{Provider: "openai", ModelID: "gpt-5-20251215"}},
+		{"gpt-5.4", gpt54Spec},
 
 		// DeepSeek models default to deepseek
 		{"deepseek-v3.2", ModelSpec{Provider: "deepseek", ModelID: "deepseek-v3.2"}},
@@ -117,6 +121,16 @@ func TestResolve_ModelIDOnly(t *testing.T) {
 				t.Errorf("Resolve(%q) = %v, want %v", tt.input, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestResolveWithConfig_ConfigAliasOverride_PreservesContextWindow(t *testing.T) {
+	configModels := map[string]string{
+		"latest": "openai/gpt-5.4",
+	}
+
+	if got := ResolveWithConfig("latest", configModels); got != gpt54Spec {
+		t.Errorf("ResolveWithConfig('latest', config) = %v, want %v", got, gpt54Spec)
 	}
 }
 
