@@ -205,9 +205,14 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 			// Non-critical: label may not exist (e.g., manual completion, not daemon-queued)
 		}
 
-		// Signal human verification to daemon
-		if err := daemon.WriteVerificationSignal(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to signal human verification to daemon: %v\n", err)
+		// Signal human verification to daemon — only when Dylan is the actor.
+		// Headless completions (daemon-triggered) and orchestrator sessions are
+		// automated; signaling from those paths resets the daemon's
+		// completionsSinceVerification counter, defeating the comprehension throttle.
+		if !completeHeadless && !target.IsOrchestratorSession {
+			if err := daemon.WriteVerificationSignal(); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to signal human verification to daemon: %v\n", err)
+			}
 		}
 	}
 

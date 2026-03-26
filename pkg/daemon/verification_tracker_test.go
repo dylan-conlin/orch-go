@@ -4,6 +4,8 @@ package daemon
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -725,5 +727,50 @@ func TestVerificationTracker_DuplicateReturnsPausedState(t *testing.T) {
 	if status.CompletionsSinceVerification != 2 {
 		t.Errorf("Expected 2 (duplicate not counted), got %d",
 			status.CompletionsSinceVerification)
+	}
+}
+
+// Structural test: WriteVerificationSignal must not be called from serve_daemon_actions.go.
+// Dashboard API endpoints are used by both humans and automated orchestrator sessions.
+// Calling WriteVerificationSignal from those paths resets the daemon's
+// completionsSinceVerification counter, defeating the comprehension throttle.
+// See: orch-go-hry8a
+func TestWriteVerificationSignal_NotCalledFromDashboardAPI(t *testing.T) {
+	// Read serve_daemon_actions.go and verify it does not call WriteVerificationSignal
+	target := filepath.Join("..", "..", "cmd", "orch", "serve_daemon_actions.go")
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Skipf("Cannot read %s: %v (running outside repo root?)", target, err)
+	}
+
+	content := string(data)
+	if strings.Contains(content, "WriteVerificationSignal()") {
+		t.Errorf("serve_daemon_actions.go must NOT call WriteVerificationSignal().\n" +
+			"Dashboard API endpoints are used by automated orchestrator sessions,\n" +
+			"not exclusively by humans. Calling it here defeats the comprehension throttle.\n" +
+			"Human verification signal should only come from interactive `orch complete`.")
+	}
+}
+
+// Structural test: WriteVerificationSignal in complete_lifecycle.go must be gated
+// on both !completeHeadless and !target.IsOrchestratorSession.
+// See: orch-go-hry8a
+func TestWriteVerificationSignal_GatedInCompleteLifecycle(t *testing.T) {
+	target := filepath.Join("..", "..", "cmd", "orch", "complete_lifecycle.go")
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Skipf("Cannot read %s: %v (running outside repo root?)", target, err)
+	}
+
+	content := string(data)
+
+	// Must have headless guard
+	if !strings.Contains(content, "!completeHeadless") {
+		t.Error("complete_lifecycle.go: WriteVerificationSignal must be gated on !completeHeadless")
+	}
+
+	// Must have orchestrator session guard
+	if !strings.Contains(content, "!target.IsOrchestratorSession") {
+		t.Error("complete_lifecycle.go: WriteVerificationSignal must be gated on !target.IsOrchestratorSession")
 	}
 }

@@ -207,8 +207,9 @@ The daemon implements a **two-phase design**: it triages (automated gates) but d
 - `IsPaused()` checked before each spawn — blocks new work when review backlog exceeds threshold (default: 3)
 - `SeedFromBacklog()` persists tracker state across daemon restarts
 - **Dual signal mechanism:**
-  - `~/.orch/daemon-verification.signal` — written by `orch complete`, triggers `RecordHumanVerification()` (resets counter)
+  - `~/.orch/daemon-verification.signal` — written by interactive `orch complete` only (NOT headless, NOT orchestrator sessions, NOT dashboard API), triggers `RecordHumanVerification()` (resets counter)
   - `~/.orch/daemon-resume.signal` — written by `orch daemon resume`, triggers manual unpause
+- **Caller discipline (fixed 2026-03-26):** `WriteVerificationSignal()` must only fire when Dylan is the actor. Headless completions, orchestrator sessions, and dashboard API calls are automated paths that would reset the counter without human review. Structural tests in `verification_tracker_test.go` enforce this invariant.
 
 **Checkpoint source-of-truth:**
 - Checkpoint file (`~/.orch/verification-checkpoints.jsonl`) is the source of truth for verification state
@@ -561,6 +562,7 @@ Empirically confirmed that `feature-impl` spawned with V2 + TierLight creates co
 - 2026-03-20: Human Feedback Channel Structural Disuse — 0 reworks, 11 operational abandons in 1,102 completions. Friction asymmetry (rework=8 steps, complete=0 steps) creates false ground truth. §7 updated.
 - 2026-03-20: Daemon-Driven Random Quality Audit Design — 3-layer structural pipeline: daemon periodic audit selection (weighted toward auto-completed work), spawned audit agent for intent/test/quality review, verdict-to-reject pipeline feeding `agent.rejected` events into learning loop. Key gap found: `learning.go` missing `RejectedCount` field and `agent.rejected` handler — learning loop structurally blind to rejections even after `orch reject` ships. See `.kb/investigations/2026-03-20-inv-design-daemon-driven-random-quality-audit.md`.
 - 2026-03-22: Open-Loop Infrastructure Code Audit — 10 concrete open loops found where emission infrastructure exists but consumer/action layer is missing. Pattern named "consumer-last construction": system builds emitters + config first, never returns to build consumer. 513 accretion.delta events with no reader, 11 periodic tasks registered but never invoked, ComprehensionQuerier always nil, RejectedCount/VerificationFailures/VerificationBypasses are dead code. §7 updated (reject exists but 0 production events), §8 added.
+- 2026-03-26: WriteVerificationSignal called from non-human paths — `WriteVerificationSignal()` was called from 3 paths (dashboard API single close, batch close, `orch complete`), only one of which is human-initiated. Automated callers reset `completionsSinceVerification` to 0, preventing the daemon from ever reaching its pause threshold. Fixed by removing calls from dashboard API and gating `complete_lifecycle.go` on `!completeHeadless && !target.IsOrchestratorSession`. Structural tests added.
 
 ## Auto-Linked Investigations
 

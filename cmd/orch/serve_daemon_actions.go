@@ -94,9 +94,12 @@ func handleCloseIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Write verification signal so daemon knows human reviewed something
-	// Best effort - don't fail the close if signal write fails
-	_ = daemon.WriteVerificationSignal()
+	// NOTE: Do NOT write verification signal here. Dashboard API is used by
+	// both humans and automated orchestrator sessions. Writing the signal from
+	// this path defeats the comprehension throttle — the daemon's
+	// completionsSinceVerification counter gets reset by non-human callers,
+	// preventing the pause threshold from ever being reached.
+	// Human verification signal is only written from interactive `orch complete`.
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(CloseIssueResponse{
@@ -180,11 +183,9 @@ func handleCloseIssueBatch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Write verification signal once after all closes
-	// This resets the daemon's completions_since_verification counter
-	if totalClosed > 0 {
-		_ = daemon.WriteVerificationSignal()
-	}
+	// NOTE: Do NOT write verification signal here. See single-close handler
+	// for rationale — dashboard batch close is used by automated orchestrator
+	// sessions, not exclusively by Dylan.
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(CloseIssueBatchResponse{
