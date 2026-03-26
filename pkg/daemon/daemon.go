@@ -23,9 +23,11 @@ type OnceResult struct {
 	Processed bool
 	Issue     *Issue
 	Skill     string
-	Model     string // Inferred model alias (e.g., "opus", "sonnet")
-	Message   string
-	Error     error
+	Model     string // Inferred model alias (e.g., "opus", "sonnet", "gpt-5.4")
+	// ModelRouteReason explains why this model was chosen by the capability-aware router.
+	ModelRouteReason string
+	Message          string
+	Error            error
 
 	// ExtractionSpawned indicates that an extraction agent was spawned instead of the original issue.
 	// The original issue was given a blocking dependency on the extraction issue.
@@ -344,6 +346,9 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 
 	// ORIENT: prioritize and contextualize
 	orient := d.Orient(sense)
+
+	// Log advisories for thin issues (empty descriptions)
+	LogThinIssueAdvisories(orient, d.Config.Verbose)
 
 	// DECIDE: select issue, infer skill/model, apply routing
 	decision := d.Decide(orient, skip)

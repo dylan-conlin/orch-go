@@ -6,6 +6,9 @@ package daemon
 
 import (
 	"fmt"
+	"strings"
+
+	"github.com/dylan-conlin/orch-go/pkg/events"
 )
 
 // --- SENSE phase: gather raw signals from the environment ---
@@ -56,6 +59,9 @@ type OrientResult struct {
 	// ChannelHealthWarnings flags skills where rework=0 alongside high
 	// completion volume — absent negative signal should not be treated as positive.
 	ChannelHealthWarnings []ChannelHealthWarning
+	// ThinIssueIDs lists issue IDs with empty descriptions.
+	// Advisory-only: agents spawned from these rely on title-only orientation.
+	ThinIssueIDs []string
 	// OrientErr is non-nil if prioritization failed.
 	OrientErr error
 }
@@ -87,7 +93,48 @@ func (d *Daemon) Orient(sense SenseResult) OrientResult {
 	// Check for silent feedback channels (rework=0 with high completions)
 	result.ChannelHealthWarnings = CheckChannelHealth(d.Learning)
 
+	// Detect thin issues (empty description) for observability
+	result.ThinIssueIDs = DetectThinIssues(prioritized)
+
 	return result
+}
+
+// DetectThinIssues returns IDs of issues with empty descriptions.
+// These issues will produce agents with title-only orientation.
+func DetectThinIssues(issues []Issue) []string {
+	var thin []string
+	for _, issue := range issues {
+		if strings.TrimSpace(issue.Description) == "" {
+			thin = append(thin, issue.ID)
+		}
+	}
+	return thin
+}
+
+// LogThinIssueAdvisories logs and emits events for thin issues detected in Orient.
+// Advisory-only: no blocking, purely observational for telemetry.
+func LogThinIssueAdvisories(orient OrientResult, verbose bool) {
+	if len(orient.ThinIssueIDs) == 0 {
+		return
+	}
+
+	// Build a lookup for titles
+	titleByID := make(map[string]string)
+	for _, issue := range orient.PrioritizedIssues {
+		titleByID[issue.ID] = issue.Title
+	}
+
+	logger := events.NewDefaultLogger()
+	for _, id := range orient.ThinIssueIDs {
+		title := titleByID[id]
+		if verbose {
+			fmt.Printf("  ADVISORY: thin issue %s has no description — agent will rely on title-only orientation\n", id)
+		}
+		_ = logger.LogThinIssueDetected(events.ThinIssueDetectedData{
+			IssueID: id,
+			Title:   title,
+		})
+	}
 }
 
 // --- DECIDE phase: select the next action based on oriented data ---

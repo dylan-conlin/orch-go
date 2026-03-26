@@ -140,6 +140,57 @@ func TestOrient_SurfacesChannelHealthWarnings(t *testing.T) {
 	}
 }
 
+func TestOrient_DetectsThinIssues(t *testing.T) {
+	d := &Daemon{Config: Config{Label: "triage:ready"}}
+
+	sense := SenseResult{
+		GateSignal: SpawnGateSignal{Allowed: true},
+		Issues: []Issue{
+			{ID: "proj-1", Title: "Fix auth bug", Description: "", Priority: 0, IssueType: "bug", Status: "open", Labels: []string{"triage:ready"}},
+			{ID: "proj-2", Title: "Add feature", Description: "Detailed description here", Priority: 1, IssueType: "feature", Status: "open", Labels: []string{"triage:ready"}},
+			{ID: "proj-3", Title: "Refactor module", Description: "", Priority: 2, IssueType: "task", Status: "open", Labels: []string{"triage:ready"}},
+		},
+	}
+
+	result := d.Orient(sense)
+	if result.OrientErr != nil {
+		t.Fatalf("Orient() unexpected error: %v", result.OrientErr)
+	}
+	if len(result.ThinIssueIDs) != 2 {
+		t.Fatalf("Orient() ThinIssueIDs = %d, want 2", len(result.ThinIssueIDs))
+	}
+	// Should contain the two issues with empty descriptions
+	found := map[string]bool{}
+	for _, id := range result.ThinIssueIDs {
+		found[id] = true
+	}
+	if !found["proj-1"] {
+		t.Error("Orient() ThinIssueIDs missing proj-1")
+	}
+	if !found["proj-3"] {
+		t.Error("Orient() ThinIssueIDs missing proj-3")
+	}
+}
+
+func TestOrient_NoThinIssues_WhenAllHaveDescriptions(t *testing.T) {
+	d := &Daemon{Config: Config{Label: "triage:ready"}}
+
+	sense := SenseResult{
+		GateSignal: SpawnGateSignal{Allowed: true},
+		Issues: []Issue{
+			{ID: "proj-1", Title: "Fix auth bug", Description: "Auth fails on token refresh", Priority: 0, IssueType: "bug", Status: "open", Labels: []string{"triage:ready"}},
+		},
+	}
+
+	result := d.Orient(sense)
+	if result.OrientErr != nil {
+		t.Fatalf("Orient() unexpected error: %v", result.OrientErr)
+	}
+	if len(result.ThinIssueIDs) != 0 {
+		t.Errorf("Orient() ThinIssueIDs = %v, want empty", result.ThinIssueIDs)
+	}
+}
+
 // =============================================================================
 // Tests for OODA Decide phase
 // =============================================================================
