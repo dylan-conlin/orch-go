@@ -1,7 +1,54 @@
+task: Surface empty-execution retry telemetry in status and review flows
+beads_id: orch-go-bfzfc
+tier: light
+
 verification:
-  command: "go test ./pkg/opencode/ -run 'TestClassifyTerminalOutcome|TestTerminalOutcome' -v"
-  expected: "13 tests pass covering empty-execution, normal-completion, error-termination classification"
-  manual_steps: []
-  files_changed:
-    - pkg/opencode/terminal_outcome.go
-    - pkg/opencode/terminal_outcome_test.go
+  automated:
+    - command: "go test ./pkg/events/ -run TestLogEmptyExecution -v"
+      expect: "PASS"
+      description: "Event logger writes empty-execution retry events with all fields"
+
+    - command: "go test ./cmd/orch/ -run TestGetAgentStatus -v"
+      expect: "PASS"
+      description: "Status display shows retry#N for retrying agents"
+
+    - command: "go test ./pkg/verify/ -run TestFormatAgentReview.*Retry -v"
+      expect: "PASS"
+      description: "Review format surfaces empty-execution retry telemetry"
+
+    - command: "go test ./pkg/discovery/ -run TestJoinWithReasonCodes_SessionRetrying -v"
+      expect: "PASS"
+      description: "Discovery surfaces retry attempt and message from session status"
+
+    - command: "go build ./..."
+      expect: "clean build"
+      description: "Full build succeeds"
+
+  manual:
+    - step: "Run orch status with a retrying agent to see retry#N in STATUS column"
+    - step: "Run orch review <beads-id> for an agent with retries to see EMPTY-EXECUTION RETRIES section"
+
+changes:
+  - path: pkg/execution/types.go
+    description: "Added Attempt field and IsRetrying() to SessionStatusInfo"
+
+  - path: pkg/execution/opencode_adapter.go
+    description: "Map Attempt from OpenCode session status into execution types"
+
+  - path: pkg/events/logger.go
+    description: "Added EventTypeEmptyExecutionRetry event type and LogEmptyExecutionRetry method"
+
+  - path: pkg/discovery/discovery.go
+    description: "Added RetryAttempt and RetryMessage fields to AgentStatus, populated from session status"
+
+  - path: cmd/orch/status_cmd.go
+    description: "Added RetryAttempt and RetryMessage to AgentInfo, mapped from discovery"
+
+  - path: cmd/orch/status_format.go
+    description: "getAgentStatus returns retry#N for retrying agents"
+
+  - path: pkg/verify/review.go
+    description: "Added retry telemetry fields to AgentReview, enrichment from events, display in FormatAgentReview"
+
+  - path: cmd/orch/review.go
+    description: "Added retry fields to CompletionInfo, batch enrichment from events, display in batch review"

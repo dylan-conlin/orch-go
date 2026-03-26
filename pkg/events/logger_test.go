@@ -1543,3 +1543,80 @@ func TestLogAgentRejected_OmitsEmptyOptionals(t *testing.T) {
 		t.Error("original_model should be omitted when empty")
 	}
 }
+
+func TestLogEmptyExecutionRetry(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogEmptyExecutionRetry("ses_456", EmptyExecutionRetryData{
+		BeadsID:        "orch-go-abc12",
+		Attempt:        3,
+		Classification: "empty-execution",
+		Reason:         "zero output tokens and no substantive content",
+		RecoveryResult: "retrying",
+	})
+	if err != nil {
+		t.Fatalf("LogEmptyExecutionRetry() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logger.CurrentPath())
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	raw := string(data)
+	if !strings.Contains(raw, EventTypeEmptyExecutionRetry) {
+		t.Error("Expected event type 'session.empty_execution_retry'")
+	}
+
+	var event Event
+	if err := json.Unmarshal(data[:len(data)-1], &event); err != nil {
+		t.Fatalf("Failed to unmarshal event: %v", err)
+	}
+
+	if event.SessionID != "ses_456" {
+		t.Errorf("SessionID = %q, want %q", event.SessionID, "ses_456")
+	}
+	if event.Data["beads_id"] != "orch-go-abc12" {
+		t.Errorf("beads_id = %v, want %q", event.Data["beads_id"], "orch-go-abc12")
+	}
+	if event.Data["attempt"] != float64(3) {
+		t.Errorf("attempt = %v, want 3", event.Data["attempt"])
+	}
+	if event.Data["classification"] != "empty-execution" {
+		t.Errorf("classification = %v, want %q", event.Data["classification"], "empty-execution")
+	}
+	if event.Data["recovery"] != "retrying" {
+		t.Errorf("recovery = %v, want %q", event.Data["recovery"], "retrying")
+	}
+}
+
+func TestLogEmptyExecutionRetry_WithoutBeadsID(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogEmptyExecutionRetry("ses_789", EmptyExecutionRetryData{
+		Attempt:        1,
+		Classification: "empty-execution",
+		Reason:         "no assistant messages",
+		RecoveryResult: "escalated",
+	})
+	if err != nil {
+		t.Fatalf("LogEmptyExecutionRetry() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logger.CurrentPath())
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	raw := string(data)
+	if strings.Contains(raw, `"beads_id"`) {
+		t.Error("Expected beads_id to be omitted when empty")
+	}
+	if !strings.Contains(raw, `"recovery":"escalated"`) {
+		t.Error("Expected recovery field 'escalated'")
+	}
+}

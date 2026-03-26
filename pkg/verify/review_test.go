@@ -318,3 +318,47 @@ func TestFormatAgentReviewWithoutUnexploredQuestions(t *testing.T) {
 		t.Error("Output should NOT contain UNEXPLORED QUESTIONS section when fields are empty")
 	}
 }
+
+func TestFormatAgentReviewWithRetryTelemetry(t *testing.T) {
+	review := &AgentReview{
+		WorkspaceName:           "og-feat-test-21dec",
+		BeadsID:                 "test-123",
+		SynthesisExists:         true,
+		EmptyExecutionRetries:   3,
+		LastRetryClassification: "empty-execution",
+		LastRetryReason:         "zero output tokens and no substantive content",
+		RecoveryOutcome:         "recovered",
+	}
+
+	output := FormatAgentReview(review)
+
+	if !strings.Contains(output, "EMPTY-EXECUTION RETRIES:") {
+		t.Error("Output should contain EMPTY-EXECUTION RETRIES section")
+	}
+	if !strings.Contains(output, "Retries:        3") {
+		t.Error("Output should contain retry count of 3")
+	}
+	if !strings.Contains(output, "Classification: empty-execution") {
+		t.Error("Output should contain classification")
+	}
+	if !strings.Contains(output, "Reason:         zero output tokens") {
+		t.Error("Output should contain retry reason")
+	}
+	if !strings.Contains(output, "Recovery:       recovered") {
+		t.Error("Output should contain recovery outcome")
+	}
+}
+
+func TestFormatAgentReviewWithoutRetryTelemetry(t *testing.T) {
+	review := &AgentReview{
+		WorkspaceName:   "og-feat-test-21dec",
+		BeadsID:         "test-123",
+		SynthesisExists: true,
+	}
+
+	output := FormatAgentReview(review)
+
+	if strings.Contains(output, "EMPTY-EXECUTION RETRIES:") {
+		t.Error("Output should NOT contain EMPTY-EXECUTION RETRIES section when no retries")
+	}
+}

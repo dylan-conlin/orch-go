@@ -121,6 +121,7 @@ func (a *OpenCodeAdapter) GetSessionStatus(_ context.Context, handle SessionHand
 	return &SessionStatusInfo{
 		Type:    status.Type,
 		Message: status.Message,
+		Attempt: status.Attempt,
 	}, nil
 }
 
@@ -134,6 +135,7 @@ func (a *OpenCodeAdapter) GetAllSessionStatus(_ context.Context) (map[string]Ses
 		result[id] = SessionStatusInfo{
 			Type:    s.Type,
 			Message: s.Message,
+			Attempt: s.Attempt,
 		}
 	}
 	return result, nil
@@ -201,6 +203,7 @@ func (a *OpenCodeAdapter) GetSessionStatusByIDs(_ context.Context, sessionIDs []
 		result[id] = SessionStatusInfo{
 			Type:    s.Type,
 			Message: s.Message,
+			Attempt: s.Attempt,
 		}
 	}
 	return result, nil

@@ -338,6 +338,9 @@ func getAgentStatus(agent AgentInfo) string {
 	if agent.IsPhantom {
 		return "phantom"
 	}
+	if agent.RetryAttempt > 0 {
+		return fmt.Sprintf("retry#%d", agent.RetryAttempt)
+	}
 	if agent.IsProcessing {
 		return "running"
 	}

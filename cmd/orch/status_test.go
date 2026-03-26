@@ -169,6 +169,16 @@ func TestGetAgentStatus(t *testing.T) {
 			expected: "\u26a0\ufe0f STALLED",
 		},
 		{
+			name:     "retry with attempt number",
+			agent:    AgentInfo{IsProcessing: true, RetryAttempt: 3},
+			expected: "retry#3",
+		},
+		{
+			name:     "retry takes precedence over running",
+			agent:    AgentInfo{IsProcessing: true, RetryAttempt: 1},
+			expected: "retry#1",
+		},
+		{
 			name:     "default is idle",
 			agent:    AgentInfo{},
 			expected: "idle",

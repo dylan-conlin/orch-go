@@ -58,6 +58,10 @@ type AgentStatus struct {
 	TmuxWindowID string `json:"tmux_window_id,omitempty"` // Tmux window ID for Claude agents, if window exists
 	IsProcessing bool   `json:"is_processing,omitempty"`  // True if agent is actively generating output
 
+	// Retry telemetry (from OpenCode session status)
+	RetryAttempt int    `json:"retry_attempt,omitempty"` // Current retry attempt number (0 = not retrying)
+	RetryMessage string `json:"retry_message,omitempty"` // Retry reason/message from backend
+
 	// Reason codes for missing/partial data
 	MissingBinding bool `json:"missing_binding,omitempty"`
 	MissingSession bool `json:"missing_session,omitempty"`
@@ -482,6 +486,8 @@ func JoinWithReasonCodes(
 			agent.Status = "retrying"
 			agent.IsProcessing = true
 			agent.Reason = "session_retrying"
+			agent.RetryAttempt = statusInfo.Attempt
+			agent.RetryMessage = statusInfo.Message
 		case "unknown":
 			agent.Status = "unknown"
 			agent.Reason = "opencode_unreachable"

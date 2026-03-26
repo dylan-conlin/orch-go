@@ -779,7 +779,7 @@ func TestJoinWithReasonCodes_SessionRetrying(t *testing.T) {
 		},
 	}
 	liveness := map[string]execution.SessionStatusInfo{
-		"sess-retry": {Type: "retry", Message: "attempt 3"},
+		"sess-retry": {Type: "retry", Message: "attempt 3", Attempt: 3},
 	}
 
 	results := JoinWithReasonCodes(issues, manifests, liveness, nil)
@@ -793,6 +793,12 @@ func TestJoinWithReasonCodes_SessionRetrying(t *testing.T) {
 	}
 	if r.Reason != "session_retrying" {
 		t.Errorf("expected Reason session_retrying, got %q", r.Reason)
+	}
+	if r.RetryAttempt != 3 {
+		t.Errorf("expected RetryAttempt 3, got %d", r.RetryAttempt)
+	}
+	if r.RetryMessage != "attempt 3" {
+		t.Errorf("expected RetryMessage 'attempt 3', got %q", r.RetryMessage)
 	}
 }
 

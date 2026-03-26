@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/events"
 )
 
 // Pre-compiled regex patterns for review.go
@@ -59,6 +61,12 @@ type AgentReview struct {
 
 	// Test results (if available)
 	TestOutput string
+
+	// Empty-execution retry telemetry (from events.jsonl)
+	EmptyExecutionRetries int    // Number of empty-execution retries for this agent
+	LastRetryClassification string // Last terminal outcome classification (e.g., "empty-execution")
+	LastRetryReason        string // Human-readable reason from last retry
+	RecoveryOutcome        string // Final recovery result: "recovered", "escalated", or ""
 }
 
 // CommitInfo represents basic commit information.
@@ -125,7 +133,41 @@ func GetAgentReview(beadsID, workspacePath, projectDir string) (*AgentReview, er
 		review.FilesModified = filesModified
 	}
 
+	// Enrich with empty-execution retry telemetry from events
+	enrichRetryTelemetry(review)
+
 	return review, nil
+}
+
+// enrichRetryTelemetry scans recent events for empty-execution retries matching this agent's beads ID.
+func enrichRetryTelemetry(review *AgentReview) {
+	if review.BeadsID == "" {
+		return
+	}
+
+	eventsPath := events.DefaultLogPath()
+	after := time.Now().Add(-72 * time.Hour) // Look back 3 days
+
+	events.ScanEventsFromPath(eventsPath, after, time.Time{}, func(event events.Event) {
+		if event.Type != events.EventTypeEmptyExecutionRetry {
+			return
+		}
+		beadsID, _ := event.Data["beads_id"].(string)
+		if beadsID != review.BeadsID {
+			return
+		}
+
+		review.EmptyExecutionRetries++
+		if classification, ok := event.Data["classification"].(string); ok {
+			review.LastRetryClassification = classification
+		}
+		if reason, ok := event.Data["reason"].(string); ok {
+			review.LastRetryReason = reason
+		}
+		if recovery, ok := event.Data["recovery"].(string); ok {
+			review.RecoveryOutcome = recovery
+		}
+	})
 }
 
 // findInvestigationFile looks for investigation files in the .kb/investigations directory.
@@ -346,6 +388,22 @@ func FormatAgentReview(review *AgentReview) string {
 		sb.WriteString(fmt.Sprintf("  • %s\n", filepath.Base(review.InvestigationPath)))
 	}
 	sb.WriteString("\n")
+
+	// Empty-execution retry telemetry section
+	if review.EmptyExecutionRetries > 0 {
+		sb.WriteString("EMPTY-EXECUTION RETRIES:\n")
+		sb.WriteString(fmt.Sprintf("  Retries:        %d\n", review.EmptyExecutionRetries))
+		if review.LastRetryClassification != "" {
+			sb.WriteString(fmt.Sprintf("  Classification: %s\n", review.LastRetryClassification))
+		}
+		if review.LastRetryReason != "" {
+			sb.WriteString(fmt.Sprintf("  Reason:         %s\n", review.LastRetryReason))
+		}
+		if review.RecoveryOutcome != "" {
+			sb.WriteString(fmt.Sprintf("  Recovery:       %s\n", review.RecoveryOutcome))
+		}
+		sb.WriteString("\n")
+	}
 
 	// Unexplored Questions section
 	hasUnexplored := len(review.AreasToExplore) > 0 || len(review.Uncertainties) > 0 || review.UnexploredQuestions != ""

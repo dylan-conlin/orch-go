@@ -107,6 +107,8 @@ type AgentInfo struct {
 	IsCompleted     bool                          `json:"is_completed,omitempty"`      // True if beads issue is closed
 	IsStalled       bool                          `json:"is_stalled,omitempty"`        // True if no token progress for 3+ minutes
 	IsUnresponsive  bool                          `json:"is_unresponsive,omitempty"`   // True if no phase update for 30+ minutes
+	RetryAttempt    int                           `json:"retry_attempt,omitempty"`     // Current retry attempt number (0 = not retrying)
+	RetryMessage    string                        `json:"retry_message,omitempty"`     // Retry reason/message from backend
 	Tokens          *execution.TokenStats          `json:"tokens,omitempty"`            // Token usage for the session
 	ContextRisk     *verify.ContextExhaustionRisk `json:"context_risk,omitempty"`      // Context exhaustion risk assessment
 	PhaseReportedAt *time.Time                    `json:"phase_reported_at,omitempty"` // Timestamp when latest phase was reported
@@ -481,6 +483,8 @@ func agentStatusToAgentInfo(tracked discovery.AgentStatus, now time.Time) AgentI
 		// idle but not phantom (has session)
 	case "retrying":
 		// IsProcessing already set from discovery
+		info.RetryAttempt = tracked.RetryAttempt
+		info.RetryMessage = tracked.RetryMessage
 	case "completed":
 		info.IsCompleted = true
 	case "dead":

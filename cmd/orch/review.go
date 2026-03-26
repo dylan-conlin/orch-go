@@ -88,7 +88,9 @@ type CompletionInfo struct {
 	IsStale         bool      // True if agent is in non-Complete phase for >24h
 	IsLightTier     bool      // True if agent was spawned as light tier (no SYNTHESIS.md by design)
 	ReviewTier      string    // Review tier from manifest (auto/scan/review/deep)
-	IsAutoCompleted bool      // True if this was auto-completed by daemon (from events.jsonl)
+	IsAutoCompleted       bool   // True if this was auto-completed by daemon (from events.jsonl)
+	EmptyExecutionRetries int    // Count of empty-execution retries from events
+	RecoveryOutcome       string // Recovery result: "recovered", "escalated", or ""
 }
 
 // getCompletionsForReview retrieves completed agents with verification status.
@@ -272,7 +274,7 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 				// Use lightweight verification for review (avoids O(n) git/build commands)
 				// Full verification with git diff, build checks, etc. is done in orch complete
 				comments := commentsMap[ws.beadsID]
-				result, err := verify.VerifyCompletionForReview(ws.beadsID, ws.dirPath, "", serverURL, comments)
+				result, err := verify.VerifyCompletionForReview(ws.beadsID, ws.dirPath, "", comments)
 				if err != nil {
 					info.VerifyError = fmt.Sprintf("verification error: %v", err)
 					info.VerifyOK = false
@@ -318,9 +320,51 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 		candidates = append(candidates, info)
 	}
 
+	// Enrich candidates with empty-execution retry counts from events
+	enrichRetryCountsFromEvents(candidates)
+
 	// Filter out completions whose beads issues are already closed
 	// This prevents showing NEEDS_REVIEW for issues that were force-closed
 	return filterClosedIssues(candidates), nil
+}
+
+// enrichRetryCountsFromEvents scans recent events for empty-execution retries
+// and populates retry counts on matching CompletionInfo entries.
+func enrichRetryCountsFromEvents(candidates []CompletionInfo) {
+	if len(candidates) == 0 {
+		return
+	}
+
+	// Build lookup map of beads IDs to candidate indices
+	beadsToIdx := make(map[string][]int)
+	for i, c := range candidates {
+		if c.BeadsID != "" {
+			beadsToIdx[c.BeadsID] = append(beadsToIdx[c.BeadsID], i)
+		}
+	}
+	if len(beadsToIdx) == 0 {
+		return
+	}
+
+	eventsPath := events.DefaultLogPath()
+	after := time.Now().Add(-72 * time.Hour)
+
+	events.ScanEventsFromPath(eventsPath, after, time.Time{}, func(event events.Event) {
+		if event.Type != events.EventTypeEmptyExecutionRetry {
+			return
+		}
+		beadsID, _ := event.Data["beads_id"].(string)
+		indices, ok := beadsToIdx[beadsID]
+		if !ok {
+			return
+		}
+		for _, idx := range indices {
+			candidates[idx].EmptyExecutionRetries++
+			if recovery, ok := event.Data["recovery"].(string); ok {
+				candidates[idx].RecoveryOutcome = recovery
+			}
+		}
+	})
 }
 
 // runReviewSingle displays detailed review information for a single agent.
@@ -582,6 +626,15 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 			// Show skill if available
 			if c.Skill != "" {
 				fmt.Printf("         Skill: %s\n", c.Skill)
+			}
+
+			// Show empty-execution retry telemetry if present
+			if c.EmptyExecutionRetries > 0 {
+				retryInfo := fmt.Sprintf("         Retries: %d empty-execution", c.EmptyExecutionRetries)
+				if c.RecoveryOutcome != "" {
+					retryInfo += fmt.Sprintf(" (recovery: %s)", c.RecoveryOutcome)
+				}
+				fmt.Println(retryInfo)
 			}
 		}
 	}

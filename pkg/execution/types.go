@@ -112,6 +112,7 @@ func AggregateTokens(messages []Message) TokenStats {
 type SessionStatusInfo struct {
 	Type    string // "idle", "busy", "retry"
 	Message string
+	Attempt int // Retry attempt number (only meaningful when Type == "retry")
 }
 
 // IsIdle returns true if the session is idle.
@@ -119,6 +120,9 @@ func (s *SessionStatusInfo) IsIdle() bool { return s.Type == "idle" }
 
 // IsBusy returns true if the session is busy.
 func (s *SessionStatusInfo) IsBusy() bool { return s.Type == "busy" }
+
+// IsRetrying returns true if the session is in retry state.
+func (s *SessionStatusInfo) IsRetrying() bool { return s.Type == "retry" }
 
 // SessionRequest contains parameters for creating a new session.
 type SessionRequest struct {

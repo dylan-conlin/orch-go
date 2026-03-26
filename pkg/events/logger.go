@@ -79,6 +79,8 @@ const (
 	EventTypeLoopIteration = "loop.iteration"
 	// EventTypeLoopComplete logs the final outcome of a --loop spawn cycle.
 	EventTypeLoopComplete = "loop.complete"
+	// EventTypeEmptyExecutionRetry logs when a session retries after an empty-execution classification.
+	EventTypeEmptyExecutionRetry = "session.empty_execution_retry"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -170,6 +172,34 @@ func (l *Logger) LogCompleted(sessionID string) error {
 		Type:      EventTypeSessionCompleted,
 		SessionID: sessionID,
 		Timestamp: time.Now().Unix(),
+	})
+}
+
+// EmptyExecutionRetryData holds fields for an empty-execution retry event.
+type EmptyExecutionRetryData struct {
+	BeadsID        string // Beads issue ID
+	Attempt        int    // Retry attempt number (1-based)
+	Classification string // Terminal outcome classification (e.g., "empty-execution")
+	Reason         string // Human-readable reason from OutcomeDetail
+	RecoveryResult string // "retrying", "recovered", "escalated"
+}
+
+// LogEmptyExecutionRetry logs when a session retries after empty-execution classification.
+func (l *Logger) LogEmptyExecutionRetry(sessionID string, data EmptyExecutionRetryData) error {
+	eventData := map[string]interface{}{
+		"attempt":        data.Attempt,
+		"classification": data.Classification,
+		"reason":         data.Reason,
+		"recovery":       data.RecoveryResult,
+	}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	return l.Log(Event{
+		Type:      EventTypeEmptyExecutionRetry,
+		SessionID: sessionID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
 	})
 }
 
