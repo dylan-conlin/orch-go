@@ -27,6 +27,9 @@ Creates:
   ├── models/           Synthesized understanding (claims, probes)
   ├── investigations/   Research artifacts
   ├── decisions/        Architectural decision records
+  ├── threads/          Living threads (evolving questions)
+  ├── briefs/           Issue briefs (context snapshots)
+  ├── guides/           Procedural knowledge (how-to references)
   ├── quick/            Quick knowledge entries (kn)
   └── README.md         Directory structure reference
 
@@ -66,6 +69,9 @@ func kbInitProject(projectDir string) (*KBInitResult, error) {
 		"models",
 		"investigations",
 		"decisions",
+		"threads",
+		"briefs",
+		"guides",
 		"quick",
 	}
 
@@ -137,6 +143,12 @@ Project knowledge base for synthesized understanding, research, and decisions.
 
 - **decisions/** — Architectural decision records (ADRs). Document the "why" behind significant choices so future contributors understand context.
 
+- **threads/** — Living threads that track evolving questions across sessions. Threads grow as understanding deepens and connect related investigations.
+
+- **briefs/** — Issue briefs providing context snapshots for spawned agents. Created automatically during spawn to give agents the background they need.
+
+- **guides/** — Procedural knowledge and how-to references. Synthesized from investigations into authoritative step-by-step documentation.
+
 - **quick/** — Quick knowledge entries managed via ` + "`kn`" + `. Constraints, decisions, failed attempts, and other lightweight entries stored as JSONL.
 
 ## Conventions
@@ -144,5 +156,8 @@ Project knowledge base for synthesized understanding, research, and decisions.
 - Investigation files: ` + "`YYYY-MM-DD-inv-<slug>.md`" + `
 - Decision files: ` + "`YYYY-MM-DD-<slug>.md`" + `
 - Model directories: ` + "`models/<topic-name>/model.md`" + ` with ` + "`probes/`" + ` subdirectory
+- Thread files: ` + "`YYYY-MM-DD-<slug>.md`" + `
+- Brief files: ` + "`<project>-<id>.md`" + `
+- Guide files: ` + "`<topic-slug>.md`" + `
 - Quick entries: ` + "`quick/entries.jsonl`" + `
 `

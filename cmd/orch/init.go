@@ -539,8 +539,8 @@ func printInitResult(result *InitResult) {
 
 	fmt.Println("\nNext steps:")
 	fmt.Println("  1. Edit CLAUDE.md with project-specific details")
-	fmt.Println("  2. Create a beads issue: bd create \"task description\"")
-	fmt.Println("  3. Spawn an agent: orch spawn investigation \"explore codebase\"")
+	fmt.Println("  2. Start a thread: orch thread new \"How X works in this codebase\"")
+	fmt.Println("  3. Create a beads issue: bd create \"task description\"")
 }
 
 // writeSynthesisTemplate writes the default SYNTHESIS.md template.

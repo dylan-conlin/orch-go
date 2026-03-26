@@ -19,6 +19,9 @@ func TestKBInit(t *testing.T) {
 			"models",
 			"investigations",
 			"decisions",
+			"threads",
+			"briefs",
+			"guides",
 			"quick",
 		}
 
@@ -59,7 +62,7 @@ func TestKBInit(t *testing.T) {
 
 		// Check that README contains directory descriptions
 		s := string(content)
-		for _, section := range []string{"models/", "investigations/", "decisions/", "quick/"} {
+		for _, section := range []string{"models/", "investigations/", "decisions/", "threads/", "briefs/", "guides/", "quick/"} {
 			if !containsSubstring(s, section) {
 				t.Errorf("expected README to mention %s", section)
 			}
@@ -96,8 +99,8 @@ func TestKBInit(t *testing.T) {
 		if len(result.DirsCreated) != 0 {
 			t.Errorf("expected 0 dirs created on second run, got %d", len(result.DirsCreated))
 		}
-		if len(result.DirsExisted) != 4 {
-			t.Errorf("expected 4 dirs existed on second run, got %d", len(result.DirsExisted))
+		if len(result.DirsExisted) != 7 {
+			t.Errorf("expected 7 dirs existed on second run, got %d", len(result.DirsExisted))
 		}
 
 		// README should not be overwritten

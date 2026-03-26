@@ -1,24 +1,20 @@
-issue: orch-go-36uco
-title: "Method composition guide documenting artifact cycle"
-type: documentation
+issue: orch-go-9gtzr
+title: "Rewrite init next steps + expand kb init README"
+type: feature
 tier: light
 
 verification:
   automated:
-    - command: "test -f .kb/GUIDE.md && echo PASS"
+    - command: "go test ./cmd/orch/ -run TestKBInit -v"
       expected: "PASS"
-    - command: "grep -c '### Thread\\|### Investigation\\|### Probe\\|### Model\\|### Brief\\|### Decision' .kb/GUIDE.md"
-      expected: "6"
+    - command: "go build ./cmd/orch/"
+      expected: "no errors"
   manual:
-    - check: "Guide uses teaching voice, not reference style"
-    - check: "Diagram shows composition cycle clearly"
-    - check: "Standalone-readable without CLI context"
+    - check: "orch init next steps leads with thread creation (step 2)"
+    - check: "kb init creates threads/, briefs/, guides/ alongside existing 4 dirs"
+    - check: "kb init README documents all 7 artifact types with conventions"
 
 deliverables:
-  - .kb/GUIDE.md  # Method composition guide (artifact cycle teaching doc)
-
-notes: |
-  Written as teaching doc per writing-style model primers (story first, earn
-  abstractions, the turn is the piece). Addresses gap identified in probe
-  orch-go-ehper: composition model was never documented anywhere. No orch-specific
-  IDs or jargon — readable by someone who has never used the CLI.
+  - cmd/orch/init.go         # Next steps rewritten (thread first, spawn removed)
+  - cmd/orch/kb_init.go      # 3 new dirs + README expanded with threads/briefs/guides
+  - cmd/orch/kb_init_test.go # Tests updated for 7 dirs
