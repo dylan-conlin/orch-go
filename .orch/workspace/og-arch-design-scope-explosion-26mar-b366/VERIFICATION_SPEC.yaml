@@ -1,0 +1,30 @@
+# Spawn-time verification skeleton updated for completed architect work.
+version: 1
+scope:
+  beads_id: orch-go-u2rve
+  workspace: og-arch-design-scope-explosion-26mar-b366
+  skill: architect
+verification:
+  - id: verify-investigation-artifact
+    method: static
+    tier: full
+    command: test -f "/Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2026-03-26-inv-design-scope-explosion-detected-reported.md"
+    cwd: "/Users/dylanconlin/Documents/personal/orch-go"
+    expect:
+      exit_code: 0
+  - id: verify-follow-up-issue
+    method: cli_smoke
+    tier: full
+    command: bd show orch-go-cubgs
+    cwd: "/Users/dylanconlin/Documents/personal/orch-go"
+    expect:
+      exit_code: 0
+      stdout_contains:
+        - "Implement structured routing-impact reporting for non-Anthropic auto-routing"
+  - id: verify-workspace-handoff-artifacts
+    method: static
+    tier: full
+    command: test -f "/Users/dylanconlin/Documents/personal/orch-go/.orch/workspace/og-arch-design-scope-explosion-26mar-b366/SYNTHESIS.md" && test -f "/Users/dylanconlin/Documents/personal/orch-go/.orch/workspace/og-arch-design-scope-explosion-26mar-b366/BRIEF.md"
+    cwd: "/Users/dylanconlin/Documents/personal/orch-go"
+    expect:
+      exit_code: 0
