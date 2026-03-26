@@ -1,0 +1,25 @@
+verification:
+  type: design-investigation
+  automated: false
+
+  outcomes:
+    - description: "Investigation defines concrete first-release bundle with 4 layers"
+      verified: true
+      evidence: ".kb/investigations/2026-03-26-design-minimum-open-release-bundle.md"
+
+    - description: "Probe tested and contradicted matrix claim about artifact self-documentation"
+      verified: true
+      evidence: ".kb/models/knowledge-accretion/probes/2026-03-26-probe-minimum-open-release-bundle-definition.md"
+
+    - description: "Probe findings merged into parent knowledge-accretion model"
+      verified: true
+      evidence: ".kb/models/knowledge-accretion/model.md (lines 86-88, composition model invisibility section)"
+
+    - description: "Implementation issues created for 3 follow-up tasks"
+      verified: true
+      evidence: "orch-go-36uco (method guide), orch-go-9gtzr (init flow), orch-go-3jzpz (example curation)"
+
+  manual_steps:
+    - "Review investigation recommendations for strategic alignment"
+    - "Decide whether method guide placement (.kb/GUIDE.md vs docs/method.md)"
+    - "Review init Next steps wording before implementation"
