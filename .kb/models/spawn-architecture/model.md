@@ -248,7 +248,7 @@ Agent works in: ~/target-project/
 6. **Token estimation at 4 chars/token** - Warning at 100k, error at 150k
 7. **Model-aware backend routing** - Backend determined by model provider unless CLI overrides (Decision: kb-2d62ef)
 8. **Claude backend implies tmux** - Claude CLI physically requires tmux window; headless + claude auto-switches to tmux
-9. **Account routing is capacity-aware** - Primary accounts checked first; spillover activated when primaries exhausted (>20% threshold)
+9. **Account routing is capacity-aware** - `resolveAccount()` scores every account with capacity data by tier-weighted effective headroom (`min(5h*tier, 7d*tier)`), tie-breaks on weighted 5-hour headroom, then name; roles only shape fallback behavior when heuristic routing is unavailable
 10. **V0-V3 verification levels are strict subsets** - V0⊂V1⊂V2⊂V3; level set at spawn, enforced at completion. **Tier-based capping:** Light tier caps verify level at V0 regardless of skill default (via `VerifyLevelForTier()`). Only applies to inferred levels; explicit `--verify-level` overrides are respected.
 11. **Cross-repo spawns inject BEADS_DIR** - Without this, `bd comment` in cross-repo agents targets wrong project
 12. **Orientation frame is separate from task title** - Title drives workspace name slug; frame provides strategic context. ORIENTATION_FRAME is NOT in SPAWN_CONTEXT.md template (removed Feb 20) — it lives only in beads comments for orchestrator completion review.
@@ -422,7 +422,7 @@ Agent works in: ~/target-project/
 - New `pkg/spawn/gates/` subdirectory: hotspot, triage, ratelimit, concurrency, verification gates
 - New `pkg/spawn/backends/` subdirectory: backend interface + common/headless/inline/tmux implementations
 - Account distribution with capacity-aware routing (3 phases: schema+CLI+env → cache+heuristic → logging)
-- `resolveAccount()` routes between primary/spillover accounts based on capacity fetcher
+- `resolveAccount()` uses tier-weighted effective headroom when capacity fetches are available, then falls back to primary/empty-role or alphabetical defaults when they are not
 - Cross-project spawn fixes: `beads.DefaultDir` set correctly, `projectDir` threaded through kb context
 - Bug-type issues now route to `systematic-debugging` skill (was `architect`)
 - `--force-hotspot` requires `--architect-ref` with verified closed architect issue

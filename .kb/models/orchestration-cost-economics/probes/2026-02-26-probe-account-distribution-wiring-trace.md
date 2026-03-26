@@ -5,6 +5,8 @@
 **Status:** Complete
 **Beads:** orch-go-1111
 
+**Note (2026-03-26):** This probe's implementation summary is stale. Current `resolveAccount()` uses tier-weighted effective headroom across all accounts with capacity data, not a primary-first `>20%` threshold cascade. See `.kb/investigations/2026-03-26-inv-account-capacity-routing-work-pkg.md` for the updated routing description.
+
 ---
 
 ## Question

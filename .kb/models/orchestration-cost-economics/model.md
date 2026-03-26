@@ -292,8 +292,8 @@ Per-spawn account selection enables capacity-aware routing across multiple Max a
 **How it works:**
 
 1. `ResolvedSpawnSettings` includes an `Account` field with provenance tracking
-2. Resolution precedence: CLI flag (`--account`) > capacity-aware heuristic > default (first primary account)
-3. Heuristic checks: `FiveHourRemaining` and `SevenDayRemaining` percentages (healthy ≥ 20%)
+2. Resolution precedence: CLI flag (`--account`) > capacity-aware heuristic > default (first primary/empty-role account, else alphabetical first)
+3. Heuristic scoring: `fiveHourAbs = FiveHourRemaining * tier`, `weeklyAbs = SevenDayRemaining * tier`, `effectiveHeadroom = min(fiveHourAbs, weeklyAbs)`
 4. `BuildClaudeLaunchCommand()` in `pkg/spawn/claude.go` injects `CLAUDE_CONFIG_DIR` and unsets `CLAUDE_CODE_OAUTH_TOKEN` when using a non-default account. Also injects `BEADS_DIR` for cross-repo spawns so `bd comment` reaches the source project's beads database.
 5. Two independent auth mechanisms: OpenCode OAuth (`~/.local/share/opencode/auth.json`, global) vs Claude CLI config dir (`CLAUDE_CONFIG_DIR`, per-spawn)
 
@@ -301,7 +301,7 @@ Per-spawn account selection enables capacity-aware routing across multiple Max a
 
 **OpenCode backend does NOT participate in account distribution.** OpenCode has its own auth mechanism (`~/.local/share/opencode/auth.json`). The two auth systems are intentionally independent — CLAUDE_CONFIG_DIR injection is a Claude CLI concept only.
 
-**Routing strategy:** Work-first (primary accounts), personal-spillover (fallback when primary exhausted).
+**Routing strategy:** Pick the account with the highest tier-weighted effective headroom; roles remain fallback hints when heuristic routing is unavailable.
 
 **Source:** `pkg/spawn/resolve.go` (account resolution), `pkg/spawn/claude.go` (env var injection), `pkg/account/account.go` (capacity checking)
 
@@ -317,8 +317,9 @@ What provider is the model?
 Which account? (Claude backend only)
   → Auto: capacity-aware heuristic routes to healthiest account
   → --account work: force specific account (CLI override)
-  → Primary accounts checked first, spillover accounts as fallback
-  → Healthy threshold: ≥20% remaining on both 5-hour and 7-day limits
+  → Score each account by `min(5h*tier, 7d*tier)`
+  → Tie-break on weighted 5-hour headroom, then alphabetical name
+  → If all capacity fetches are nil, fail open to the first alphabetical account
 
 Need Anthropic model via OpenCode backend?
   → Set allow_anthropic_opencode: true in ~/.orch/user.yaml

@@ -1,0 +1,16 @@
+verification:
+  summary: Trace daemon triage behavior for auto-spawn versus orchestrator deferral.
+  automated:
+    - command: "go test ./pkg/daemon -run 'Test(CheckPreSpawnGates|CheckIssueCompliance|Decide|ShouldDeferTestIssue|CheckArchitectEscalation|RouteCompletion|ProcessCompletion)'"
+      expectation: "Pass targeted daemon decision-tree tests covering gates, filtering, routing, and completion handoff"
+      result: "pass"
+  manual:
+    - check: "Read the traced codepaths in pkg/daemon and confirm the investigation's decision tree matches the cited functions"
+      result: "done"
+  artifacts:
+    - path: ".kb/investigations/2026-03-26-inv-daemon-decide-whether-auto-spawn.md"
+      purpose: "Primary investigation artifact"
+    - path: ".orch/workspace/og-inv-daemon-decide-whether-26mar-ccf5/SYNTHESIS.md"
+      purpose: "Orchestrator-facing synthesis"
+    - path: ".orch/workspace/og-inv-daemon-decide-whether-26mar-ccf5/BRIEF.md"
+      purpose: "Human-facing comprehension brief"

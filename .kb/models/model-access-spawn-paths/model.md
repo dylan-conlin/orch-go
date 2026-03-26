@@ -8,7 +8,7 @@
 
 ## Summary (30 seconds)
 
-Anthropic banned subscription OAuth in third-party tools (Feb 19, 2026), making **Claude CLI the default backend** for Anthropic models (was previously the "escape hatch"). The architecture now uses **model-aware backend routing**: Anthropic models → Claude CLI (tmux), non-Anthropic models (Google, OpenAI, DeepSeek) → OpenCode API (headless). Account routing is capacity-aware with primary/spillover accounts and a health threshold (>20%). Infrastructure independence — originally the escape hatch's key benefit — is now the default behavior since Claude CLI is the primary backend.
+Anthropic banned subscription OAuth in third-party tools (Feb 19, 2026), making **Claude CLI the default backend** for Anthropic models (was previously the "escape hatch"). The architecture now uses **model-aware backend routing**: Anthropic models → Claude CLI (tmux), non-Anthropic models (Google, OpenAI, DeepSeek) → OpenCode API (headless). Account routing is capacity-aware via a tier-weighted effective-headroom heuristic: each account is scored by `min(FiveHourRemaining*tier, SevenDayRemaining*tier)`, with weighted 5-hour headroom and then alphabetical name as tie-breakers. Infrastructure independence — originally the escape hatch's key benefit — is now the default behavior since Claude CLI is the primary backend.
 
 ---
 
@@ -108,11 +108,12 @@ This is the primary routing mechanism since the Anthropic OAuth ban.
 ```
 1. CLI --account flag (highest priority)
 2. Heuristic: capacity-aware routing (when CapacityFetcher set)
-   - Check primary accounts first (sorted deterministically)
-   - If any primary >20% capacity on both limits → use it
-   - Else check spillover accounts
-   - Else fallback to first primary (fail-open)
-3. Default: first primary account
+   - For each account with capacity data, compute `fiveHourAbs = FiveHourRemaining * tier`
+   - Compute `weeklyAbs = SevenDayRemaining * tier`
+   - Score the account as `effectiveHeadroom = min(fiveHourAbs, weeklyAbs)`
+   - Pick the highest effective headroom; tie-break on 5-hour headroom, then alphabetical name
+   - If every capacity fetch returns nil, fail open to the first alphabetical account (`all-capacity-unknown`)
+3. Default: first `primary` or empty-role account, else first alphabetical account
 ```
 
 **Infrastructure Work Detection (cmd/orch/spawn_cmd.go:isInfrastructureWork):**
@@ -187,7 +188,7 @@ Backend: claude (derived from model provider)
     ↓
 Claude CLI in tmux window
     ↓
-Account: capacity-aware routing (primary → spillover → first primary)
+Account: capacity-aware routing (CLI override → tier-weighted effective-headroom heuristic → primary/empty-role fallback → alphabetical fail-open)
 ```
 
 **Non-Anthropic model spawn:**
@@ -631,7 +632,7 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 
 **Feb 20-25, 2026:** Account distribution + modular extraction
 - Account routing with capacity-aware primary/spillover heuristic (3-phase implementation)
-- `resolveAccount()` checks primary accounts first, then spillover, fail-open to first primary
+- `resolveAccount()` computes tier-weighted effective headroom across all accounts with capacity data and only consults roles in the no-fetcher fallback path
 - Bug-type issues route to `systematic-debugging` (was `architect`)
 - GPT-5 alias remapped to `gpt-5.2` to prevent zombie sessions
 - Pre-create session for tmux spawns with non-default models
