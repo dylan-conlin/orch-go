@@ -102,6 +102,15 @@ func TestReadLastNEvents(t *testing.T) {
 }
 
 func TestHandleAgentlogJSONResponse(t *testing.T) {
+	// Use a temp file to avoid reading the real events.jsonl which may
+	// contain lines exceeding bufio.Scanner's default 64KB buffer.
+	tmpDir := t.TempDir()
+	tmpLogPath := filepath.Join(tmpDir, "events.jsonl")
+	if err := os.WriteFile(tmpLogPath, []byte(`{"type":"test.event","session_id":"s1","timestamp":1}`+"\n"), 0644); err != nil {
+		t.Fatalf("Failed to create test events file: %v", err)
+	}
+	t.Setenv("ORCH_EVENTS_PATH", tmpLogPath)
+
 	req := httptest.NewRequest(http.MethodGet, "/api/agentlog", nil)
 	w := httptest.NewRecorder()
 

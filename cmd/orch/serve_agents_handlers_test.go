@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/discovery"
+	"github.com/dylan-conlin/orch-go/pkg/execution"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -32,7 +33,7 @@ func newTestOpenCodeServer(t *testing.T, sessions map[string]opencode.Session, m
 		// Handle /session/status endpoint
 		if r.URL.Path == "/session/status" {
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]opencode.SessionStatusInfo{})
+			_ = json.NewEncoder(w).Encode(map[string]execution.SessionStatusInfo{})
 			return
 		}
 
