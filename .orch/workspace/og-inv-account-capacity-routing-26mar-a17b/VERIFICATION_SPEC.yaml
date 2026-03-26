@@ -1,0 +1,13 @@
+verification:
+  summary: "Account routing documentation now matches the tested resolveAccount heuristic and fallback cascade."
+  automated:
+    - command: "go test ./pkg/spawn -run \"AccountHeuristic\" -count=1"
+      expectation: "Pass; verifies tier-weighted account scoring, weekly-limit suppression, CLI override, and nil-capacity fallback behavior."
+      result: "passed"
+  manual:
+    - check: "Read `pkg/spawn/resolve.go` and confirm the documented routing order is CLI override -> heuristic scoring -> default fallback."
+      result: "done"
+    - check: "Read updated KB artifacts and confirm they describe effective headroom as min(FiveHourRemaining*tier, SevenDayRemaining*tier)."
+      result: "done"
+  residual_risk:
+    - "I did not run a live spawn against real account capacity data in this session; verification relies on source inspection and targeted tests."
