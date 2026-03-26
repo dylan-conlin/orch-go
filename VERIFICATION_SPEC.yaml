@@ -1,16 +1,7 @@
 verification:
-  type: structural-review
-  commands_run:
-    - "Read full model.md (439 lines)"
-  expectations:
-    - "All original claims preserved (no deletions)"
-    - "Evidence citations intact with probe references"
-    - "Document organized into 3 epistemic tiers: Battle-Tested, Working Hypotheses, Open Frontiers"
-    - "Part I contains Claims 1-5, directly observed patterns, N=1 boundary"
-    - "Part II contains four primitives, control theory mapping, gate/attractor mechanism, Align validity condition"
-    - "Part III contains framework assessments (literature-only), open questions"
-    - "Appendix preserves all experiments and evidence table"
-    - "Document reads as coherent narrative, not graded exam"
-  manual_verification:
-    - "Review document flow — does it read naturally with the tier separation?"
-    - "Verify no claims were dropped during reorganization"
+  command: "go test ./pkg/opencode/ -run 'TestClassifyTerminalOutcome|TestTerminalOutcome' -v"
+  expected: "13 tests pass covering empty-execution, normal-completion, error-termination classification"
+  manual_steps: []
+  files_changed:
+    - pkg/opencode/terminal_outcome.go
+    - pkg/opencode/terminal_outcome_test.go
