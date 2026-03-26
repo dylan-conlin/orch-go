@@ -37,11 +37,11 @@ func main() {
 
 var rootCmd = &cobra.Command{
 	Use:   "orch-go",
-	Short: "OpenCode orchestration CLI",
-	Long: `orch-go is a CLI tool for orchestrating OpenCode sessions.
+	Short: "Agent coordination and comprehension layer",
+	Long: `orch-go coordinates AI agents and turns their work into durable understanding.
 
-It provides commands for spawning new sessions, sending messages to existing
-sessions, and monitoring session events via SSE.`,
+It provides commands for spawning agents, managing threads, tracking knowledge
+accumulation, and verifying agent output through structured review.`,
 	Version: version,
 }
 
@@ -157,7 +157,7 @@ func runVersionSource() {
 var monitorCmd = &cobra.Command{
 	Use:   "monitor",
 	Short: "Monitor SSE events for session completion",
-	Long:  "Monitor the OpenCode server for session events and send notifications on completion.",
+	Long:  "Monitor for agent session events and send notifications on completion.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runMonitor(serverURL)
 	},

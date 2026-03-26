@@ -79,7 +79,7 @@ var (
 var spawnCmd = &cobra.Command{
 	Use:   "spawn [skill] [task]",
 	Short: "Spawn a new agent with skill context (default: headless)",
-	Long: `Spawn a new OpenCode session with skill context.
+	Long: `Spawn a new agent with skill context.
 
 IMPORTANT: Manual spawn requires --bypass-triage flag.
 The default workflow is: create issues with triage:ready label → daemon auto-spawns.

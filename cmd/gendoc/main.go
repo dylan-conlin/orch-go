@@ -81,11 +81,11 @@ var noopRun = func(cmd *cobra.Command, args []string) {}
 func buildCommandTree() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "orch-go",
-		Short: "OpenCode orchestration CLI",
-		Long: `orch-go is a CLI tool for orchestrating OpenCode sessions.
+		Short: "Agent coordination and comprehension layer",
+		Long: `orch-go coordinates AI agents and turns their work into durable understanding.
 
-It provides commands for spawning new sessions, sending messages to existing
-sessions, and monitoring session events via SSE.`,
+It provides commands for spawning agents, managing threads, tracking knowledge
+accumulation, and verifying agent output through structured review.`,
 		Run: noopRun,
 	}
 
@@ -121,8 +121,8 @@ sessions, and monitoring session events via SSE.`,
 func buildSpawnCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "spawn [skill] [task]",
-		Short: "Spawn a new OpenCode session with skill context",
-		Long: `Spawn a new OpenCode session with skill context.
+		Short: "Spawn a new agent with skill context",
+		Long: `Spawn a new agent with skill context.
 
 By default, spawns the agent headlessly via HTTP API (no TUI) and returns immediately.
 Use --inline to run in the current terminal (blocking with TUI).
@@ -160,7 +160,7 @@ func buildAskCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "ask [session-id] [prompt]",
 		Short: "Send a message to an existing session (alias for send)",
-		Long:  "Send a message to an existing OpenCode session. This is an alias for the 'send' command.",
+		Long:  "Send a message to an existing agent session. This is an alias for the 'send' command.",
 		Run:   noopRun,
 	}
 }
@@ -169,7 +169,7 @@ func buildSendCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "send [session-id] [message]",
 		Short: "Send a message to an existing session",
-		Long: `Send a message to an existing OpenCode session.
+		Long: `Send a message to an existing agent session.
 
 The session can be running or completed. Response text is streamed to stdout
 as it's received from the agent.
@@ -184,8 +184,8 @@ Examples:
 func buildMonitorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "monitor",
-		Short: "Monitor SSE events for session completion",
-		Long:  "Monitor the OpenCode server for session events and send notifications on completion.",
+		Short: "Monitor events for agent completion",
+		Long:  "Monitor for agent session events and send notifications on completion.",
 		Run:   noopRun,
 	}
 }
@@ -193,8 +193,8 @@ func buildMonitorCmd() *cobra.Command {
 func buildStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
-		Short: "List active OpenCode sessions",
-		Long: `List all active OpenCode sessions with their status.
+		Short: "List active agents",
+		Long: `List all active agents with their status.
 
 Shows session ID, workspace/title, directory, and last update time.`,
 		Run: noopRun,
