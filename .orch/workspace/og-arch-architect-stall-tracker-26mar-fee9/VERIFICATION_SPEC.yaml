@@ -1,0 +1,50 @@
+verification_spec:
+  version: 1
+  issue: orch-go-cig47
+  type: architect-investigation
+
+  automated_checks:
+    - name: project_compiles
+      command: "go build ./..."
+      expected: "exit 0, no output"
+      result: PASS
+
+    - name: stall_tracker_tests_pass
+      command: "go test -run TestStall ./pkg/daemon/"
+      expected: "7/7 PASS"
+      result: PASS
+
+    - name: investigation_artifact_exists
+      command: "test -f .kb/investigations/2026-03-26-inv-architect-stall-tracker-semantics-token.md && echo exists"
+      expected: "exists"
+      result: PASS
+
+    - name: implementation_issue_created
+      command: "bd show orch-go-8e15i"
+      expected: "issue exists with type task"
+      result: PASS
+
+  manual_verification:
+    - name: investigation_documents_all_4_setter_paths
+      description: "Investigation Finding 2 enumerates all 4 IsStalled setter paths with line numbers"
+      verified: true
+
+    - name: recommendation_is_additive_not_breaking
+      description: "Recommended StallReason field addition preserves existing IsStalled boolean"
+      verified: true
+
+    - name: defect_class_5_identified
+      description: "IsStalled semantic divergence between CLI and dashboard classified as Defect Class 5"
+      verified: true
+
+  outcomes:
+    - "Both prior bugs (timestamp reset, type mismatch) confirmed already fixed"
+    - "IsStalled semantic overloading identified and documented as Defect Class 5"
+    - "Additive StallReason field recommended (no breaking change)"
+    - "Implementation issue orch-go-8e15i created for follow-up"
+
+  migration_status:
+    designed: "StallReason string field added to AgentAPIResponse and AgentInfo, set at 5 code sites"
+    implemented: "none"
+    deployed: "none"
+    remaining: "orch-go-8e15i — implement StallReason field and set at all IsStalled setter sites"
