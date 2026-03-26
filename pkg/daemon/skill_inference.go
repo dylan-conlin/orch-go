@@ -72,7 +72,6 @@ func InferBrowserToolFromLabels(labels []string) string {
 	return ""
 }
 
-
 // InferSkillFromTitle detects skills from issue title patterns.
 // Returns the skill name if a known pattern is matched, or empty string otherwise.
 //
@@ -96,7 +95,7 @@ func InferSkillFromTitle(title string) string {
 		// Map single-word title prefixes to known skills
 		prefixMap := map[string]string{
 			"architect":            "architect",
-			"design":              "architect",
+			"design":               "architect",
 			"debug":                "systematic-debugging",
 			"investigation":        "investigation",
 			"investigate":          "investigation",
@@ -257,8 +256,18 @@ func InferSkillFromIssue(issue *Issue) (string, error) {
 	return inferredSkill, nil
 }
 
-// skillModelMapping maps skill names to model aliases.
-// Skills requiring deep reasoning get opus; implementation skills get sonnet.
+// skillModelMapping is intentionally sparse: it only covers skills where the
+// daemon has strong evidence that paying for the heavier reasoning model is
+// worth it. Those skills produce better results when they can spend tokens on
+// analysis and synthesis, so pinning them here keeps overnight routing
+// predictable.
+//
+// Implementation-heavy skills like feature-impl are deliberately excluded even
+// when they sometimes benefit from a stronger model. The daemon makes this
+// inference before pkg/spawn/resolve.go applies account config, repo defaults,
+// or per-user overrides, so returning "" here is the escape hatch that lets the
+// resolve pipeline honor those downstream settings instead of silently
+// hardcoding opus for every spawn.
 var skillModelMapping = map[string]string{
 	"systematic-debugging": "opus",
 	"investigation":        "opus",

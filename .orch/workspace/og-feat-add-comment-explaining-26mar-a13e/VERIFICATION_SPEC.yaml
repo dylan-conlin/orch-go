@@ -1,0 +1,30 @@
+# Verification Specification: skillModelMapping rationale comment
+# Issue: orch-go-79ybj
+# Type: feature-impl
+
+verification:
+  type: targeted-test
+  outcome: pass
+
+deliverables:
+  task_requirement:
+    path: pkg/daemon/skill_inference.go
+    status: complete
+    evidence:
+      - "Expanded the comment above skillModelMapping to explain why only reasoning-heavy skills are pinned in the daemon."
+      - "The comment now states that implementation-focused skills intentionally return an empty model so pkg/spawn/resolve.go can honor account, repo, and user defaults."
+
+commands_run:
+  - command: pwd
+    expectation: "/Users/dylanconlin/Documents/personal/orch-go"
+    result: pass
+  - command: go test ./pkg/daemon -run 'TestInferModelFromSkill|TestSkillModelMapping_AllOpusSkillsCovered|TestDecide_PicksHighestPriorityIssue'
+    expectation: "Targeted daemon model-selection tests pass after the comment-only change"
+    result: pass
+
+manual_verification:
+  - "Read pkg/daemon/skill_inference.go to confirm the comment documents both why opus-pinned skills are sparse and why feature-impl falls through to resolve defaults."
+
+notes:
+  - "Comment-only change; no runtime behavior changed."
+  - "No discovered work"
