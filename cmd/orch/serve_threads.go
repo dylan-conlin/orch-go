@@ -18,6 +18,7 @@ type ThreadAPIResponse struct {
 	Updated    string         `json:"updated"`
 	ResolvedTo string         `json:"resolved_to,omitempty"`
 	Entries    []thread.Entry `json:"entries"`
+	EntryCount int            `json:"entry_count"`
 	Content    string         `json:"content"`
 	Filename   string         `json:"filename"`
 }
@@ -106,6 +107,7 @@ func handleThreadShow(w http.ResponseWriter, r *http.Request) {
 		Updated:    t.Updated,
 		ResolvedTo: t.ResolvedTo,
 		Entries:    t.Entries,
+		EntryCount: len(t.Entries),
 		Content:    t.Content,
 		Filename:   t.Filename,
 	}

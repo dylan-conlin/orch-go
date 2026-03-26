@@ -33,8 +33,8 @@ type Thread struct {
 
 // Entry represents a single dated entry within a thread.
 type Entry struct {
-	Date string // YYYY-MM-DD
-	Text string // entry content (trimmed)
+	Date string `json:"date"` // YYYY-MM-DD
+	Text string `json:"text"` // entry content (trimmed)
 }
 
 // ThreadSummary is a compact representation for listing.
