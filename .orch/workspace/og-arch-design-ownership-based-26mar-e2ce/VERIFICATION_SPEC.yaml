@@ -1,0 +1,54 @@
+verification_spec:
+  issue: orch-go-y012i
+  skill: architect
+  workspace: og-arch-design-ownership-based-26mar-e2ce
+
+  gates:
+    - name: investigation_produced
+      status: PASS
+      evidence: ".kb/investigations/2026-03-26-design-ownership-based-harness-prevention.md created with 6 forks navigated, recommendations, migration path, decomposition"
+
+    - name: probe_created
+      status: PASS
+      evidence: ".kb/models/completion-verification/probes/2026-03-26-probe-ownership-based-harness-design-evaluation.md"
+
+    - name: probe_merged_to_model
+      status: PASS
+      evidence: |
+        completion-verification model.md updated:
+        - New 'Why This Fails' section 10 (no ownership reconciliation)
+        - Evolution Phase 12 added
+        - Probe entry added to Probes section
+        harness-engineering model.md updated:
+        - Bypass resistance finding added (binary vs continuous invariants)
+
+    - name: design_forks_navigated
+      status: PASS
+      evidence: |
+        6 forks from task brief all navigated with substrate traces:
+        1. Primary invariant: ownership > cleanliness (substrate: harness-engineering)
+        2. Artifact classes: 6 classes defined (substrate: defect-class-taxonomy Class 3)
+        3. Enforcement location: close-time > spawn-time/commit-time (substrate: accretion-gate 100% bypass)
+        4. Replace command-regex: ownership gate > regex hooks (substrate: harness-engineering binary vs continuous)
+        5. Hook governance: 5 requirements defined (substrate: harness-engineering enforcement+measurement)
+        6. Skill text: worker-base canonical, remove contradictions (substrate: defect-class Class 5)
+
+    - name: decomposition_issues_created
+      status: PASS
+      evidence: |
+        5 issues created:
+        - orch-go-0puaq: Untrack historical artifacts
+        - orch-go-mq0si: Remove contradictory git add -A from skills
+        - orch-go-1rb9d: Implement Gate 15 ownership_reconciliation
+        - orch-go-o5r8j: Harden build gate (stash before go build)
+        - orch-go-rppz0: Hook logging and self-test
+
+    - name: recommendation_explicit
+      status: PASS
+      evidence: "Investigation contains explicit 'Recommendations' section with 6 numbered recommendations"
+
+  migration_status:
+    designed: "Ownership-based harness with close-time reconciliation gate, artifact class registry, skill text alignment, build gate hardening, hook runtime improvements"
+    implemented: "none (design-only session)"
+    deployed: "none"
+    remaining: "All 5 implementation issues (orch-go-0puaq, orch-go-mq0si, orch-go-1rb9d, orch-go-o5r8j, orch-go-rppz0)"

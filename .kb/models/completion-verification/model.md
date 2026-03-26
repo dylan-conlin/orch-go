@@ -374,6 +374,20 @@ Completed agent activity remains viewable via hybrid persistent layer:
 
 **Source:** Probe `probes/2026-03-22-probe-open-loop-infrastructure-code-audit.md`
 
+### 10. No Ownership Reconciliation — Closed Issues Leave Unowned Dirt
+
+**What happens:** An agent closes an issue while tracked dirty files remain in the working tree. Those files are not committed, not transferred to another issue, and not classified as allowed residue. The next agent inherits an opaque dirty worktree.
+
+**Concrete instance (2026-03-26):** 33+ tracked dirty source/docs files across 5 clusters. Cluster 1 (capability routing: `skill_inference.go`, `coordination.go`, `allocation.go`) belongs to closed issue orch-go-r7avo — uncommitted implementations that break the build. Cluster 2 (backend verification removal) belongs to closed issue orch-go-8l4h9. Neither cluster was committed during completion.
+
+**Root cause:** The completion pipeline has no gate that checks "are there tracked dirty files from this agent's work that are unowned?" The 14 existing gates verify the agent's claims (SYNTHESIS, Phase: Complete, test evidence) and the agent's committed work (git_diff, build). None verify what the agent left *uncommitted*.
+
+**Why this matters more than cleanliness:** The invariant should not be "clean worktree" — 99.7% of dirty entries (7,294 of 7,296) are harmless historical `.orch/workspace/` artifacts. The invariant should be "every tracked dirty file is owned by an open issue or belongs to an allowed artifact class." This is a binary check (owned/unowned) that avoids the accretion-gate bypass problem (continuous invariants have 100% bypass rate).
+
+**Proposed fix:** New Gate 15 (`ownership_reconciliation`) at V2+ level. At completion, compare tracked dirty files against: (a) agent's git baseline (ignore pre-existing dirt), (b) artifact class registry (allow local-state, knowledge-backlog), (c) beads issue ownership (allow files owned by other open issues). Fail if unowned post-baseline dirty files remain.
+
+**Source:** Probe `probes/2026-03-26-probe-ownership-based-harness-design-evaluation.md`, design `.kb/investigations/2026-03-26-design-ownership-based-harness-prevention.md`
+
 ---
 
 ## Constraints
@@ -496,6 +510,9 @@ Added pre-existing bloat awareness to accretion gate: when a file was already ov
 ### Phase 11: Light Tier / V2 Conflict Identified (Feb 27-28, 2026)
 Empirically confirmed that `feature-impl` spawned with V2 + TierLight creates contradictory instructions: agent told SYNTHESIS.md "NOT required" at spawn time, then blocked at completion because V2 includes GateSynthesis. 100% failure rate on Feb 28 (3/3 completions). Root cause: incomplete migration from tier system to level system. Unresolved — fix decision pending.
 
+### Phase 12: Ownership Reconciliation Design (Mar 26, 2026)
+Designed Gate 15 (`ownership_reconciliation`) to close the gap between agent completion and worktree state. Key reframe: the invariant is not "clean worktree" but "every tracked dirty file is owned." Close-time enforcement at V2+ level, using agent's git baseline to exclude pre-existing dirt. Supporting changes: artifact class registry, skill text alignment (remove contradictory `git add -A` from feature-impl), build gate hardening (build against committed state, not working tree). Design complete — implementation pending.
+
 ---
 
 ## References
@@ -577,6 +594,7 @@ Empirically confirmed that `feature-impl` spawned with V2 + TierLight creates co
 - 2026-03-20: Human Feedback Channel Structural Disuse — 0 reworks, 11 operational abandons in 1,102 completions. Friction asymmetry (rework=8 steps, complete=0 steps) creates false ground truth. §7 updated.
 - 2026-03-20: Daemon-Driven Random Quality Audit Design — 3-layer structural pipeline: daemon periodic audit selection (weighted toward auto-completed work), spawned audit agent for intent/test/quality review, verdict-to-reject pipeline feeding `agent.rejected` events into learning loop. Key gap found: `learning.go` missing `RejectedCount` field and `agent.rejected` handler — learning loop structurally blind to rejections even after `orch reject` ships. See `.kb/investigations/2026-03-20-inv-design-daemon-driven-random-quality-audit.md`.
 - 2026-03-22: Open-Loop Infrastructure Code Audit — 10 concrete open loops found where emission infrastructure exists but consumer/action layer is missing. Pattern named "consumer-last construction": system builds emitters + config first, never returns to build consumer. 513 accretion.delta events with no reader, 11 periodic tasks registered but never invoked, ComprehensionQuerier always nil, RejectedCount/VerificationFailures/VerificationBypasses are dead code. §7 updated (reject exists but 0 production events), §8 added.
+- 2026-03-26: Ownership-Based Harness Design Evaluation — Close-time reconciliation gate (Gate 15) designed. Key finding: bypass resistance correlates with invariant type (binary > continuous); ownership is binary, accretion is continuous. Dirty-worktree is not a new defect class but a composition of Class 3 (stale accumulation) + Class 5 (contradictory authority) + Class 0 (scope expansion). Contradictory skill text (`git add -A` in feature-impl vs NEVER in worker-base) is textbook Class 5. New "Why This Fails" §10, Evolution §Phase 12.
 - 2026-03-26: WriteVerificationSignal called from non-human paths — `WriteVerificationSignal()` was called from 3 paths (dashboard API single close, batch close, `orch complete`), only one of which is human-initiated. Automated callers reset `completionsSinceVerification` to 0, preventing the daemon from ever reaching its pause threshold. Fixed by removing calls from dashboard API and gating `complete_lifecycle.go` on `!completeHeadless && !target.IsOrchestratorSession`. Structural tests added.
 
 ## Auto-Linked Investigations
