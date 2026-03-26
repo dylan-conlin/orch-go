@@ -1,25 +1,33 @@
-issue: orch-go-xc0jx
-title: "Enrich GET /api/briefs with thread_slug, thread_title, has_tension"
+issue: orch-go-8e15i
+title: "Add StallReason string field to deconflate IsStalled boolean"
 type: feature
 tier: light
 
 verification:
   automated:
-    - command: "go test ./cmd/orch/ -run 'TestHandleBriefsListEnrichedFields|TestBriefHasTension' -v"
+    - command: "go test ./cmd/orch/ -run TestAgentAPIResponseStallReason -v"
       expected: "PASS"
-      actual: "PASS (2 tests, 4 subtests)"
-    - command: "go test ./cmd/orch/ -run 'TestHandleBrief|TestBrief|TestReviewQueue' -v"
+      actual: "PASS (5 subtests: empty_omitted, phase_stall, token_stall, never_started, spawn_stale)"
+    - command: "go test ./pkg/attention/ -run TestStuckCollector_StallReasonInMetadata -v"
       expected: "PASS"
-      actual: "PASS (21 tests)"
-    - command: "go test ./pkg/thread/ -v"
+      actual: "PASS"
+    - command: "go test ./cmd/orch/ -run 'TestAgentAPIResponse|TestHandleAgents' -count=1"
       expected: "PASS"
-      actual: "PASS (all thread tests)"
+      actual: "PASS (11 tests)"
+    - command: "go test ./pkg/attention/ -count=1"
+      expected: "PASS"
+      actual: "PASS (all tests)"
 
 deliverables:
-  - cmd/orch/serve_briefs.go       # Added thread_slug, thread_title, has_tension to BriefListItem; buildThreadIndex, briefHasTension helpers
-  - cmd/orch/serve_briefs_test.go  # Added TestHandleBriefsListEnrichedFields, TestBriefHasTension
-  - pkg/thread/thread.go           # Added ThreadLink struct and FindThreadForBeadsID function
+  - cmd/orch/serve_agents_types.go       # Added StallReason to AgentAPIResponse
+  - cmd/orch/serve_agents_handlers.go    # Set StallReason at 4 setter sites
+  - cmd/orch/status_cmd.go              # Added StallReason to AgentInfo, set at 1 site
+  - pkg/attention/stuck_collector.go     # Added StallReason to StuckAgentItem, added to metadata
+  - cmd/orch/serve_agents_types_test.go  # TestAgentAPIResponseStallReason
+  - cmd/orch/serve_agents_handlers_test.go # Existing tests pass (no changes needed)
+  - pkg/attention/stuck_collector_test.go  # TestStuckCollector_StallReasonInMetadata
 
 notes: |
-  Pre-existing test failures (TestEnforcePhaseCompleteSkipsPrintMode, TestHandleAgentlogJSONResponse) are unrelated.
-  Thread index built once per list request for O(threads) not O(briefs*threads) performance.
+  4 stall reasons: phase_stall (same phase 15+ min), token_stall (no token progress),
+  never_started (spawned 10+ min no phase), spawn_stale (no phase past threshold).
+  StallReason is omitempty so it's absent from JSON when not stalled.

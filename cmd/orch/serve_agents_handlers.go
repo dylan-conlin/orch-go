@@ -186,6 +186,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 						elapsed := now.Sub(*phaseStatus.PhaseReportedAt)
 						if elapsed > stalledThreshold {
 							agents[i].IsStalled = true
+							agents[i].StallReason = "phase_stall"
 						}
 						// Unresponsive detection (30+ min without phase update).
 						// Skip if agent is actively processing (confirmed by OpenCode session) —
@@ -206,12 +207,14 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			if agents[i].Reason == "never_started" {
 				agents[i].IsNeverStarted = true
 				agents[i].IsStalled = true
+				agents[i].StallReason = "never_started"
 				agents[i].IsUnresponsive = true
 			} else if agents[i].Phase == "" && agents[i].SpawnedAt != "" {
 				if spawnedAt, err := time.Parse(time.RFC3339, agents[i].SpawnedAt); err == nil {
 					elapsed := now.Sub(spawnedAt)
 					if elapsed > stalledThreshold {
 						agents[i].IsStalled = true
+						agents[i].StallReason = "spawn_stale"
 					}
 					if elapsed > unresponsiveThreshold && !agents[i].IsProcessing {
 						agents[i].IsUnresponsive = true
@@ -444,6 +447,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				isStalled := globalStallTracker.Update(agents[result.index].SessionID, result.tokens)
 				if isStalled {
 					agents[result.index].IsStalled = true
+					agents[result.index].StallReason = "token_stall"
 				}
 			}
 		}

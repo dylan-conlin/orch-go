@@ -44,6 +44,55 @@ func TestAgentAPIResponseJSONFormat(t *testing.T) {
 	}
 }
 
+func TestAgentAPIResponseStallReason(t *testing.T) {
+	tests := []struct {
+		name         string
+		stallReason  string
+		isStalled    bool
+		expectReason bool // expect stall_reason in JSON output
+	}{
+		{"empty omitted when not stalled", "", false, false},
+		{"phase_stall", "phase_stall", true, true},
+		{"token_stall", "token_stall", true, true},
+		{"never_started", "never_started", true, true},
+		{"spawn_stale", "spawn_stale", true, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := AgentAPIResponse{
+				ID:          "test-agent",
+				Status:      "active",
+				IsStalled:   tt.isStalled,
+				StallReason: tt.stallReason,
+			}
+
+			data, err := json.Marshal(agent)
+			if err != nil {
+				t.Fatalf("Failed to marshal: %v", err)
+			}
+
+			var result map[string]interface{}
+			if err := json.Unmarshal(data, &result); err != nil {
+				t.Fatalf("Failed to unmarshal: %v", err)
+			}
+
+			_, exists := result["stall_reason"]
+			if tt.expectReason && !exists {
+				t.Errorf("Expected stall_reason in JSON, got: %s", string(data))
+			}
+			if !tt.expectReason && exists {
+				t.Errorf("Expected stall_reason omitted from JSON, got: %s", string(data))
+			}
+			if tt.expectReason {
+				if got := result["stall_reason"].(string); got != tt.stallReason {
+					t.Errorf("Expected stall_reason=%q, got %q", tt.stallReason, got)
+				}
+			}
+		})
+	}
+}
+
 func TestAgentAPIResponseEscalationLevel(t *testing.T) {
 	tests := []struct {
 		name     string

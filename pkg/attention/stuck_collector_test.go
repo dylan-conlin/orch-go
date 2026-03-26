@@ -190,6 +190,51 @@ func TestStuckCollector_Collect(t *testing.T) {
 	}
 }
 
+func TestStuckCollector_StallReasonInMetadata(t *testing.T) {
+	threeHoursAgo := time.Now().Add(-3 * time.Hour).Format(time.RFC3339)
+	oneHourAgo := time.Now().Add(-1 * time.Hour).Format(time.RFC3339)
+
+	agents := []StuckAgentItem{
+		{
+			ID:             "session-1",
+			BeadsID:        "orch-go-123",
+			BeadsTitle:     "Stalled feature",
+			Status:         "active",
+			Phase:          "Implementing",
+			Task:           "Implement feature",
+			Project:        "orch-go",
+			Skill:          "feature-impl",
+			IsStalled:      true,
+			StallReason:    "phase_stall",
+			SpawnedAt:      threeHoursAgo,
+			UpdatedAt:      threeHoursAgo,
+			LastActivityAt: oneHourAgo,
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(agents)
+	}))
+	defer server.Close()
+
+	collector := NewStuckCollector(server.Client(), server.URL, 2.0)
+	items, err := collector.Collect("human")
+	if err != nil {
+		t.Fatalf("Collect() error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("Expected 1 item, got %d", len(items))
+	}
+
+	stallReason, ok := items[0].Metadata["stall_reason"]
+	if !ok {
+		t.Fatal("Expected stall_reason in metadata")
+	}
+	if stallReason != "phase_stall" {
+		t.Errorf("Expected stall_reason=phase_stall, got %v", stallReason)
+	}
+}
+
 func TestStuckCollector_Collect_HTTPError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)

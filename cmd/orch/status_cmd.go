@@ -106,6 +106,7 @@ type AgentInfo struct {
 	IsProcessing    bool                          `json:"is_processing,omitempty"`     // True if session is actively generating a response
 	IsCompleted     bool                          `json:"is_completed,omitempty"`      // True if beads issue is closed
 	IsStalled       bool                          `json:"is_stalled,omitempty"`        // True if no token progress for 3+ minutes
+	StallReason     string                        `json:"stall_reason,omitempty"`      // Why stalled: token_stall
 	IsUnresponsive  bool                          `json:"is_unresponsive,omitempty"`   // True if no phase update for 30+ minutes
 	RetryAttempt    int                           `json:"retry_attempt,omitempty"`     // Current retry attempt number (0 = not retrying)
 	RetryMessage    string                        `json:"retry_message,omitempty"`     // Retry reason/message from backend
@@ -363,6 +364,7 @@ func runStatus(serverURL string) error {
 					isStalled := globalStallTracker.Update(agent.SessionID, tokens)
 					if isStalled {
 						agent.IsStalled = true
+						agent.StallReason = "token_stall"
 					}
 				}
 			}

@@ -45,6 +45,7 @@ type StuckAgentItem struct {
 	Project        string `json:"project"`
 	Skill          string `json:"skill"`
 	IsStalled      bool   `json:"is_stalled"`       // True if same phase for 15+ min
+	StallReason    string `json:"stall_reason"`     // Why stalled: phase_stall, token_stall, never_started, spawn_stale
 	SpawnedAt      string `json:"spawned_at"`       // ISO 8601 timestamp
 	UpdatedAt      string `json:"updated_at"`       // ISO 8601 timestamp
 	LastActivityAt string `json:"last_activity_at"` // ISO 8601 timestamp
@@ -162,6 +163,7 @@ func (c *StuckCollector) Collect(role string) ([]AttentionItem, error) {
 				"running_hours":       runningDuration.Hours(),
 				"inactivity_minutes":  inactivityDuration.Minutes(),
 				"is_stalled":          agent.IsStalled,
+				"stall_reason":        agent.StallReason,
 			},
 		}
 		items = append(items, item)
