@@ -32,5 +32,6 @@ Status values are well-defined: `active`, `completed`, `superseded`, `draft`.
 
 ## Auto-Linked Investigations
 
+- .kb/investigations/2026-03-26-inv-trace-complete-spawn-lifecycle-cli.md
 - .kb/investigations/2026-03-11-design-exploration-orchestrator-lifecycle.md
 - .kb/investigations/2026-03-01-design-complete-pipeline-extraction.md

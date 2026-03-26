@@ -27,6 +27,13 @@
       "sources": {
         "experiment": 1686
       }
+    },
+    {
+      "timestamp": "2026-03-25T16:53:42.724196-07:00",
+      "total_tokens": 1686,
+      "sources": {
+        "experiment": 1686
+      }
     }
   ]
 }

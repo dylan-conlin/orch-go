@@ -153,6 +153,13 @@
       "sources": {
         "investigation": 2470
       }
+    },
+    {
+      "timestamp": "2026-03-25T16:53:42.657987-07:00",
+      "total_tokens": 2470,
+      "sources": {
+        "investigation": 2470
+      }
     }
   ]
 }

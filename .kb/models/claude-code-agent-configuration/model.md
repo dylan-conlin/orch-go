@@ -188,6 +188,7 @@ Agents get more capabilities than needed because CLI flag adoption lags. Investi
 
 ## Auto-Linked Investigations
 
+- .kb/investigations/2026-03-26-inv-benchmark-worker-reliability-across-claude.md
 - .kb/investigations/2026-03-25-design-composed-liveness-detection-claude.md
 - .kb/investigations/simple/2026-03-19-empirical-audit-displaced-code-governance-hooks.md
 - .kb/investigations/2026-03-08-design-portable-harness-tooling.md
