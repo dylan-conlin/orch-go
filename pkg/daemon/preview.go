@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/dylan-conlin/orch-go/pkg/daemonconfig"
 )
 
 // RejectedIssue captures why an issue was rejected for spawning.
@@ -18,7 +19,8 @@ type RejectedIssue struct {
 type PreviewResult struct {
 	Issue              *Issue
 	Skill              string
-	Model              string           // Inferred model alias (e.g., "opus", "sonnet")
+	Model              string           // Inferred model alias (e.g., "opus", "sonnet", "gpt-5.4")
+	ModelRouteReason   string           // Explains why this model was chosen
 	Message            string
 	RateLimited        bool             // True if rate limit would prevent spawning
 	RateStatus         string           // Rate limit status message (e.g., "5/20 spawns in last hour")
@@ -31,6 +33,7 @@ type PreviewResult struct {
 	ArchitectEscalated    bool                   // True if skill would be escalated from impl to architect
 	FocusBoosted          bool                   // True if selected issue was boosted by focus
 	FocusGoal             string                 // Current focus goal (if any)
+	ModelRoute            *daemonconfig.ModelRouteResult // Model routing decision details (nil if no routing config)
 }
 
 // HasHotspotWarnings returns true if there are any hotspot warnings.
@@ -156,7 +159,17 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 
 	result.Issue = spawnable
 	result.Skill = skill
-	result.Model = InferModelFromSkill(skill)
+	modelRoute := RouteModel(skill, spawnable)
+	result.Model = modelRoute.Model
+	result.ModelRouteReason = modelRoute.Reason
+
+	// Resolve model routing config if available
+	if d.Config.ModelRouting != nil && d.Config.ModelRouting.IsConfigured() {
+		route := d.Config.ModelRouting.Resolve(skill, result.Model)
+		result.ModelRoute = &route
+		result.Model = route.EffectiveModel
+		result.ModelRouteReason = route.Reason
+	}
 
 	// Check if selected issue was focus-boosted
 	if d.FocusGoal != "" && d.FocusBoostAmount > 0 {

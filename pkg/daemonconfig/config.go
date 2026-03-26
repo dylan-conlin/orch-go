@@ -184,6 +184,10 @@ type Config struct {
 	// When nil/zero-value, defaults to ComplianceStrict (current behavior).
 	Compliance ComplianceConfig
 
+	// ModelRouting holds per-spawn model routing configuration.
+	// When nil, the hardcoded skillModelMapping in skill_inference.go is used.
+	ModelRouting *ModelRoutingConfig
+
 	// VerificationFailedEscalationEnabled controls whether the daemon periodically
 	// escalates verification-failed agents to triage:review for human attention.
 	// Issues labeled daemon:verification-failed sit in_progress indefinitely after

@@ -62,6 +62,15 @@ func runDaemonDryRun() error {
 		fmt.Println(daemon.FormatPreview(result.Issue))
 		fmt.Printf("\nInferred skill: %s\n", result.Skill)
 		fmt.Printf("Inferred model: %s\n", result.Model)
+		if result.ModelRoute != nil && result.ModelRoute.Source != "none" {
+			fmt.Printf("  Route source: %s\n", result.ModelRoute.Source)
+			if result.ModelRoute.BaseModel != "" && result.ModelRoute.BaseModel != result.Model {
+				fmt.Printf("  Base model:   %s → %s\n", result.ModelRoute.BaseModel, result.Model)
+			}
+			fmt.Printf("  Reason:       %s\n", result.ModelRoute.Reason)
+		} else if result.ModelRouteReason != "" {
+			fmt.Printf("  Route reason: %s\n", result.ModelRouteReason)
+		}
 		if result.ArchitectEscalated {
 			fmt.Println("⚠️  Architect escalation: implementation skill escalated to architect (hotspot area)")
 		}
@@ -207,6 +216,15 @@ func runDaemonPreview() error {
 		fmt.Println(daemon.FormatPreview(result.Issue))
 		fmt.Printf("\nInferred skill: %s\n", result.Skill)
 		fmt.Printf("Inferred model: %s\n", result.Model)
+		if result.ModelRoute != nil && result.ModelRoute.Source != "none" {
+			fmt.Printf("  Route source: %s\n", result.ModelRoute.Source)
+			if result.ModelRoute.BaseModel != "" && result.ModelRoute.BaseModel != result.Model {
+				fmt.Printf("  Base model:   %s → %s\n", result.ModelRoute.BaseModel, result.Model)
+			}
+			fmt.Printf("  Reason:       %s\n", result.ModelRoute.Reason)
+		} else if result.ModelRouteReason != "" {
+			fmt.Printf("  Route reason: %s\n", result.ModelRouteReason)
+		}
 
 		// Display hotspot warnings if any
 		if result.HasHotspotWarnings() {

@@ -129,6 +129,10 @@ type DaemonConfig struct {
 	// Compliance holds per-spawn compliance level configuration.
 	// Levels: strict (default), standard, relaxed, autonomous.
 	Compliance *ComplianceYAMLConfig `yaml:"compliance,omitempty"`
+
+	// ModelRouting holds per-spawn model routing configuration.
+	// Uses the same combo-first pattern as compliance: combo > skill > model > default.
+	ModelRouting *ModelRoutingYAMLConfig `yaml:"model_routing,omitempty"`
 }
 
 // ComplianceYAMLConfig is the YAML representation of compliance configuration.
@@ -141,6 +145,19 @@ type ComplianceYAMLConfig struct {
 	// Models maps model names to compliance levels.
 	Models map[string]string `yaml:"models,omitempty"`
 	// Combos maps "model+skill" keys to compliance levels (highest precedence).
+	Combos map[string]string `yaml:"combos,omitempty"`
+}
+
+// ModelRoutingYAMLConfig is the YAML representation of model routing configuration.
+// All values are model alias strings (e.g., "opus", "sonnet", "gpt-5.4").
+type ModelRoutingYAMLConfig struct {
+	// Default is the global model alias. Empty means no daemon-level override.
+	Default string `yaml:"default,omitempty"`
+	// Skills maps skill names to model aliases.
+	Skills map[string]string `yaml:"skills,omitempty"`
+	// Models maps base model aliases to override model aliases.
+	Models map[string]string `yaml:"models,omitempty"`
+	// Combos maps "baseModel+skill" keys to model aliases (highest precedence).
 	Combos map[string]string `yaml:"combos,omitempty"`
 }
 
@@ -431,6 +448,12 @@ func (c *Config) DaemonWorkingDirectory() string {
 // Returns nil if no compliance section is configured.
 func (c *Config) DaemonComplianceConfig() *ComplianceYAMLConfig {
 	return c.Daemon.Compliance
+}
+
+// DaemonModelRoutingConfig returns the parsed model routing YAML config.
+// Returns nil if no model_routing section is configured.
+func (c *Config) DaemonModelRoutingConfig() *ModelRoutingYAMLConfig {
+	return c.Daemon.ModelRouting
 }
 
 // DaemonPath returns the PATH directories to add to the daemon environment.

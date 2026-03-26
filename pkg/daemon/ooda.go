@@ -106,6 +106,8 @@ type SpawnDecision struct {
 	Skill string
 	// Model is the inferred model alias for the selected issue.
 	Model string
+	// ModelRouteReason explains why this model was chosen.
+	ModelRouteReason string
 	// Route contains routing metadata (extraction, architect escalation).
 	Route SkillRoute
 }
@@ -185,10 +187,20 @@ func (d *Daemon) Decide(orient OrientResult, skip map[string]bool) SpawnDecision
 		return decision
 	}
 
-	model := InferModelFromSkill(skill)
+	modelRoute := RouteModel(skill, selected)
+
+	// Apply daemon model routing config override if configured.
+	// Config takes precedence over hardcoded RouteModel inference.
+	if d.Config.ModelRouting != nil && d.Config.ModelRouting.IsConfigured() {
+		configRoute := d.Config.ModelRouting.Resolve(skill, modelRoute.Model)
+		if configRoute.Source != "none" {
+			modelRoute.Model = configRoute.EffectiveModel
+			modelRoute.Reason = configRoute.Reason
+		}
+	}
 
 	// Route through hotspot extraction and architect escalation
-	route, err := d.RouteIssueForSpawn(selected, skill, model)
+	route, err := d.RouteIssueForSpawn(selected, skill, modelRoute.Model, modelRoute.Reason)
 	if err != nil {
 		decision.Blocked = true
 		decision.BlockReason = err.Error()
@@ -204,6 +216,7 @@ func (d *Daemon) Decide(orient OrientResult, skip map[string]bool) SpawnDecision
 	decision.Issue = selected
 	decision.Skill = route.Skill
 	decision.Model = route.Model
+	decision.ModelRouteReason = route.ModelRouteReason
 	decision.Route = route
 
 	return decision
@@ -224,6 +237,7 @@ func (d *Daemon) Act(decision SpawnDecision) (*OnceResult, error) {
 	// Spawn the issue
 	result, _, err := d.spawnIssue(decision.Issue, decision.Skill, decision.Model)
 	if result != nil {
+		result.ModelRouteReason = decision.ModelRouteReason
 		if decision.Route.ExtractionSpawned {
 			result.ExtractionSpawned = true
 			result.OriginalIssueID = decision.Route.OriginalIssueID

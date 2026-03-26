@@ -1,16 +1,42 @@
-issue: orch-go-6k6o8
-title: "Integration: prove zero-token empty-execution retries recover once and escalate on repeat"
+issue: orch-go-r7avo
+title: "Add daemon model-routing config and observability"
 tier: light
 
 verification:
   automated:
-    - command: "go test ./pkg/daemon/ -run TestIntegration_ -v"
-      expect: "8 integration tests pass: full cycle retry→escalate, recovery clears tracker, no duplicate work, GPT-5.4 session replays (zero assistant msgs, whitespace response, error termination), fault injection (classifier down, nil response)"
-    - command: "go test ./pkg/daemon/"
-      expect: "All daemon package tests pass (no regressions)"
+    - command: "go test ./pkg/daemonconfig/ -run TestModelRouting -v"
+      expect: "8 tests pass (combo-first resolution, nil safety, IsConfigured)"
+    - command: "go test ./pkg/events/ -count=1"
+      expect: "all events tests pass, new model_route event type compiles"
+    - command: "go test ./pkg/daemon/ -count=1"
+      expect: "all daemon tests pass including preview with ModelRoute field"
+    - command: "go build ./..."
+      expect: "clean build, no compilation errors"
 
-  manual: []
+  manual:
+    - step: "Add model_routing section to .orch/config.yaml and run orch daemon preview"
+      expect: "Preview shows Route source, Base model → Effective model, and Reason"
 
 deliverables:
-  - path: pkg/daemon/empty_execution_integration_test.go
-    description: "8 integration tests proving end-to-end retry→escalate cycle with GPT-5.4 session replay and fault injection"
+  - path: pkg/daemonconfig/model_routing.go
+    description: "ModelRoutingConfig with combo-first Resolve() mirroring ComplianceConfig"
+  - path: pkg/daemonconfig/model_routing_test.go
+    description: "8 tests covering combo>skill>model>default precedence, nil safety, IsConfigured"
+  - path: pkg/userconfig/daemon_config.go
+    description: "ModelRoutingYAMLConfig type + DaemonModelRoutingConfig() accessor"
+  - path: pkg/daemonconfig/convert.go
+    description: "modelRoutingFromYAML conversion wired into FromUserConfig"
+  - path: pkg/daemonconfig/config.go
+    description: "ModelRouting *ModelRoutingConfig field on runtime Config"
+  - path: pkg/events/model_route.go
+    description: "spawn.model_route event type with ModelRouteData + LogModelRoute"
+  - path: pkg/events/logger.go
+    description: "EventTypeModelRoute constant"
+  - path: pkg/daemon/preview.go
+    description: "ModelRoute field on PreviewResult, populated when config is active"
+  - path: pkg/daemon/ooda.go
+    description: "Config override applied in Decide phase after RouteModel"
+  - path: cmd/orch/daemon_handlers.go
+    description: "Route source/reason displayed in preview and dry-run output"
+  - path: cmd/orch/daemon_loop.go
+    description: "spawn.model_route event logged on each spawn"

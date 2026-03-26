@@ -447,6 +447,9 @@ func (s *daemonLoopState) runDaemonSpawnCycle(timestamp string) spawnCycleResult
 				result.Issue.Title,
 			)
 		}
+		if result.ModelRouteReason != "" {
+			s.dlog.Printf("[%s]   Route reason: %s\n", timestamp, result.ModelRouteReason)
+		}
 
 		// Log the spawn
 		eventData := map[string]interface{}{
@@ -463,6 +466,9 @@ func (s *daemonLoopState) runDaemonSpawnCycle(timestamp string) spawnCycleResult
 		if result.ArchitectEscalated {
 			eventData["architect_escalated"] = true
 		}
+		if result.ModelRouteReason != "" {
+			eventData["model_route_reason"] = result.ModelRouteReason
+		}
 		event := events.Event{
 			Type:      "daemon.spawn",
 			Timestamp: time.Now().Unix(),
@@ -470,6 +476,17 @@ func (s *daemonLoopState) runDaemonSpawnCycle(timestamp string) spawnCycleResult
 		}
 		if err := s.logger.Log(event); err != nil {
 			s.dlog.Errorf("Warning: failed to log event: %v\n", err)
+		}
+
+		// Log model route event when routing config was applied
+		if result.ModelRouteReason != "" {
+			_ = s.logger.LogModelRoute(events.ModelRouteData{
+				IssueID:        result.Issue.ID,
+				Skill:          result.Skill,
+				EffectiveModel: result.Model,
+				Source:         "daemon",
+				Reason:         result.ModelRouteReason,
+			})
 		}
 
 		// Log architect escalation decision when a hotspot match was evaluated

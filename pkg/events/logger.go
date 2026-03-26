@@ -81,6 +81,8 @@ const (
 	EventTypeLoopComplete = "loop.complete"
 	// EventTypeEmptyExecutionRetry logs when a session retries after an empty-execution classification.
 	EventTypeEmptyExecutionRetry = "session.empty_execution_retry"
+	// EventTypeModelRoute logs the daemon's model routing decision for a spawn.
+	EventTypeModelRoute = "spawn.model_route"
 )
 
 // Event is a loggable event for events.jsonl.
