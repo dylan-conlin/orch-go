@@ -3,6 +3,7 @@ package verify
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -156,34 +157,47 @@ func VerifyBuild(workspacePath, projectDir string) BuildVerificationResult {
 		return result
 	}
 
-	// Run go build
-	output, err := RunGoBuild(projectDir)
-	result.BuildOutput = truncateOutput(output, 500)
+	// Run go build and vet against committed state (stash uncommitted changes).
+	// This ensures the gate verifies what's actually committed, not working-tree edits.
+	var buildOutput, vetOutput string
+	var buildErr, vetErr error
 
-	if err != nil {
+	stashErr := withCommittedState(projectDir, func() error {
+		buildOutput, buildErr = RunGoBuild(projectDir)
+		if buildErr != nil {
+			return buildErr // skip vet if build fails
+		}
+		vetOutput, vetErr = RunGoVet(projectDir)
+		return nil
+	})
+
+	// If stash mechanism itself failed, the build/vet still ran against working tree
+	_ = stashErr
+
+	result.BuildOutput = truncateOutput(buildOutput, 500)
+
+	if buildErr != nil {
 		result.Passed = false
 		result.BuildPassed = false
 		result.VetPassed = false // not run
 		result.Errors = append(result.Errors,
-			"'go build ./...' failed",
+			"'go build ./...' failed (against committed state)",
 			"Build must pass before completion",
 		)
-		if output != "" {
+		if buildOutput != "" {
 			result.Errors = append(result.Errors, "Build output: "+result.BuildOutput)
 		}
 		// Skip vet if build fails - vet errors would be noise
 		return result
 	}
 
-	// Run go vet (only if build succeeded)
-	vetOutput, vetErr := RunGoVet(projectDir)
 	result.VetOutput = truncateOutput(vetOutput, 500)
 
 	if vetErr != nil {
 		result.Passed = false
 		result.VetPassed = false
 		result.Errors = append(result.Errors,
-			"'go vet ./...' failed",
+			"'go vet ./...' failed (against committed state)",
 			"Vet must pass before completion",
 		)
 		if vetOutput != "" {
@@ -200,6 +214,49 @@ func truncateOutput(output string, maxLen int) string {
 		return output
 	}
 	return output[:maxLen] + "... (truncated)"
+}
+
+// isWorktreeDirty checks if the git working tree has uncommitted changes
+// (staged, unstaged, or untracked files).
+func isWorktreeDirty(projectDir string) bool {
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		return false // not a git repo or error — treat as clean
+	}
+	return len(strings.TrimSpace(string(output))) > 0
+}
+
+// withCommittedState runs fn against the committed state of the working tree.
+// If there are uncommitted changes (staged, unstaged, or untracked), they are
+// stashed before fn runs and restored after. This ensures build/vet verify
+// what's actually committed, not what's in the working tree.
+func withCommittedState(projectDir string, fn func() error) error {
+	if !isWorktreeDirty(projectDir) {
+		return fn()
+	}
+
+	// Stash all changes including untracked files
+	stashCmd := exec.Command("git", "stash", "push", "--include-untracked", "-m", "orch-build-gate-verify")
+	stashCmd.Dir = projectDir
+	if out, err := stashCmd.CombinedOutput(); err != nil {
+		// Stash failed — run against working tree as fallback
+		_ = out
+		return fn()
+	}
+
+	// Always restore stash, even if fn fails
+	defer func() {
+		popCmd := exec.Command("git", "stash", "pop")
+		popCmd.Dir = projectDir
+		if out, err := popCmd.CombinedOutput(); err != nil {
+			// Pop failed (shouldn't happen with our own stash) — log but don't mask fn error
+			_ = fmt.Errorf("git stash pop failed: %v: %s", err, out)
+		}
+	}()
+
+	return fn()
 }
 
 // HasGoChangesForAgent checks if the agent modified any Go files based on

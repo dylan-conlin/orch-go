@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -570,6 +571,193 @@ func commitFile(t *testing.T, dir, file, msg string) {
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("commitFile: %v failed: %v\n%s", args, err, out)
 		}
+	}
+}
+
+func TestWithCommittedState_StashesUncommittedChanges(t *testing.T) {
+	// Create a Go project that builds cleanly when committed
+	tempDir := t.TempDir()
+	projectDir := filepath.Join(tempDir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	goMod := "module test\ngo 1.21\n"
+	if err := os.WriteFile(filepath.Join(projectDir, "go.mod"), []byte(goMod), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mainGo := "package main\n\nfunc main() {}\n"
+	if err := os.WriteFile(filepath.Join(projectDir, "main.go"), []byte(mainGo), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	setupGitRepo(t, projectDir)
+
+	// Now add an uncommitted change that breaks the build
+	brokenGo := "package main\n\nfunc main() { undefined_func() }\n"
+	if err := os.WriteFile(filepath.Join(projectDir, "main.go"), []byte(brokenGo), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the working tree is dirty
+	if !isWorktreeDirty(projectDir) {
+		t.Fatal("expected working tree to be dirty")
+	}
+
+	// withCommittedState should stash the broken code, build against committed (clean) state
+	var buildOutput string
+	var buildErr error
+	err := withCommittedState(projectDir, func() error {
+		buildOutput, buildErr = RunGoBuild(projectDir)
+		return buildErr
+	})
+
+	if err != nil {
+		t.Errorf("withCommittedState build failed (should pass against committed state): %v, output: %s", err, buildOutput)
+	}
+
+	// After withCommittedState, the broken code should be restored
+	content, err := os.ReadFile(filepath.Join(projectDir, "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "undefined_func") {
+		t.Error("uncommitted changes were not restored after withCommittedState")
+	}
+}
+
+func TestWithCommittedState_CleanWorktree(t *testing.T) {
+	// When worktree is clean, withCommittedState should just run fn directly
+	tempDir := t.TempDir()
+	projectDir := filepath.Join(tempDir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	goMod := "module test\ngo 1.21\n"
+	if err := os.WriteFile(filepath.Join(projectDir, "go.mod"), []byte(goMod), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mainGo := "package main\n\nfunc main() {}\n"
+	if err := os.WriteFile(filepath.Join(projectDir, "main.go"), []byte(mainGo), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	setupGitRepo(t, projectDir)
+
+	// Worktree is clean
+	if isWorktreeDirty(projectDir) {
+		t.Fatal("expected clean worktree")
+	}
+
+	called := false
+	err := withCommittedState(projectDir, func() error {
+		called = true
+		return nil
+	})
+
+	if err != nil {
+		t.Errorf("withCommittedState failed: %v", err)
+	}
+	if !called {
+		t.Error("fn was not called")
+	}
+}
+
+func TestIsWorktreeDirty(t *testing.T) {
+	tempDir := t.TempDir()
+	projectDir := filepath.Join(tempDir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(projectDir, "main.go"), []byte("package main\nfunc main() {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	setupGitRepo(t, projectDir)
+
+	// Clean state
+	if isWorktreeDirty(projectDir) {
+		t.Error("expected clean worktree after commit")
+	}
+
+	// Dirty state (modify a file)
+	if err := os.WriteFile(filepath.Join(projectDir, "main.go"), []byte("package main\nfunc main() { println(\"dirty\") }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if !isWorktreeDirty(projectDir) {
+		t.Error("expected dirty worktree after modification")
+	}
+
+	// Dirty state (untracked file)
+	if err := os.WriteFile(filepath.Join(projectDir, "main.go"), []byte("package main\nfunc main() {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "checkout", "main.go")
+	cmd.Dir = projectDir
+	cmd.Run()
+	if err := os.WriteFile(filepath.Join(projectDir, "new_file.txt"), []byte("untracked"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if !isWorktreeDirty(projectDir) {
+		t.Error("expected dirty worktree with untracked file")
+	}
+}
+
+func TestVerifyBuild_UsesCommittedState(t *testing.T) {
+	// End-to-end: VerifyBuild should pass when committed code is clean
+	// even if working tree has broken code
+	tempDir := t.TempDir()
+	projectDir := filepath.Join(tempDir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	goMod := "module test\ngo 1.21\n"
+	if err := os.WriteFile(filepath.Join(projectDir, "go.mod"), []byte(goMod), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mainGo := "package main\n\nfunc main() {}\n"
+	if err := os.WriteFile(filepath.Join(projectDir, "main.go"), []byte(mainGo), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	setupGitRepo(t, projectDir)
+
+	// Break the working tree (uncommitted)
+	brokenGo := "package main\n\nfunc main() { undefined_func() }\n"
+	if err := os.WriteFile(filepath.Join(projectDir, "main.go"), []byte(brokenGo), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create workspace
+	workspacePath := filepath.Join(tempDir, "workspace")
+	if err := os.MkdirAll(workspacePath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	spawnContext := "TASK: Test\n\n## SKILL GUIDANCE (feature-impl)\n"
+	if err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := VerifyBuild(workspacePath, projectDir)
+
+	// Should PASS because committed state is clean
+	if !result.BuildPassed {
+		t.Errorf("BuildPassed should be true (committed code builds), errors: %v", result.Errors)
+	}
+	if !result.Passed {
+		t.Errorf("Passed should be true (committed code is clean), errors: %v", result.Errors)
+	}
+
+	// Working tree should be restored with broken code
+	content, err := os.ReadFile(filepath.Join(projectDir, "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "undefined_func") {
+		t.Error("uncommitted changes should be restored after VerifyBuild")
 	}
 }
 
