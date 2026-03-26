@@ -37,6 +37,9 @@ tmp/
 .orch/workspace-archive/
 .orch/session/
 
+# Experiment results (large, generated artifacts)
+experiments/*/redesign/results/
+
 # Beads issue data (personal)
 .beads/issues.jsonl
 

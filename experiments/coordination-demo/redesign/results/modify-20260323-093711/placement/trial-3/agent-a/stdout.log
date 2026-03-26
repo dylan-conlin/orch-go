@@ -1,3 +1,0 @@
-**Phase: Complete** ✓
-
-Refactored `FormatDuration` with threshold-based unit definitions and added week support. All existing tests pass with identical output plus 7 new test cases for week boundaries and large durations.

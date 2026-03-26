@@ -1,3 +1,0 @@
-✅ **Completion reported to beads.** 
-
-The `FormatDuration` refactoring is complete with week support, clean threshold-based architecture, and all tests passing. The work coordinates cleanly with Agent B's parallel modifications to `Truncate` and `TruncateWithPadding`.

@@ -1,2 +1,0 @@
-9df0a2bd7 feat: add FormatRate function to pkg/display
-2182262ea setup: sectioned display files

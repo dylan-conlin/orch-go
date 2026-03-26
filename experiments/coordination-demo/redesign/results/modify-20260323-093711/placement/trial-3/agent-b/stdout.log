@@ -1,3 +1,0 @@
-✅ **Completion reported to beads.** 
-
-The refactoring is complete with all tests passing and the commit made. The functions are now fully Unicode-aware and handle multi-byte characters correctly while maintaining backward compatibility with all existing ASCII test cases.

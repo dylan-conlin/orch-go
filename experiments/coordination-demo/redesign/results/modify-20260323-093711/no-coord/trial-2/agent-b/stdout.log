@@ -1,3 +1,0 @@
-**Phase: Complete** ✓
-
-I've successfully completed the Unicode-aware refactoring of the `Truncate` and `TruncateWithPadding` functions in `pkg/display`. All tests pass, including new test cases for emoji and accented characters.

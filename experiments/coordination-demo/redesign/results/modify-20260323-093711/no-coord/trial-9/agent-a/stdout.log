@@ -1,1 +1,0 @@
-**Phase: Complete** — Refactored `FormatDuration` in `pkg/display` with a cleaner threshold-based approach and added week support for durations ≥ 7 days. All 21 test cases pass (15 existing + 6 new) with no regressions. Changes committed.

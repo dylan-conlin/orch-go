@@ -1,1 +1,0 @@
-16a2c9dd9 feat: add FormatRate function to display package with comprehensive tests

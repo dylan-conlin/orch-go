@@ -1,1 +1,0 @@
-30a43f701 refactor: Make Truncate and TruncateWithPadding Unicode-aware using rune slices

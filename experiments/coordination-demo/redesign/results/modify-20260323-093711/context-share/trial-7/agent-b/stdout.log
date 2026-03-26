@@ -1,3 +1,0 @@
-**Phase: Complete** ✓
-
-Refactored `Truncate` and `TruncateWithPadding` to Unicode-aware rune-based character counting. Added 9 comprehensive test cases covering accented characters, CJK, emoji, and mixed strings. All tests pass with no regressions.

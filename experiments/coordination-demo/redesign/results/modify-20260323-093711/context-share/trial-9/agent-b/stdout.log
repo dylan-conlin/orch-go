@@ -1,8 +1,0 @@
-**Phase: Complete** ✅
-
-Completion reported to beads. The refactoring task is done:
-- `Truncate` and `TruncateWithPadding` now properly handle Unicode characters using rune-based indexing
-- All ASCII tests pass with identical output (backward compatible)
-- Comprehensive Unicode test suite added (emoji, CJK, combining marks, mixed strings)
-- Commit: `b641fd3e6`
-- Ready for merge (no conflicts with concurrent `FormatDuration` refactoring)

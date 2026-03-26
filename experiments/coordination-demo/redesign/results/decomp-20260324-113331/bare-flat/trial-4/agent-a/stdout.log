@@ -1,1 +1,0 @@
-**Phase: Complete** — Added `FormatBytes` function to pkg/display with binary unit formatting and comprehensive test suite covering zero, boundaries, decimals, negatives, and large values. All 41 tests passing. ✓

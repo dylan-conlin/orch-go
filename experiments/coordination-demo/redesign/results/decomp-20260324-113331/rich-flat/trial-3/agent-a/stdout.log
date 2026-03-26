@@ -1,7 +1,0 @@
-✅ **Phase: Complete** — Completion status reported to beads (orch-go-i77wx).
-
-The `FormatBytes` function is implemented, tested, and committed. All requirements met:
-- Function handles binary units with proper decimal formatting
-- 26 test cases covering all edge cases
-- No regressions in existing tests
-- Clean commit with summary

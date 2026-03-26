@@ -1,2 +1,0 @@
-9726a278d feat: add FormatRate to pkg/display for transfer rate formatting
-04e61ad2a setup: sectioned display files

@@ -1,8 +1,0 @@
-✅ **Completion reported to beads.**
-
-Your refactoring task is complete:
-- ✅ Commit: `71d36c15e` with Unicode-aware Truncate/TruncateWithPadding
-- ✅ All tests passing (6/6 test functions)
-- ✅ 15 new Unicode test cases added
-- ✅ No conflicts with Agent-A's FormatDuration work
-- ✅ Phase completion reported to issue orch-go-47kes

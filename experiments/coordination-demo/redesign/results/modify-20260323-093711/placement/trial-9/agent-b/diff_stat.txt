@@ -1,3 +1,0 @@
- pkg/display/display.go      | 12 +++++++-----
- pkg/display/display_test.go | 15 +++++++++++++--
- 2 files changed, 20 insertions(+), 7 deletions(-)

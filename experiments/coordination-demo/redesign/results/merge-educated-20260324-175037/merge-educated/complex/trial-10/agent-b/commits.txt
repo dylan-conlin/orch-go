@@ -1,1 +1,0 @@
-113b6999e feat: add FormatTable to pkg/display — ANSI-aware table formatting

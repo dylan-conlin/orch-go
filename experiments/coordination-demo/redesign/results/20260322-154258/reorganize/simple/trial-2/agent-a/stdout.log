@@ -1,5 +1,0 @@
-Completion status reported to beads. The task is complete:
-
-- **FormatBytes function** added to `pkg/display/display.go` with full test coverage
-- **Tests passing** with coverage for edge cases, boundaries, and negative values
-- **Changes committed** to branch `exp/decay-reorganize-a-t2-3585`

@@ -1,1 +1,0 @@
-4993d7158 feat: add FormatRate to pkg/display — format transfer rates with binary units

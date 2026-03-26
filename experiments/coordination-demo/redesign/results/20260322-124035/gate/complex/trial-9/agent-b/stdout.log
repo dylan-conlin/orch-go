@@ -1,3 +1,0 @@
-**Phase: Complete** ✅
-
-Completion reported to beads. The `FormatTable` function is fully implemented, tested, and committed with proper conflict coordination for the parallel agent working on `VisualWidth`/`PadToWidth`.

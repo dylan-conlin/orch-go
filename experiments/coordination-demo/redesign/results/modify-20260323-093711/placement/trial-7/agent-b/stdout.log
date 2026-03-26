@@ -1,3 +1,0 @@
-**Phase: Complete** ✓
-
-Refactored `Truncate` and `TruncateWithPadding` functions to be Unicode-aware using rune slices. Added comprehensive test cases for emoji, CJK, and mixed ASCII/Unicode strings. All tests passing.

@@ -1,1 +1,0 @@
-0f2d19cfb feat: add FormatRate transfer rate formatter to pkg/display

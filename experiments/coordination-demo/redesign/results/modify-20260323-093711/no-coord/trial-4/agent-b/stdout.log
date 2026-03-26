@@ -1,7 +1,0 @@
-✅ **Completion reported to beads (orch-go-47kes)**
-
-The refactoring task is complete:
-- `Truncate` and `TruncateWithPadding` now handle Unicode correctly
-- All existing ASCII test cases pass
-- Comprehensive Unicode test coverage added (emoji, CJK, accents, mixed characters)
-- Code committed to git branch `exp/mod-no-coord-b-t4-74834`

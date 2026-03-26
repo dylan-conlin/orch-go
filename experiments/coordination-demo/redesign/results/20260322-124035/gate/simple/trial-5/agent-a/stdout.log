@@ -1,3 +1,0 @@
-Done! Completion reported to beads. 
-
-The `FormatBytes` function is fully implemented, tested, and committed. All tests pass, and the code is positioned to merge cleanly with the concurrent `FormatRate` implementation.

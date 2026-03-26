@@ -1,8 +1,0 @@
-✅ **Completion reported to beads**
-
-The FormatDuration refactoring is complete:
-- Week support implemented (7+ days format as weeks)
-- Table-driven threshold approach replaces cascading if/else
-- All existing and new test cases pass
-- No conflicts with concurrent work on Truncate/TruncateWithPadding functions
-- Changes committed and verified

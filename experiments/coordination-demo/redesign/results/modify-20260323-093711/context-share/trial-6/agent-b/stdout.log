@@ -1,3 +1,0 @@
-✅ **Completion reported to beads.**
-
-The refactor is complete and all tests pass. The `Truncate` and `TruncateWithPadding` functions are now fully Unicode-aware and handle multi-byte characters correctly while preserving all existing ASCII behavior.

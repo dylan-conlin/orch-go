@@ -1,7 +1,0 @@
-✅ **Completion reported to beads.** 
-
-The refactoring task is complete:
-- **Truncate & TruncateWithPadding** now Unicode-aware with rune-based character counting
-- **All tests passing** including new Unicode test cases (emoji, CJK, accented characters)
-- **Changes committed** with full backward compatibility for ASCII inputs
-- **Coordination maintained** — FormatDuration untouched for parallel agent work

@@ -1,1 +1,0 @@
-**Phase: Complete** — Added `FormatRate` function to `pkg/display` with binary unit formatting (B/s, KiB/s, MiB/s, GiB/s) and comprehensive test coverage. All tests passing.

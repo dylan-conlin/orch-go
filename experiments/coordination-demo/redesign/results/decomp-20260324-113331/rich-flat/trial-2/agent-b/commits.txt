@@ -1,1 +1,0 @@
-06015aca6 feat: add FormatRate to pkg/display

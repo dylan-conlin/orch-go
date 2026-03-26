@@ -1,2 +1,0 @@
-212e9b9ee feat: add FormatRate utility for transfer rate formatting
-6b4644400 setup: sectioned display files

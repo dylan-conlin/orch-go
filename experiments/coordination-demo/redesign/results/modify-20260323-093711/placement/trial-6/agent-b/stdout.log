@@ -1,3 +1,0 @@
-**Phase: Complete** ✅
-
-Refactored `Truncate` and `TruncateWithPadding` functions to be Unicode-aware using rune-based indexing instead of byte slicing. All 12 tests pass (6 new Unicode test cases covering emoji, CJK, and diacriticals) with zero regressions on existing ASCII behavior. Changes committed as dc5cc6053.

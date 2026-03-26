@@ -1,3 +1,0 @@
-**Phase: Complete** — Added `FormatBytes(int64)` size formatting utility to `pkg/display` with binary unit conversion (B, KiB, MiB, GiB, TiB) and comprehensive test coverage. All tests passing and committed.
-
-Completion reported to beads ✓

@@ -1,3 +1,0 @@
-✅ **Phase: Complete** — Refactored FormatDuration with week support using threshold-based approach; all 20 test cases pass with no regressions.
-
-Completion status has been reported via beads. The refactoring is ready for merge.

@@ -1,1 +1,0 @@
-22f9702c8 feat: add FormatTable to pkg/display — aligned text tables with ANSI support

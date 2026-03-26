@@ -1,1 +1,0 @@
-✅ **Completion reported to beads.** Phase: Complete - Added FormatBytes size formatting utility to pkg/display with binary unit conversion (B, KiB, MiB, GiB, TiB) and comprehensive test coverage. All tests passing.

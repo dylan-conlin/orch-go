@@ -1,1 +1,0 @@
-✓ **Completion reported to beads.** The implementation is ready for merge with the other agent's FormatTable work. Both will merge cleanly since they insert at non-overlapping regions in the file.

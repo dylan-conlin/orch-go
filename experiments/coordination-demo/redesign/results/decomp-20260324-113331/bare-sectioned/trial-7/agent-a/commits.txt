@@ -1,2 +1,0 @@
-c2482b25d feat: add FormatBytes function to pkg/display
-205b2aee4 setup: sectioned display files

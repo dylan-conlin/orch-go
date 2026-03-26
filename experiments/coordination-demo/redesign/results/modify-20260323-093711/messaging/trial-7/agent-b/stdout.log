@@ -1,7 +1,0 @@
-**Status reported.** ✅
-
-The Unicode-aware refactoring of `Truncate` and `TruncateWithPadding` is complete:
-- Functions now handle multi-byte UTF-8 characters correctly using `[]rune`
-- All tests pass with no regressions
-- Changes cleanly committed and coordinated with the parallel FormatDuration refactoring
-- Completion reported to beads (orch-go-47kes)

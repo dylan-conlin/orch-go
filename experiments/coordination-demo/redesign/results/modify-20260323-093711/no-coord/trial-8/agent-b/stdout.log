@@ -1,7 +1,0 @@
-✅ **Completion reported to beads.** 
-
-The refactoring task is complete:
-- `Truncate` and `TruncateWithPadding` are now Unicode-aware with rune-based indexing
-- 7 new test cases added for emoji, CJK, and accented characters
-- All 6 tests pass with ASCII behavior preserved
-- Changes committed to `exp/mod-no-coord-b-t8-74834`

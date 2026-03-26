@@ -1,3 +1,0 @@
-**Phase: Complete** ✓
-
-FormatRate function added to `pkg/display` with full test coverage. All 14 tests passing, changes committed to `exp/decay-reorganize-b-t1-3585` branch.

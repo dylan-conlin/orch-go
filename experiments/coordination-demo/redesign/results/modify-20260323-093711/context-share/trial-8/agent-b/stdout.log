@@ -1,1 +1,0 @@
-**Phase: Complete** — Refactored `Truncate` and `TruncateWithPadding` to be Unicode-aware using `[]rune` for character counting. All tests pass with comprehensive Unicode test coverage for emoji, CJK characters, and mixed strings.

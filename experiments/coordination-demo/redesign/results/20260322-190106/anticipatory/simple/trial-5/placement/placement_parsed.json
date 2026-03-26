@@ -1,7 +1,0 @@
-{
-  "agent_a_code_after": "FormatDurationShort",
-  "agent_a_test_after": "TestFormatDurationShort",
-  "agent_b_code_after": "FormatDurationShort",
-  "agent_b_test_after": "TestFormatDurationShort",
-  "placements_different": false
-}

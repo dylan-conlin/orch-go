@@ -1,2 +1,0 @@
-77	0	pkg/display/display.go
-109	0	pkg/display/display_test.go
