@@ -1,0 +1,31 @@
+commands:
+  - command: "pwd"
+    expectation: "Returns /Users/dylanconlin/Documents/personal/orch-go"
+    result: "pass"
+  - command: "kb create investigation design-daemon-route-tasks-gpt --orphan"
+    expectation: "Creates the investigation artifact used for this design session"
+    result: "pass"
+  - command: "kb context \"daemon model routing\""
+    expectation: "Surfaces prior constraints, decisions, guides, and models relevant to daemon model routing"
+    result: "pass"
+  - command: "orch plan create daemon-gpt54-routing"
+    expectation: "Creates a plan artifact for multi-phase implementation handoff"
+    result: "pass"
+
+artifacts:
+  - path: ".kb/investigations/2026-03-26-inv-design-daemon-route-tasks-gpt.md"
+    expectation: "Contains the design question, findings, synthesis, and implementation recommendations"
+  - path: ".kb/plans/2026-03-26-daemon-gpt54-routing.md"
+    expectation: "Contains phased implementation plan and decision points"
+  - path: ".orch/workspace/og-arch-design-daemon-route-26mar-c0b3/SYNTHESIS.md"
+    expectation: "Contains plain-language session synthesis and verification contract"
+  - path: ".orch/workspace/og-arch-design-daemon-route-26mar-c0b3/BRIEF.md"
+    expectation: "Contains Dylan-facing frame, resolution, and tension"
+
+manual_verification_steps:
+  - "Review the investigation recommendation matrix and confirm it matches the current GPT-5.4 benchmark boundary: bounded feature-impl overflow only, Opus default elsewhere."
+  - "Review the plan and confirm all follow-up issues exist: orch-go-ckddz, orch-go-r7avo, orch-go-kdyh6, orch-go-xi8tc."
+  - "Confirm the integration issue orch-go-xi8tc depends on the three component implementation issues."
+
+notes:
+  - "Design-only session: no Go source code changed, so no package test suite was required. Verification is artifact- and evidence-based."
