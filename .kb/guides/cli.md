@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for the orch-go CLI. Read this before debugging CLI issues or adding new commands.
 
-**Last verified:** 2026-03-25 (artifact sync: --headless complete flag, daemon subcommands, spawn/complete flags)
+**Last verified:** 2026-03-26 (artifact sync: bench command, kb subcommands, spawn/complete flags)
 
 **Supersedes:** 16 CLI investigations from Dec 19 - Jan 4 (see History section)
 
@@ -110,6 +110,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 
 | Command | Purpose |
 |---------|---------|
+| `orch bench` | Benchmark execution engine (spawn/wait/eval/rework scenarios) |
 | `orch hotspot` | Analyze git history for areas needing architect attention |
 | `orch dupdetect` | Scan Go source for structurally similar functions (AST) |
 | `orch entropy` | Aggregate signals from git, events, bloat, duplication |

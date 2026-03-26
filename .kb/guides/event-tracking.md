@@ -2,7 +2,7 @@
 
 **Purpose:** Reference for all event types logged to `~/.orch/events.jsonl` for stats aggregation.
 
-**Last verified:** 2026-03-25
+**Last verified:** 2026-03-26
 
 ---
 
@@ -88,6 +88,11 @@
 | `audit.passed` | daemon audit | Daemon quality audit passed |
 | `audit.failed` | daemon audit | Daemon quality audit failed/rejected |
 | `spawn.bypass` | `orch spawn` | Direct (non-daemon) spawn tracked for human vs daemon rate |
+| `spawn.routing_impact` | spawn pipeline | Model routing decision impact tracking |
+| `bench.complete` | `orch bench` | Benchmark suite completed (name, passed, failed, pass_rate, verdict) |
+| `loop.iteration` | loop controller | Individual iteration of a `--loop` spawn cycle |
+| `loop.complete` | loop controller | Final outcome of a `--loop` spawn cycle |
+| `session.empty_execution_retry` | review/verify | Session retried after empty-execution classification |
 
 **Enrichment fields:** `verification.failed`, `agent.completed`, `verification.bypassed`, and `verification.auto_skipped` events include a `verification_level` field (V0-V3) tracking what "verified" means at completion.
 

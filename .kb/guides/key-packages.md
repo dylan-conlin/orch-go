@@ -2,7 +2,7 @@
 
 **Purpose:** Descriptions of key orch-go packages — their responsibilities, main types, and APIs.
 
-**Last verified:** 2026-03-25
+**Last verified:** 2026-03-26
 
 ---
 
@@ -332,6 +332,23 @@
 - Node types: investigations, guides, models, decisions
 - Relationship extraction from Prior-Work tables and Synthesized-From headers
 - Powers `orch tree` visualization
+
+## pkg/bench/ (Benchmark Engine)
+
+- Benchmark execution engine composing spawn/wait/eval/rework primitives
+- Scenario configuration, model resolution, result aggregation
+- Report generation with pass/fail/rework metrics
+
+## pkg/execution/ (Backend Abstraction)
+
+- Backend-agnostic types and interfaces for session management
+- Decouples orchestration from specific backends (OpenCode, OpenClaw, Claude CLI)
+- `SessionClient` interface, `OpenCodeAdapter` implementation
+
+## pkg/openclaw/ (OpenClaw Client)
+
+- WebSocket JSON-RPC client for the OpenClaw gateway
+- Agent dispatch, completion polling, session management, health checks
 
 ## pkg/certs/ (TLS Certificates)
 
