@@ -76,6 +76,13 @@
       "sources": {
         "worker-base": 5032
       }
+    },
+    {
+      "timestamp": "2026-03-26T15:40:36.248102-07:00",
+      "total_tokens": 5172,
+      "sources": {
+        "worker-base": 5172
+      }
     }
   ]
 }

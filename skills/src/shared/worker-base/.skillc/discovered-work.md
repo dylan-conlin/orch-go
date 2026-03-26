@@ -24,18 +24,24 @@ Before completing your session:
 
 ### Creating Issues
 
+When creating follow-up issues, include 1-2 sentences of context with `-d` so the next agent knows what you saw and why it matters. Title-only issues create blind agents.
+
 ```bash
 # For bugs found
-bd create "description of bug" --type bug -l triage:review
+bd create "description of bug" --type bug -l triage:review \
+  -d "What you observed, where it showed up, and the concrete reason it needs follow-up."
 
 # For tech debt or refactoring needs
-bd create "description" --type task -l triage:review
+bd create "description" --type task -l triage:review \
+  -d "What is out of scope now, plus the context another agent would need to resume cleanly."
 
 # For feature ideas or enhancements
-bd create "description" --type feature -l triage:review
+bd create "description" --type feature -l triage:review \
+  -d "What opportunity you noticed, what triggered it, and any constraint already visible."
 
 # For strategic questions needing decision
-bd create "description" --type question -l triage:review
+bd create "description" --type question -l triage:review \
+  -d "What decision is unclear, what evidence or tension surfaced it, and why it blocks clean progress."
 ```
 
 ### Reporting
@@ -106,4 +112,3 @@ CROSS_REPO_ISSUE:
 ```
 
 ---
-
