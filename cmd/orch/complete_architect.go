@@ -4,12 +4,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -47,9 +51,14 @@ func maybeAutoCreateImplementationIssue(skillName, beadsID, workspacePath string
 		return beadsID // Return non-empty to signal issue exists
 	}
 
+	// Gather knowledge enrichment (best-effort, 3s timeout)
+	projectDir, _ := os.Getwd()
+	kbContext := gatherArchitectKBContext(synthesis, projectDir)
+	targetFiles := extractTargetFiles(synthesis)
+
 	// Build the implementation issue
 	title := buildImplementationTitle(synthesis, beadsID)
-	description := buildImplementationDescription(synthesis, beadsID)
+	description := buildImplementationDescription(synthesis, beadsID, kbContext, targetFiles)
 	skill := inferImplementationSkill(synthesis)
 
 	// Labels: triage:ready for daemon pickup + skill hint
@@ -126,8 +135,8 @@ func buildImplementationTitle(synthesis *verify.Synthesis, beadsID string) strin
 }
 
 // buildImplementationDescription creates a detailed description for the implementation issue,
-// including context from the architect's synthesis.
-func buildImplementationDescription(synthesis *verify.Synthesis, beadsID string) string {
+// including context from the architect's synthesis, relevant knowledge, and target files.
+func buildImplementationDescription(synthesis *verify.Synthesis, beadsID, kbContext string, targetFiles []string) string {
 	var b strings.Builder
 
 	b.WriteString(fmt.Sprintf("Auto-created from architect review %s.\n\n", beadsID))
@@ -150,10 +159,88 @@ func buildImplementationDescription(synthesis *verify.Synthesis, beadsID string)
 	if synthesis.Next != "" {
 		b.WriteString("## Architect Next Section\n")
 		b.WriteString(synthesis.Next)
+		b.WriteString("\n\n")
+	}
+
+	if len(targetFiles) > 0 {
+		b.WriteString("## Target Files\n")
+		for _, f := range targetFiles {
+			b.WriteString("- `")
+			b.WriteString(f)
+			b.WriteString("`\n")
+		}
+		b.WriteString("\n")
+	}
+
+	if kbContext != "" {
+		b.WriteString("## Relevant Knowledge\n")
+		b.WriteString(kbContext)
 		b.WriteString("\n")
 	}
 
 	return b.String()
+}
+
+// regexFilePath matches Go/project file paths like pkg/foo/bar.go, cmd/orch/thing.go, web/src/file.svelte
+var regexFilePath = regexp.MustCompile(`(?:^|[\s,:(])([a-zA-Z][\w\-./]*\.(?:go|ts|tsx|js|svelte|yaml|md|sql|sh))`)
+
+// extractTargetFiles pulls file paths from the synthesis Delta and NextActions fields.
+func extractTargetFiles(synthesis *verify.Synthesis) []string {
+	seen := make(map[string]bool)
+	var files []string
+
+	addFiles := func(text string) {
+		matches := regexFilePath.FindAllStringSubmatch(text, -1)
+		for _, m := range matches {
+			path := m[1]
+			if !seen[path] {
+				seen[path] = true
+				files = append(files, path)
+			}
+		}
+	}
+
+	addFiles(synthesis.Delta)
+	for _, action := range synthesis.NextActions {
+		addFiles(action)
+	}
+	addFiles(synthesis.Next)
+
+	if len(files) == 0 {
+		return nil
+	}
+	return files
+}
+
+// gatherArchitectKBContext runs kb context with keywords extracted from the architect's
+// synthesis to provide environmental knowledge (constraints, decisions) for the implementing agent.
+// Uses a 3s timeout and degrades gracefully on failure.
+func gatherArchitectKBContext(synthesis *verify.Synthesis, projectDir string) string {
+	text := synthesis.TLDR + " " + strings.Join(synthesis.NextActions, " ")
+	keywords := spawn.ExtractKeywords(text, 5)
+	if keywords == "" {
+		return ""
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "kb", "context", keywords)
+	if projectDir != "" {
+		cmd.Dir = projectDir
+	}
+
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	result := strings.TrimSpace(string(output))
+	if result == "" || strings.Contains(result, "No results found") {
+		return ""
+	}
+
+	return result
 }
 
 // cleanActionItem strips bullet/numbered prefixes from an action item string.

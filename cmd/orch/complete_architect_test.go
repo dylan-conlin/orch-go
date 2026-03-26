@@ -186,7 +186,7 @@ func TestBuildImplementationDescription(t *testing.T) {
 	}
 	beadsID := "orch-go-abc1"
 
-	desc := buildImplementationDescription(synthesis, beadsID)
+	desc := buildImplementationDescription(synthesis, beadsID, "", nil)
 
 	// Should contain the architect reference
 	if !containsStr(desc, "orch-go-abc1") {
@@ -199,6 +199,133 @@ func TestBuildImplementationDescription(t *testing.T) {
 	// Should contain next actions
 	if !containsStr(desc, "Redis client") {
 		t.Error("description should contain next actions")
+	}
+}
+
+func TestBuildImplementationDescriptionWithKBContext(t *testing.T) {
+	synthesis := &verify.Synthesis{
+		TLDR: "Designed enrichment for architect issues",
+		NextActions: []string{
+			"- Modify buildImplementationDescription in complete_architect.go",
+			"- Add kb context extraction",
+		},
+	}
+	beadsID := "orch-go-test1"
+	kbContext := "- [decision] No local agent state (2026-01-15)\n- [constraint] Accretion boundaries >1500 lines"
+
+	desc := buildImplementationDescription(synthesis, beadsID, kbContext, nil)
+
+	if !containsStr(desc, "## Relevant Knowledge") {
+		t.Error("description should contain Relevant Knowledge section when kbContext is provided")
+	}
+	if !containsStr(desc, "No local agent state") {
+		t.Error("description should include kb context content")
+	}
+	if !containsStr(desc, "Accretion boundaries") {
+		t.Error("description should include all kb context entries")
+	}
+}
+
+func TestBuildImplementationDescriptionWithTargetFiles(t *testing.T) {
+	synthesis := &verify.Synthesis{
+		TLDR: "Fix spawn timeout",
+		NextActions: []string{
+			"- Update timeout in pkg/spawn/kbcontext.go",
+		},
+	}
+	beadsID := "orch-go-test2"
+	targetFiles := []string{"pkg/spawn/kbcontext.go", "cmd/orch/complete_architect.go"}
+
+	desc := buildImplementationDescription(synthesis, beadsID, "", targetFiles)
+
+	if !containsStr(desc, "## Target Files") {
+		t.Error("description should contain Target Files section when files are provided")
+	}
+	if !containsStr(desc, "pkg/spawn/kbcontext.go") {
+		t.Error("description should list target files")
+	}
+	if !containsStr(desc, "cmd/orch/complete_architect.go") {
+		t.Error("description should list all target files")
+	}
+}
+
+func TestBuildImplementationDescriptionEmptyEnrichment(t *testing.T) {
+	synthesis := &verify.Synthesis{
+		TLDR: "Simple change",
+	}
+	beadsID := "orch-go-test3"
+
+	desc := buildImplementationDescription(synthesis, beadsID, "", nil)
+
+	// Should NOT contain enrichment sections when empty
+	if containsStr(desc, "## Relevant Knowledge") {
+		t.Error("description should not contain Relevant Knowledge when kbContext is empty")
+	}
+	if containsStr(desc, "## Target Files") {
+		t.Error("description should not contain Target Files when no files provided")
+	}
+}
+
+func TestExtractTargetFiles(t *testing.T) {
+	tests := []struct {
+		name     string
+		synth    *verify.Synthesis
+		expected []string
+	}{
+		{
+			name: "extracts from NextActions",
+			synth: &verify.Synthesis{
+				NextActions: []string{
+					"- Modify buildImplementationDescription in cmd/orch/complete_architect.go",
+					"- Update pkg/spawn/kbcontext.go timeout",
+				},
+			},
+			expected: []string{"cmd/orch/complete_architect.go", "pkg/spawn/kbcontext.go"},
+		},
+		{
+			name: "extracts from Delta",
+			synth: &verify.Synthesis{
+				Delta: "Modified: cmd/orch/work_cmd.go, pkg/verify/synthesis_parser.go",
+			},
+			expected: []string{"cmd/orch/work_cmd.go", "pkg/verify/synthesis_parser.go"},
+		},
+		{
+			name: "deduplicates across fields",
+			synth: &verify.Synthesis{
+				Delta:       "Modified: pkg/spawn/kbcontext.go",
+				NextActions: []string{"- Fix timeout in pkg/spawn/kbcontext.go"},
+			},
+			expected: []string{"pkg/spawn/kbcontext.go"},
+		},
+		{
+			name: "empty synthesis returns nil",
+			synth: &verify.Synthesis{
+				TLDR: "A change with no file references",
+			},
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractTargetFiles(tt.synth)
+			if len(result) != len(tt.expected) {
+				t.Errorf("extractTargetFiles() returned %d files, want %d: got %v", len(result), len(tt.expected), result)
+				return
+			}
+			for _, exp := range tt.expected {
+				found := false
+				for _, r := range result {
+					if r == exp {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("extractTargetFiles() missing expected file %q, got %v", exp, result)
+				}
+			}
+		})
 	}
 }
 
