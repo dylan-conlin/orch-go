@@ -2,8 +2,11 @@
 title: "OpenClaw migration — from Claude Code lock-in to multi-model execution"
 status: open
 created: 2026-03-24
-updated: 2026-03-24
+updated: 2026-03-26
 resolved_to: ""
+active_work:
+  - "orch-go-8l4h9"
+  - "orch-go-h8tcb"
 ---
 
 # OpenClaw migration — from Claude Code lock-in to multi-model execution
@@ -53,3 +56,26 @@ Frontend replacement left open — if OpenClaw's UI matures or a better coding T
 ### What this means for orch-go
 
 orch-go's value is the methodology layer (skills, coordination primitives, knowledge system, probes, beads). The ~30K lines of execution plumbing are being replaced by OpenClaw. The methodology is fully portable. The plumbing was scaffolding.
+
+## 2026-03-26
+
+We clarified the decision boundary: the lock-in problem is not simply using Claude Code, but coupling worker execution to Anthropic's subscription-bound path. The current recommendation is to keep Claude Code as the orchestrator frontend for now, stop treating OpenCode as the strategic destination, and evaluate OpenClaw as the likely worker execution substrate.
+
+Today's concrete next steps:
+- orch-go-1dhv8 benchmarks worker reliability across Claude, Codex/GPT-5.4, and a fallback path on real orch-go tasks
+- orch-go-y4k6w designs the OpenClaw worker-backend migration while preserving Claude Code as frontend
+- orch-go-btd1g resolves the resulting long-term worker-routing policy
+
+This keeps the methodology/frontend/backend layers distinct so we do not rewrite the system on vibes or keep maintenance-heavy execution plumbing by inertia.
+
+Operational update: Dylan canceled the second Claude Max subscription and subscribed to ChatGPT Pro. The system is no longer provisioned around dual-Claude capacity; it is now provisioned for one Anthropic subscription path plus one OpenAI subscription path.
+
+Implication: the model-routing and worker-backend questions are now more urgent and less hypothetical. Benchmarking Codex/GPT worker reliability is no longer speculative R&D; it is validating an already-funded execution path.
+
+Interim routing policy resolved from the completed benchmark and migration design work: Claude Code/Opus remains the default worker path because it is the only empirically validated route. GPT-5.4/OpenAI stays manual-only until it completes a small real-task benchmark. OpenClaw remains the execution-direction decision, but OpenCode stays temporarily as a bridge until direct pkg/opencode consumers are migrated away from backend-specific session types.
+
+Empirical update from orch-go-1dhv8: GPT-5.4 via Codex OAuth / ChatGPT Pro completed the first real worker benchmark at 80% first-attempt and 100% with retry on N=5 tasks. Feature-impl is now validated as an overflow route. The Anthropic monoculture is no longer mandatory for implementation work.
+
+Caveat: reasoning-heavy work is still under-tested. Investigation showed one transient silent death in two attempts, and GPT-5.4 showed weaker scope control than Opus on at least one task. Default routing remains Claude/Opus; GPT-5.4 is promoted only to feature-impl overflow pending a focused benchmark on investigation/architect/debugging skills.
+
+Follow-up from untracked DAO-13 verification: current SPAWN_CONTEXT sizes are materially smaller than the historical GPT-5.2-era framing used in DAO-13. This matters because prompt-size inflation is no longer the best explanation for GPT-5.4 viability questions; current routing decisions should weight protocol compliance, silent-death frequency, and scope control more heavily than context-window pressure. A cleanup task has been filed to update the shared DAO-13/model wording so future benchmark work inherits the corrected frame.
