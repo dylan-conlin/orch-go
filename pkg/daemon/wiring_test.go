@@ -236,7 +236,8 @@ func TestDaemonInterfaceFieldsAreWired(t *testing.T) {
 		"AutoCompleter":        "optional: nil means use label-based completion (legacy path)",
 		"CapacityPoll":         "optional: nil uses default implementation via resolveCapacityPollService()",
 		"AuditSelect":          "optional: nil uses default implementation via resolveAuditSelectService()",
-		"uncachedAgents":       "internal: set dynamically by BeginCycle(), not a setup field",
+		"EmptyExecutionClassifier": "optional: nil means skip empty-execution classification in orphan detector (falls back to normal reset)",
+		"uncachedAgents":           "internal: set dynamically by BeginCycle(), not a setup field",
 	}
 
 	// Read NewWithConfig source and daemonSetup source to check for assignments

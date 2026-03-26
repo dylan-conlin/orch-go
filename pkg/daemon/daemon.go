@@ -161,6 +161,15 @@ type Daemon struct {
 
 
 
+	// EmptyExecutionRetryTracker tracks one-shot retry for empty-execution failures.
+	// When an orphaned agent is classified as empty-execution, the tracker ensures
+	// exactly one automatic retry before escalating.
+	EmptyExecutionRetryTracker *EmptyExecutionRetryTracker
+
+	// EmptyExecutionClassifier classifies terminal outcomes for orphaned sessions.
+	// When set, the orphan detector classifies dead sessions and applies retry logic.
+	EmptyExecutionClassifier EmptyExecutionClassifier
+
 	// CompletionDedupTracker prevents re-processing the same Phase: Complete
 	// across poll cycles. Defense-in-depth for when daemon:ready-review label
 	// fails to persist (beads flakiness, label removed externally).

@@ -20,6 +20,12 @@ type OrphanDetectionResult struct {
 	// Orphans lists the beads IDs that were detected as orphaned and reset.
 	Orphans []OrphanedIssue
 
+	// EmptyExecutionRetries lists issues that were retried after empty-execution classification.
+	EmptyExecutionRetries []EmptyExecutionRetryRecord
+
+	// EmptyExecutionEscalations lists issues escalated after repeated empty-execution failures.
+	EmptyExecutionEscalations []EmptyExecutionRetryRecord
+
 	// Error is set if the detection failed.
 	Error error
 
@@ -89,6 +95,8 @@ func (d *Daemon) RunPeriodicOrphanDetection() *OrphanDetectionResult {
 	reset := 0
 	skipped := 0
 	var orphans []OrphanedIssue
+	var emptyRetries []EmptyExecutionRetryRecord
+	var emptyEscalations []EmptyExecutionRetryRecord
 	now := time.Now()
 
 	for _, agent := range agents {
@@ -134,10 +142,56 @@ func (d *Daemon) RunPeriodicOrphanDetection() *OrphanDetectionResult {
 		}
 
 		// No session and no tmux window, AND session checks succeeded (no errors).
-		// This is a confirmed orphan. Reset to open so daemon can respawn it.
+		// This is a confirmed orphan.
 		if d.Config.Verbose {
 			fmt.Printf("  Orphan detected: %s (idle %v, no session/window)\n",
 				agent.BeadsID, idleTime.Round(time.Minute))
+		}
+
+		// Empty-execution classification: if classifier is available, check whether
+		// this orphan died with zero output. First empty-execution gets one automatic
+		// retry; second empty-execution escalates instead of looping.
+		if d.EmptyExecutionClassifier != nil && d.EmptyExecutionRetryTracker != nil {
+			detail, classifyErr := d.EmptyExecutionClassifier.ClassifyLastSession(agent.BeadsID)
+			if classifyErr != nil {
+				// Classification failed — fall through to normal orphan handling
+				if d.Config.Verbose {
+					fmt.Printf("  Empty-execution classification failed for %s: %v (falling back to normal reset)\n",
+						agent.BeadsID, classifyErr)
+				}
+			} else if detail != nil && detail.Outcome.IsEmpty() {
+				if d.EmptyExecutionRetryTracker.HasRetried(agent.BeadsID) {
+					// Second empty-execution — escalate, do not retry
+					if d.Config.Verbose {
+						fmt.Printf("  Empty-execution escalation: %s (already retried once, reason: %s)\n",
+							agent.BeadsID, detail.Reason)
+					}
+					emptyEscalations = append(emptyEscalations, EmptyExecutionRetryRecord{
+						BeadsID: agent.BeadsID,
+						Title:   agent.Title,
+						Attempt: 2,
+						Reason:  detail.Reason,
+						Action:  "escalated",
+					})
+					skipped++
+					continue
+				}
+				// First empty-execution — mark as retried, allow reset to open for respawn
+				d.EmptyExecutionRetryTracker.MarkRetried(agent.BeadsID)
+				if d.Config.Verbose {
+					fmt.Printf("  Empty-execution retry: %s (first attempt, reason: %s)\n",
+						agent.BeadsID, detail.Reason)
+				}
+				emptyRetries = append(emptyRetries, EmptyExecutionRetryRecord{
+					BeadsID: agent.BeadsID,
+					Title:   agent.Title,
+					Attempt: 1,
+					Reason:  detail.Reason,
+					Action:  "retrying",
+				})
+				// Fall through to normal reset-to-open below
+			}
+			// Non-empty outcome (normal-completion, error-termination) → normal orphan handling
 		}
 
 		if err := statusUpdater.UpdateStatus(agent.BeadsID, "open"); err != nil {
@@ -166,10 +220,12 @@ func (d *Daemon) RunPeriodicOrphanDetection() *OrphanDetectionResult {
 	d.Scheduler.MarkRun(TaskOrphanDetection)
 
 	return &OrphanDetectionResult{
-		ResetCount:   reset,
-		SkippedCount: skipped,
-		Orphans:      orphans,
-		Message:      fmt.Sprintf("Orphan detection: %d reset to open, %d skipped", reset, skipped),
+		ResetCount:                reset,
+		SkippedCount:              skipped,
+		Orphans:                   orphans,
+		EmptyExecutionRetries:     emptyRetries,
+		EmptyExecutionEscalations: emptyEscalations,
+		Message:                   fmt.Sprintf("Orphan detection: %d reset to open, %d skipped", reset, skipped),
 	}
 }
 
