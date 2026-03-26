@@ -1,0 +1,78 @@
+---
+# Verification Specification for orch-go-q6ykb
+# Design: Thread-First Home Surface Above Work Graph
+
+type: design
+skill: architect
+issue: orch-go-q6ykb
+
+deliverables:
+  investigation:
+    path: .kb/investigations/2026-03-26-design-thread-first-home-surface.md
+    status: complete
+    sections:
+      - findings (5 findings with evidence)
+      - synthesis (3 key insights)
+      - structured uncertainty
+      - implementation recommendations (4 phases)
+
+  design_forks_navigated:
+    count: 4
+    forks:
+      - name: "Root route strategy"
+        chosen: "Redesign root route in-place"
+        rejected: ["New /threads route with redirect", "Promote /thinking to root"]
+      - name: "Thread data source"
+        chosen: "New thread API endpoints wrapping pkg/thread"
+        rejected: ["Composite endpoint only", "Reuse existing endpoints without thread API"]
+      - name: "Nav hierarchy"
+        chosen: "Reorder to Threads | Briefs | Knowledge | Work | Harness"
+        rejected: ["Keep current order", "Group into Thinking/Operating sections"]
+      - name: "Migration path"
+        chosen: "Staged (Phase 1: thread API + redesigned root; Phase 2: graph viz)"
+        rejected: ["All-at-once rewrite", "Promote /thinking to root then enhance"]
+
+  implementation_sequence:
+    phase_1:
+      - "GET /api/threads endpoint (serve_threads.go)"
+      - "GET /api/threads/{slug} endpoint"
+      - "Thread Svelte store (threads.ts)"
+      - "Redesigned root route (+page.svelte)"
+      - "Nav reorder (+layout.svelte)"
+    phase_2:
+      - "Thread graph visualization"
+      - "Brief-in-thread rendering"
+      - "Thread CRUD in web UI"
+      - "Composite /api/home endpoint"
+
+  acceptance_criteria:
+    - "Opening localhost:5188 shows active threads above operational data"
+    - "Nav reads Threads | Briefs | Knowledge | Work | Harness"
+    - "Thread cards show title, status, latest entry preview, entry count"
+    - "Clicking thread card expands to show recent entries"
+    - "Unread briefs count visible on home surface"
+    - "Active agent count visible but subordinate (below fold)"
+    - "All existing execution data still accessible via Work route"
+
+verification_commands:
+  - description: "Investigation file exists and is complete"
+    command: "head -20 .kb/investigations/2026-03-26-design-thread-first-home-surface.md"
+    expect: "Status: Complete"
+
+  - description: "SYNTHESIS.md exists"
+    command: "test -f .orch/workspace/og-arch-design-thread-first-26mar-3809/SYNTHESIS.md && echo exists"
+    expect: "exists"
+
+  - description: "BRIEF.md exists"
+    command: "test -f .orch/workspace/og-arch-design-thread-first-26mar-3809/BRIEF.md && echo exists"
+    expect: "exists"
+
+manual_verification:
+  - "Review investigation recommendations against product decision"
+  - "Confirm implementation sequence is feasible with current codebase"
+
+migration_status:
+  designed: "Thread-first home surface — root route, nav hierarchy, thread API endpoints"
+  implemented: "none"
+  deployed: "none"
+  remaining: "4 implementation tasks (thread API, thread store, root route redesign, nav reorder)"
