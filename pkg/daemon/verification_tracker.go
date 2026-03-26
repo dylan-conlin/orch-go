@@ -135,6 +135,46 @@ func (vt *VerificationTracker) SeedFromBacklog(beadsIDs []string) {
 	}
 }
 
+// ResyncWithBacklog re-validates the in-memory tracker against the current
+// set of actually-unverified beads IDs. Items that were in seenIDs but are
+// no longer in the backlog (e.g., issues closed via headless completion or
+// bd close) are removed. If the updated count drops below the threshold,
+// the tracker automatically unpauses.
+//
+// Returns true if the tracker was paused and is now unpaused due to resync.
+func (vt *VerificationTracker) ResyncWithBacklog(currentBacklogIDs []string) bool {
+	vt.mu.Lock()
+	defer vt.mu.Unlock()
+
+	if vt.threshold == 0 {
+		return false
+	}
+
+	wasPaused := vt.isPaused
+
+	// Build set of currently-unverified IDs
+	current := make(map[string]bool, len(currentBacklogIDs))
+	for _, id := range currentBacklogIDs {
+		current[id] = true
+	}
+
+	// Remove stale entries from seenIDs
+	for id := range vt.seenIDs {
+		if !current[id] {
+			delete(vt.seenIDs, id)
+		}
+	}
+
+	vt.completionsSinceVerification = len(vt.seenIDs)
+
+	// Unpause if we dropped below threshold
+	if vt.completionsSinceVerification < vt.threshold {
+		vt.isPaused = false
+	}
+
+	return wasPaused && !vt.isPaused
+}
+
 // Resume manually unpauses the daemon without resetting the counter.
 // Dylan can resume after reviewing completed work even if counter hasn't reset.
 // This allows for "I've reviewed, continue" without requiring manual orch complete.

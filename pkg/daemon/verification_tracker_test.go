@@ -730,6 +730,119 @@ func TestVerificationTracker_DuplicateReturnsPausedState(t *testing.T) {
 	}
 }
 
+// TestVerificationTracker_ResyncWithBacklog verifies that the resync mechanism
+// correctly removes stale entries and unpauses when the backlog drops below threshold.
+// This is the fix for the daemon verification pause disagreeing with orch review:
+// the tracker was seeded at startup but never re-checked when issues were closed
+// through non-interactive paths (headless completion, bd close).
+func TestVerificationTracker_ResyncWithBacklog(t *testing.T) {
+	t.Run("resync_unpauses_when_backlog_drops", func(t *testing.T) {
+		vt := NewVerificationTracker(3)
+
+		// Seed with 3 items → paused
+		vt.SeedFromBacklog([]string{"a", "b", "c"})
+		if !vt.IsPaused() {
+			t.Fatal("Expected paused after seeding 3 items with threshold 3")
+		}
+
+		// Resync: only 1 item remains in backlog
+		unpaused := vt.ResyncWithBacklog([]string{"a"})
+		if !unpaused {
+			t.Error("Expected ResyncWithBacklog to return true (was paused, now unpaused)")
+		}
+		if vt.IsPaused() {
+			t.Error("Expected unpaused after resync dropped count below threshold")
+		}
+		status := vt.Status()
+		if status.CompletionsSinceVerification != 1 {
+			t.Errorf("Expected 1 completion after resync, got %d", status.CompletionsSinceVerification)
+		}
+	})
+
+	t.Run("resync_stays_paused_when_backlog_at_threshold", func(t *testing.T) {
+		vt := NewVerificationTracker(3)
+
+		// Seed with 4 items → paused
+		vt.SeedFromBacklog([]string{"a", "b", "c", "d"})
+		if !vt.IsPaused() {
+			t.Fatal("Expected paused")
+		}
+
+		// Resync: 3 items remain (still at threshold)
+		unpaused := vt.ResyncWithBacklog([]string{"a", "b", "c"})
+		if unpaused {
+			t.Error("Expected ResyncWithBacklog to return false (still at threshold)")
+		}
+		if !vt.IsPaused() {
+			t.Error("Expected still paused at threshold")
+		}
+	})
+
+	t.Run("resync_empty_backlog_unpauses", func(t *testing.T) {
+		vt := NewVerificationTracker(3)
+
+		vt.SeedFromBacklog([]string{"a", "b", "c"})
+		if !vt.IsPaused() {
+			t.Fatal("Expected paused")
+		}
+
+		// All issues closed
+		unpaused := vt.ResyncWithBacklog([]string{})
+		if !unpaused {
+			t.Error("Expected unpaused with empty backlog")
+		}
+		if vt.IsPaused() {
+			t.Error("Expected unpaused")
+		}
+		status := vt.Status()
+		if status.CompletionsSinceVerification != 0 {
+			t.Errorf("Expected 0 completions after empty resync, got %d", status.CompletionsSinceVerification)
+		}
+	})
+
+	t.Run("resync_noop_when_not_paused", func(t *testing.T) {
+		vt := NewVerificationTracker(3)
+
+		vt.RecordCompletion("a")
+		if vt.IsPaused() {
+			t.Fatal("Should not be paused yet")
+		}
+
+		// Resync with same items — should return false (wasn't paused)
+		unpaused := vt.ResyncWithBacklog([]string{"a"})
+		if unpaused {
+			t.Error("Expected false — was not paused before resync")
+		}
+	})
+
+	t.Run("resync_adds_new_backlog_items_to_seen", func(t *testing.T) {
+		vt := NewVerificationTracker(5)
+
+		// Start with 2 items
+		vt.SeedFromBacklog([]string{"a", "b"})
+
+		// Resync with 3 items (1 new)
+		vt.ResyncWithBacklog([]string{"a", "b", "c"})
+
+		// The new item "c" should NOT be added to seenIDs — resync only
+		// prunes stale entries, it doesn't add new ones. New completions
+		// come through RecordCompletion().
+		status := vt.Status()
+		if status.CompletionsSinceVerification != 2 {
+			t.Errorf("Expected 2 (resync should only prune, not add), got %d", status.CompletionsSinceVerification)
+		}
+	})
+
+	t.Run("resync_disabled_tracker", func(t *testing.T) {
+		vt := NewVerificationTracker(0) // disabled
+
+		unpaused := vt.ResyncWithBacklog([]string{"a", "b"})
+		if unpaused {
+			t.Error("Disabled tracker should return false")
+		}
+	})
+}
+
 // Structural test: WriteVerificationSignal must not be called from serve_daemon_actions.go.
 // Dashboard API endpoints are used by both humans and automated orchestrator sessions.
 // Calling WriteVerificationSignal from those paths resets the daemon's

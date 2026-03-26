@@ -209,6 +209,7 @@ The daemon implements a **two-phase design**: it triages (automated gates) but d
 - **Dual signal mechanism:**
   - `~/.orch/daemon-verification.signal` — written by interactive `orch complete` only (NOT headless, NOT orchestrator sessions, NOT dashboard API), triggers `RecordHumanVerification()` (resets counter)
   - `~/.orch/daemon-resume.signal` — written by `orch daemon resume`, triggers manual unpause
+- **Periodic resync (fixed 2026-03-26, orch-go-zem67):** When paused, `checkVerificationPause()` calls `ResyncWithBacklog()` with fresh `ListUnverifiedWork()` results. This auto-unpauses when issues close through non-interactive paths (headless, bd close) that don't write verification signals. Without this, the in-memory counter goes stale and the daemon stays paused with nothing to review.
 - **Caller discipline (fixed 2026-03-26):** `WriteVerificationSignal()` must only fire when Dylan is the actor. Headless completions, orchestrator sessions, and dashboard API calls are automated paths that would reset the counter without human review. Structural tests in `verification_tracker_test.go` enforce this invariant.
 
 **Checkpoint source-of-truth:**

@@ -13,6 +13,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/group"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
 // daemonLoopState holds shared state for the daemon main loop.
@@ -559,6 +560,22 @@ func (s *daemonLoopState) checkVerificationPause(timestamp string) bool {
 	}
 	verifyStatus := s.d.VerificationTracker.Status()
 	if s.d.VerificationTracker.IsPaused() {
+		// Re-sync tracker with actual backlog before staying paused.
+		// Issues may have been closed via headless completion, bd close, or
+		// other non-interactive paths that don't write verification signals.
+		items, err := verify.ListUnverifiedWork()
+		if err == nil {
+			ids := make([]string, len(items))
+			for i, item := range items {
+				ids[i] = item.BeadsID
+			}
+			if s.d.VerificationTracker.ResyncWithBacklog(ids) {
+				s.dlog.Printf("[%s] Verification auto-resumed: backlog dropped below threshold after resync\n", timestamp)
+				return false
+			}
+		}
+
+		verifyStatus = s.d.VerificationTracker.Status() // refresh after resync
 		breakdown := verificationBreakdown()
 		s.dlog.Printf("[%s] Verification pause: %d unverified completions, threshold is %d%s\n",
 			timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
