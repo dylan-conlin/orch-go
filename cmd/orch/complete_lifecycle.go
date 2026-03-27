@@ -110,6 +110,13 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 		}
 	}
 
+	// Strip comprehension labels BEFORE lifecycle transition.
+	// Must happen while issue is still open — bd label remove may fail on closed issues.
+	// Completion IS comprehension: strip all labels for both interactive and headless paths.
+	if target.BeadsID != "" && !target.IsOrchestratorSession {
+		daemon.StripAllComprehensionLabelsInDir(target.BeadsID, target.BeadsProjectDir)
+	}
+
 	// --- Execute lifecycle transition via LifecycleManager ---
 	sessionID := spawn.ReadSessionID(target.WorkspacePath)
 
@@ -200,16 +207,9 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 		}
 	}
 
-	// Transition comprehension:unread → comprehension:processed.
-	// Only on interactive orch complete (not headless, not orchestrator).
-	// This lets comprehension:unread survive until human review, serving as
-	// the single daemon throttle gate. Headless/automated completions leave
-	// the label intact so the daemon sees accurate review backlog counts.
-	if target.BeadsID != "" && !completeHeadless && !target.IsOrchestratorSession {
-		if err := daemon.TransitionToProcessedInDir(target.BeadsID, target.BeadsProjectDir); err != nil {
-			// Non-critical: label may not exist (e.g., manual completion, not daemon-queued)
-		}
-	}
+	// NOTE: Comprehension label stripping moved to pre-lifecycle section above.
+	// Completion IS comprehension — labels are stripped before bd close to avoid
+	// silent failures on closed issues. Both interactive and headless paths strip.
 
 	// Back-propagate completion to threads: move beads ID from active_work to resolved_by
 	if target.BeadsID != "" && !target.IsOrchestratorSession {
