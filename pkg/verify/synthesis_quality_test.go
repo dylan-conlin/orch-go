@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -184,6 +185,90 @@ func TestComputeSynthesisQuality_TensionQuality(t *testing.T) {
 			}
 			t.Error("tension_quality signal not found")
 		})
+	}
+}
+
+func TestSynthesisQuality_Summary(t *testing.T) {
+	s := &Synthesis{
+		TLDR:                "Discovered key pattern.",
+		Delta:               "Modified pkg/verify/synthesis_quality.go",
+		Evidence:            "Tests PASS: 12 passed.",
+		Knowledge:           "This confirms the knowledge accretion model's claim about .kb/models/ connection.",
+		UnexploredQuestions: "How does signal_count correlate?",
+	}
+	q := ComputeSynthesisQuality(s)
+	summary := q.Summary()
+
+	// Should contain signal count header
+	if !strings.Contains(summary, "Quality:") {
+		t.Error("Summary should contain 'Quality:' header")
+	}
+	// Should list each signal
+	for _, sig := range q.Signals {
+		if !strings.Contains(summary, sig.Name) {
+			t.Errorf("Summary missing signal name %q", sig.Name)
+		}
+	}
+}
+
+func TestSynthesisQuality_Summary_Empty(t *testing.T) {
+	s := &Synthesis{}
+	q := ComputeSynthesisQuality(s)
+	summary := q.Summary()
+	if !strings.Contains(summary, "0/6") {
+		t.Error("Empty synthesis summary should show 0/6")
+	}
+}
+
+func TestQualityThresholds_Default(t *testing.T) {
+	th := DefaultQualityThresholds()
+	if th.MinSignals != 3 {
+		t.Errorf("Default MinSignals = %d, want 3", th.MinSignals)
+	}
+	if th.RequiredSignals == nil {
+		t.Error("Default RequiredSignals should not be nil")
+	}
+}
+
+func TestSynthesisQuality_MeetsThreshold(t *testing.T) {
+	full := &Synthesis{
+		TLDR:                "Discovered that connective reasoning matters because it separates insight from reporting.",
+		Delta:               "Modified pkg/verify/synthesis_quality.go, added 6 quality signals.",
+		Evidence:            "Tests PASS: go test ./pkg/verify/... — 12 passed, 0 failed.",
+		Knowledge:           "This confirms the knowledge accretion model's claim about .kb/models/ connection. The key insight is that structural metadata enables selection pressure without LLM judgment.",
+		UnexploredQuestions: "How does signal_count correlate with brief feedback ratings?",
+	}
+	q := ComputeSynthesisQuality(full)
+	th := DefaultQualityThresholds()
+
+	if !q.MeetsThreshold(th) {
+		t.Errorf("Full synthesis (signals=%d) should meet default threshold (min=%d)", q.SignalCount, th.MinSignals)
+	}
+
+	// Empty should not meet threshold
+	empty := &Synthesis{}
+	qEmpty := ComputeSynthesisQuality(empty)
+	if qEmpty.MeetsThreshold(th) {
+		t.Error("Empty synthesis should not meet default threshold")
+	}
+}
+
+func TestSynthesisQuality_MeetsThreshold_RequiredSignals(t *testing.T) {
+	// Synthesis with evidence but no model connection
+	s := &Synthesis{
+		TLDR:     "Added feature",
+		Delta:    "Modified pkg/foo/bar.go",
+		Evidence: "Tests PASS",
+		Knowledge: "We learned that the system works",
+	}
+	q := ComputeSynthesisQuality(s)
+
+	th := QualityThresholds{
+		MinSignals:      2,
+		RequiredSignals: []string{"model_connection"},
+	}
+	if q.MeetsThreshold(th) {
+		t.Error("Should fail when required signal 'model_connection' is not detected")
 	}
 }
 

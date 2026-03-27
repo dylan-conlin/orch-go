@@ -195,6 +195,53 @@ func TestBuildBriefFromSynthesis_EmptyFrontmatter(t *testing.T) {
 	}
 }
 
+func TestBuildBriefFromSynthesis_PerSignalDetail(t *testing.T) {
+	s := &verify.Synthesis{
+		TLDR:                "Key finding because it matters.",
+		Delta:               "Modified pkg/verify/synthesis_quality.go",
+		Evidence:            "Tests PASS: 12 passed.",
+		Knowledge:           "This confirms the knowledge accretion model about .kb/models/ connection.",
+		UnexploredQuestions: "How does signal_count correlate?",
+	}
+
+	brief := buildBriefFromSynthesis("orch-go-detail", s)
+
+	// Per-signal detail should include detected field
+	if !strings.Contains(brief, "detected:") {
+		t.Error("Frontmatter should contain per-signal 'detected:' fields")
+	}
+	// Per-signal detail should include evidence field
+	if !strings.Contains(brief, "evidence:") {
+		t.Error("Frontmatter should contain per-signal 'evidence:' fields")
+	}
+	// structural_completeness should be a nested block
+	if !strings.Contains(brief, "structural_completeness:") {
+		t.Error("Frontmatter should contain structural_completeness as nested block")
+	}
+	// Should still have signal_count for backward compat
+	if !strings.Contains(brief, "signal_count:") {
+		t.Error("Frontmatter should still contain aggregate signal_count")
+	}
+}
+
+func TestBuildBriefFromSynthesis_PerSignalParseable(t *testing.T) {
+	s := &verify.Synthesis{
+		TLDR: "Simple brief",
+	}
+	brief := buildBriefFromSynthesis("orch-go-parse", s)
+
+	// Each of the 6 signals should appear
+	expectedSignals := []string{
+		"structural_completeness:", "evidence_specificity:", "model_connection:",
+		"connective_reasoning:", "tension_quality:", "insight_vs_report:",
+	}
+	for _, sig := range expectedSignals {
+		if !strings.Contains(brief, sig) {
+			t.Errorf("Frontmatter missing signal %q", sig)
+		}
+	}
+}
+
 func TestGenerateHeadlessBriefNoSynthesis(t *testing.T) {
 	tmpDir := t.TempDir()
 

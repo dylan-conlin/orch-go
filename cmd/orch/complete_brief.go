@@ -54,7 +54,15 @@ func buildBriefFromSynthesis(beadsID string, s *verify.Synthesis) string {
 	b.WriteString(fmt.Sprintf("beads_id: %s\n", beadsID))
 	b.WriteString("quality_signals:\n")
 	for _, sig := range quality.Signals {
-		b.WriteString(fmt.Sprintf("  %s: %q\n", sig.Name, sig.Score))
+		b.WriteString(fmt.Sprintf("  %s:\n", sig.Name))
+		b.WriteString(fmt.Sprintf("    score: %q\n", sig.Score))
+		b.WriteString(fmt.Sprintf("    detected: %v\n", sig.Detected))
+		// Truncate evidence to 80 chars for frontmatter readability
+		evidence := sig.Evidence
+		if len(evidence) > 80 {
+			evidence = evidence[:80] + "..."
+		}
+		b.WriteString(fmt.Sprintf("    evidence: %q\n", evidence))
 	}
 	b.WriteString(fmt.Sprintf("signal_count: %d\n", quality.SignalCount))
 	b.WriteString(fmt.Sprintf("signal_total: %d\n", quality.Total))

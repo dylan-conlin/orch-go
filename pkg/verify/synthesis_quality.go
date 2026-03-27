@@ -180,6 +180,61 @@ func checkInsightVsReport(s *Synthesis) QualitySignal {
 	}
 }
 
+// QualityThresholds defines configurable thresholds for quality assessment.
+type QualityThresholds struct {
+	// MinSignals is the minimum number of signals that must fire to pass.
+	MinSignals int
+	// RequiredSignals lists signal names that MUST be detected (regardless of count).
+	RequiredSignals []string
+}
+
+// DefaultQualityThresholds returns sensible defaults: 3/6 signals minimum,
+// structural_completeness required.
+func DefaultQualityThresholds() QualityThresholds {
+	return QualityThresholds{
+		MinSignals:      3,
+		RequiredSignals: []string{"structural_completeness"},
+	}
+}
+
+// MeetsThreshold checks if this quality result satisfies the given thresholds.
+func (q SynthesisQuality) MeetsThreshold(th QualityThresholds) bool {
+	if q.SignalCount < th.MinSignals {
+		return false
+	}
+	for _, req := range th.RequiredSignals {
+		found := false
+		for _, sig := range q.Signals {
+			if sig.Name == req && sig.Detected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// Summary returns a human-readable summary of quality signals.
+func (q SynthesisQuality) Summary() string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Quality: %d/%d signals\n", q.SignalCount, q.Total))
+	for _, sig := range q.Signals {
+		marker := "  ✗"
+		if sig.Detected {
+			marker = "  ✓"
+		}
+		b.WriteString(fmt.Sprintf("%s %s", marker, sig.Name))
+		if sig.Evidence != "" {
+			b.WriteString(fmt.Sprintf(" (%s)", sig.Evidence))
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
 func boolScore(b bool) string {
 	if b {
 		return "true"

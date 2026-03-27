@@ -9,9 +9,11 @@
 package daemon
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -58,7 +60,7 @@ func (q *BeadsComprehensionQuerier) CountPending() (int, error) {
 
 // countByLabel counts issues with a given label via bd list.
 func countByLabel(label string) (int, error) {
-	output, err := runBdCommand("list", "--label", label, "--format", "json")
+	output, err := runBdCommand("list", "--label", label, "--json")
 	if err != nil {
 		return 0, err
 	}
@@ -66,13 +68,19 @@ func countByLabel(label string) (int, error) {
 	if trimmed == "" || trimmed == "[]" {
 		return 0, nil
 	}
-	count := 0
-	for _, line := range strings.Split(trimmed, "\n") {
-		if strings.TrimSpace(line) != "" {
-			count++
+	// Parse JSON array and count elements
+	var items []json.RawMessage
+	if err := json.Unmarshal([]byte(trimmed), &items); err != nil {
+		// Fallback: count non-empty lines (for non-JSON output)
+		count := 0
+		for _, line := range strings.Split(trimmed, "\n") {
+			if strings.TrimSpace(line) != "" {
+				count++
+			}
 		}
+		return count, nil
 	}
-	return count, nil
+	return len(items), nil
 }
 
 // AddComprehensionUnread adds the comprehension:unread label to an issue.
@@ -140,19 +148,34 @@ func RemoveComprehensionProcessedInDir(beadsID, dir string) error {
 	return nil
 }
 
+// StripAllComprehensionLabels removes all comprehension lifecycle labels from an issue.
+// Used by orch complete: completion IS comprehension, so all labels are stripped.
+func StripAllComprehensionLabels(beadsID string) {
+	runBdCommand("label", "remove", beadsID, LabelComprehensionUnread)
+	runBdCommand("label", "remove", beadsID, LabelComprehensionPending)
+	runBdCommand("label", "remove", beadsID, LabelComprehensionProcessed)
+}
+
+// StripAllComprehensionLabelsInDir removes all comprehension lifecycle labels in a specific directory.
+func StripAllComprehensionLabelsInDir(beadsID, dir string) {
+	runBdCommandInDir(dir, "label", "remove", beadsID, LabelComprehensionUnread)
+	runBdCommandInDir(dir, "label", "remove", beadsID, LabelComprehensionPending)
+	runBdCommandInDir(dir, "label", "remove", beadsID, LabelComprehensionProcessed)
+}
+
 // RunBdListComprehensionUnread returns raw bd list output for comprehension:unread items.
 func RunBdListComprehensionUnread() ([]byte, error) {
-	return runBdCommand("list", "--label", LabelComprehensionUnread, "--format", "json")
+	return runBdCommand("list", "--label", LabelComprehensionUnread, "--json")
 }
 
 // RunBdListComprehensionProcessed returns raw bd list output for comprehension:processed items.
 func RunBdListComprehensionProcessed() ([]byte, error) {
-	return runBdCommand("list", "--label", LabelComprehensionProcessed, "--format", "json")
+	return runBdCommand("list", "--label", LabelComprehensionProcessed, "--json")
 }
 
 // RunBdListComprehensionPending returns raw bd list output for legacy comprehension:pending items.
 func RunBdListComprehensionPending() ([]byte, error) {
-	return runBdCommand("list", "--label", LabelComprehensionPending, "--format", "json")
+	return runBdCommand("list", "--label", LabelComprehensionPending, "--json")
 }
 
 // CheckComprehensionThrottle checks if the comprehension queue exceeds the threshold.
@@ -271,6 +294,130 @@ func ParseBriefSignalCount(content string) int {
 		}
 	}
 	return 0
+}
+
+// BriefSignal represents a single quality signal parsed from brief frontmatter.
+type BriefSignal struct {
+	Score    string
+	Detected bool
+	Evidence string
+}
+
+// BriefQueueEntry represents a brief with parsed signal metadata for queue ordering.
+type BriefQueueEntry struct {
+	BeadsID     string
+	SignalCount int
+	Signals     map[string]BriefSignal
+}
+
+// ParseBriefSignals extracts per-signal detail from YAML frontmatter in brief content.
+// Returns a map of signal name -> BriefSignal. Returns empty map if no frontmatter.
+func ParseBriefSignals(content string) map[string]BriefSignal {
+	signals := make(map[string]BriefSignal)
+
+	if !strings.HasPrefix(content, "---\n") {
+		return signals
+	}
+	endIdx := strings.Index(content[4:], "\n---")
+	if endIdx < 0 {
+		return signals
+	}
+	frontmatter := content[4 : 4+endIdx]
+	lines := strings.Split(frontmatter, "\n")
+
+	var currentSignal string
+	var currentBrief BriefSignal
+
+	inQualitySignals := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Detect quality_signals: block
+		if trimmed == "quality_signals:" {
+			inQualitySignals = true
+			continue
+		}
+
+		if !inQualitySignals {
+			continue
+		}
+
+		// Signal name line: exactly 2-space indent, ends with ":"
+		if strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "    ") && strings.HasSuffix(trimmed, ":") {
+			// Save previous signal if any
+			if currentSignal != "" {
+				signals[currentSignal] = currentBrief
+			}
+			currentSignal = strings.TrimSuffix(trimmed, ":")
+			currentBrief = BriefSignal{}
+			continue
+		}
+
+		// Detail lines: 4-space indent
+		if strings.HasPrefix(line, "    ") && currentSignal != "" {
+			if strings.HasPrefix(trimmed, "score: ") {
+				currentBrief.Score = unquoteYAML(strings.TrimPrefix(trimmed, "score: "))
+			} else if strings.HasPrefix(trimmed, "detected: ") {
+				currentBrief.Detected = strings.TrimPrefix(trimmed, "detected: ") == "true"
+			} else if strings.HasPrefix(trimmed, "evidence: ") {
+				currentBrief.Evidence = unquoteYAML(strings.TrimPrefix(trimmed, "evidence: "))
+			}
+			continue
+		}
+
+		// Non-indented line after quality_signals means block ended
+		if !strings.HasPrefix(line, "  ") && trimmed != "" {
+			// Save last signal
+			if currentSignal != "" {
+				signals[currentSignal] = currentBrief
+			}
+			break
+		}
+	}
+
+	// Save last signal if we reached end of frontmatter
+	if currentSignal != "" {
+		if _, exists := signals[currentSignal]; !exists {
+			signals[currentSignal] = currentBrief
+		}
+	}
+
+	return signals
+}
+
+// unquoteYAML removes surrounding quotes from a YAML string value.
+func unquoteYAML(s string) string {
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
+// OrderBriefsBySignals sorts briefs by signal quality, highest first.
+// If prioritySignals is non-nil, briefs with those signals detected sort first.
+func OrderBriefsBySignals(briefs []BriefQueueEntry, prioritySignals []string) {
+	sort.Slice(briefs, func(i, j int) bool {
+		// Priority signal tiebreaker: count how many priority signals each has
+		if len(prioritySignals) > 0 {
+			iPriority := countPrioritySignals(briefs[i].Signals, prioritySignals)
+			jPriority := countPrioritySignals(briefs[j].Signals, prioritySignals)
+			if iPriority != jPriority {
+				return iPriority > jPriority
+			}
+		}
+		// Fall back to aggregate signal count
+		return briefs[i].SignalCount > briefs[j].SignalCount
+	})
+}
+
+func countPrioritySignals(signals map[string]BriefSignal, priority []string) int {
+	count := 0
+	for _, name := range priority {
+		if sig, ok := signals[name]; ok && sig.Detected {
+			count++
+		}
+	}
+	return count
 }
 
 // Backward compatibility aliases for callers that still use the old names.
