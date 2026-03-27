@@ -1,0 +1,37 @@
+---
+# Verification Spec for orch-go-ehy5q
+# Bug fix: plumb SpawnTime into abandon_cmd checkRecentActivity liveness check
+type: bug-fix
+skill: systematic-debugging
+tier: full
+
+outcomes:
+  - name: SpawnTime plumbed into VerifyLiveness in checkRecentActivity
+    status: pass
+    evidence: "abandon_cmd.go checkRecentActivity now calls readSpawnTimeFromWorkspace(workspacePath) and passes SpawnTime to VerifyLiveness, matching complete_verification.go:275-281 pattern"
+
+  - name: Workspace discovery hoisted before activity check
+    status: pass
+    evidence: "findWorkspaceByBeadsID moved from Phase 3 to Phase 2b in runAbandon, before checkRecentActivity call. Redundant second call removed."
+
+  - name: Grace period fires for recently-spawned agents
+    status: pass
+    evidence: "TestReadSpawnTimeFromWorkspace_RecentSpawnTriggersGracePeriod creates temp workspace with 2-minute-old manifest, verifies VerifyLiveness returns IsAlive()==true with ReasonRecentlySpawned"
+
+  - name: Old spawns do not trigger grace period
+    status: pass
+    evidence: "TestReadSpawnTimeFromWorkspace_OldSpawnNoGracePeriod creates temp workspace with 1-hour-old manifest, verifies VerifyLiveness returns IsAlive()==false"
+
+  - name: Empty workspace path returns zero time (safe fallback)
+    status: pass
+    evidence: "TestReadSpawnTimeFromWorkspace_EmptyPathReturnsZero verifies readSpawnTimeFromWorkspace('') returns zero time"
+
+  - name: All existing tests still pass
+    status: pass
+    evidence: "go test ./cmd/orch/ -run 'TestCheckPhaseRecency|TestReadSpawnTimeFromWorkspace' -v — 14 passed, 0 failed"
+
+  - name: No changes to pkg/verify/liveness.go
+    status: pass
+    evidence: "Bug was in the caller (abandon_cmd.go), not in the liveness function. liveness.go is unchanged."
+
+manual_steps: []

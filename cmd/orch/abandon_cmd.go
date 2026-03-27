@@ -92,29 +92,35 @@ func runAbandon(beadsID, reason, workdir string, force bool) error {
 		return fmt.Errorf("issue %s is already closed - nothing to abandon", beadsID)
 	}
 
-	// --- Phase 2b: Activity check (protect recently-active agents) ---
-	// Cross-project agents may appear as "phantom" locally but be actively running
-	// in another tmux session. Check for recent phase comments before killing.
-
-	if !force {
-		if err := checkRecentActivity(beadsID, projectDir); err != nil {
-			return err
-		}
-	}
-
-	// --- Phase 3: Discover agent resources ---
-
-	client := execution.NewOpenCodeAdapter(serverURL)
+	// --- Phase 2b: Discover workspace (needed for activity check + Phase 3) ---
 
 	var sessionID string
 	var workspacePath, agentName string
 
-	// Look up workspace by beads ID
+	// Look up workspace by beads ID — hoisted before activity check so
+	// checkRecentActivity can read spawn time from the agent manifest.
 	wPath, aName := findWorkspaceByBeadsID(projectDir, beadsID)
 	if wPath != "" {
 		workspacePath = wPath
 		agentName = aName
-		sessionID = spawn.ReadSessionID(wPath)
+	}
+
+	// --- Phase 2c: Activity check (protect recently-active agents) ---
+	// Cross-project agents may appear as "phantom" locally but be actively running
+	// in another tmux session. Check for recent phase comments before killing.
+
+	if !force {
+		if err := checkRecentActivity(beadsID, projectDir, workspacePath); err != nil {
+			return err
+		}
+	}
+
+	// --- Phase 3: Discover remaining agent resources ---
+
+	client := execution.NewOpenCodeAdapter(serverURL)
+
+	if workspacePath != "" {
+		sessionID = spawn.ReadSessionID(workspacePath)
 		if sessionID != "" {
 			fmt.Printf("Found agent workspace: %s (session: %s)\n", agentName, shortID(sessionID))
 		} else {
@@ -130,16 +136,6 @@ func runAbandon(beadsID, reason, workdir string, force bool) error {
 				sessionID = s.ID
 				break
 			}
-		}
-	}
-
-	if workspacePath == "" || agentName == "" {
-		wPath, aName := findWorkspaceByBeadsID(projectDir, beadsID)
-		if workspacePath == "" {
-			workspacePath = wPath
-		}
-		if agentName == "" {
-			agentName = aName
 		}
 	}
 
@@ -257,7 +253,7 @@ func runAbandon(beadsID, reason, workdir string, force bool) error {
 // Uses VerifyLiveness for grace period + phase checks, then falls back to
 // checkPhaseRecency for the 30-minute recency window specific to abandon.
 // Comment fetch failures are non-blocking (best effort).
-func checkRecentActivity(beadsID, projectDir string) error {
+func checkRecentActivity(beadsID, projectDir, workspacePath string) error {
 	comments, err := verify.GetComments(beadsID, projectDir)
 	if err != nil {
 		// Can't fetch comments — don't block the abandon.
@@ -265,10 +261,16 @@ func checkRecentActivity(beadsID, projectDir string) error {
 		return nil
 	}
 
+	// Read spawn time from workspace manifest so VerifyLiveness can apply
+	// the grace period for recently-spawned agents with no phase comments yet.
+	// Matches pattern from complete_verification.go:275-281.
+	spawnTime := readSpawnTimeFromWorkspace(workspacePath)
+
 	// Phase-based liveness catches recently-spawned agents (grace period)
 	liveness := verify.VerifyLiveness(verify.LivenessInput{
-		Comments: comments,
-		Now:      time.Now(),
+		Comments:  comments,
+		SpawnTime: spawnTime,
+		Now:       time.Now(),
 	})
 	if liveness.IsAlive() && liveness.Reason == verify.ReasonRecentlySpawned {
 		return fmt.Errorf(

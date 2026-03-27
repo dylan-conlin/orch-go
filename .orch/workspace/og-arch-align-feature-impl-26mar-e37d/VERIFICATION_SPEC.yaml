@@ -1,0 +1,31 @@
+---
+# Verification Spec for orch-go-cwj26
+# Architect design: Align feature-impl synthesis semantics
+type: architect-design
+skill: architect
+tier: full
+
+outcomes:
+  - name: Investigation complete with findings and recommendations
+    status: pass
+    evidence: ".kb/investigations/2026-03-26-design-align-feature-impl-synthesis-semantics.md has D.E.K.N. summary, 3 findings, synthesis, and implementation recommendations"
+
+  - name: Three-layer semantic split documented
+    status: pass
+    evidence: "Findings trace the split across skill text (SKILL.md.template:231-238), tier policy (config.go:44 + verify_level.go:38,100), and compliance measurement (daemonconfig/compliance.go:137-139)"
+
+  - name: Implementation decomposed into follow-up issues
+    status: pass
+    evidence: "Four issues created: orch-go-36tvq (skill template), orch-go-cerm1 (code comment), orch-go-41dm3 (bench metrics), orch-go-7xoc6 (compliance config)"
+
+  - name: No code changes in this architect session
+    status: pass
+    evidence: "Architect skill produces investigation with recommendations, not code. Implementation routed to follow-up issues."
+
+manual_steps: []
+
+migration_status:
+  designed: "Tier-conditional completion section for feature-impl, code comment for verify_level.go, partitioned compliance metrics"
+  implemented: "none"
+  deployed: "none"
+  remaining: "All four implementation issues (orch-go-36tvq, orch-go-cerm1, orch-go-41dm3, orch-go-7xoc6)"
