@@ -1,0 +1,44 @@
+verification:
+  type: bug-fix
+  issue: orch-go-qloo8
+
+  reproduction:
+    description: "Sketchybar widget shows comprehension count 0 when daemon is down (SIGKILL)"
+    steps:
+      - "Daemon is killed with SIGKILL/-9"
+      - "daemon-status.json freezes with stale comprehension count 0"
+      - "Items accumulate (bd search -l comprehension:unread shows >0)"
+      - "Widget reads stale file and displays 0"
+
+  fix_description: |
+    Added PID liveness check (kill -0) to orch_status.sh provider.
+    When daemon PID is dead: sets STATUS=dead, forces LIVENESS_LEVEL=red,
+    falls back to bd search -l comprehension:unread for live count.
+    Added "dead" status handling in orch.lua widget (red label with live count).
+
+  files_modified:
+    - path: "~/.config/sketchybar/helpers/event_providers/orch_status/orch_status.sh"
+      changes: "PID liveness check, STATUS=dead, bd fallback for comprehension"
+    - path: "~/.config/sketchybar/items/widgets/orch.lua"
+      changes: "Handle STATUS=dead with red 'dead C:N' display"
+
+  tests_performed:
+    - name: "Dead PID detection"
+      command: "Simulated PID 99999 with kill -0 check"
+      result: "PASS: Correctly detected dead PID"
+    - name: "Live PID no-fallback"
+      command: "Checked real daemon PID 97725"
+      result: "PASS: Fallback NOT triggered for live daemon"
+    - name: "bd fallback correctness"
+      command: "Synthetic dead daemon with comprehension 0, bd returned 54"
+      result: "PASS: Live count 54 replaced stale 0"
+    - name: "End-to-end provider logic"
+      command: "Extracted full loop body with dead PID + old last_poll"
+      result: "PASS: STATUS=dead, LIVENESS=red, COMPREHENSION=54"
+    - name: "Bash syntax validation"
+      command: "bash -n orch_status.sh"
+      result: "PASS: No syntax errors"
+
+  manual_verification:
+    - "Kill daemon with SIGKILL, wait 10s, check sketchybar shows 'dead C:N' in red (not '0')"
+    - "Restart daemon, verify widget returns to normal 'active/max C:N' display"
