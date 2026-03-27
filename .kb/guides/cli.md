@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for the orch-go CLI. Read this before debugging CLI issues or adding new commands.
 
-**Last verified:** 2026-03-26 (artifact sync: bench command, kb subcommands, spawn/complete flags)
+**Last verified:** 2026-03-27 (artifact sync: orch compose command, daemon file table)
 
 **Supersedes:** 16 CLI investigations from Dec 19 - Jan 4 (see History section)
 
@@ -79,6 +79,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `orch debrief` | Generate session debrief with auto-populated sections |
 | `orch thread` | Living threads — mid-session comprehension capture |
 | `orch comprehension` | Manage comprehension queue (pending review items) |
+| `orch compose` | Compose briefs into a digest — cluster by content similarity |
 | `orch decisions` | Decision lifecycle management (staleness, budgets) |
 | `orch plan` | Coordination plan management |
 | `orch stats` | Show aggregated agent statistics from events.jsonl |

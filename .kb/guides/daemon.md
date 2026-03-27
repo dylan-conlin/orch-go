@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for the orch daemon's autonomous agent spawning system. This guide synthesizes learnings from 33 investigations conducted between Dec 2025 - Jan 2026.
 
-**Last verified:** Mar 25, 2026
+**Last verified:** Mar 27, 2026
 
 ---
 
@@ -42,6 +42,8 @@ The daemon is an autonomous agent spawner that:
 | `workspace_verify.go` | Post-spawn workspace verification — detects phantom spawns (L7) |
 | `interfaces.go` | Shared interfaces: `WorkspaceVerifier`, `IssueUpdater` |
 | `spawn_execution.go` | Spawn pipeline: dedup gates, pool slot, status update, spawn, workspace verify |
+| `comprehension_queue.go` | Two-state comprehension lifecycle (unread/processed), spawn throttling by unread count |
+| `resume_signal.go` | Resume signal file for manual daemon resumption (`~/.orch/daemon-resume.signal`) |
 
 **Related packages:**
 - `pkg/daemonconfig/` — ComplianceConfig, allocation profiles

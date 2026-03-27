@@ -2,7 +2,7 @@
 
 **Purpose:** Descriptions of key orch-go packages — their responsibilities, main types, and APIs.
 
-**Last verified:** 2026-03-26
+**Last verified:** 2026-03-27
 
 ---
 
@@ -64,6 +64,16 @@
 - Cycle cache (`cycle_cache.go`): shares `GetActiveAgents()` across periodic tasks to avoid redundant queries
 - Audit selection: random quality audits weighted toward auto-completed work
 - Capacity polling: account capacity cache for `orch status`
+- Comprehension queue (`comprehension_queue.go`): two-state lifecycle (unread/processed), spawn throttling
+- Resume signal (`resume_signal.go`): file-based daemon resume trigger
+
+## pkg/compose/ (Brief Composition)
+
+- `Compose(briefsDir, threadsDir)` clusters briefs by keyword overlap, matches to threads
+- `WriteDigest(digest, digestsDir)` writes digest markdown to `.kb/digests/`
+- Keyword extraction, TF-IDF-style scoring, Jaccard similarity clustering
+- Thread matching via keyword overlap between clusters and existing `.kb/threads/`
+- CLI: `orch compose` (cmd/orch/compose_cmd.go)
 
 ## pkg/dupdetect/ (Duplicate Detection)
 
