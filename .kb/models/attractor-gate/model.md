@@ -129,6 +129,10 @@ spawn_cmd.go shrank -1,755 lines via extraction to `pkg/spawn/backends/`, then r
 
 Structural attractors > signaling > blocking gates > advisory gates > metrics-only. Measured in orch-go's own governance system across 31 interventions. Unknown whether this ranking holds in other codebases, team sizes, or domains.
 
+**Sub-hypothesis (2026-03-27):** Within "blocking gates," structurally-informed gates (those that count against a structural property like phase count) are more effective than boolean gates (those that check "at least one"). The architect handoff gate was boolean ("does any issue exist?") and failed silently for multi-phase designs — same failure mode as advisory gates. After upgrading to count issues against detected phases, the gate catches the gap. This suggests: **structurally-informed gates > boolean gates > advisory gates**.
+
+**Source:** attractor-gate/probes/2026-03-27-probe-multi-phase-handoff-gate-coverage.md
+
 ---
 
 # Part III: Open Frontier
@@ -201,9 +205,11 @@ This model consolidates findings that appear independently in:
 | 2026-03-23 | Merge-educated messaging | Found ceiling: communication reaches ~30%, below placement 100% | coordination/probes/ |
 | 2026-03-26 | Constraint scaling (orthogonal) | **NULL** — flat curve, no degradation N=1→20 with additive constraints. Measurement artifact in first run (BSD grep -P). | attractor-gate/probes/ |
 | 2026-03-26 | Tension-based constraint redesign | **COMPLETE** — 12 tension pairs (HARD/MEDIUM/EASY), 48/48 detector tests pass, ready for experiment run | attractor-gate/investigations/ |
+| 2026-03-27 | Multi-phase handoff gate coverage | Confirmed: boolean gate failed for multi-phase designs, structurally-informed gate catches the gap. Extends Hypothesis 4 with gate sub-hierarchy. | attractor-gate/probes/ |
 
 ## Auto-Linked Investigations
 
+- .kb/investigations/2026-03-27-inv-fix-architect-handoff-gate-designs.md
 - .kb/investigations/archived/misc-bug-fixes/2026-01-08-inv-bug-git-diff-gate-parses.md
 - .kb/investigations/archived/2026-01-14-inv-implement-targeted-skip-gate-flags.md
 - .kb/investigations/archived/epic-management-deprecated/2026-01-07-inv-epic-readiness-gate-understanding-section.md

@@ -214,9 +214,7 @@ Need to resolve design questions first.
 		{Text: "Phase: Handoff - No implementation issues: design surfaced only blocking questions, no actionable work yet"},
 	}
 
-	// Use empty beadsID so we skip the title-pattern check but exercise the comment path.
-	// With beadsID set, HasImplementationFollowUp would fail (no beads running).
-	// Instead, test the comment functions directly.
+	// Test the comment function directly.
 	if !hasHandoffOptOut(comments) {
 		t.Fatal("hasHandoffOptOut should detect 'No implementation issues:' in comments")
 	}
@@ -229,8 +227,9 @@ func TestVerifyArchitectHandoff_CommentEvidence(t *testing.T) {
 		{Text: "Phase: Handoff - Created implementation issues: orch-go-abc12, orch-go-def34"},
 	}
 
-	if !hasHandoffIssueEvidence(comments) {
-		t.Fatal("hasHandoffIssueEvidence should detect 'Created implementation issues' in comments")
+	count := countHandoffIssueEvidence(comments)
+	if count != 2 {
+		t.Fatalf("countHandoffIssueEvidence should detect 2 issue IDs, got %d", count)
 	}
 }
 
@@ -241,7 +240,7 @@ func TestVerifyArchitectHandoff_NoCommentEvidence(t *testing.T) {
 		{Text: "Phase: Complete - Design written"},
 	}
 
-	if hasHandoffIssueEvidence(comments) {
+	if countHandoffIssueEvidence(comments) > 0 {
 		t.Error("should not detect implementation issue evidence in generic comments")
 	}
 	if hasHandoffOptOut(comments) {
@@ -251,8 +250,8 @@ func TestVerifyArchitectHandoff_NoCommentEvidence(t *testing.T) {
 
 func TestVerifyArchitectHandoff_NilComments(t *testing.T) {
 	// Nil comments should not panic
-	if hasHandoffIssueEvidence(nil) {
-		t.Error("nil comments should return false")
+	if countHandoffIssueEvidence(nil) > 0 {
+		t.Error("nil comments should return 0")
 	}
 	if hasHandoffOptOut(nil) {
 		t.Error("nil comments should return false")
@@ -401,6 +400,256 @@ func TestVerifyCompletionFullWithComments_ArchitectHandoffGatePass(t *testing.T)
 		if g == GateArchitectHandoff {
 			t.Errorf("architect_handoff should NOT be in GatesFailed for valid close recommendation, got %v", result.GatesFailed)
 		}
+	}
+}
+
+// TestDetectPhases verifies phase/layer/step detection in SYNTHESIS.md content.
+func TestDetectPhases(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    int
+	}{
+		{
+			name:    "no phases",
+			content: "Simple design with no phases.",
+			want:    0,
+		},
+		{
+			name:    "single phase mentioned",
+			content: "### Phase 1: Implement the handler\nDo the thing.",
+			want:    1,
+		},
+		{
+			name:    "three phases in headings",
+			content: "### Phase 1: Add parser\nParse stuff.\n### Phase 2: Add validator\nValidate stuff.\n### Phase 3: Wire together\nIntegrate.",
+			want:    3,
+		},
+		{
+			name:    "three layers bold",
+			content: "**Layer 1:** Data access\n**Layer 2:** Business logic\n**Layer 3:** API surface",
+			want:    3,
+		},
+		{
+			name:    "steps numbered",
+			content: "## Step 1: Extract\n## Step 2: Transform\n## Step 3: Load",
+			want:    3,
+		},
+		{
+			name:    "mixed phase and step (deduplicated by number)",
+			content: "### Phase 1: Build\n### Step 2: Test\n### Phase 3: Deploy",
+			want:    3,
+		},
+		{
+			name:    "phases with colon",
+			content: "Phase 1: do X\nPhase 2: do Y",
+			want:    2,
+		},
+		{
+			name:    "case insensitive",
+			content: "PHASE 1: First\nPHASE 2: Second",
+			want:    2,
+		},
+		{
+			name:    "stage keyword",
+			content: "### Stage 1: Alpha\n### Stage 2: Beta\n### Stage 3: GA",
+			want:    3,
+		},
+		{
+			name:    "duplicate phase numbers count once",
+			content: "Phase 1: start\nPhase 1: also start\nPhase 2: next",
+			want:    2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := DetectPhases(tt.content)
+			if got != tt.want {
+				t.Errorf("DetectPhases() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCountHandoffIssueEvidence verifies counting of issue IDs in handoff comments.
+func TestCountHandoffIssueEvidence(t *testing.T) {
+	tests := []struct {
+		name     string
+		comments []Comment
+		want     int
+	}{
+		{
+			name:     "no comments",
+			comments: nil,
+			want:     0,
+		},
+		{
+			name: "single issue in handoff",
+			comments: []Comment{
+				{Text: "Phase: Handoff - Created implementation issues: orch-go-abc12"},
+			},
+			want: 1,
+		},
+		{
+			name: "multiple issues in handoff",
+			comments: []Comment{
+				{Text: "Phase: Handoff - Created implementation issues: orch-go-abc12, orch-go-def34, orch-go-ghi56"},
+			},
+			want: 3,
+		},
+		{
+			name: "no handoff comment",
+			comments: []Comment{
+				{Text: "Phase: Planning - Doing stuff"},
+				{Text: "Phase: Complete - Done"},
+			},
+			want: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := countHandoffIssueEvidence(tt.comments)
+			if got != tt.want {
+				t.Errorf("countHandoffIssueEvidence() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestVerifyArchitectHandoff_MultiPhase_SingleIssue reproduces the exact bug:
+// multi-phase SYNTHESIS.md passes the handoff gate when only Phase 1 has an issue.
+func TestVerifyArchitectHandoff_MultiPhase_SingleIssue(t *testing.T) {
+	dir := t.TempDir()
+	synthesis := `## TLDR
+Designed three-phase enrichment pipeline.
+
+## Next
+**Recommendation:** implement
+
+### Phase 1: Add data parser
+Extract and normalize incoming data.
+
+### Phase 2: Add validation layer
+Validate normalized data against schema.
+
+### Phase 3: Wire integration tests
+End-to-end verification of the pipeline.
+`
+	if err := os.WriteFile(filepath.Join(dir, "SYNTHESIS.md"), []byte(synthesis), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate: only 1 issue reported via handoff comment, but 3 phases exist
+	comments := []Comment{
+		{Text: "Phase: Handoff - Created implementation issues: orch-go-abc12"},
+	}
+
+	// With no beadsID, skip title-pattern check, exercise comment counting path
+	result := VerifyArchitectHandoff(dir, "architect", "", "", comments)
+
+	// This MUST fail — 3 phases detected but only 1 issue
+	if result.Passed {
+		t.Fatal("REPRODUCTION: multi-phase design (3 phases) should NOT pass with only 1 implementation issue")
+	}
+	if len(result.Errors) == 0 {
+		t.Fatal("expected error message about missing phase issues")
+	}
+	// Error should mention the phase count
+	foundPhaseError := false
+	for _, e := range result.Errors {
+		if strings.Contains(e, "3") && strings.Contains(strings.ToLower(e), "phase") {
+			foundPhaseError = true
+		}
+	}
+	if !foundPhaseError {
+		t.Errorf("expected error mentioning 3 phases, got: %v", result.Errors)
+	}
+}
+
+// TestVerifyArchitectHandoff_MultiPhase_AllIssuesPresent verifies the gate passes
+// when all phases have corresponding issues.
+func TestVerifyArchitectHandoff_MultiPhase_AllIssuesPresent(t *testing.T) {
+	dir := t.TempDir()
+	synthesis := `## TLDR
+Designed two-phase caching layer.
+
+## Next
+**Recommendation:** implement
+
+### Phase 1: Add cache invalidation
+Handle cache misses and TTL.
+
+### Phase 2: Add cache warming
+Pre-populate cache on startup.
+`
+	if err := os.WriteFile(filepath.Join(dir, "SYNTHESIS.md"), []byte(synthesis), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2 issues reported — matches 2 phases
+	comments := []Comment{
+		{Text: "Phase: Handoff - Created implementation issues: orch-go-abc12, orch-go-def34"},
+	}
+
+	result := VerifyArchitectHandoff(dir, "architect", "", "", comments)
+	if !result.Passed {
+		t.Errorf("should pass when issue count matches phase count, got errors: %v", result.Errors)
+	}
+}
+
+// TestVerifyArchitectHandoff_MultiPhase_OptOut verifies opt-out still works for multi-phase.
+func TestVerifyArchitectHandoff_MultiPhase_OptOut(t *testing.T) {
+	dir := t.TempDir()
+	synthesis := `## TLDR
+Designed three-layer architecture but all phases need orchestrator review first.
+
+## Next
+**Recommendation:** implement
+
+### Phase 1: Refactor data layer
+### Phase 2: Add API endpoints
+### Phase 3: Wire frontend
+`
+	if err := os.WriteFile(filepath.Join(dir, "SYNTHESIS.md"), []byte(synthesis), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	comments := []Comment{
+		{Text: "Phase: Handoff - No implementation issues: all phases need orchestrator review before issuing"},
+	}
+
+	result := VerifyArchitectHandoff(dir, "architect", "", "", comments)
+	if !result.Passed {
+		t.Errorf("opt-out should still pass for multi-phase designs, got errors: %v", result.Errors)
+	}
+}
+
+// TestVerifyArchitectHandoff_SinglePhase_Unchanged verifies single-phase designs
+// still work with the original behavior (1 issue = pass).
+func TestVerifyArchitectHandoff_SinglePhase_Unchanged(t *testing.T) {
+	dir := t.TempDir()
+	synthesis := `## TLDR
+Simple bug fix design.
+
+## Next
+**Recommendation:** fix
+
+Fix the parser to handle edge cases.
+`
+	if err := os.WriteFile(filepath.Join(dir, "SYNTHESIS.md"), []byte(synthesis), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1 issue, no multi-phase structure
+	comments := []Comment{
+		{Text: "Phase: Handoff - Created implementation issues: orch-go-abc12"},
+	}
+
+	result := VerifyArchitectHandoff(dir, "architect", "", "", comments)
+	if !result.Passed {
+		t.Errorf("single-phase design should pass with 1 issue, got errors: %v", result.Errors)
 	}
 }
 

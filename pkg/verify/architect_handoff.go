@@ -11,6 +11,8 @@ package verify
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -48,14 +50,13 @@ func IsActionableArchitectRecommendation(recommendation string) bool {
 // recommendation in their SYNTHESIS.md AND that actionable recommendations have
 // corresponding implementation issues in beads.
 //
-// When beadsID is non-empty and the recommendation is actionable, the gate checks
-// that an implementation issue exists via three signals (in order):
-//  1. Title pattern: issue title contains "(from architect <beadsID>)" (auto-created)
-//  2. Comment evidence: "Phase: Handoff - Created implementation issues:" in comments
-//  3. Comment opt-out: "No implementation issues:" in Phase: Handoff comment
+// For multi-phase designs (SYNTHESIS.md contains Phase N/Layer N/Step N/Stage N),
+// the gate requires one issue per phase, not just one issue total.
 //
-// The auto-create mechanism runs before this gate in the completion pipeline,
-// so by the time this check runs, the title-pattern issue should exist.
+// Issue verification uses three signals (in order):
+//  1. Title pattern count: issues with "(from architect <beadsID>)" in title
+//  2. Comment evidence count: issue IDs in "Phase: Handoff - Created implementation issues:"
+//  3. Comment opt-out: "No implementation issues:" in Phase: Handoff comment
 //
 // Returns a passing result for non-architect skills.
 func VerifyArchitectHandoff(workspacePath, skill, beadsID, projectDir string, comments []Comment) *VerificationResult {
@@ -104,48 +105,76 @@ func VerifyArchitectHandoff(workspacePath, skill, beadsID, projectDir string, co
 		return result
 	}
 
-	// For actionable recommendations, verify implementation issue exists.
-	// Skip this check if beadsID is empty (e.g., unit tests without beads context).
-	if IsActionableArchitectRecommendation(recommendation) && beadsID != "" {
-		// Check 1: Title pattern match (auto-created issues)
-		exists, err := HasImplementationFollowUp(beadsID, projectDir)
-		if err != nil {
-			// Beads query failed — don't block completion on infrastructure issues,
-			// but warn so the orchestrator can investigate.
-			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("Could not verify implementation issue exists for architect %s: %v", beadsID, err))
-			return result
+	// For actionable recommendations, verify implementation issues exist.
+	if IsActionableArchitectRecommendation(recommendation) {
+		// Detect multi-phase structure in SYNTHESIS.md
+		phaseCount := detectPhasesFromWorkspace(workspacePath)
+		requiredIssues := 1
+		if phaseCount > 1 {
+			requiredIssues = phaseCount
 		}
 
-		if exists {
-			return result
+		// Check 1: Title pattern count (auto-created issues, requires beadsID)
+		titleCount := 0
+		if beadsID != "" {
+			count, err := CountImplementationFollowUps(beadsID, projectDir)
+			if err != nil {
+				// Beads query failed — don't block on infrastructure issues, but warn.
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("Could not verify implementation issues for architect %s: %v", beadsID, err))
+				return result
+			}
+			titleCount = count
+			if titleCount >= requiredIssues {
+				return result
+			}
 		}
 
-		// Check 2: Comment evidence — architect manually created issues and reported them
-		// Pattern: "Phase: Handoff - Created implementation issues: <ids>"
-		if hasHandoffIssueEvidence(comments) {
+		// Check 2: Comment evidence — count issue IDs reported in handoff comment
+		commentCount := countHandoffIssueEvidence(comments)
+		if commentCount >= requiredIssues {
 			return result
 		}
 
 		// Check 3: Comment opt-out — architect explicitly declared no issues with reason
-		// Pattern: "No implementation issues: <reason>"
 		if hasHandoffOptOut(comments) {
 			result.Warnings = append(result.Warnings,
 				"Architect declared 'No implementation issues' — design is advisory only")
 			return result
 		}
 
-		// No implementation issue found via any signal
+		// If beadsID is empty and no comment evidence: skip check (unit test compat)
+		if beadsID == "" && commentCount == 0 {
+			return result
+		}
+
+		// Not enough issues for the detected phases
+		totalFound := titleCount + commentCount
 		result.Passed = false
-		result.Errors = append(result.Errors,
-			fmt.Sprintf("Architect recommendation is %q but no implementation issue found for %s. "+
-				"Expected one of:\n"+
-				"  1. Issue with title containing \"(from architect %s)\" (auto-created)\n"+
-				"  2. Comment: \"Phase: Handoff - Created implementation issues: <ids>\"\n"+
-				"  3. Comment: \"Phase: Handoff - No implementation issues: <reason>\"\n"+
-				"Auto-create may have failed — create manually via: "+
-				"bd create \"<title> (from architect %s)\" --type task -l triage:ready",
-				recommendation, beadsID, beadsID, beadsID))
+		if requiredIssues > 1 {
+			result.Errors = append(result.Errors,
+				fmt.Sprintf("Multi-phase design detected (%d phases) but only %d implementation issue(s) found for architect %s. "+
+					"Each phase needs a corresponding issue.\n"+
+					"  Detected phases: %d (from Phase/Layer/Step/Stage indicators in SYNTHESIS.md)\n"+
+					"  Issues found: %d (title pattern: %d, comment evidence: %d)\n"+
+					"  Expected one of:\n"+
+					"    1. %d issues with title containing \"(from architect %s)\" (auto-created)\n"+
+					"    2. Comment: \"Phase: Handoff - Created implementation issues: <id1>, <id2>, ...\" (%d IDs)\n"+
+					"    3. Comment: \"Phase: Handoff - No implementation issues: <reason>\" (opt-out)",
+					requiredIssues, totalFound, beadsID,
+					requiredIssues, totalFound, titleCount, commentCount,
+					requiredIssues, beadsID, requiredIssues))
+		} else {
+			result.Errors = append(result.Errors,
+				fmt.Sprintf("Architect recommendation is %q but no implementation issue found for %s. "+
+					"Expected one of:\n"+
+					"  1. Issue with title containing \"(from architect %s)\" (auto-created)\n"+
+					"  2. Comment: \"Phase: Handoff - Created implementation issues: <ids>\"\n"+
+					"  3. Comment: \"Phase: Handoff - No implementation issues: <reason>\"\n"+
+					"Auto-create may have failed — create manually via: "+
+					"bd create \"<title> (from architect %s)\" --type task -l triage:ready",
+					recommendation, beadsID, beadsID, beadsID))
+		}
 		result.GatesFailed = append(result.GatesFailed, GateArchitectHandoff)
 		return result
 	}
@@ -153,16 +182,34 @@ func VerifyArchitectHandoff(workspacePath, skill, beadsID, projectDir string, co
 	return result
 }
 
-// hasHandoffIssueEvidence checks beads comments for evidence that the architect
-// manually created implementation issues (reported in Phase: Handoff comment).
-func hasHandoffIssueEvidence(comments []Comment) bool {
+// countHandoffIssueEvidence counts issue IDs in a "Phase: Handoff - Created implementation issues:"
+// comment. Returns 0 if no such comment exists.
+func countHandoffIssueEvidence(comments []Comment) int {
 	for _, c := range comments {
 		lower := strings.ToLower(c.Text)
 		if strings.Contains(lower, "phase: handoff") && strings.Contains(lower, "created implementation issues") {
-			return true
+			// Extract the IDs portion after "created implementation issues:"
+			idx := strings.Index(lower, "created implementation issues:")
+			if idx == -1 {
+				continue
+			}
+			idsStr := c.Text[idx+len("created implementation issues:"):]
+			idsStr = strings.TrimSpace(idsStr)
+			if idsStr == "" {
+				return 0
+			}
+			// Split by comma and count non-empty entries
+			parts := strings.Split(idsStr, ",")
+			count := 0
+			for _, p := range parts {
+				if strings.TrimSpace(p) != "" {
+					count++
+				}
+			}
+			return count
 		}
 	}
-	return false
+	return 0
 }
 
 // hasHandoffOptOut checks beads comments for an explicit opt-out from creating
@@ -175,6 +222,19 @@ func hasHandoffOptOut(comments []Comment) bool {
 		}
 	}
 	return false
+}
+
+// detectPhasesFromWorkspace reads SYNTHESIS.md from the workspace and detects
+// multi-phase structure. Returns 0 if no phases detected or file unreadable.
+func detectPhasesFromWorkspace(workspacePath string) int {
+	if workspacePath == "" {
+		return 0
+	}
+	data, err := os.ReadFile(filepath.Join(workspacePath, "SYNTHESIS.md"))
+	if err != nil {
+		return 0
+	}
+	return DetectPhases(string(data))
 }
 
 // formatValidRecommendations returns a human-readable list of valid recommendations.

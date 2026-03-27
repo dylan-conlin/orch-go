@@ -13,6 +13,8 @@ import (
 var (
 	regexRecommendation  = regexp.MustCompile(`(?m)\*\*Recommendation:\*\*\s*([\w][\w-]*)`)
 	regexNumberedPattern = regexp.MustCompile(`^\d+\.`)
+	// Matches phase/layer/step/stage indicators like "Phase 1:", "### Layer 2", "**Step 3:**"
+	regexPhaseIndicator = regexp.MustCompile(`(?im)(?:^|\n)\s*(?:#{1,6}\s+)?(?:\*\*)?(?:phase|layer|step|stage)\s+(\d+)`)
 )
 
 // Synthesis represents the content of a SYNTHESIS.md file using the D.E.K.N. structure.
@@ -198,6 +200,23 @@ func parseActionItems(section string) []string {
 		}
 	}
 	return items
+}
+
+// DetectPhases scans content for multi-phase indicators (Phase N, Layer N, Step N, Stage N)
+// and returns the count of distinct phase numbers found. Returns 0 if no phase structure detected.
+func DetectPhases(content string) int {
+	matches := regexPhaseIndicator.FindAllStringSubmatch(content, -1)
+	if len(matches) == 0 {
+		return 0
+	}
+
+	seen := make(map[string]bool)
+	for _, m := range matches {
+		if len(m) >= 2 {
+			seen[m[1]] = true
+		}
+	}
+	return len(seen)
 }
 
 // extractBoldSubsection extracts list items from a subsection that starts with **bold header:**

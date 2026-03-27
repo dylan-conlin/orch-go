@@ -377,19 +377,30 @@ func RemoveOrchAgentLabel(beadsID, projectDir string) error {
 // maybeAutoCreateImplementationIssue in complete_architect.go.
 // Returns true if at least one matching issue is found.
 func HasImplementationFollowUp(architectBeadsID, projectDir string) (bool, error) {
+	count, err := CountImplementationFollowUps(architectBeadsID, projectDir)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// CountImplementationFollowUps counts how many open issues reference the given architect beads ID.
+// Used by the multi-phase handoff gate to verify all phases have corresponding issues.
+func CountImplementationFollowUps(architectBeadsID, projectDir string) (int, error) {
 	issues, err := ListOpenIssues(projectDir)
 	if err != nil {
-		return false, fmt.Errorf("failed to list issues: %w", err)
+		return 0, fmt.Errorf("failed to list issues: %w", err)
 	}
 
 	pattern := strings.ToLower(fmt.Sprintf("from architect %s", architectBeadsID))
+	count := 0
 	for _, issue := range issues {
 		if strings.Contains(strings.ToLower(issue.Title), pattern) {
-			return true, nil
+			count++
 		}
 	}
 
-	return false, nil
+	return count, nil
 }
 
 // GetIssue retrieves issue details from beads.
