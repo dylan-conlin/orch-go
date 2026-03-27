@@ -56,11 +56,16 @@ func runDaemonLoop() error {
 
 		s.checkDaemonSignals(timestamp)
 
+		// Run periodic maintenance BEFORE verification pause check.
+		// Cleanup, health monitoring, and orphan detection must run even when
+		// the daemon is paused for verification — pause prevents new spawns,
+		// not maintenance. Without this, stale tmux windows accumulate during
+		// verification pause because cleanStaleTmuxWindows never executes.
+		periodicResult := runPeriodicTasks(s.d, timestamp, daemonVerbose, s.logger)
+
 		if s.checkVerificationPause(timestamp) {
 			continue
 		}
-
-		periodicResult := runPeriodicTasks(s.d, timestamp, daemonVerbose, s.logger)
 
 		completionResult := s.processDaemonCompletions(timestamp)
 

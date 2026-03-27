@@ -1,0 +1,37 @@
+verification:
+  automated:
+    - name: "Daemon cleanup unit tests"
+      command: "go test ./pkg/daemon/ -run 'TestIsWindowStale|TestRunPeriodicCleanup' -v"
+      expectation: "All 14 tests pass"
+      covers:
+        - "Windows with active OpenCode sessions are not stale"
+        - "Windows with open beads issues are protected"
+        - "Windows for closed issues are correctly identified as stale"
+        - "Fail-safe: beads unavailable keeps window alive"
+        - "Batch staleness check covers all cases"
+        - "Periodic cleanup runs when due and skips when not due"
+
+    - name: "Periodic tasks tests"
+      command: "go test ./cmd/orch/ -run TestRunPeriodicTasks -v"
+      expectation: "All 4 tests pass"
+      covers:
+        - "Cleanup logs events when due"
+        - "Nothing runs when disabled"
+        - "Recovery error logging"
+        - "Orphan detection integration"
+
+    - name: "Full build"
+      command: "go build ./cmd/orch/"
+      expectation: "Clean compilation"
+
+  code_review:
+    - name: "Loop ordering invariant"
+      file: "cmd/orch/daemon.go"
+      expectation: "runPeriodicTasks() is called BEFORE checkVerificationPause()"
+      rationale: "Periodic maintenance (cleanup, health, orphan detection) must execute regardless of verification pause state. Pause prevents new spawns, not maintenance."
+
+  reproduction:
+    original_bug: "Closed worker issues leave stale tmux windows when daemon is in verification pause"
+    root_cause: "In daemon.go main loop, checkVerificationPause() returned true and continued before runPeriodicTasks() was called, so cleanStaleTmuxWindows() never executed during pause."
+    fix: "Moved runPeriodicTasks() call before checkVerificationPause() check"
+    verified_by: "Code inspection — the original bug conditions (paused daemon, 0 active agents, closed issues with lingering windows) cannot currently be reproduced because the stale windows were already manually cleaned. However, the fix is structurally verifiable: periodic tasks now run unconditionally before the pause check."
