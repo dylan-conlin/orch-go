@@ -47,6 +47,8 @@
 - `Update()` closes beads issue with completion reason
 - Pre-commit checks: `accretion_precommit.go`, `model_stub_precommit.go`, `duplication_precommit.go` (power `orch precommit`)
 - `consequence_sensor.go`: validates architect outputs declare how gate effects will be observed
+- `plan_hydration.go`: hydrates multi-phase architect plans into implementation issues
+- `synthesis_parser.go`: parses SYNTHESIS.md to extract phases (`ExtractPhases`), TLDRs, and structured sections
 
 ## pkg/daemon/ + pkg/daemonconfig/ (Daemon)
 
@@ -66,6 +68,8 @@
 - Capacity polling: account capacity cache for `orch status`
 - Comprehension queue (`comprehension_queue.go`): two-state lifecycle (unread/processed), spawn throttling
 - Resume signal (`resume_signal.go`): file-based daemon resume trigger
+- Shutdown budget (`shutdown_budget.go`): explicit time budgets for shutdown phases (4s total, launchd 5s - 1s safety)
+- Launchd log dedup (`log.go`): detects stdout redirect to avoid double logging under launchd
 
 ## pkg/compose/ (Brief Composition)
 
@@ -105,12 +109,20 @@
 - Plan types for multi-phase coordination
 - Beads status overlay integration
 
+## pkg/routing/ (Issue Routing)
+
+- Skill inference from issue type, title, description, and labels (`InferSkillForIssue`)
+- Area label inference from file path keywords (`InferAreaFromText`)
+- `EnrichRoutingLabels()` auto-applies `skill:` and `area:` labels at issue creation
+- Preserves explicit labels — only infers when prefix not already present
+
 ## pkg/claims/ (Claim Tracking)
 
 - Machine-readable claim index (`claims.yaml`) for KB models
 - Tension-cluster detection (cross-model claim convergence)
 - Claim lifecycle states (hypothesis → tested → confirmed/refuted)
 - Drives daemon probe generation and orient surfacing
+- `ExtractClaimRef()` extracts claim IDs from probe content (frontmatter `claim:` field or Model Impact verdict lines)
 
 ## pkg/beads/ (Beads Issue Tracking)
 
@@ -273,6 +285,7 @@
 - `BackPropagateCompletion()`: on `orch complete`, moves beads IDs from `active_work` to `resolved_by`
 - `CreateWithParent()`: child thread creation with bidirectional parent/child links
 - `LinkWork()`: connect beads issues to threads (used by `spawn --thread`)
+- `thread resolve` prompts for resolved-to target (model/decision/brief) when not provided via `--to` flag
 
 ## pkg/port/ (Port Allocation)
 

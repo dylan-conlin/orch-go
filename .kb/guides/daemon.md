@@ -52,12 +52,15 @@ The daemon is an autonomous agent spawner that:
 | `status_display.go` | Status display formatting for `orch daemon status` command |
 | `invariants.go` | Runtime invariant checking with violation severity tracking |
 | `reflect.go` | Reflection analysis: `RunReflection`, `RunAndSaveReflectionWithContext`, `ShutdownReflectTimeout` (3s) |
+| `shutdown_budget.go` | Explicit time budgets for shutdown phases (4s total, per-phase allocation) |
+| `log.go` | Daemon logger with launchd stdout redirect detection (avoids double logging) |
 
 **Related packages:**
 - `pkg/daemonconfig/` — ComplianceConfig, allocation profiles
 - `pkg/orient/` — Orient phase measurement, work graph
 - `cmd/orch/daemon_periodic.go` — Periodic tasks (cleanup, recovery, health, sync)
-- `cmd/orch/daemon_handlers.go` — `runReflectionAnalysis` uses context timeout during shutdown
+- `cmd/orch/daemon.go` — `budgetedShutdown()` runs shutdown sequence with per-phase time budgets
+- `pkg/routing/` — Skill and area label inference for issue routing
 
 ### OODA Poll Loop
 
@@ -342,7 +345,14 @@ make install && orch daemon run --replace  # Graceful takeover with new binary
 
 **Interaction with orch-dashboard:** launchd and orch-dashboard are independent lifecycles. If both try to run the daemon (dashboard with `ORCH_DASHBOARD_START_DAEMON=1`), the PID lock prevents dual instances.
 
-**Shutdown behavior:** On SIGTERM (launchd stop), the daemon checks `shutdownRequested()` between major operations (reconcile, periodic tasks, completions, orient, decide, act) for fast exit. Reflection analysis during shutdown uses `ShutdownReflectTimeout` (3s) to avoid exceeding launchd's default ExitTimeOut (5s), which would result in SIGKILL.
+**Shutdown behavior:** On SIGTERM (launchd stop), the daemon checks `shutdownRequested()` between major operations (reconcile, periodic tasks, completions, orient, decide, act) for fast exit. Shutdown uses `budgetedShutdown()` with explicit time budgets per phase (total 4s = launchd 5s ExitTimeOut minus 1s safety):
+- Context cancel (immediate) → propagates to child goroutines
+- Reflection analysis (2.5s budget) → skipped if budget exceeded
+- Status file cleanup (500ms)
+- Log flush and close (500ms)
+- PID lock release (last)
+
+This replaced the previous unbounded `defer` chain that could exceed launchd's ExitTimeOut, causing SIGKILL.
 
 ---
 
@@ -670,6 +680,9 @@ From investigations, these design decisions were made:
 | `--replace` flag for graceful takeover | Avoids manual stop/start; atomic daemon restart | Feb 2026 |
 | Ghost sibling filtering in test deferral | Sibling issues that don't exist in beads no longer block test issue spawn | Mar 2026 |
 | Post-spawn workspace verification (L7) | Catches phantom spawns where orch work exits 0 but no workspace exists | Mar 2026 |
+| Budgeted shutdown (4s total) | Explicit per-phase time budgets prevent SIGKILL from launchd ExitTimeOut | Mar 2026 |
+| Auto-apply routing labels on issue creation | `skill:` and `area:` labels inferred at `bd create` time via `pkg/routing` | Mar 2026 |
+| Multi-phase architect auto-create | `orch complete` creates one issue per phase for multi-phase architect designs | Mar 2026 |
 
 ---
 
