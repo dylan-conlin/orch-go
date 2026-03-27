@@ -117,6 +117,7 @@ The daemon requires exactly one running process. A PID lock at `~/.orch/daemon.p
 - Stale PID files (from crashed daemons) detected via `kill(pid, 0)` and cleaned up
 - PID lock released on graceful shutdown via `defer`; crash leaves stale file
 - PID included in status file for dashboard visibility
+- **Shutdown timing constraint:** launchd sends SIGTERM, waits ExitTimeOut (15s), then SIGKILL. Deferred cleanup (reflection analysis) must use context timeout. Main loop must check context between operations via `shutdownRequested()` gates. (Fixed Mar 27, 2026 — was 5s default, caused 23 SIGKILL restarts.)
 
 This addresses **process-level** duplication that issue-level dedup (L1-L6) cannot catch — each daemon instance has its own in-memory tracker.
 
@@ -546,3 +547,4 @@ All 34 probes merged as of 2026-03-06. Listed chronologically with 1-line summar
 | `2026-03-12-probe-cross-project-orchestration-friction-audit` | Mar 12 | Contradicts + Extends | "Cannot COMPLETE cross-project" claim is stale — listCompletedAgentsMultiProject() implemented. Project group model (pkg/group/) fully implemented but groups.yaml doesn't exist — all group features fall back to hardcode. Creating config file is highest-leverage zero-code change. |
 | `../harness-engineering/probes/2026-03-17-probe-pre-commit-accretion-gate-2-week-effectiveness.md` | Mar 17 | Extends | Extraction cascade pattern documented: gate signals → daemon detects hotspot → spawns extraction → hotspot count 12→3 (75% reduction). Gate's direct blocking negligible (2 blocks, both bypassed); value is in triggering extraction cascades via daemon. |
 | `2026-03-18-probe-sibling-sequencing-test-impl-ordering` | Mar 18 | Extends | Daemon lacked cross-issue coordination for same-project test vs implementation ordering; test agents could write tests for undefined types. Added `ShouldDeferTestIssue()` in Decide phase. |
+| `../investigations/2026-03-27-inv-daemon-repeatedly-killed-sigkill-investigate.md` | Mar 27 | Extends | Daemon SIGKILL from launchd: exit-time reflection (no timeout) + missing context gates between main loop operations exceeded 5s ExitTimeOut. Fixed: 3s reflection timeout, context gates, ExitTimeOut=15s. Shutdown now 23-25ms. |

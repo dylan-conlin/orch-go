@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -279,14 +280,23 @@ func runDaemonReflect() error {
 
 // runReflectionAnalysis runs kb reflect and saves suggestions.
 // Called at the end of daemon processing to update reflection suggestions.
+// Uses ShutdownReflectTimeout to avoid blocking daemon exit past launchd's
+// exit timeout (which would result in SIGKILL).
 func runReflectionAnalysis(verbose bool) {
 	if verbose {
 		fmt.Println("Running reflection analysis...")
 	}
 
-	result := daemon.RunAndSaveReflection()
+	ctx, cancel := context.WithTimeout(context.Background(), daemon.ShutdownReflectTimeout)
+	defer cancel()
+
+	result := daemon.RunAndSaveReflectionWithContext(ctx, false)
 	if result.Error != nil {
-		fmt.Fprintf(os.Stderr, "Warning: reflection analysis failed: %v\n", result.Error)
+		if ctx.Err() != nil {
+			fmt.Fprintf(os.Stderr, "Reflection analysis skipped: shutdown timeout (%s)\n", daemon.ShutdownReflectTimeout)
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: reflection analysis failed: %v\n", result.Error)
+		}
 		return
 	}
 

@@ -2,6 +2,7 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +12,11 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/kbmetrics"
 )
+
+// ShutdownReflectTimeout is the maximum time allowed for reflection analysis
+// during daemon shutdown. Must be shorter than launchd's ExitTimeOut (default 5s)
+// to avoid SIGKILL.
+const ShutdownReflectTimeout = 3 * time.Second
 
 // ReflectSuggestions holds the output of kb reflect analysis.
 type ReflectSuggestions struct {
@@ -128,12 +134,18 @@ func RunReflection() (*ReflectSuggestions, error) {
 // which will automatically create beads issues for all types at their respective thresholds
 // (synthesis ≥10, defect-class ≥3, open ≥3 days).
 func RunReflectionWithOptions(createIssues bool) (*ReflectSuggestions, error) {
+	return RunReflectionWithContext(context.Background(), createIssues)
+}
+
+// RunReflectionWithContext executes kb reflect with a context for cancellation/timeout.
+// Used during daemon shutdown to prevent blocking past launchd's exit timeout.
+func RunReflectionWithContext(ctx context.Context, createIssues bool) (*ReflectSuggestions, error) {
 	args := []string{"reflect", "--global", "--format", "json"}
 	if createIssues {
 		args = append(args, "--create-issue")
 	}
 
-	cmd := exec.Command("kb", args...)
+	cmd := exec.CommandContext(ctx, "kb", args...)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to run kb reflect: %w", err)
@@ -300,13 +312,19 @@ type ReflectResult struct {
 
 // RunAndSaveReflection runs kb reflect and saves the results.
 func RunAndSaveReflection() *ReflectResult {
-	return RunAndSaveReflectionWithOptions(false)
+	return RunAndSaveReflectionWithContext(context.Background(), false)
 }
 
 // RunAndSaveReflectionWithOptions runs kb reflect with options and saves the results.
 // If createIssues is true, it will create beads issues for synthesis opportunities.
 func RunAndSaveReflectionWithOptions(createIssues bool) *ReflectResult {
-	suggestions, err := RunReflectionWithOptions(createIssues)
+	return RunAndSaveReflectionWithContext(context.Background(), createIssues)
+}
+
+// RunAndSaveReflectionWithContext runs kb reflect with a context and saves the results.
+// Used during daemon shutdown with a deadline to avoid exceeding launchd's exit timeout.
+func RunAndSaveReflectionWithContext(ctx context.Context, createIssues bool) *ReflectResult {
+	suggestions, err := RunReflectionWithContext(ctx, createIssues)
 	if err != nil {
 		return &ReflectResult{
 			Error:   err,

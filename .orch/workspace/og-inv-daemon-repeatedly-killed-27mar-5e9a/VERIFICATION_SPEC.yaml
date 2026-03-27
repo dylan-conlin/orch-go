@@ -1,0 +1,44 @@
+verification:
+  type: bug-fix
+  issue: orch-go-e0h25
+  description: Daemon repeatedly killed with SIGKILL (-9) by launchd
+
+  reproduction:
+    before_fix:
+      - command: "launchctl print gui/501/com.orch.daemon"
+        expected: "last terminating signal = Killed: 9"
+        observed: "last terminating signal = Killed: 9, runs = 23"
+
+    after_fix:
+      - command: "launchctl kill SIGTERM gui/501/com.orch.daemon && sleep 5 && launchctl print gui/501/com.orch.daemon"
+        expected: "No 'last terminating signal' field (clean exit)"
+        observed: "No last terminating signal, runs incremented by 1, new PID assigned"
+
+      - command: "Send SIGTERM to daemon during sleep phase, measure exit time"
+        expected: "Exit within 5 seconds"
+        observed: "Daemon exited in 23ms"
+
+      - command: "Send SIGTERM to daemon during active cycle, measure exit time"
+        expected: "Exit within 5 seconds"
+        observed: "Daemon exited in 25ms"
+
+  tests:
+    - command: "go test ./pkg/daemon/..."
+      result: "ok (22.6s)"
+    - command: "go test ./cmd/orch/..."
+      result: "1 pre-existing failure (TestEnforcePhaseCompleteSkipsPrintMode - unrelated)"
+
+  changes:
+    - file: pkg/daemon/reflect.go
+      description: "Added context-aware RunReflectionWithContext and RunAndSaveReflectionWithContext with ShutdownReflectTimeout (3s)"
+    - file: cmd/orch/daemon_handlers.go
+      description: "runReflectionAnalysis now uses context.WithTimeout(3s) to prevent blocking shutdown"
+    - file: cmd/orch/daemon.go
+      description: "Added shutdownRequested() context gates between major operations in main loop"
+    - file: ~/Library/LaunchAgents/com.orch.daemon.plist
+      description: "Added ExitTimeOut=15 as safety net"
+
+  manual_verification:
+    - "Daemon startup: launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.orch.daemon.plist"
+    - "Daemon stop: launchctl kill SIGTERM gui/501/com.orch.daemon"
+    - "Verify: launchctl print gui/501/com.orch.daemon — should NOT show 'last terminating signal = Killed: 9'"

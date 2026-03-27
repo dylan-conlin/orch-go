@@ -54,6 +54,10 @@ func runDaemonLoop() error {
 			s.dlog.Printf("[%s] Reconciled: %d new agents detected (external spawns or prior run)\n", timestamp, reconcileResult.Added)
 		}
 
+		if s.shutdownRequested() {
+			return nil
+		}
+
 		s.checkDaemonSignals(timestamp)
 
 		// Run periodic maintenance BEFORE verification pause check.
@@ -63,7 +67,15 @@ func runDaemonLoop() error {
 		// verification pause because cleanStaleTmuxWindows never executes.
 		periodicResult := runPeriodicTasks(s.d, timestamp, daemonVerbose, s.logger)
 
+		if s.shutdownRequested() {
+			return nil
+		}
+
 		completionResult := s.processDaemonCompletions(timestamp)
+
+		if s.shutdownRequested() {
+			return nil
+		}
 
 		if s.checkInvariants(timestamp, completionResult) {
 			continue
@@ -93,6 +105,10 @@ func runDaemonLoop() error {
 			if s.d.BeadsCircuitBreaker != nil {
 				s.d.BeadsCircuitBreaker.RecordSuccess()
 			}
+		}
+
+		if s.shutdownRequested() {
+			return nil
 		}
 
 		// ── ORIENT: analyze and contextualize ────────────────────────
@@ -167,6 +183,19 @@ func runDaemonLoop() error {
 			return nil
 		case <-time.After(s.config.PollInterval):
 		}
+	}
+}
+
+// shutdownRequested checks if the daemon context has been cancelled (SIGTERM received).
+// Used as a fast-exit gate between major operations in the main loop to avoid
+// running subsequent operations after shutdown is requested.
+func (s *daemonLoopState) shutdownRequested() bool {
+	select {
+	case <-s.ctx.Done():
+		s.dlog.Printf("%s", s.stopMessage())
+		return true
+	default:
+		return false
 	}
 }
 
