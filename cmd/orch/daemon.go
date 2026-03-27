@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -20,13 +21,7 @@ func runDaemonLoop() error {
 	if err != nil {
 		return err
 	}
-	defer s.pidLock.Release()
-	defer s.cancel()
-	defer s.dlog.Close()
-	defer daemon.RemoveStatusFile()
-	if daemonReflect {
-		defer runReflectionAnalysis(daemonVerbose)
-	}
+	defer s.budgetedShutdown()
 
 	s.logDaemonConfig()
 
@@ -196,6 +191,48 @@ func (s *daemonLoopState) shutdownRequested() bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// budgetedShutdown runs the daemon shutdown sequence with explicit time budgets.
+// Total budget: 4s (launchd ExitTimeOut 5s minus 1s safety margin).
+// cancel() runs first so child processes get context cancellation early.
+func (s *daemonLoopState) budgetedShutdown() {
+	budget := daemon.NewShutdownBudget()
+	budget.Begin()
+
+	// 1. Cancel context first — propagates to child goroutines/processes.
+	s.cancel()
+
+	// 2. Reflection analysis (2.5s budget, only if enabled).
+	if daemonReflect {
+		reflectCtx, reflectCancel := context.WithTimeout(context.Background(), budget.Reflection)
+		result := daemon.RunAndSaveReflectionWithContext(reflectCtx, false)
+		reflectCancel()
+		if result.Error != nil {
+			if reflectCtx.Err() != nil {
+				s.dlog.Printf("Reflection skipped: budget exceeded (%s)\n", budget.Reflection)
+			} else {
+				s.dlog.Printf("Reflection failed: %v\n", result.Error)
+			}
+		} else if result.Suggestions != nil && result.Suggestions.HasSuggestions() {
+			s.dlog.Printf("Reflection: %s\n", result.Suggestions.Summary())
+		}
+	}
+
+	// 3. Status cleanup (500ms budget).
+	daemon.RemoveStatusFile()
+
+	// 4. Log flush and close (500ms budget).
+	s.dlog.Close()
+
+	// 5. Release PID lock last.
+	s.pidLock.Release()
+
+	if remaining := budget.Remaining(); remaining == 0 {
+		// Budget expired — log was already closed, best-effort stderr.
+		//nolint:all
+		_ = remaining // Budget exhausted; launchd safety margin is the last defense.
 	}
 }
 

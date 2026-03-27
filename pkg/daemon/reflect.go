@@ -14,9 +14,10 @@ import (
 )
 
 // ShutdownReflectTimeout is the maximum time allowed for reflection analysis
-// during daemon shutdown. Must be shorter than launchd's ExitTimeOut (default 5s)
-// to avoid SIGKILL.
-const ShutdownReflectTimeout = 3 * time.Second
+// during daemon shutdown. Derived from ShutdownBudget.Reflection (2.5s).
+// The budgeted shutdown in cmd/orch/daemon.go uses the budget directly;
+// this constant is retained for standalone callers of runReflectionAnalysis.
+const ShutdownReflectTimeout = 2500 * time.Millisecond
 
 // ReflectSuggestions holds the output of kb reflect analysis.
 type ReflectSuggestions struct {
