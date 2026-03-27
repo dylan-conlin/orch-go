@@ -234,6 +234,7 @@ func readLastNEvents(path string, n int) ([]events.Event, error) {
 
 	var allEvents []events.Event
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024) // 1MB max line size
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {

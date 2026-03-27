@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -98,6 +99,37 @@ func TestReadLastNEvents(t *testing.T) {
 	}
 	if eventList[1].Type != "session.completed" {
 		t.Errorf("Expected second event to be session.completed, got %s", eventList[1].Type)
+	}
+}
+
+func TestReadLastNEventsLargeLines(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpLogPath := filepath.Join(tmpDir, "events.jsonl")
+
+	// Create an event with a field exceeding bufio.Scanner's default 64KB limit
+	bigPayload := strings.Repeat("x", 240*1024) // 240KB > 64KB default
+	testEvents := []events.Event{
+		{Type: "session.spawned", SessionID: "small", Timestamp: time.Now().Unix()},
+		{Type: "session.status", SessionID: bigPayload, Timestamp: time.Now().Unix()},
+		{Type: "session.completed", SessionID: "small2", Timestamp: time.Now().Unix()},
+	}
+
+	file, err := os.Create(tmpLogPath)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+	for _, event := range testEvents {
+		data, _ := json.Marshal(event)
+		file.Write(append(data, '\n'))
+	}
+	file.Close()
+
+	eventList, err := readLastNEvents(tmpLogPath, 100)
+	if err != nil {
+		t.Fatalf("readLastNEvents failed on large lines: %v", err)
+	}
+	if len(eventList) != 3 {
+		t.Errorf("Expected 3 events (including >64KB line), got %d", len(eventList))
 	}
 }
 
