@@ -50,10 +50,19 @@ func extractReferencedBeadsIDs(description, selfID string) []string {
 //     (Agent committed but died before updating beads status.)
 //  2. Do beads IDs referenced in the description have commits?
 //     (Architect created follow-up for work already done by another agent.)
+//     Cross-type references are skipped: a task referencing a completed
+//     investigation is follow-up work, not duplication.
 type CommitDedupGate struct {
 	// HasCommitsFunc checks if a beads ID has associated commits in recent
 	// git history. Returns true if commits found. When nil, gate is skipped.
 	HasCommitsFunc func(beadsID string) bool
+
+	// GetIssueTypeFunc looks up the issue type for a referenced beads ID.
+	// Returns the issue type (e.g., "task", "investigation", "bug") or empty
+	// string if unknown. Used by Check 2 to skip cross-type references —
+	// a task referencing a completed investigation is follow-up, not duplication.
+	// When nil, Check 2 behaves as before (no type filtering).
+	GetIssueTypeFunc func(beadsID string) string
 }
 
 func (g *CommitDedupGate) Name() string      { return "commit-dedup" }
@@ -74,8 +83,16 @@ func (g *CommitDedupGate) Check(issue *Issue) GateResult {
 	}
 
 	// Check 2: Do referenced beads IDs have commits?
+	// Skip cross-type references: a task referencing a completed investigation
+	// is follow-up work (implementing recommendations), not duplication.
 	refs := extractReferencedBeadsIDs(issue.Description, issue.ID)
 	for _, ref := range refs {
+		if g.GetIssueTypeFunc != nil && issue.IssueType != "" {
+			refType := g.GetIssueTypeFunc(ref)
+			if refType != "" && refType != issue.IssueType {
+				continue // Cross-type reference — citation, not duplication
+			}
+		}
 		if g.HasCommitsFunc(ref) {
 			return GateResult{
 				Gate:    g.Name(),

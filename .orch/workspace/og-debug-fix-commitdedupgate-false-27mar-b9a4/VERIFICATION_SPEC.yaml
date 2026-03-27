@@ -1,0 +1,45 @@
+verification:
+  issue: orch-go-qz5y5
+  type: bug-fix
+  reproduction:
+    description: >
+      CommitDedupGate rejects follow-up implementation issues that reference
+      completed investigations in their description. 7 issues from probe
+      orch-go-y85zx were all blocked because the gate treated description
+      citations as duplication evidence.
+    test: TestCommitDedupGate_AllowsCrossTypeReference
+    command: go test ./pkg/daemon/ -run TestCommitDedupGate_AllowsCrossTypeReference -v
+    expected: PASS — task issue referencing investigation with commits is allowed
+
+  tests:
+    command: go test ./pkg/daemon/ -run TestCommitDedupGate -v -count=1
+    total: 14
+    new: 7
+    all_pass: true
+    cases:
+      - name: TestCommitDedupGate_AllowsCrossTypeReference
+        verifies: "task referencing investigation with commits → ALLOW"
+      - name: TestCommitDedupGate_RejectsSameTypeReference
+        verifies: "task referencing task with commits → still REJECT"
+      - name: TestCommitDedupGate_NilGetIssueTypeFuncStillRejects
+        verifies: "backward compatibility when GetIssueTypeFunc is nil"
+      - name: TestCommitDedupGate_UnknownRefTypeStillRejects
+        verifies: "unknown ref type (empty string) → still REJECT (fail-open to rejection)"
+      - name: TestCommitDedupGate_SelfCheckIgnoresTypeFunc
+        verifies: "Check 1 (self-ID) still rejects regardless of type"
+      - name: TestCommitDedupGate_MultipleCrossTypeRefsAllAllowed
+        verifies: "multiple cross-type refs all skipped → ALLOW"
+      - name: TestCommitDedupGate_MixedRefsRejectsOnSameType
+        verifies: "mixed refs — cross-type skipped but same-type ref still rejects"
+
+  full_suite:
+    command: go test ./pkg/daemon/ -count=1 -timeout 120s
+    result: ok (22.6s)
+
+  files_changed:
+    - pkg/daemon/prior_art_dedup.go
+    - pkg/daemon/prior_art_dedup_test.go
+    - pkg/daemon/issue_adapter.go
+    - pkg/daemon/spawn_execution.go
+
+  manual_verification: none required — all behavior verified by unit tests

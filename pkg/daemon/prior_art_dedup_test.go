@@ -185,6 +185,187 @@ func TestCommitDedupGate_FailMode(t *testing.T) {
 }
 
 // =============================================================================
+// CommitDedupGate Cross-Type Reference Tests (false positive fix)
+// =============================================================================
+
+func TestCommitDedupGate_AllowsCrossTypeReference(t *testing.T) {
+	// Reproduction of the false positive: a task issue referencing a completed
+	// investigation should be ALLOWED — it's follow-up work, not a duplicate.
+	gate := &CommitDedupGate{
+		HasCommitsFunc: func(beadsID string) bool {
+			return beadsID == "orch-go-y85zx" // Investigation has commits
+		},
+		GetIssueTypeFunc: func(beadsID string) string {
+			if beadsID == "orch-go-y85zx" {
+				return "investigation"
+			}
+			return ""
+		},
+	}
+	issue := &Issue{
+		ID:          "orch-go-efw7c",
+		Title:       "Extract probe claim/verdict",
+		IssueType:   "task",
+		Description: "Follow-up from probe orch-go-y85zx recommendations.",
+	}
+	result := gate.Check(issue)
+
+	if result.Verdict != GateAllow {
+		t.Errorf("CommitDedupGate.Check() = %v, want GateAllow for cross-type reference (task→investigation)", result.Verdict)
+	}
+}
+
+func TestCommitDedupGate_RejectsSameTypeReference(t *testing.T) {
+	// Same-type references (task→task) should still be checked for duplication.
+	gate := &CommitDedupGate{
+		HasCommitsFunc: func(beadsID string) bool {
+			return beadsID == "orch-go-paatt"
+		},
+		GetIssueTypeFunc: func(beadsID string) string {
+			if beadsID == "orch-go-paatt" {
+				return "task"
+			}
+			return ""
+		},
+	}
+	issue := &Issue{
+		ID:          "orch-go-94bxz",
+		Title:       "Implement fix",
+		IssueType:   "task",
+		Description: "Follow-up from orch-go-paatt.",
+	}
+	result := gate.Check(issue)
+
+	if result.Verdict != GateReject {
+		t.Errorf("CommitDedupGate.Check() = %v, want GateReject for same-type reference (task→task)", result.Verdict)
+	}
+}
+
+func TestCommitDedupGate_NilGetIssueTypeFuncStillRejects(t *testing.T) {
+	// Backward compatibility: when GetIssueTypeFunc is nil, behaves as before.
+	gate := &CommitDedupGate{
+		HasCommitsFunc: func(beadsID string) bool {
+			return beadsID == "orch-go-paatt"
+		},
+		// GetIssueTypeFunc is nil — no type lookup available
+	}
+	issue := &Issue{
+		ID:          "orch-go-94bxz",
+		Title:       "Implement fix",
+		IssueType:   "task",
+		Description: "Follow-up. Issue: orch-go-paatt.",
+	}
+	result := gate.Check(issue)
+
+	if result.Verdict != GateReject {
+		t.Errorf("CommitDedupGate.Check() = %v, want GateReject when GetIssueTypeFunc is nil", result.Verdict)
+	}
+}
+
+func TestCommitDedupGate_UnknownRefTypeStillRejects(t *testing.T) {
+	// When GetIssueTypeFunc returns empty (issue not found), fail open to rejection.
+	gate := &CommitDedupGate{
+		HasCommitsFunc: func(beadsID string) bool {
+			return beadsID == "orch-go-paatt"
+		},
+		GetIssueTypeFunc: func(beadsID string) string {
+			return "" // Unknown type
+		},
+	}
+	issue := &Issue{
+		ID:          "orch-go-94bxz",
+		Title:       "Implement fix",
+		IssueType:   "task",
+		Description: "Refs orch-go-paatt.",
+	}
+	result := gate.Check(issue)
+
+	if result.Verdict != GateReject {
+		t.Errorf("CommitDedupGate.Check() = %v, want GateReject when referenced type is unknown", result.Verdict)
+	}
+}
+
+func TestCommitDedupGate_SelfCheckIgnoresTypeFunc(t *testing.T) {
+	// Check 1 (self-ID commit check) should still reject regardless of type comparison.
+	gate := &CommitDedupGate{
+		HasCommitsFunc: func(beadsID string) bool {
+			return beadsID == "orch-go-test1"
+		},
+		GetIssueTypeFunc: func(beadsID string) string {
+			return "investigation" // Different type — but self-check shouldn't care
+		},
+	}
+	issue := &Issue{
+		ID:          "orch-go-test1",
+		Title:       "Test",
+		IssueType:   "task",
+		Description: "Some desc",
+	}
+	result := gate.Check(issue)
+
+	if result.Verdict != GateReject {
+		t.Errorf("CommitDedupGate.Check() = %v, want GateReject for self-ID even with type func", result.Verdict)
+	}
+}
+
+func TestCommitDedupGate_MultipleCrossTypeRefsAllAllowed(t *testing.T) {
+	// Multiple cross-type references should all be skipped.
+	gate := &CommitDedupGate{
+		HasCommitsFunc: func(beadsID string) bool {
+			// Both referenced issues have commits
+			return beadsID == "orch-go-inv01" || beadsID == "orch-go-inv02"
+		},
+		GetIssueTypeFunc: func(beadsID string) string {
+			if beadsID == "orch-go-inv01" || beadsID == "orch-go-inv02" {
+				return "investigation"
+			}
+			return ""
+		},
+	}
+	issue := &Issue{
+		ID:          "orch-go-impl1",
+		Title:       "Implement recommendations",
+		IssueType:   "task",
+		Description: "From probe orch-go-inv01 and orch-go-inv02 findings.",
+	}
+	result := gate.Check(issue)
+
+	if result.Verdict != GateAllow {
+		t.Errorf("CommitDedupGate.Check() = %v, want GateAllow for multiple cross-type references", result.Verdict)
+	}
+}
+
+func TestCommitDedupGate_MixedRefsRejectsOnSameType(t *testing.T) {
+	// If one ref is cross-type (allow) but another is same-type with commits (reject),
+	// the same-type ref should still trigger rejection.
+	gate := &CommitDedupGate{
+		HasCommitsFunc: func(beadsID string) bool {
+			return beadsID == "orch-go-inv01" || beadsID == "orch-go-task1"
+		},
+		GetIssueTypeFunc: func(beadsID string) string {
+			if beadsID == "orch-go-inv01" {
+				return "investigation"
+			}
+			if beadsID == "orch-go-task1" {
+				return "task"
+			}
+			return ""
+		},
+	}
+	issue := &Issue{
+		ID:          "orch-go-impl1",
+		Title:       "Implement fix",
+		IssueType:   "task",
+		Description: "From investigation orch-go-inv01. Related to orch-go-task1.",
+	}
+	result := gate.Check(issue)
+
+	if result.Verdict != GateReject {
+		t.Errorf("CommitDedupGate.Check() = %v, want GateReject when same-type ref has commits", result.Verdict)
+	}
+}
+
+// =============================================================================
 // extractKeywords Tests
 // =============================================================================
 

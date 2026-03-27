@@ -365,6 +365,30 @@ func GetBeadsIssueStatus(beadsID string) (string, error) {
 	return issue.Status, nil
 }
 
+// GetBeadsIssueType returns the issue type for a beads ID.
+// Returns empty string on error (fail-open: unknown type won't block spawns).
+func GetBeadsIssueType(beadsID string) string {
+	// Try RPC first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			issue, err := client.Show(beadsID)
+			if err == nil {
+				return issue.IssueType
+			}
+		}
+	}
+
+	// Fallback to CLI
+	issue, err := beads.FallbackShow(beadsID, "")
+	if err != nil {
+		return "" // Fail-open: unknown type
+	}
+	return issue.IssueType
+}
+
 // FindInProgressByTitle returns the first in_progress issue with a matching title.
 // Delegates to FindInProgressByTitleForProject with empty projectDir.
 func FindInProgressByTitle(title string) *Issue {

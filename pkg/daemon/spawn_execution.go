@@ -264,8 +264,11 @@ func (d *Daemon) buildSpawnPipeline() *SpawnPipeline {
 
 	// Build commit dedup gate: checks if referenced beads IDs have git commits.
 	// Uses d.CommitChecker when set (production); nil skips the gate (tests).
+	// GetIssueTypeFunc enables cross-type reference filtering: a task referencing
+	// a completed investigation is follow-up work, not duplication.
 	commitDedupGate := &CommitDedupGate{
-		HasCommitsFunc: d.CommitChecker,
+		HasCommitsFunc:   d.CommitChecker,
+		GetIssueTypeFunc: GetBeadsIssueType,
 	}
 
 	// Build gate list with required gates
