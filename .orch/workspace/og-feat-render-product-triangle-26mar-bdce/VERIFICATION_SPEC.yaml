@@ -1,0 +1,16 @@
+commands:
+  - command: "cd /Users/dylanconlin/Documents/personal/orch-go/web && npx playwright test tests/home-surface.spec.ts"
+    expectation: "Focused home-surface spec passes and proves inline thread, brief, and question content rendering."
+    result: "passed"
+manual_checks:
+  - url: "http://localhost:5188/"
+    expectation: "Above-the-fold area reads like comprehension content rather than metadata-only monitoring."
+    result: "passed"
+  - url: "http://localhost:5188/"
+    expectation: "Thread latest-entry prose, brief Frame/Resolution/Tension excerpts, and open question text are readable without navigating away from /."
+    result: "passed"
+artifacts:
+  - path: "home-surface-localhost.png"
+    purpose: "Manual browser review screenshot captured during localhost:5188 verification."
+notes:
+  - "`npm run check` currently reports pre-existing type errors outside this task in unrelated dashboard files; not introduced by this change."

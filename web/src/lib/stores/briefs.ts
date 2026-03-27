@@ -6,6 +6,9 @@ const API_BASE = 'http://localhost:3348'
 export interface BriefListItem {
 	beads_id: string
 	marked_read: boolean
+	thread_slug?: string
+	thread_title?: string
+	has_tension?: boolean
 }
 
 function createBriefsStore() {

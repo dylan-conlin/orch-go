@@ -13,13 +13,24 @@
 		setFilterQueryStringCallback
 	} from '$lib/stores/agents';
 	import { threads, threadDetail } from '$lib/stores/threads';
-	import { briefs } from '$lib/stores/briefs';
+	import { briefs, type BriefListItem } from '$lib/stores/briefs';
 	import { beads, readyIssues, reviewQueue } from '$lib/stores/beads';
+	import type { BriefResponse } from '$lib/stores/beads';
 	import { questions } from '$lib/stores/questions';
 	import { filters, orchestratorContext, buildFilterQueryString } from '$lib/stores/context';
 
 	// Thread expansion state
 	let expandedThread: string | null = null;
+	let homeBriefCache = new Map<string, BriefResponse>();
+	let homeBriefLoadKey = '';
+
+	const HOME_BRIEF_LIMIT = 2;
+	const HOME_QUESTION_LIMIT = 3;
+
+	type BriefSectionPreview = {
+		label: string;
+		text: string;
+	};
 
 	function toggleThread(slug: string) {
 		if (expandedThread === slug) {
@@ -52,6 +63,58 @@
 		}
 	}
 
+	function collapseWhitespace(value: string): string {
+		return value.replace(/\s+/g, ' ').trim();
+	}
+
+	function trimPreview(value: string, maxLength: number): string {
+		const collapsed = collapseWhitespace(value);
+		if (collapsed.length <= maxLength) return collapsed;
+		const trimmed = collapsed.slice(0, maxLength);
+		const breakpoint = Math.max(trimmed.lastIndexOf('. '), trimmed.lastIndexOf('; '), trimmed.lastIndexOf(', '), trimmed.lastIndexOf(' '));
+		return `${trimmed.slice(0, breakpoint > 60 ? breakpoint : maxLength).trimEnd()}...`;
+	}
+
+	function extractBriefSection(content: string, heading: string): string {
+		const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const match = content.match(new RegExp(`(?:^|\\n)## ${escapedHeading}\\s*\\n([\\s\\S]*?)(?=\\n## |\\n# |$)`));
+		return match?.[1] ? collapseWhitespace(match[1]) : '';
+	}
+
+	function getBriefPreviewSections(content: string): BriefSectionPreview[] {
+		return [
+			{ label: 'Frame', text: trimPreview(extractBriefSection(content, 'Frame'), 150) },
+			{ label: 'Resolution', text: trimPreview(extractBriefSection(content, 'Resolution'), 170) },
+			{ label: 'Tension', text: trimPreview(extractBriefSection(content, 'Tension'), 140) }
+		].filter((section) => section.text.length > 0);
+	}
+
+	function getHomeBriefCandidates(items: BriefListItem[]): BriefListItem[] {
+		const unread = items.filter((item) => !item.marked_read);
+		const source = unread.length > 0 ? unread : items;
+		return source.slice(0, HOME_BRIEF_LIMIT);
+	}
+
+	async function hydrateHomeBriefs(items: BriefListItem[], projectDir?: string) {
+		const results = await Promise.all(
+			items.map(async (item) => {
+				if (homeBriefCache.has(item.beads_id)) {
+					return [item.beads_id, homeBriefCache.get(item.beads_id)] as const;
+				}
+				const brief = await briefs.fetchBrief(item.beads_id, projectDir);
+				return [item.beads_id, brief] as const;
+			})
+		);
+
+		const nextCache = new Map(homeBriefCache);
+		for (const [beadsId, brief] of results) {
+			if (brief) {
+				nextCache.set(beadsId, brief);
+			}
+		}
+		homeBriefCache = nextCache;
+	}
+
 	// Status bucket ordering: active thinking first, then forming, then converged
 	function statusOrder(status: string): number {
 		switch (status) {
@@ -73,6 +136,11 @@
 			return b.updated.localeCompare(a.updated);
 		});
 	$: unreadBriefCount = $briefs.filter(b => !b.marked_read).length;
+	$: homeBriefItems = getHomeBriefCandidates($briefs);
+	$: featuredQuestions = [
+		...($questions?.open || []),
+		...($questions?.investigating || [])
+	].slice(0, HOME_QUESTION_LIMIT);
 
 	// Section collapse state with localStorage persistence
 	const STORAGE_KEY = 'orch-dashboard-sections';
@@ -210,6 +278,15 @@
 			agents.fetch(filterQueryString).catch(console.error);
 		}
 	}
+
+	$: if (typeof window !== 'undefined') {
+		const projectDir = $filters.followOrchestrator ? $orchestratorContext.project_dir : undefined;
+		const nextKey = `${projectDir || ''}:${homeBriefItems.map((item) => item.beads_id).join(',')}`;
+		if (homeBriefItems.length > 0 && nextKey !== homeBriefLoadKey) {
+			homeBriefLoadKey = nextKey;
+			void hydrateHomeBriefs(homeBriefItems, projectDir);
+		}
+	}
 </script>
 
 <div class="space-y-3">
@@ -258,7 +335,11 @@
 								</div>
 							</div>
 							{#if t.latest_entry}
-								<p class="mt-1 text-xs text-muted-foreground truncate ml-5">{t.latest_entry}</p>
+								<p
+									class="ml-5 mt-1 text-sm leading-5 text-muted-foreground"
+									style="display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;"
+									data-testid="thread-inline-entry-{t.name}"
+								>{t.latest_entry}</p>
 							{/if}
 						</button>
 						{#if expandedThread === t.name && $threadDetail}
@@ -287,32 +368,93 @@
 		</div>
 	</div>
 
-	<!-- New Evidence — unread briefs + open questions -->
-	<div class="grid gap-2 sm:grid-cols-2">
-		<!-- Unread Briefs -->
-		<div class="rounded-lg border bg-card px-3 py-2">
-			<div class="flex items-center justify-between">
-				<span class="text-sm font-medium">Unread Briefs</span>
-				{#if unreadBriefCount > 0}
-					<a href="/briefs" class="inline-flex items-center gap-1">
-						<Badge variant="default" class="h-5 px-1.5 text-xs">{unreadBriefCount}</Badge>
-					</a>
-				{:else}
-					<span class="text-xs text-muted-foreground">all read</span>
-				{/if}
+	<!-- New Evidence — inline brief and question content -->
+	<div class="grid gap-2 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.95fr)]">
+		<div class="rounded-lg border bg-card px-3 py-3" data-testid="home-briefs-card">
+			<div class="flex items-center justify-between gap-3">
+				<div>
+					<p class="text-sm font-medium">Recent Briefs</p>
+					<p class="text-xs text-muted-foreground">Frame, resolution, and tension from the latest work.</p>
+				</div>
+				<div class="flex items-center gap-2">
+					{#if unreadBriefCount > 0}
+						<a href="/briefs" class="inline-flex items-center gap-1">
+							<Badge variant="default" class="h-5 px-1.5 text-xs">{unreadBriefCount} unread</Badge>
+						</a>
+					{/if}
+					<a href="/briefs" class="text-xs font-medium text-foreground hover:underline">Open queue</a>
+				</div>
 			</div>
+
+			{#if homeBriefItems.length > 0}
+				<div class="mt-3 space-y-2">
+					{#each homeBriefItems as item (item.beads_id)}
+						{@const brief = homeBriefCache.get(item.beads_id)}
+						<div class="rounded-md border border-border/70 bg-background/40 px-3 py-2" data-testid="home-brief-{item.beads_id}">
+							<div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+								<span class="font-mono text-[11px] text-foreground">{item.beads_id}</span>
+								{#if item.thread_title}
+									<span>{item.thread_title}</span>
+								{/if}
+								{#if item.has_tension}
+									<Badge variant="outline" class="h-5 px-1.5 text-[10px]">tension</Badge>
+								{/if}
+							</div>
+							{#if brief}
+								<div class="mt-2 space-y-2">
+									{#each getBriefPreviewSections(brief.content) as section (section.label)}
+										<div class="grid gap-1 sm:grid-cols-[5.25rem_minmax(0,1fr)]" data-testid="home-brief-section-{item.beads_id}-{section.label.toLowerCase()}">
+											<span class="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{section.label}</span>
+											<p class="text-sm leading-5 text-foreground/90">{section.text}</p>
+										</div>
+									{/each}
+								</div>
+							{:else}
+								<p class="mt-2 text-sm text-muted-foreground">Loading brief content...</p>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<div class="mt-3 rounded border border-dashed p-4 text-center text-sm text-muted-foreground">
+					No recent briefs yet.
+				</div>
+			{/if}
 		</div>
 
-		<!-- Open Questions -->
-		<div class="rounded-lg border bg-card px-3 py-2">
-			<div class="flex items-center justify-between">
-				<span class="text-sm font-medium">Open Questions</span>
+		<div class="rounded-lg border bg-card px-3 py-3" data-testid="home-questions-card">
+			<div class="flex items-center justify-between gap-3">
+				<div>
+					<p class="text-sm font-medium">Open Questions</p>
+					<p class="text-xs text-muted-foreground">The tensions blocking clean movement right now.</p>
+				</div>
 				{#if $questions && $questions.open && $questions.open.length > 0}
-					<Badge variant="destructive" class="h-5 px-1.5 text-xs">{$questions.open.length} blocking</Badge>
+					<Badge variant="destructive" class="h-5 px-1.5 text-xs">{$questions.open.length} open</Badge>
 				{:else}
 					<span class="text-xs text-muted-foreground">none</span>
 				{/if}
 			</div>
+
+			{#if featuredQuestions.length > 0}
+				<div class="mt-3 space-y-2">
+					{#each featuredQuestions as question (question.id)}
+						<div class="rounded-md border border-border/70 bg-background/40 px-3 py-2" data-testid="home-question-{question.id}">
+							<p class="text-sm leading-5 text-foreground">{question.title}</p>
+							<div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+								<span>{question.status === 'open' ? 'Needs answer' : 'Investigating'}</span>
+								{#if question.blocking && question.blocking.length > 0}
+									<Badge variant="outline" class="h-5 px-1.5 text-[10px]">Blocks {question.blocking.length}</Badge>
+								{/if}
+								<span class="font-mono text-[11px]">{question.id}</span>
+							</div>
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<div class="mt-3 rounded border border-dashed p-4 text-center text-sm text-muted-foreground">
+					No active tensions.
+				</div>
+			{/if}
 		</div>
 	</div>
 
