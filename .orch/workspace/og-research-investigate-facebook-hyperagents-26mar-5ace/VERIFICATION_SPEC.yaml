@@ -1,0 +1,51 @@
+---
+# VERIFICATION_SPEC.yaml — HyperAgents Research Probe
+# Issue: orch-go-2mfvw
+# Workspace: og-research-investigate-facebook-hyperagents-26mar-5ace
+
+verification_type: research
+skill: research
+
+deliverables:
+  probe_file:
+    path: .kb/models/knowledge-accretion/probes/2026-03-26-probe-hyperagents-external-validation-meta-level-accretion.md
+    status: complete
+    sections_filled:
+      - Question (specific claims tested)
+      - What I Tested (paper + codebase analysis methodology)
+      - What I Observed (6 observation sections with evidence tables)
+      - Model Impact (3 extensions documented)
+      - Notes (relation to other threads, what HyperAgents doesn't have, follow-up questions)
+
+  model_update:
+    path: .kb/models/knowledge-accretion/model.md
+    changes:
+      - "Added evolutionary agent populations as 6th confirmed substrate in generalization table"
+      - "Extended effectiveness hierarchy with evolutionary selection as structural attractor"
+      - "Updated KA-5 invariant with external validation evidence and meta-level transfer mechanism"
+      - "Added evolution entry documenting probe findings"
+      - "Updated substrate generalization intro with external confirmation note"
+
+  synthesis:
+    path: .orch/workspace/og-research-investigate-facebook-hyperagents-26mar-5ace/SYNTHESIS.md
+    status: complete
+
+  brief:
+    path: .orch/workspace/og-research-investigate-facebook-hyperagents-26mar-5ace/BRIEF.md
+    status: complete
+
+evidence:
+  paper_read: "arXiv:2603.19461 — full paper fetched and analyzed via arXiv HTML"
+  codebase_analyzed: "github.com/facebookresearch/HyperAgents — meta_agent.py, task_agent.py, generate_loop.py, utils/"
+  key_findings:
+    - "Cross-domain transfer: meta agent improvements achieve imp@50=0.630 on math grading (transferred from paper review); domain-specific achieves 0.0"
+    - "Ablation: without self-modification → no improvement; without archive → fails. Both necessary"
+    - "Emergent capabilities: PerformanceTracker, MemoryTool, evaluation analysis, templates — discovered autonomously"
+    - "6 confirmed substrates in model (was 5). First external confirmation"
+
+manual_verification:
+  - "Review probe findings against paper claims — probe accurately represents paper content"
+  - "Review model updates — changes are conservative extensions, not overclaims"
+  - "Review BRIEF.md tension — open question about selection pressure vs gates is genuine"
+
+tests: "N/A — research task, no code changes"
