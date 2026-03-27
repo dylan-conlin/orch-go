@@ -193,14 +193,17 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 
 	// Post-lifecycle operations
 
-	// Remove triage:ready label on successful completion
+	// Remove triage:ready label on successful completion (only relevant for open issues)
 	if !target.IsClosed && target.BeadsID != "" {
 		if err := verify.RemoveTriageReadyLabel(target.BeadsID, target.BeadsProjectDir); err != nil {
 			// Non-critical
 		}
+	}
 
-		// Transition comprehension:unread → comprehension:processed
-		// Orchestrator has reviewed; Dylan still needs to read the brief.
+	// Transition comprehension:unread → comprehension:processed.
+	// Runs regardless of IsClosed: auto-completed agents are already closed
+	// when the orchestrator reviews them via orch complete.
+	if target.BeadsID != "" {
 		if err := daemon.TransitionToProcessedInDir(target.BeadsID, target.BeadsProjectDir); err != nil {
 			// Non-critical: label may not exist (e.g., manual completion, not daemon-queued)
 		}
