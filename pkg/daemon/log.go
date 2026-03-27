@@ -43,9 +43,27 @@ func rotateIfNeeded(logPath string) {
 	_ = os.Rename(logPath, logPath+".1")
 }
 
+// stdoutIsLogFile reports whether stdout is already pointing at the given log file.
+// This happens when launchd's StandardOutPath redirects stdout to daemon.log —
+// writing to both stdout and the file directly would double every log line.
+func stdoutIsLogFile(logPath string) bool {
+	stdoutInfo, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	logInfo, err := os.Stat(logPath)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(stdoutInfo, logInfo)
+}
+
 // NewDaemonLogger creates a logger that writes to both stdout and ~/.orch/daemon.log.
 // If the log file cannot be opened, falls back to stdout only.
 // Rotates the log file on startup if it exceeds 10 MB.
+//
+// When launchd redirects stdout to daemon.log (StandardOutPath), the logger
+// detects this and skips the direct file write to avoid double logging.
 func NewDaemonLogger() *DaemonLogger {
 	logPath := DaemonLogPath()
 	if logPath == "" {
@@ -54,6 +72,12 @@ func NewDaemonLogger() *DaemonLogger {
 
 	// Ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
+		return &DaemonLogger{out: os.Stdout}
+	}
+
+	// Check before rotation: if stdout already points to daemon.log
+	// (launchd StandardOutPath), skip direct file write to avoid doubling.
+	if stdoutIsLogFile(logPath) {
 		return &DaemonLogger{out: os.Stdout}
 	}
 
