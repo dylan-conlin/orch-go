@@ -81,6 +81,7 @@ func (e *Engine) runTrial(s Scenario, trial int) TrialResult {
 		Scenario:  s.Name,
 		Trial:     trial,
 		Model:     s.Model,
+		Tier:      s.Tier,
 		StartedAt: start,
 	}
 

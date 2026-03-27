@@ -76,13 +76,14 @@ type Verdict struct {
 
 // Report is the top-level benchmark report combining all artifacts.
 type Report struct {
-	Metadata          RunMetadata       `json:"metadata"`
-	Summary           RunSummary        `json:"summary"`
-	ModelSummaries    []ModelSummary    `json:"model_summaries"`
-	ScenarioSummaries []ScenarioSummary `json:"scenario_summaries"`
-	Compliance        ComplianceSignals `json:"compliance"`
-	Verdict           Verdict           `json:"verdict"`
-	Thresholds        Thresholds        `json:"thresholds"`
+	Metadata          RunMetadata                  `json:"metadata"`
+	Summary           RunSummary                   `json:"summary"`
+	ModelSummaries    []ModelSummary               `json:"model_summaries"`
+	ScenarioSummaries []ScenarioSummary            `json:"scenario_summaries"`
+	Compliance        ComplianceSignals            `json:"compliance"`
+	TierCompliance    map[string]ComplianceSignals `json:"tier_compliance,omitempty"`
+	Verdict           Verdict                      `json:"verdict"`
+	Thresholds        Thresholds                   `json:"thresholds"`
 }
 
 // ModelSummaries computes per-model aggregate statistics from run results.
@@ -213,6 +214,26 @@ func ComputeCompliance(r *RunResult) ComplianceSignals {
 	return s
 }
 
+// ComputeComplianceByTier derives compliance signals partitioned by spawn tier.
+// Trials with no tier set are grouped under "(untiered)".
+func ComputeComplianceByTier(r *RunResult) map[string]ComplianceSignals {
+	groups := map[string][]TrialResult{}
+	for _, t := range r.Trials {
+		tier := t.Tier
+		if tier == "" {
+			tier = "(untiered)"
+		}
+		groups[tier] = append(groups[tier], t)
+	}
+
+	result := make(map[string]ComplianceSignals, len(groups))
+	for tier, trials := range groups {
+		sub := &RunResult{Trials: trials}
+		result[tier] = ComputeCompliance(sub)
+	}
+	return result
+}
+
 // EvaluateVerdict checks run results against configurable thresholds.
 func EvaluateVerdict(r *RunResult, th Thresholds) Verdict {
 	summary := r.Summary()
@@ -282,12 +303,20 @@ func EvaluateVerdict(r *RunResult, th Thresholds) Verdict {
 
 // GenerateReport builds a complete benchmark report from run results.
 func GenerateReport(r *RunResult, cfg *Config, meta RunMetadata) *Report {
+	tierCompliance := ComputeComplianceByTier(r)
+	// Omit tier_compliance if all trials are untiered (no useful partition).
+	if len(tierCompliance) == 1 {
+		if _, ok := tierCompliance["(untiered)"]; ok {
+			tierCompliance = nil
+		}
+	}
 	return &Report{
 		Metadata:          meta,
 		Summary:           r.Summary(),
 		ModelSummaries:    ModelSummaries(r),
 		ScenarioSummaries: ScenarioSummaries(r),
 		Compliance:        ComputeCompliance(r),
+		TierCompliance:    tierCompliance,
 		Verdict:           EvaluateVerdict(r, cfg.Thresholds),
 		Thresholds:        cfg.Thresholds,
 	}
@@ -365,7 +394,25 @@ func FormatReport(report *Report) string {
 	fmt.Fprintf(&b, "  Rework recovery rate: %.0f%%\n", report.Compliance.ReworkRecoveryRate*100)
 	fmt.Fprintf(&b, "  Stall rate:           %.0f%%\n", report.Compliance.StallRate*100)
 	fmt.Fprintf(&b, "  Error rate:           %.0f%%\n", report.Compliance.ErrorRate*100)
-	fmt.Fprintf(&b, "  Rework rate:          %.0f%%\n\n", report.Compliance.ReworkRate*100)
+	fmt.Fprintf(&b, "  Rework rate:          %.0f%%\n", report.Compliance.ReworkRate*100)
+
+	// Per-tier compliance breakdown
+	if len(report.TierCompliance) > 0 {
+		// Sort tier names for deterministic output
+		tiers := make([]string, 0, len(report.TierCompliance))
+		for tier := range report.TierCompliance {
+			tiers = append(tiers, tier)
+		}
+		sort.Strings(tiers)
+
+		b.WriteString("\n── Per-Tier Compliance ──\n")
+		for _, tier := range tiers {
+			tc := report.TierCompliance[tier]
+			fmt.Fprintf(&b, "  [%s] first-pass: %.0f%%  stall: %.0f%%  error: %.0f%%  rework: %.0f%%\n",
+				tier, tc.FirstPassRate*100, tc.StallRate*100, tc.ErrorRate*100, tc.ReworkRate*100)
+		}
+	}
+	b.WriteString("\n")
 
 	// Verdict
 	fmt.Fprintf(&b, "── Verdict: %s ──\n", report.Verdict.Overall)

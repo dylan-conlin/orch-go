@@ -184,6 +184,169 @@ func TestComplianceSignals_NoTrials(t *testing.T) {
 	}
 }
 
+func TestComplianceByTier(t *testing.T) {
+	r := &RunResult{
+		Name: "tiered",
+		Trials: []TrialResult{
+			// light tier: 2 pass (1 first-pass, 1 rework-pass), 1 timeout
+			{Scenario: "quick-fix", Tier: "light", Status: "pass", Reworks: 0},
+			{Scenario: "quick-fix", Tier: "light", Status: "pass", Reworks: 1},
+			{Scenario: "quick-fix", Tier: "light", Status: "timeout", Reworks: 0},
+			// full tier: 1 first-pass, 1 fail, 1 error
+			{Scenario: "feature-add", Tier: "full", Status: "pass", Reworks: 0},
+			{Scenario: "feature-add", Tier: "full", Status: "fail", Reworks: 2},
+			{Scenario: "feature-add", Tier: "full", Status: "error", Reworks: 0},
+		},
+	}
+
+	byTier := ComputeComplianceByTier(r)
+
+	if len(byTier) != 2 {
+		t.Fatalf("len(byTier) = %d, want 2", len(byTier))
+	}
+
+	light := byTier["light"]
+	// light: first-pass = 1/3, stall = 1/3, rework = 1/3
+	wantFirstPass := 1.0 / 3.0
+	if light.FirstPassRate != wantFirstPass {
+		t.Errorf("light.FirstPassRate = %f, want %f", light.FirstPassRate, wantFirstPass)
+	}
+	wantStall := 1.0 / 3.0
+	if light.StallRate != wantStall {
+		t.Errorf("light.StallRate = %f, want %f", light.StallRate, wantStall)
+	}
+	wantRework := 1.0 / 3.0
+	if light.ReworkRate != wantRework {
+		t.Errorf("light.ReworkRate = %f, want %f", light.ReworkRate, wantRework)
+	}
+	// rework recovery: 1 reworked, 1 recovered = 100%
+	if light.ReworkRecoveryRate != 1.0 {
+		t.Errorf("light.ReworkRecoveryRate = %f, want 1.0", light.ReworkRecoveryRate)
+	}
+
+	full := byTier["full"]
+	// full: first-pass = 1/3, error = 1/3, rework = 1/3
+	if full.FirstPassRate != 1.0/3.0 {
+		t.Errorf("full.FirstPassRate = %f, want %f", full.FirstPassRate, 1.0/3.0)
+	}
+	if full.ErrorRate != 1.0/3.0 {
+		t.Errorf("full.ErrorRate = %f, want %f", full.ErrorRate, 1.0/3.0)
+	}
+	// rework recovery: 1 reworked (fail), 0 recovered = 0%
+	if full.ReworkRecoveryRate != 0.0 {
+		t.Errorf("full.ReworkRecoveryRate = %f, want 0.0", full.ReworkRecoveryRate)
+	}
+}
+
+func TestComplianceByTier_Untiered(t *testing.T) {
+	r := &RunResult{
+		Name: "no-tiers",
+		Trials: []TrialResult{
+			{Scenario: "a", Status: "pass"},
+			{Scenario: "b", Status: "fail"},
+		},
+	}
+
+	byTier := ComputeComplianceByTier(r)
+	if len(byTier) != 1 {
+		t.Fatalf("len(byTier) = %d, want 1", len(byTier))
+	}
+	if _, ok := byTier["(untiered)"]; !ok {
+		t.Error("expected (untiered) key")
+	}
+}
+
+func TestComplianceByTier_Empty(t *testing.T) {
+	r := &RunResult{Name: "empty"}
+	byTier := ComputeComplianceByTier(r)
+	if len(byTier) != 0 {
+		t.Errorf("len(byTier) = %d, want 0", len(byTier))
+	}
+}
+
+func TestGenerateReport_TierCompliance(t *testing.T) {
+	r := &RunResult{
+		Name: "tiered-suite",
+		Trials: []TrialResult{
+			{Scenario: "quick", Tier: "light", Status: "pass", Reworks: 0},
+			{Scenario: "deep", Tier: "full", Status: "pass", Reworks: 0},
+		},
+	}
+	cfg := &Config{
+		Name:       "tiered-suite",
+		Trials:     1,
+		Thresholds: Thresholds{PassRate: 0.5, MaxErrorRate: 0.2, MaxReworkRate: 0.5},
+		Scenarios: []Scenario{
+			{Name: "quick", Skill: "feature-impl", Task: "fix", Eval: "test", Tier: "light"},
+			{Name: "deep", Skill: "feature-impl", Task: "build", Eval: "test", Tier: "full"},
+		},
+	}
+	meta := RunMetadata{RunID: "test"}
+
+	report := GenerateReport(r, cfg, meta)
+
+	if report.TierCompliance == nil {
+		t.Fatal("TierCompliance is nil, want non-nil for tiered trials")
+	}
+	if len(report.TierCompliance) != 2 {
+		t.Errorf("len(TierCompliance) = %d, want 2", len(report.TierCompliance))
+	}
+	for _, tier := range []string{"light", "full"} {
+		if _, ok := report.TierCompliance[tier]; !ok {
+			t.Errorf("missing tier %q in TierCompliance", tier)
+		}
+	}
+}
+
+func TestGenerateReport_OmitsTierComplianceWhenAllUntiered(t *testing.T) {
+	r := &RunResult{
+		Name: "untiered-suite",
+		Trials: []TrialResult{
+			{Scenario: "a", Status: "pass"},
+			{Scenario: "b", Status: "fail"},
+		},
+	}
+	cfg := &Config{
+		Name:       "untiered-suite",
+		Trials:     1,
+		Thresholds: Thresholds{PassRate: 0.5, MaxErrorRate: 0.2, MaxReworkRate: 0.5},
+		Scenarios: []Scenario{
+			{Name: "a", Skill: "s", Task: "t", Eval: "e"},
+			{Name: "b", Skill: "s", Task: "t", Eval: "e"},
+		},
+	}
+	meta := RunMetadata{RunID: "test"}
+
+	report := GenerateReport(r, cfg, meta)
+
+	if report.TierCompliance != nil {
+		t.Errorf("TierCompliance should be nil when all trials untiered, got %v", report.TierCompliance)
+	}
+}
+
+func TestFormatReport_TierCompliance(t *testing.T) {
+	report := &Report{
+		Metadata: RunMetadata{RunID: "test", GitBranch: "master"},
+		Summary:  RunSummary{Name: "test", Total: 4, Passed: 3, PassRate: 0.75},
+		Compliance: ComplianceSignals{
+			FirstPassRate: 0.5, StallRate: 0.25, ErrorRate: 0, ReworkRate: 0.25,
+		},
+		TierCompliance: map[string]ComplianceSignals{
+			"light": {FirstPassRate: 0.5, StallRate: 0.5},
+			"full":  {FirstPassRate: 0.5, ErrorRate: 0},
+		},
+		Verdict: Verdict{Overall: "PASS"},
+	}
+
+	output := FormatReport(report)
+
+	for _, want := range []string{"Per-Tier Compliance", "[light]", "[full]"} {
+		if !containsString(output, want) {
+			t.Errorf("output missing %q", want)
+		}
+	}
+}
+
 func TestEvaluateVerdict_Pass(t *testing.T) {
 	th := Thresholds{PassRate: 0.5, MaxErrorRate: 0.2, MaxReworkRate: 0.5}
 	r := &RunResult{

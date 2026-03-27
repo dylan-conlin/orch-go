@@ -13,6 +13,7 @@ type TrialResult struct {
 	Scenario   string        `json:"scenario"`
 	Trial      int           `json:"trial"`
 	Model      string        `json:"model,omitempty"`
+	Tier       string        `json:"tier,omitempty"` // "light" or "full" — from scenario config
 	BeadsID    string        `json:"beads_id,omitempty"`
 	Status     string        `json:"status"` // "pass", "fail", "error", "timeout"
 	Reworks    int           `json:"reworks"`

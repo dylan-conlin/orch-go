@@ -37,6 +37,7 @@ type Scenario struct {
 	Task       string `yaml:"task"`
 	Eval       string `yaml:"eval"`
 	Model      string `yaml:"model,omitempty"`
+	Tier       string `yaml:"tier,omitempty"` // "light" or "full" — used to partition compliance metrics
 	MaxReworks int    `yaml:"max_reworks,omitempty"`
 	Timeout    string `yaml:"timeout,omitempty"`
 
