@@ -118,6 +118,44 @@ func TestRecordBriefFeedback_InvalidRating(t *testing.T) {
 	}
 }
 
+func TestParseBriefSignalCount(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    int
+	}{
+		{
+			"frontmatter with signals",
+			"---\nbeads_id: test-123\nsignal_count: 5\nsignal_total: 6\n---\n\n# Brief",
+			5,
+		},
+		{
+			"zero signals",
+			"---\nbeads_id: test-123\nsignal_count: 0\nsignal_total: 6\n---\n\n# Brief",
+			0,
+		},
+		{
+			"no frontmatter",
+			"# Brief: test-123\n\n## Frame\n",
+			0,
+		},
+		{
+			"malformed frontmatter",
+			"---\nno closing delimiter",
+			0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ParseBriefSignalCount(tc.content)
+			if got != tc.want {
+				t.Errorf("ParseBriefSignalCount() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestReadBriefFeedback_NoFeedback(t *testing.T) {
 	tmpDir := t.TempDir()
 	rating, err := ReadBriefFeedback("nonexistent", tmpDir)

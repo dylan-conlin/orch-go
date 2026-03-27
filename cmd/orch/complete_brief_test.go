@@ -146,6 +146,55 @@ Follow up with load testing.
 	}
 }
 
+func TestBuildBriefFromSynthesis_HasQualityFrontmatter(t *testing.T) {
+	s := &verify.Synthesis{
+		TLDR:                "Discovered that connective reasoning matters because it separates insight from reporting.",
+		Delta:               "Modified pkg/verify/synthesis_quality.go",
+		Evidence:            "Tests PASS: 12 passed, 0 failed.",
+		Knowledge:           "This confirms the knowledge accretion model's claim about .kb/models/ connection.",
+		UnexploredQuestions: "How does signal_count correlate with brief feedback ratings?",
+	}
+
+	brief := buildBriefFromSynthesis("orch-go-abc12", s)
+
+	// Should start with YAML frontmatter
+	if !strings.HasPrefix(brief, "---\n") {
+		t.Error("Brief should start with YAML frontmatter delimiter")
+	}
+	if !strings.Contains(brief, "beads_id: orch-go-abc12") {
+		t.Error("Frontmatter should contain beads_id")
+	}
+	if !strings.Contains(brief, "signal_count:") {
+		t.Error("Frontmatter should contain signal_count")
+	}
+	if !strings.Contains(brief, "signal_total: 6") {
+		t.Error("Frontmatter should contain signal_total: 6")
+	}
+	if !strings.Contains(brief, "structural_completeness:") {
+		t.Error("Frontmatter should contain structural_completeness signal")
+	}
+	if !strings.Contains(brief, "evidence_specificity:") {
+		t.Error("Frontmatter should contain evidence_specificity signal")
+	}
+
+	// Body should still have Frame/Resolution/Tension
+	if !strings.Contains(brief, "## Frame") {
+		t.Error("Brief body should still contain Frame section")
+	}
+}
+
+func TestBuildBriefFromSynthesis_EmptyFrontmatter(t *testing.T) {
+	s := &verify.Synthesis{}
+	brief := buildBriefFromSynthesis("test-empty", s)
+
+	if !strings.Contains(brief, "signal_count: 0") {
+		t.Error("Empty synthesis should have signal_count: 0")
+	}
+	if !strings.Contains(brief, "signal_total: 6") {
+		t.Error("Empty synthesis should still have signal_total: 6")
+	}
+}
+
 func TestGenerateHeadlessBriefNoSynthesis(t *testing.T) {
 	tmpDir := t.TempDir()
 

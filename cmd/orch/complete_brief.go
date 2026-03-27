@@ -41,11 +41,24 @@ func generateHeadlessBrief(target CompletionTarget) error {
 
 // buildBriefFromSynthesis constructs the brief markdown from parsed SYNTHESIS fields.
 // Maps SYNTHESIS sections to brief structure:
+//   - YAML frontmatter with quality signals (beads_id, signal_count, individual signals)
 //   - Frame: TLDR (what the agent was doing and why)
 //   - Resolution: Knowledge + Delta (what was learned/changed)
 //   - Tension: UnexploredQuestions or Next (what remains open)
 func buildBriefFromSynthesis(beadsID string, s *verify.Synthesis) string {
 	var b strings.Builder
+
+	// Compute quality signals and prepend as YAML frontmatter
+	quality := verify.ComputeSynthesisQuality(s)
+	b.WriteString("---\n")
+	b.WriteString(fmt.Sprintf("beads_id: %s\n", beadsID))
+	b.WriteString("quality_signals:\n")
+	for _, sig := range quality.Signals {
+		b.WriteString(fmt.Sprintf("  %s: %q\n", sig.Name, sig.Score))
+	}
+	b.WriteString(fmt.Sprintf("signal_count: %d\n", quality.SignalCount))
+	b.WriteString(fmt.Sprintf("signal_total: %d\n", quality.Total))
+	b.WriteString("---\n\n")
 
 	b.WriteString(fmt.Sprintf("# Brief: %s\n\n", beadsID))
 

@@ -23,6 +23,7 @@ type BriefListItem struct {
 	ThreadSlug  string `json:"thread_slug,omitempty"`
 	ThreadTitle string `json:"thread_title,omitempty"`
 	HasTension  bool   `json:"has_tension"`
+	SignalCount int    `json:"signal_count"`
 }
 
 // BriefAPIResponse is the JSON structure returned by GET /api/briefs/{beads-id}.
@@ -237,8 +238,9 @@ func handleBriefsList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type entryWithTime struct {
-		beadsID string
-		modTime int64
+		beadsID     string
+		modTime     int64
+		signalCount int
 	}
 
 	var items []entryWithTime
@@ -251,13 +253,34 @@ func handleBriefsList(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
-		items = append(items, entryWithTime{beadsID: beadsID, modTime: info.ModTime().UnixNano()})
+		// Parse signal_count from brief frontmatter for ordering
+		sigCount := 0
+		briefPath := filepath.Join(briefsDir, e.Name())
+		if content, err := os.ReadFile(briefPath); err == nil {
+			sigCount = daemon.ParseBriefSignalCount(string(content))
+		}
+		items = append(items, entryWithTime{beadsID: beadsID, modTime: info.ModTime().UnixNano(), signalCount: sigCount})
 	}
 
-	// Sort newest-first
+	// Sort by: (1) unread before read, (2) signal_count desc within tier, (3) newest first
+	briefReadStateMu.RLock()
 	sort.Slice(items, func(i, j int) bool {
+		iKey := briefReadKey(projectDir, items[i].beadsID)
+		jKey := briefReadKey(projectDir, items[j].beadsID)
+		iRead := briefReadState[iKey]
+		jRead := briefReadState[jKey]
+		// Unread before read
+		if iRead != jRead {
+			return !iRead
+		}
+		// Higher signal_count first within same read state
+		if items[i].signalCount != items[j].signalCount {
+			return items[i].signalCount > items[j].signalCount
+		}
+		// Newest first within same signal count
 		return items[i].modTime > items[j].modTime
 	})
+	briefReadStateMu.RUnlock()
 
 	// Build thread index: beadsID -> ThreadLink (scan once, O(threads) not O(briefs*threads))
 	threadsDir := filepath.Join(projectDir, ".kb", "threads")
@@ -268,8 +291,9 @@ func handleBriefsList(w http.ResponseWriter, r *http.Request) {
 	for i, item := range items {
 		key := briefReadKey(projectDir, item.beadsID)
 		bli := BriefListItem{
-			BeadsID:    item.beadsID,
-			MarkedRead: briefReadState[key],
+			BeadsID:     item.beadsID,
+			MarkedRead:  briefReadState[key],
+			SignalCount: item.signalCount,
 		}
 
 		// Thread linkage

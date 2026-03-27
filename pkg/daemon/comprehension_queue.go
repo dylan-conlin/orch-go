@@ -217,6 +217,36 @@ func ReadBriefFeedback(beadsID, projectDir string) (string, error) {
 	return "", nil
 }
 
+// ParseBriefSignalCount extracts signal_count from YAML frontmatter in brief content.
+// Returns 0 if no frontmatter or signal_count is not found.
+func ParseBriefSignalCount(content string) int {
+	// Brief must start with "---\n"
+	if !strings.HasPrefix(content, "---\n") {
+		return 0
+	}
+	// Find closing "---"
+	endIdx := strings.Index(content[4:], "\n---")
+	if endIdx < 0 {
+		return 0
+	}
+	frontmatter := content[4 : 4+endIdx]
+	for _, line := range strings.Split(frontmatter, "\n") {
+		if strings.HasPrefix(line, "signal_count: ") {
+			val := strings.TrimPrefix(line, "signal_count: ")
+			n := 0
+			for _, c := range val {
+				if c >= '0' && c <= '9' {
+					n = n*10 + int(c-'0')
+				} else {
+					break
+				}
+			}
+			return n
+		}
+	}
+	return 0
+}
+
 // Backward compatibility aliases for callers that still use the old names.
 
 // AddComprehensionPending adds the comprehension:unread label (backward compat).
