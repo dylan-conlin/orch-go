@@ -190,7 +190,8 @@ func TestFormatExploreCandidates(t *testing.T) {
 		},
 	}
 
-	output := orient.FormatOrientation(data)
+	// Explore candidates now render in FormatHealth, not FormatOrientation
+	output := orient.FormatHealth(data)
 
 	for _, want := range []string{
 		"Explore candidates:",
@@ -207,7 +208,7 @@ func TestFormatExploreCandidates(t *testing.T) {
 
 func TestFormatExploreCandidates_Empty(t *testing.T) {
 	data := &orient.OrientationData{}
-	output := orient.FormatOrientation(data)
+	output := orient.FormatHealth(data)
 
 	if strings.Contains(output, "Explore candidates:") {
 		t.Error("output should not contain 'Explore candidates:' when empty")

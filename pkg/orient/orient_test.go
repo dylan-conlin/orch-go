@@ -214,7 +214,8 @@ func TestFormatThroughput_DaysHeader(t *testing.T) {
 		data := &OrientationData{
 			Throughput: Throughput{Days: tc.days},
 		}
-		output := FormatOrientation(data)
+		// Throughput is now in FormatHealth, not FormatOrientation
+		output := FormatHealth(data)
 		if !strings.Contains(output, tc.expected) {
 			t.Errorf("days=%d: expected %q in output, got:\n%s", tc.days, tc.expected, output)
 		}
@@ -222,6 +223,53 @@ func TestFormatThroughput_DaysHeader(t *testing.T) {
 }
 
 func TestFormatOrientation(t *testing.T) {
+	data := &OrientationData{
+		ReadyIssues: []ReadyIssue{
+			{ID: "orch-go-abc1", Title: "Fix spawn bug", Priority: "P1"},
+			{ID: "orch-go-def2", Title: "Add model drift", Priority: "P2"},
+		},
+		RecentBriefs: []RecentBrief{
+			{BeadsID: "orch-go-b1", Title: "Naming investigation", HasTension: true, IsUnread: true},
+		},
+		UnreadBriefCount: 1,
+		FocusGoal:        "Ship orient command",
+	}
+
+	output := FormatOrientation(data)
+
+	// Thinking surface sections present
+	if !strings.Contains(output, "SESSION ORIENTATION") {
+		t.Error("missing SESSION ORIENTATION header")
+	}
+	if !strings.Contains(output, "orch-go-abc1") {
+		t.Error("missing ready issue ID")
+	}
+	if !strings.Contains(output, "Fix spawn bug") {
+		t.Error("missing ready issue title")
+	}
+	if !strings.Contains(output, "Recent briefs") {
+		t.Error("missing recent briefs section")
+	}
+	if !strings.Contains(output, "Naming investigation") {
+		t.Error("missing brief title")
+	}
+	if !strings.Contains(output, "Ship orient command") {
+		t.Error("missing focus goal")
+	}
+
+	// Operational sections should NOT be in orient
+	if strings.Contains(output, "Last 24h:") {
+		t.Error("throughput should not be in thinking surface")
+	}
+	if strings.Contains(output, "Stale models") {
+		t.Error("stale models should not be in thinking surface")
+	}
+	if strings.Contains(output, "Relevant models") {
+		t.Error("relevant models should not be in thinking surface")
+	}
+}
+
+func TestFormatHealth(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{
 			Days:           1,
@@ -231,10 +279,6 @@ func TestFormatOrientation(t *testing.T) {
 			InProgress:     3,
 			AvgDurationMin: 38,
 		},
-		ReadyIssues: []ReadyIssue{
-			{ID: "orch-go-abc1", Title: "Fix spawn bug", Priority: "P1"},
-			{ID: "orch-go-def2", Title: "Add model drift", Priority: "P2"},
-		},
 		RelevantModels: []ModelFreshness{
 			{Name: "spawn-architecture", Summary: "Spawn uses dual modes.", AgeDays: 2},
 			{Name: "completion-verification", Summary: "Verify before close.", AgeDays: 1},
@@ -242,17 +286,15 @@ func TestFormatOrientation(t *testing.T) {
 		StaleModels: []ModelFreshness{
 			{Name: "coaching-plugin", AgeDays: 33, HasRecentProbes: false},
 		},
-		FocusGoal: "Ship orient command",
 	}
 
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 
-	// Check all sections present
-	if !strings.Contains(output, "SESSION ORIENTATION") {
-		t.Error("missing SESSION ORIENTATION header")
+	if !strings.Contains(output, "OPERATIONAL HEALTH") {
+		t.Error("missing OPERATIONAL HEALTH header")
 	}
 	if !strings.Contains(output, "Last 24h:") {
-		t.Error("missing 'Last 24h:' header for days=1")
+		t.Error("missing throughput header")
 	}
 	if !strings.Contains(output, "Completions: 2") {
 		t.Error("missing completions count")
@@ -266,12 +308,6 @@ func TestFormatOrientation(t *testing.T) {
 	if !strings.Contains(output, "38 min") {
 		t.Error("missing avg duration")
 	}
-	if !strings.Contains(output, "orch-go-abc1") {
-		t.Error("missing ready issue ID")
-	}
-	if !strings.Contains(output, "Fix spawn bug") {
-		t.Error("missing ready issue title")
-	}
 	if !strings.Contains(output, "spawn-architecture") {
 		t.Error("missing relevant model name")
 	}
@@ -283,9 +319,6 @@ func TestFormatOrientation(t *testing.T) {
 	}
 	if !strings.Contains(output, "33d ago") {
 		t.Error("missing stale model age")
-	}
-	if !strings.Contains(output, "Ship orient command") {
-		t.Error("missing focus goal")
 	}
 }
 
@@ -323,13 +356,13 @@ func TestFormatOrientation_NoReadyIssues(t *testing.T) {
 	}
 }
 
-func TestFormatOrientation_NoStaleModels(t *testing.T) {
+func TestFormatHealth_NoStaleModels(t *testing.T) {
 	data := &OrientationData{
 		Throughput:  Throughput{},
 		StaleModels: nil,
 	}
 
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 
 	// Stale models section should not appear when empty
 	if strings.Contains(output, "Stale models") {
@@ -610,7 +643,7 @@ func TestFormatOrientation_NoThreads(t *testing.T) {
 	}
 }
 
-func TestFormatOrientation_HealthSummary(t *testing.T) {
+func TestFormatHealth_HealthSummary(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1},
 		HealthSummary: &HealthSummary{
@@ -625,7 +658,7 @@ func TestFormatOrientation_HealthSummary(t *testing.T) {
 		},
 	}
 
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 
 	if !strings.Contains(output, "Health:") {
 		t.Error("missing 'Health:' section header")
@@ -650,7 +683,7 @@ func TestFormatOrientation_HealthSummary(t *testing.T) {
 	}
 }
 
-func TestFormatOrientation_HealthSummaryNoAlerts(t *testing.T) {
+func TestFormatHealth_HealthSummaryNoAlerts(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1},
 		HealthSummary: &HealthSummary{
@@ -662,7 +695,7 @@ func TestFormatOrientation_HealthSummaryNoAlerts(t *testing.T) {
 		},
 	}
 
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 
 	if !strings.Contains(output, "Health:") {
 		t.Error("missing 'Health:' section header")
@@ -673,12 +706,12 @@ func TestFormatOrientation_HealthSummaryNoAlerts(t *testing.T) {
 	}
 }
 
-func TestFormatOrientation_NoHealthSummary(t *testing.T) {
+func TestFormatHealth_NoHealthSummary(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1},
 	}
 
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 
 	if strings.Contains(output, "Health:") {
 		t.Error("health section should not appear when nil")
@@ -753,7 +786,7 @@ func TestActiveThreadJSON(t *testing.T) {
 	}
 }
 
-func TestFormatOrientation_ReflectSummary(t *testing.T) {
+func TestFormatHealth_ReflectSummary(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1},
 		ReflectSummary: &ReflectSummary{
@@ -770,7 +803,7 @@ func TestFormatOrientation_ReflectSummary(t *testing.T) {
 		},
 	}
 
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 
 	if !strings.Contains(output, "Reflection suggestions:") {
 		t.Error("missing 'Reflection suggestions:' section header")
@@ -792,26 +825,26 @@ func TestFormatOrientation_ReflectSummary(t *testing.T) {
 	}
 }
 
-func TestFormatOrientation_ReflectSummaryNil(t *testing.T) {
+func TestFormatHealth_ReflectSummaryNil(t *testing.T) {
 	data := &OrientationData{Throughput: Throughput{Days: 1}}
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 	if strings.Contains(output, "Reflection suggestions") {
 		t.Error("reflect section should not appear when nil")
 	}
 }
 
-func TestFormatOrientation_ReflectSummaryEmpty(t *testing.T) {
+func TestFormatHealth_ReflectSummaryEmpty(t *testing.T) {
 	data := &OrientationData{
 		Throughput:     Throughput{Days: 1},
 		ReflectSummary: &ReflectSummary{Total: 0},
 	}
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 	if strings.Contains(output, "Reflection suggestions") {
 		t.Error("reflect section should not appear when total is 0")
 	}
 }
 
-func TestFormatOrientation_ReflectSummarySessionOrphans(t *testing.T) {
+func TestFormatHealth_ReflectSummarySessionOrphans(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1},
 		ReflectSummary: &ReflectSummary{
@@ -821,13 +854,13 @@ func TestFormatOrientation_ReflectSummarySessionOrphans(t *testing.T) {
 			SessionInvestigations: 5,
 		},
 	}
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 	if !strings.Contains(output, "Session orphans: 3 unlinked investigations (of 5 produced)") {
 		t.Errorf("missing session orphans, got:\n%s", output)
 	}
 }
 
-func TestFormatOrientation_ReflectSummarySessionOrphansAllLinked(t *testing.T) {
+func TestFormatHealth_ReflectSummarySessionOrphansAllLinked(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1},
 		ReflectSummary: &ReflectSummary{
@@ -837,7 +870,7 @@ func TestFormatOrientation_ReflectSummarySessionOrphansAllLinked(t *testing.T) {
 			SessionInvestigations: 4,
 		},
 	}
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 	if !strings.Contains(output, "Session orphans: 0 (all 4 investigations linked)") {
 		t.Errorf("missing all-linked message, got:\n%s", output)
 	}
@@ -1056,21 +1089,17 @@ func TestUsageWarningJSON(t *testing.T) {
 
 func TestFormatOrientation_SectionOrder(t *testing.T) {
 	data := &OrientationData{
-		Throughput:    Throughput{Days: 1, Completions: 1},
 		SessionResume: &SessionResume{Content: "resume content"},
 		ConfigDrift:   []ConfigDriftItem{{File: "test", Reason: "drift"}},
 		UsageWarning:  &UsageWarning{Utilization: 90, Remaining: "10%", Level: "HIGH"},
 		ActiveThreads: []ActiveThread{
 			{Name: "test-thread", Title: "Test thread", Updated: "2026-03-24", EntryCount: 1},
 		},
-		Changelog: []ChangelogEntry{
-			{Hash: "abc1234", Subject: "feat: something"},
-		},
-		RelevantModels: []ModelFreshness{
-			{Name: "test-model", Summary: "A model.", AgeDays: 1},
-		},
-		ReflectSummary: &ReflectSummary{Total: 5, Synthesis: 5},
-		FocusGoal:      "Test focus",
+		RecentBriefs:     []RecentBrief{{BeadsID: "orch-go-b1", Title: "Test brief", IsUnread: true}},
+		UnreadBriefCount: 1,
+		ClaimEdges:       "Knowledge edges:\n   tension: test\n\n",
+		FocusGoal:        "Test focus",
+		ReadyIssues:      []ReadyIssue{{ID: "orch-go-r1", Title: "Ready issue", Priority: "P1"}},
 	}
 
 	output := FormatOrientation(data)
@@ -1094,35 +1123,36 @@ func TestFormatOrientation_SectionOrder(t *testing.T) {
 		t.Error("usage warning should appear before active threads")
 	}
 
-	// Threads before throughput (the inversion)
-	throughputIdx := strings.Index(output, "Last 24h:")
-	if threadsIdx > throughputIdx {
-		t.Error("active threads should appear before throughput")
+	// Briefs after threads
+	briefsIdx := strings.Index(output, "Recent briefs")
+	if briefsIdx < threadsIdx {
+		t.Error("briefs should appear after threads")
 	}
 
-	// Changelog after threads, before throughput (new evidence)
-	changelogIdx := strings.Index(output, "Changelog (recent):")
-	if changelogIdx < threadsIdx {
-		t.Error("changelog should appear after active threads")
-	}
-	if changelogIdx > throughputIdx {
-		t.Error("changelog should appear before throughput")
+	// Tensions after briefs
+	tensionsIdx := strings.Index(output, "Knowledge edges:")
+	if tensionsIdx < briefsIdx {
+		t.Error("tensions should appear after briefs")
 	}
 
-	// Relevant models after threads, before throughput
-	modelsIdx := strings.Index(output, "Relevant models:")
-	if modelsIdx < threadsIdx {
-		t.Error("relevant models should appear after active threads")
-	}
-	if modelsIdx > throughputIdx {
-		t.Error("relevant models should appear before throughput")
+	// Ready work after tensions
+	readyIdx := strings.Index(output, "Ready to work:")
+	if readyIdx < tensionsIdx {
+		t.Error("ready work should appear after tensions")
 	}
 
-	// Reflect summary should come after focus
-	reflectIdx := strings.Index(output, "Reflection suggestions:")
+	// Focus after ready work
 	focusIdx := strings.Index(output, "Focus:")
-	if reflectIdx < focusIdx {
-		t.Error("reflection suggestions should appear after focus")
+	if focusIdx < readyIdx {
+		t.Error("focus should appear after ready work")
+	}
+
+	// Operational sections should NOT be in orient output
+	if strings.Contains(output, "Last 24h:") {
+		t.Error("throughput should not be in thinking surface")
+	}
+	if strings.Contains(output, "Reflection suggestions") {
+		t.Error("reflection should not be in thinking surface")
 	}
 }
 
@@ -1139,7 +1169,7 @@ func TestFormatThroughput_NetLinesDisplay(t *testing.T) {
 		},
 	}
 
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 
 	if !strings.Contains(output, "Completions: 5") {
 		t.Error("missing completions line")
@@ -1161,7 +1191,7 @@ func TestFormatThroughput_NoNetLinesWhenZero(t *testing.T) {
 		},
 	}
 
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 
 	if !strings.Contains(output, "Completions: 5") {
 		t.Error("missing completions")
@@ -1171,7 +1201,7 @@ func TestFormatThroughput_NoNetLinesWhenZero(t *testing.T) {
 	}
 }
 
-func TestFormatOrientation_DaemonHealthNonGreen(t *testing.T) {
+func TestFormatHealth_DaemonHealthNonGreen(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1},
 		DaemonHealth: &DaemonHealthView{
@@ -1186,7 +1216,7 @@ func TestFormatOrientation_DaemonHealthNonGreen(t *testing.T) {
 		},
 	}
 
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 
 	if !strings.Contains(output, "Daemon health:") {
 		t.Error("missing 'Daemon health:' section header")
@@ -1209,7 +1239,7 @@ func TestFormatOrientation_DaemonHealthNonGreen(t *testing.T) {
 	}
 }
 
-func TestFormatOrientation_DaemonHealthAllGreen(t *testing.T) {
+func TestFormatHealth_DaemonHealthAllGreen(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1},
 		DaemonHealth: &DaemonHealthView{
@@ -1224,15 +1254,15 @@ func TestFormatOrientation_DaemonHealthAllGreen(t *testing.T) {
 		},
 	}
 
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 	if strings.Contains(output, "Daemon health:") {
 		t.Error("daemon health section should not appear when all signals are green")
 	}
 }
 
-func TestFormatOrientation_DaemonHealthNil(t *testing.T) {
+func TestFormatHealth_DaemonHealthNil(t *testing.T) {
 	data := &OrientationData{Throughput: Throughput{Days: 1}}
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 	if strings.Contains(output, "Daemon health") {
 		t.Error("daemon health section should not appear when nil")
 	}
@@ -1269,7 +1299,7 @@ func TestDaemonHealthJSON(t *testing.T) {
 	}
 }
 
-func TestFormatOrientation_AdoptionDrift(t *testing.T) {
+func TestFormatHealth_AdoptionDrift(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1},
 		AdoptionDrift: []AdoptionDriftItem{
@@ -1277,7 +1307,7 @@ func TestFormatOrientation_AdoptionDrift(t *testing.T) {
 			{Signal: "Thread resolved_to", RatePct: 45, TargetPct: 80, Level: "drift"},
 		},
 	}
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 	if !strings.Contains(output, "Adoption drift") {
 		t.Error("expected adoption drift section")
 	}
@@ -1292,9 +1322,9 @@ func TestFormatOrientation_AdoptionDrift(t *testing.T) {
 	}
 }
 
-func TestFormatOrientation_AdoptionDriftEmpty(t *testing.T) {
+func TestFormatHealth_AdoptionDriftEmpty(t *testing.T) {
 	data := &OrientationData{Throughput: Throughput{Days: 1}}
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 	if strings.Contains(output, "Adoption drift") {
 		t.Error("adoption drift section should not appear when empty")
 	}

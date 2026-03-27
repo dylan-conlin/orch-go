@@ -100,7 +100,7 @@ func TestFormatChangelog_NoDate(t *testing.T) {
 	}
 }
 
-func TestFormatOrientation_WithChangelog(t *testing.T) {
+func TestFormatHealth_WithChangelog(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1},
 		Changelog: []ChangelogEntry{
@@ -109,22 +109,22 @@ func TestFormatOrientation_WithChangelog(t *testing.T) {
 		PreviousSession: &DebriefSummary{Date: "2026-03-04"},
 	}
 
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 
 	if !strings.Contains(output, "Changelog") {
-		t.Error("missing changelog section in orientation output")
+		t.Error("missing changelog section in health output")
 	}
 	if !strings.Contains(output, "abc1234") {
-		t.Error("missing commit hash in orientation output")
+		t.Error("missing commit hash in health output")
 	}
 }
 
-func TestFormatOrientation_NoChangelog(t *testing.T) {
+func TestFormatHealth_NoChangelog(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1},
 	}
 
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 
 	if strings.Contains(output, "Changelog") {
 		t.Error("changelog section should not appear when empty")

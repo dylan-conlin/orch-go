@@ -299,7 +299,7 @@ func TestFormatPreviousSession_AllEmpty(t *testing.T) {
 	}
 }
 
-func TestFormatOrientation_WithDebrief(t *testing.T) {
+func TestFormatHealth_WithDebrief(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1, Completions: 2},
 		PreviousSession: &DebriefSummary{
@@ -310,7 +310,7 @@ func TestFormatOrientation_WithDebrief(t *testing.T) {
 		},
 	}
 
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 
 	if !strings.Contains(output, "Previous session (2026-02-27):") {
 		t.Errorf("expected 'Previous session' section, got:\n%s", output)

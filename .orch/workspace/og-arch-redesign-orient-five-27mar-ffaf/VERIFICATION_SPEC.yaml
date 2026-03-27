@@ -1,0 +1,32 @@
+verification:
+  automated:
+    - command: "go test ./pkg/orient/ -count=1"
+      expect: "ok"
+      description: "All orient package tests pass including new brief tests and FormatHealth"
+
+    - command: "go test ./cmd/orch/ -run 'Orient|Health|Brief|Explore' -count=1"
+      expect: "PASS"
+      description: "All orient/health command tests pass"
+
+    - command: "go build ./cmd/orch/"
+      expect: "no output (clean build)"
+      description: "Binary compiles without errors"
+
+  behavioral:
+    - action: "Run orch orient"
+      expect: "Output contains: Active threads, Recent briefs, Knowledge Edges, Ready to work, Focus. Does NOT contain: Last 24h, Adoption drift, Daemon health, Reflection suggestions, Relevant models, Stale models."
+      verified: true
+
+    - action: "Run orch health"
+      expect: "Output contains: OPERATIONAL HEALTH header, throughput, changelog, models, daemon health, divergence, adoption drift, explore candidates, reflection suggestions"
+      verified: true
+
+    - action: "Run orch orient --json"
+      expect: "JSON output contains all fields (active_threads, recent_briefs, unread_brief_count, throughput, etc.) for backward compat"
+      verified: false
+      note: "JSON structure preserved but --json output not explicitly tested in this session"
+
+  constraints:
+    - "Orient rendered output stays under 80 lines (tested: ~40 lines)"
+    - "Shape and resistance elements NOT implemented (per decision constraint)"
+    - "Brief read state shares format with serve_briefs.go (same JSON file)"

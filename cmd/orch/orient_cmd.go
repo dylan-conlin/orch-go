@@ -71,87 +71,67 @@ func runOrient() error {
 
 	data := &orient.OrientationData{}
 
-	// 1. Throughput from events.jsonl
-	data.Throughput = collectThroughput(now)
+	// === THINKING SURFACE (threads, briefs, tensions, ready work, plans, focus) ===
 
-	// 2. Previous session from latest debrief
+	// Previous session (needed for insight and changelog date)
 	sessionsDir := filepath.Join(projectDir, ".kb", "sessions")
 	data.PreviousSession = collectPreviousSession(sessionsDir)
 
-	// 3. Ready issues from bd ready (skippable when frontier provides them)
+	// Element 1: Active threads
+	data.ActiveThreads = collectActiveThreads(projectDir)
+
+	// Element 2: Recent briefs
+	briefsDir := filepath.Join(projectDir, ".kb", "briefs")
+	readState := loadBriefReadStateForOrient(projectDir)
+	data.RecentBriefs, data.UnreadBriefCount = orient.ScanRecentBriefs(briefsDir, readState, 5)
+
+	// Element 3: Active tensions (claim edges from models)
+	modelsDir := filepath.Join(projectDir, ".kb", "models")
+	data.ClaimEdges = collectClaimEdges(modelsDir, now)
+
+	// Ready work
 	if !orientSkipReady {
 		data.ReadyIssues = collectReadyIssues()
-
-		// 3b. Decision context per ready issue from kb context
 		enrichIssuesWithKBContext(data.ReadyIssues)
 	}
 
-	// 4. Active plans from .kb/plans/ with beads-derived progress
+	// Active plans
 	plansDir := filepath.Join(projectDir, ".kb", "plans")
 	activePlans, err := orient.ScanActivePlans(plansDir)
 	if err == nil && len(activePlans) > 0 {
-		// Query beads for hydrated plan issue statuses
 		if statusMap := queryPlanBeadsStatuses(activePlans); len(statusMap) > 0 {
 			orient.ApplyBeadsProgress(activePlans, statusMap)
 		}
 		data.ActivePlans = activePlans
 	}
 
-	// 5. Active threads from .kb/threads/
-	data.ActiveThreads = collectActiveThreads(projectDir)
+	// Focus
+	data.FocusGoal = collectFocus()
 
-	// 6. Model freshness from .kb/models/
-	modelsDir := filepath.Join(projectDir, ".kb", "models")
+	// Context
+	data.ConfigDrift = collectConfigDrift()
+	data.SessionResume = collectSessionResume()
+
+	// === OPERATIONAL (collected for --json backward compat, rendered by FormatHealth) ===
+
+	data.Throughput = collectThroughput(now)
+	data.Throughput.InProgress = collectInProgressCount()
+	enrichThroughputWithGitGroundTruth(&data.Throughput)
+
 	allModels, err := orient.ScanModelFreshness(modelsDir)
 	if err == nil {
-		// Relevant models: top 3 freshest non-stale models
 		data.RelevantModels = selectRelevantModels(allModels, 3)
-
-		// Stale models: up to 2
 		data.StaleModels = orient.FilterStaleModels(allModels, 2)
 	}
 
-	// 6b. Knowledge edges from claims.yaml files
-	data.ClaimEdges = collectClaimEdges(modelsDir, now)
-
-	// 7. Focus
-	data.FocusGoal = collectFocus()
-
-	// 10. Changelog since last session
 	data.Changelog = collectChangelog(data.PreviousSession)
-
-	// 9. Health summary from latest snapshot
 	data.HealthSummary = collectHealthSummary()
-
-	// 9b. Daemon health signals from daemon-status.json
 	data.DaemonHealth = collectDaemonHealth(now)
-
-	// 8. In-progress count from bd
-	data.Throughput.InProgress = collectInProgressCount()
-
-	// Ground-truth metrics from git (merge rate + net code impact)
-	enrichThroughputWithGitGroundTruth(&data.Throughput)
-
-	// 11. Reflect suggestions
 	data.ReflectSummary = collectReflectSuggestions()
-
-	// 11b. Session-scoped orphan count (replaces absolute orphan rate)
 	enrichReflectWithSessionOrphans(data.ReflectSummary, data.PreviousSession, projectDir)
-
-	// Divergence detection (activity vs impact metrics)
 	data.DivergenceAlerts = computeDivergenceAlerts(data)
-
-	// 12. Config drift check
-	data.ConfigDrift = collectConfigDrift()
-
-	// 14. Explore candidates (aggregated from 6 signals)
 	data.ExploreCandidates = collectExploreCandidates(projectDir, modelsDir, now)
-
-	// 15. Adoption drift (compositional signal health)
 	data.AdoptionDrift = collectAdoptionDrift(projectDir)
-
-	// 13. Session resume handoff
-	data.SessionResume = collectSessionResume()
 
 	if orientHook {
 		// Wrap in SessionStart hook JSON envelope
@@ -946,6 +926,34 @@ func collectAdoptionDrift(projectDir string) []orient.AdoptionDriftItem {
 		}
 	}
 	return items
+}
+
+// loadBriefReadStateForOrient loads the persistent brief read state and returns
+// a map of beadsID → true for briefs that have been read in the given project.
+func loadBriefReadStateForOrient(projectDir string) map[string]bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	statePath := filepath.Join(home, ".orch", "briefs-read-state.json")
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return nil
+	}
+	var fullState map[string]bool
+	if err := json.Unmarshal(data, &fullState); err != nil {
+		return nil
+	}
+	// Filter to current project — keys are "projectDir:beadsID"
+	result := make(map[string]bool)
+	prefix := projectDir + ":"
+	for key, read := range fullState {
+		if read && strings.HasPrefix(key, prefix) {
+			beadsID := strings.TrimPrefix(key, prefix)
+			result[beadsID] = true
+		}
+	}
+	return result
 }
 
 // countDecisions counts .md files in .kb/decisions/ for stale rate computation.

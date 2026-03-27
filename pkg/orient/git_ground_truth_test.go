@@ -110,17 +110,17 @@ func TestComputeNetImpact(t *testing.T) {
 func TestFormatThroughputWithGroundTruth(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{
-			Days:           7,
-			Completions:    42,
-			Abandonments:   4,
-			InProgress:     3,
-			AvgDurationMin: 25,
-			NetLinesAdded:  1892,
+			Days:            7,
+			Completions:     42,
+			Abandonments:    4,
+			InProgress:      3,
+			AvgDurationMin:  25,
+			NetLinesAdded:   1892,
 			NetLinesRemoved: 645,
 		},
 	}
 
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 
 	// Should show net lines
 	if !strings.Contains(output, "+1247") || !strings.Contains(output, "Net lines") {
@@ -140,7 +140,7 @@ func TestFormatThroughputWithoutGroundTruth(t *testing.T) {
 		},
 	}
 
-	output := FormatOrientation(data)
+	output := FormatHealth(data)
 
 	// Should NOT show net lines when zero
 	if strings.Contains(output, "Net lines") {

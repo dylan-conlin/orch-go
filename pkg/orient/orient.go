@@ -113,26 +113,35 @@ type SessionResume struct {
 }
 
 // OrientationData holds all data needed to render session orientation.
+// The thinking surface (FormatOrientation) renders: threads, briefs, tensions, ready work, plans, focus.
+// Operational sections (FormatHealth) render: throughput, changelog, models, health, daemon, divergence, etc.
 type OrientationData struct {
-	Throughput      Throughput       `json:"throughput"`
-	PreviousSession *DebriefSummary  `json:"previous_session,omitempty"`
-	ReadyIssues     []ReadyIssue     `json:"ready_issues,omitempty"`
-	ActivePlans     []PlanSummary    `json:"active_plans,omitempty"`
-	ActiveThreads   []ActiveThread   `json:"active_threads,omitempty"`
-	RelevantModels  []ModelFreshness `json:"relevant_models,omitempty"`
-	StaleModels     []ModelFreshness `json:"stale_models,omitempty"`
-	ClaimEdges      string           `json:"claim_edges,omitempty"` // Pre-formatted claim edges text
-	HealthSummary   *HealthSummary   `json:"health_summary,omitempty"`
-	DaemonHealth    *DaemonHealthView `json:"daemon_health,omitempty"`
-	Changelog       []ChangelogEntry `json:"changelog,omitempty"`
-	FocusGoal       string           `json:"focus_goal,omitempty"`
-	ReflectSummary  *ReflectSummary  `json:"reflect_summary,omitempty"`
-	UsageWarning    *UsageWarning    `json:"usage_warning,omitempty"`
-	ConfigDrift        []ConfigDriftItem  `json:"config_drift,omitempty"`
-	SessionResume      *SessionResume     `json:"session_resume,omitempty"`
-	DivergenceAlerts   []DivergenceAlert  `json:"divergence_alerts,omitempty"`
-	ExploreCandidates  []ExploreCandidate `json:"explore_candidates,omitempty"`
-	AdoptionDrift      []AdoptionDriftItem `json:"adoption_drift,omitempty"`
+	// --- Thinking surface (rendered by FormatOrientation) ---
+	ActiveThreads    []ActiveThread    `json:"active_threads,omitempty"`
+	RecentBriefs     []RecentBrief     `json:"recent_briefs,omitempty"`
+	UnreadBriefCount int               `json:"unread_brief_count"`
+	ClaimEdges       string            `json:"claim_edges,omitempty"` // Pre-formatted claim edges text (filtered to thread-relevant)
+	ReadyIssues      []ReadyIssue      `json:"ready_issues,omitempty"`
+	ActivePlans      []PlanSummary     `json:"active_plans,omitempty"`
+	FocusGoal        string            `json:"focus_goal,omitempty"`
+	PreviousSession  *DebriefSummary   `json:"previous_session,omitempty"`
+
+	// --- Context (rendered by FormatOrientation) ---
+	SessionResume    *SessionResume    `json:"session_resume,omitempty"`
+	ConfigDrift      []ConfigDriftItem `json:"config_drift,omitempty"`
+	UsageWarning     *UsageWarning     `json:"usage_warning,omitempty"`
+
+	// --- Operational (rendered by FormatHealth, not FormatOrientation) ---
+	Throughput        Throughput          `json:"throughput"`
+	RelevantModels    []ModelFreshness    `json:"relevant_models,omitempty"`
+	StaleModels       []ModelFreshness    `json:"stale_models,omitempty"`
+	HealthSummary     *HealthSummary      `json:"health_summary,omitempty"`
+	DaemonHealth      *DaemonHealthView   `json:"daemon_health,omitempty"`
+	Changelog         []ChangelogEntry    `json:"changelog,omitempty"`
+	ReflectSummary    *ReflectSummary     `json:"reflect_summary,omitempty"`
+	DivergenceAlerts  []DivergenceAlert   `json:"divergence_alerts,omitempty"`
+	ExploreCandidates []ExploreCandidate  `json:"explore_candidates,omitempty"`
+	AdoptionDrift     []AdoptionDriftItem `json:"adoption_drift,omitempty"`
 }
 
 // AdoptionDriftItem surfaces a compositional signal that has drifted below its target.
@@ -214,77 +223,87 @@ func eventMatchesProject(e Event, prefix string) bool {
 	return strings.HasPrefix(beadsID, prefix+"-")
 }
 
-// FormatOrientation renders OrientationData as structured text for orchestrator consumption.
+// FormatOrientation renders the thinking surface: threads, briefs, tensions, ready work.
+// Operational sections (throughput, health, models, daemon, etc.) are in FormatHealth.
 func FormatOrientation(data *OrientationData) string {
 	var b strings.Builder
 
 	b.WriteString("== SESSION ORIENTATION ==\n\n")
 
-	// Session resume (first — sets context for everything else)
+	// Context (surface problems and resume state first)
 	formatSessionResume(&b, data.SessionResume)
-
-	// Config drift (surface problems early)
 	formatConfigDrift(&b, data.ConfigDrift)
-
-	// Usage warning (surface before work planning)
 	formatUsageWarning(&b, data.UsageWarning)
 
-	// --- Thread state (primary frame) ---
+	// Element 1: Threads (primary frame)
 	formatActiveThreads(&b, data.ActiveThreads)
 
-	// New evidence since last session (thread-contextualized)
+	// Element 2: Recent Briefs (what was learned)
+	b.WriteString(FormatRecentBriefs(data.RecentBriefs, data.UnreadBriefCount))
+
+	// Element 3: Active Tensions (filtered knowledge edges)
+	if data.ClaimEdges != "" {
+		b.WriteString(data.ClaimEdges)
+	}
+
+	// Last session insight (thread continuity)
+	b.WriteString(FormatLastSessionInsight(data.PreviousSession))
+
+	// Ready work (reframed by thread relevance)
+	formatReadyIssues(&b, data.ReadyIssues)
+
+	// Active plans
+	formatActivePlans(&b, data.ActivePlans)
+
+	// Focus
+	formatFocus(&b, data.FocusGoal)
+
+	return b.String()
+}
+
+// FormatHealth renders operational sections moved out of the thinking surface.
+// Includes: throughput, changelog, models, health summary, daemon health, divergence,
+// adoption drift, explore candidates, reflection suggestions.
+func FormatHealth(data *OrientationData) string {
+	var b strings.Builder
+
+	b.WriteString("== OPERATIONAL HEALTH ==\n\n")
+
+	// Throughput
+	formatThroughput(&b, &data.Throughput)
+
+	// Changelog since last session
 	sinceDate := ""
 	if data.PreviousSession != nil {
 		sinceDate = data.PreviousSession.Date
 	}
 	b.WriteString(FormatChangelog(data.Changelog, sinceDate))
 
-	// Relevant models (evidence supporting active threads)
-	formatRelevantModels(&b, data.RelevantModels)
-
-	// --- Operational baseline ---
-	// Throughput section
-	formatThroughput(&b, &data.Throughput)
-
-	// Divergence alerts (activity vs impact gap)
+	// Divergence alerts
 	b.WriteString(FormatDivergenceAlerts(data.DivergenceAlerts))
 
-	// Last session insight — prominent comprehension thread from prior session
-	b.WriteString(FormatLastSessionInsight(data.PreviousSession))
-
-	// Previous session section (from debrief)
+	// Previous session
 	b.WriteString(FormatPreviousSession(data.PreviousSession))
 
-	// Ready work section
-	formatReadyIssues(&b, data.ReadyIssues)
+	// Relevant models
+	formatRelevantModels(&b, data.RelevantModels)
 
-	// Active plans section
-	formatActivePlans(&b, data.ActivePlans)
-
-	// --- Staleness (thread-contextualized) ---
+	// Stale models
 	formatStaleModels(&b, data.StaleModels)
 
-	// Knowledge edges (claim-level tensions, staleness, unconfirmed)
-	if data.ClaimEdges != "" {
-		b.WriteString(data.ClaimEdges)
-	}
-
-	// Health summary section
+	// Health summary
 	formatHealthSummary(&b, data.HealthSummary)
 
-	// Adoption drift (compositional signal health)
+	// Adoption drift
 	formatAdoptionDrift(&b, data.AdoptionDrift)
 
-	// Daemon health signals
+	// Daemon health
 	formatDaemonHealth(&b, data.DaemonHealth)
 
-	// Focus section
-	formatFocus(&b, data.FocusGoal)
-
-	// Explore candidates (before reflection — actionable)
+	// Explore candidates
 	formatExploreCandidates(&b, data.ExploreCandidates)
 
-	// Reflection suggestions (last — informational, not urgent)
+	// Reflection suggestions
 	formatReflectSummary(&b, data.ReflectSummary)
 
 	return b.String()
