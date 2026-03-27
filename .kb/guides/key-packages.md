@@ -70,9 +70,12 @@
 ## pkg/compose/ (Brief Composition)
 
 - `Compose(briefsDir, threadsDir)` clusters briefs by keyword overlap, matches to threads
+- `NameClusters(clusters)` assigns distinctive names using inverse cluster frequency scoring
 - `WriteDigest(digest, digestsDir)` writes digest markdown to `.kb/digests/`
 - Keyword extraction, TF-IDF-style scoring, Jaccard similarity clustering
-- Thread matching via keyword overlap between clusters and existing `.kb/threads/`
+- Thread matching uses title keyword overlap (weighted 2x) + body overlap; requires `MinThreadTitleOverlap` (1) and `MinThreadMatchScore` (3)
+- Constants: `MinKeywordOverlap` (4), `MaxDocumentFrequency` (0.15)
+- `ThreadInfo.TitleKeywords` — keywords from thread title only, used for focused matching
 - CLI: `orch compose` (cmd/orch/compose_cmd.go)
 
 ## pkg/dupdetect/ (Duplicate Detection)

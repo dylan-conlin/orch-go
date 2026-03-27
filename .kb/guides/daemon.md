@@ -51,11 +51,13 @@ The daemon is an autonomous agent spawner that:
 | `preview.go` | Preview mode: rejected issue reasons, would-spawn candidates |
 | `status_display.go` | Status display formatting for `orch daemon status` command |
 | `invariants.go` | Runtime invariant checking with violation severity tracking |
+| `reflect.go` | Reflection analysis: `RunReflection`, `RunAndSaveReflectionWithContext`, `ShutdownReflectTimeout` (3s) |
 
 **Related packages:**
 - `pkg/daemonconfig/` — ComplianceConfig, allocation profiles
 - `pkg/orient/` — Orient phase measurement, work graph
 - `cmd/orch/daemon_periodic.go` — Periodic tasks (cleanup, recovery, health, sync)
+- `cmd/orch/daemon_handlers.go` — `runReflectionAnalysis` uses context timeout during shutdown
 
 ### OODA Poll Loop
 
@@ -339,6 +341,8 @@ make install && orch daemon run --replace  # Graceful takeover with new binary
 ```
 
 **Interaction with orch-dashboard:** launchd and orch-dashboard are independent lifecycles. If both try to run the daemon (dashboard with `ORCH_DASHBOARD_START_DAEMON=1`), the PID lock prevents dual instances.
+
+**Shutdown behavior:** On SIGTERM (launchd stop), the daemon checks `shutdownRequested()` between major operations (reconcile, periodic tasks, completions, orient, decide, act) for fast exit. Reflection analysis during shutdown uses `ShutdownReflectTimeout` (3s) to avoid exceeding launchd's default ExitTimeOut (5s), which would result in SIGKILL.
 
 ---
 

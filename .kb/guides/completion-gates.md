@@ -323,11 +323,11 @@ bd comment <id> "Tests: npm test - 15 passing, 0 failing"
 
 **File:** `pkg/verify/architect_handoff.go`
 
-**What it checks:** Architect agents declare explicit recommendations (implement, spawn, close, etc.) and actionable recommendations have corresponding implementation issues created.
+**What it checks:** Architect agents declare explicit recommendations (implement, spawn, close, etc.) and actionable recommendations have corresponding implementation issues created. For multi-phase designs (SYNTHESIS.md contains Phase N/Layer N/Step N/Stage N sections), requires one issue per phase, not just one total.
 
 **When it applies:** Architect skill only.
 
-**How to pass:** Include `RECOMMENDATION:` line in beads comments with a valid value. Create follow-up issues for actionable recommendations.
+**How to pass:** Include `RECOMMENDATION:` line in beads comments with a valid value. Create follow-up issues for actionable recommendations. For multi-phase designs, create one issue per phase. Issue evidence detected via: (1) title pattern `(from architect <beadsID>)`, (2) comment `Phase: Handoff - Created implementation issues: ...`, (3) opt-out `No implementation issues: [reason]`.
 
 **Bypass:** `--skip-architect-handoff`
 
