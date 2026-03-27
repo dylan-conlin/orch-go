@@ -1,0 +1,55 @@
+verification:
+  type: investigation
+  issue: orch-go-sg39y
+
+  deliverables:
+    investigation_file:
+      path: .kb/investigations/2026-03-27-inv-explore-public-naming-candidates-naming.md
+      status: complete
+      sections:
+        - DEKN_summary: filled
+        - prior_work: 5 related investigations cited
+        - findings: 5 findings with evidence
+        - synthesis: complete with scored shortlist
+        - structured_uncertainty: tested/untested/falsifiability filled
+        - recommendations: strategic authority, layered architecture
+        - explicit_rejections: 7 structural rejection categories
+
+    synthesis_file:
+      path: .orch/workspace/og-inv-explore-public-naming-27mar-f6f7/SYNTHESIS.md
+      status: complete
+      plain_language_summary: present
+
+    brief_file:
+      path: .orch/workspace/og-inv-explore-public-naming-27mar-f6f7/BRIEF.md
+      status: complete
+      sections: [Frame, Resolution, Tension]
+
+  investigation_outcomes:
+    candidates_assessed: 23
+    collision_checks: 23 (web search, GitHub, npm, PyPI, Go, domain WHOIS)
+    red_candidates: 17
+    yellow_candidates: 6
+    green_candidates: 0
+    top_recommendation: Kenning
+    naming_architecture: layered (product name separate from repo/CLI)
+
+  evidence:
+    - type: web_collision_check
+      count: 23
+      method: subagent web searches across GitHub, registries, domains, startup databases
+    - type: domain_whois
+      candidates_checked: [kenning, sinter, precis, anneal, skein, accrue]
+      available: [kenning.sh, kenning.so, getsinter.com, precis.sh, anneal.sh]
+    - type: registry_availability
+      kenning_npm: available
+      kenning_pypi: available
+      kenning_go: available
+
+  manual_verification:
+    - step: Dylan reviews scored shortlist and naming architecture recommendation
+      why: strategic decision — irreversible public positioning
+    - step: User testing with 5-10 developers (name + tagline cold read)
+      why: "kenning" obscurity risk is untested
+    - step: Formal trademark search for "Kenning" in software classes
+      why: collision check covered products, not registered trademarks
