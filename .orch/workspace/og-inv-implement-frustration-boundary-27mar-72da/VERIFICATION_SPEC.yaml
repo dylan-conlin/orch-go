@@ -1,0 +1,31 @@
+verification:
+  type: behavioral
+  tier: 1
+
+  automated:
+    - name: "Hook test suite"
+      command: "bash .claude/hooks/frustration-boundary_test.sh"
+      expected: "36 passed, 0 failed"
+      result: "36 passed, 0 failed"
+
+  manual:
+    - name: "Register hook in settings.json"
+      description: >
+        Orchestrator must run the following in a direct session:
+        cat .claude/settings.json | jq '.hooks.UserPromptSubmit += [{"hooks": [{"command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/frustration-boundary.sh", "type": "command"}], "matcher": ""}]' > /tmp/s.json && mv /tmp/s.json .claude/settings.json
+      status: pending
+
+    - name: "End-to-end frustration detection"
+      description: >
+        After registration, type 3+ frustrated messages in an interactive session.
+        Verify additionalContext appears in Claude's system context and Claude proposes
+        saving the question and starting fresh.
+      status: pending
+
+  artifacts:
+    - path: ".claude/hooks/frustration-boundary.sh"
+      description: "UserPromptSubmit hook — frustration signal detection"
+    - path: ".claude/hooks/frustration-boundary_test.sh"
+      description: "Test suite — 36 tests"
+    - path: ".orch/templates/FRUSTRATION_BOUNDARY.md"
+      description: "Boundary artifact template for question carryforward"
