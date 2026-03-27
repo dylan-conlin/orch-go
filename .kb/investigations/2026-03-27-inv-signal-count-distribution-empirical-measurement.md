@@ -74,3 +74,33 @@ The 3 briefs scoring 5/6 are: orch-go-2mfvw (HyperAgents external validation), o
 3. **A 4-signal version might work better:** Drop `structural` and `model_conn`, keep `evidence`, `connective`, `tension_q`, `insight`. The 4-signal count would range 0-4 with better balance per signal.
 
 4. **The connective+tension_q pair is the core discriminator.** If implementation is phased, start with just these two signals — they produce a 3-tier ordering that captures most of the value with minimal code.
+
+## Addendum: Frontmatter Gap (2026-03-27, orch-go-5qiv1)
+
+**The above analysis measures what signal_count *would* produce. In practice, signal_count is dead in production.**
+
+### The gap
+
+`serve_briefs.go:260` reads `signal_count` from YAML frontmatter via `ParseBriefSignalCount`. But **0 of 82 briefs have YAML frontmatter** — every brief starts with `# Brief:`, not `---`. `ParseBriefSignalCount` returns 0 for all briefs.
+
+### Why no briefs have frontmatter
+
+Two brief generation paths exist:
+
+| Path | File | When Used | Adds Frontmatter? |
+|------|------|-----------|-------------------|
+| `CopyBrief` | lifecycle_adapters.go:228 | Lifecycle manager during agent cleanup | **No** — copies BRIEF.md verbatim |
+| `generateHeadlessBrief` | complete_brief.go:20 | `orch complete --headless` only | **Yes** — computes quality signals from SYNTHESIS.md |
+
+All 82 existing briefs were produced via `CopyBrief`. The `generateHeadlessBrief` path requires SYNTHESIS.md (skipped by light-tier spawns), and most completions go through the lifecycle manager, not `orch complete --headless`.
+
+### Effective sort order today
+
+Since all briefs have `signal_count = 0`, the 3-tier sort in `serve_briefs.go:265-282` collapses to:
+1. Unread before read
+2. ~~signal_count desc~~ (no-op — all zero)
+3. Newest first
+
+### Fix required
+
+The signal computation needs to move from write-time (in `generateHeadlessBrief`) to read-time (in `serve_briefs.go`), or `CopyBrief` needs to inject frontmatter. Without this, the signal infrastructure exists but never fires.
