@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -15,6 +16,9 @@ var (
 	regexNumberedPattern = regexp.MustCompile(`^\d+\.`)
 	// Matches phase/layer/step/stage indicators like "Phase 1:", "### Layer 2", "**Step 3:**"
 	regexPhaseIndicator = regexp.MustCompile(`(?im)(?:^|\n)\s*(?:#{1,6}\s+)?(?:\*\*)?(?:phase|layer|step|stage)\s+(\d+)`)
+	// Like regexPhaseIndicator but also captures the title text after the number.
+	// Handles formats: "### Phase 1: Title", "**Phase 1:** Title", "Phase 1: Title"
+	regexPhaseWithTitle = regexp.MustCompile(`(?im)(?:^|\n)\s*(?:#{1,6}\s+)?(?:\*\*)?(?:phase|layer|step|stage)\s+(\d+)\s*(?:\*\*)?[:\-]?\s*(?:\*\*)?\s*(.*)`)
 )
 
 // Synthesis represents the content of a SYNTHESIS.md file using the D.E.K.N. structure.
@@ -245,4 +249,65 @@ func extractBoldSubsection(content, header string) []string {
 	}
 
 	return items
+}
+
+// PhaseInfo represents a single phase extracted from a multi-phase design in SYNTHESIS.md.
+type PhaseInfo struct {
+	Number      int    // Phase number (1, 2, 3...)
+	Title       string // e.g., "Add data parser"
+	Description string // Content between this phase heading and the next
+}
+
+// ExtractPhases parses multi-phase structure from content and returns
+// individual phases with their titles and descriptions.
+// Returns nil if fewer than 2 unique phases are detected (not a multi-phase design).
+func ExtractPhases(content string) []PhaseInfo {
+	locs := regexPhaseWithTitle.FindAllStringSubmatchIndex(content, -1)
+	if len(locs) < 2 {
+		return nil
+	}
+
+	// Collect unique phases (first occurrence of each number wins)
+	type entry struct {
+		locIdx int // index into locs
+		num    int
+		title  string
+	}
+	seen := make(map[int]bool)
+	var entries []entry
+
+	for i, loc := range locs {
+		numStr := content[loc[2]:loc[3]]
+		num, err := strconv.Atoi(numStr)
+		if err != nil || seen[num] {
+			continue
+		}
+		seen[num] = true
+		title := strings.TrimSpace(content[loc[4]:loc[5]])
+		entries = append(entries, entry{locIdx: i, num: num, title: title})
+	}
+
+	if len(entries) < 2 {
+		return nil
+	}
+
+	var phases []PhaseInfo
+	for i, e := range entries {
+		descStart := locs[e.locIdx][1] // end of this phase heading match
+		descEnd := len(content)
+
+		// Description ends at the start of the next unique phase heading
+		if i+1 < len(entries) {
+			descEnd = locs[entries[i+1].locIdx][0]
+		}
+
+		desc := strings.TrimSpace(content[descStart:descEnd])
+		phases = append(phases, PhaseInfo{
+			Number:      e.num,
+			Title:       e.title,
+			Description: desc,
+		})
+	}
+
+	return phases
 }

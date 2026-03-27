@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -45,6 +46,17 @@ func maybeAutoCreateImplementationIssue(skillName, beadsID, workspacePath string
 		return ""
 	}
 
+	// Detect multi-phase structure from SYNTHESIS.md
+	var phases []verify.PhaseInfo
+	if synthData, readErr := os.ReadFile(filepath.Join(workspacePath, "SYNTHESIS.md")); readErr == nil {
+		phases = verify.ExtractPhases(string(synthData))
+	}
+
+	if len(phases) >= 2 {
+		return createMultiPhaseIssues(phases, synthesis, beadsID, workspacePath)
+	}
+
+	// Single-phase: existing behavior
 	// Check if implementation issue already exists (idempotency)
 	if exists, err := verify.HasImplementationFollowUp(beadsID, ""); err == nil && exists {
 		fmt.Printf("Implementation issue already exists for architect %s (skipping auto-create)\n", beadsID)
@@ -83,6 +95,114 @@ func maybeAutoCreateImplementationIssue(skillName, beadsID, workspacePath string
 	fmt.Printf("└─────────────────────────────────────────────────────────────┘\n")
 
 	return issue.ID
+}
+
+// createMultiPhaseIssues creates one implementation issue per phase in a multi-phase
+// architect design. Returns comma-separated issue IDs or empty string on failure.
+func createMultiPhaseIssues(phases []verify.PhaseInfo, synthesis *verify.Synthesis, beadsID, workspacePath string) string {
+	// Check how many issues already exist (idempotency)
+	existingCount, err := verify.CountImplementationFollowUps(beadsID, "")
+	if err == nil && existingCount >= len(phases) {
+		fmt.Printf("Implementation issues already exist for architect %s (%d/%d, skipping)\n",
+			beadsID, existingCount, len(phases))
+		return beadsID
+	}
+
+	// Gather knowledge enrichment once for all phases (best-effort, 3s timeout)
+	projectDir, _ := os.Getwd()
+	kbContext := gatherArchitectKBContext(synthesis, projectDir)
+
+	var createdIDs []string
+	for _, phase := range phases {
+		title := buildArchitectPhaseTitle(phase, beadsID)
+		description := buildArchitectPhaseDescription(phase, synthesis, beadsID, kbContext)
+		skill := inferImplementationSkill(&verify.Synthesis{
+			TLDR: phase.Title,
+			Next: phase.Description,
+		})
+
+		labels := []string{"triage:ready"}
+		if skill != "" {
+			labels = append(labels, "skill:"+skill)
+		}
+
+		issue, err := beads.FallbackCreate(title, description, "task", 2, labels, "")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to create phase %d issue: %v\n", phase.Number, err)
+			continue
+		}
+		createdIDs = append(createdIDs, issue.ID)
+	}
+
+	if len(createdIDs) > 0 {
+		fmt.Printf("\n┌─────────────────────────────────────────────────────────────┐\n")
+		fmt.Printf("│  AUTO-CREATED IMPLEMENTATION ISSUES (multi-phase)           │\n")
+		fmt.Printf("├─────────────────────────────────────────────────────────────┤\n")
+		for i, id := range createdIDs {
+			if i < len(phases) {
+				fmt.Printf("│  Phase %d: %-49s │\n", phases[i].Number, id)
+			}
+		}
+		fmt.Printf("│  From:    %-49s │\n", beadsID+" (architect)")
+		fmt.Printf("└─────────────────────────────────────────────────────────────┘\n")
+		return strings.Join(createdIDs, ",")
+	}
+	return ""
+}
+
+// buildArchitectPhaseTitle creates a title for a single phase implementation issue.
+func buildArchitectPhaseTitle(phase verify.PhaseInfo, beadsID string) string {
+	suffix := fmt.Sprintf(" (from architect %s)", beadsID)
+	if phase.Title != "" {
+		return fmt.Sprintf("Phase %d: %s%s", phase.Number, phase.Title, suffix)
+	}
+	return fmt.Sprintf("Phase %d implementation%s", phase.Number, suffix)
+}
+
+// buildArchitectPhaseDescription creates a description for a single phase implementation issue,
+// including the architect's overall summary and phase-specific content.
+func buildArchitectPhaseDescription(phase verify.PhaseInfo, synthesis *verify.Synthesis, beadsID, kbContext string) string {
+	var b strings.Builder
+
+	b.WriteString(fmt.Sprintf("Auto-created from architect review %s (Phase %d of %s).\n\n",
+		beadsID, phase.Number, "multi-phase design"))
+
+	if synthesis.TLDR != "" {
+		b.WriteString("## Architect Summary\n")
+		b.WriteString(synthesis.TLDR)
+		b.WriteString("\n\n")
+	}
+
+	b.WriteString(fmt.Sprintf("## Phase %d: %s\n", phase.Number, phase.Title))
+	if phase.Description != "" {
+		b.WriteString(phase.Description)
+		b.WriteString("\n\n")
+	}
+
+	// Extract target files from phase description
+	phaseSynth := &verify.Synthesis{
+		Delta:       phase.Description,
+		NextActions: []string{phase.Description},
+		Next:        phase.Description,
+	}
+	targetFiles := extractTargetFiles(phaseSynth)
+	if len(targetFiles) > 0 {
+		b.WriteString("## Target Files\n")
+		for _, f := range targetFiles {
+			b.WriteString("- `")
+			b.WriteString(f)
+			b.WriteString("`\n")
+		}
+		b.WriteString("\n")
+	}
+
+	if kbContext != "" {
+		b.WriteString("## Relevant Knowledge\n")
+		b.WriteString(kbContext)
+		b.WriteString("\n")
+	}
+
+	return b.String()
 }
 
 // isActionableRecommendation wraps the exported verify function for local use.

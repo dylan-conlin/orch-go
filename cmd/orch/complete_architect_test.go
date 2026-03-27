@@ -329,4 +329,116 @@ func TestExtractTargetFiles(t *testing.T) {
 	}
 }
 
+func TestBuildArchitectPhaseTitle(t *testing.T) {
+	tests := []struct {
+		name     string
+		phase    verify.PhaseInfo
+		beadsID  string
+		expected string
+	}{
+		{
+			name:     "phase with title",
+			phase:    verify.PhaseInfo{Number: 1, Title: "Add data parser"},
+			beadsID:  "orch-go-abc1",
+			expected: "Phase 1: Add data parser (from architect orch-go-abc1)",
+		},
+		{
+			name:     "phase without title",
+			phase:    verify.PhaseInfo{Number: 2, Title: ""},
+			beadsID:  "orch-go-abc1",
+			expected: "Phase 2 implementation (from architect orch-go-abc1)",
+		},
+		{
+			name:     "phase 3",
+			phase:    verify.PhaseInfo{Number: 3, Title: "Wire integration tests"},
+			beadsID:  "orch-go-xyz9",
+			expected: "Phase 3: Wire integration tests (from architect orch-go-xyz9)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := buildArchitectPhaseTitle(tt.phase, tt.beadsID)
+			if result != tt.expected {
+				t.Errorf("buildArchitectPhaseTitle() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestBuildArchitectPhaseDescription(t *testing.T) {
+	synthesis := &verify.Synthesis{
+		TLDR: "Designed three-phase enrichment pipeline",
+	}
+	phase := verify.PhaseInfo{
+		Number:      1,
+		Title:       "Add data parser",
+		Description: "Extract and normalize incoming data from pkg/pipeline/parser.go.",
+	}
+	beadsID := "orch-go-abc1"
+
+	desc := buildArchitectPhaseDescription(phase, synthesis, beadsID, "")
+
+	// Should reference the architect
+	if !containsStr(desc, "orch-go-abc1") {
+		t.Error("description should reference architect beads ID")
+	}
+	// Should mention multi-phase
+	if !containsStr(desc, "multi-phase") {
+		t.Error("description should mention multi-phase design")
+	}
+	// Should contain the TLDR
+	if !containsStr(desc, "Designed three-phase enrichment pipeline") {
+		t.Error("description should contain architect TLDR")
+	}
+	// Should contain phase title and description
+	if !containsStr(desc, "Phase 1: Add data parser") {
+		t.Error("description should contain phase heading")
+	}
+	if !containsStr(desc, "Extract and normalize") {
+		t.Error("description should contain phase description")
+	}
+}
+
+func TestBuildArchitectPhaseDescriptionWithKBContext(t *testing.T) {
+	synthesis := &verify.Synthesis{
+		TLDR: "Designed pipeline",
+	}
+	phase := verify.PhaseInfo{
+		Number:      1,
+		Title:       "Add parser",
+		Description: "Parse data.",
+	}
+	kbContext := "- [decision] No local agent state"
+
+	desc := buildArchitectPhaseDescription(phase, synthesis, "orch-go-test", kbContext)
+
+	if !containsStr(desc, "## Relevant Knowledge") {
+		t.Error("description should contain Relevant Knowledge when kbContext is provided")
+	}
+	if !containsStr(desc, "No local agent state") {
+		t.Error("description should include kb context content")
+	}
+}
+
+func TestBuildArchitectPhaseDescriptionExtractsTargetFiles(t *testing.T) {
+	synthesis := &verify.Synthesis{
+		TLDR: "Pipeline design",
+	}
+	phase := verify.PhaseInfo{
+		Number:      1,
+		Title:       "Add parser",
+		Description: "Modify pkg/pipeline/parser.go to handle edge cases.",
+	}
+
+	desc := buildArchitectPhaseDescription(phase, synthesis, "orch-go-test", "")
+
+	if !containsStr(desc, "## Target Files") {
+		t.Error("description should contain Target Files when phase references files")
+	}
+	if !containsStr(desc, "pkg/pipeline/parser.go") {
+		t.Error("description should list target files from phase description")
+	}
+}
+
 // containsStr is defined in review_triage_test.go
