@@ -444,44 +444,6 @@ func TestReadValidatedStatusFile_NoFile(t *testing.T) {
 	}
 }
 
-func TestDetermineStatus_VerificationPause(t *testing.T) {
-	pollInterval := time.Minute
-	lastPoll := time.Now()
-
-	tests := []struct {
-		name       string
-		isPaused   bool
-		wantStatus string
-	}{
-		{
-			name:       "paused takes precedence",
-			isPaused:   true,
-			wantStatus: "paused",
-		},
-		{
-			name:       "not paused when running",
-			isPaused:   false,
-			wantStatus: "running",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := DetermineStatus(lastPoll, pollInterval, tt.isPaused)
-			if got != tt.wantStatus {
-				t.Errorf("DetermineStatus() = %q, want %q", got, tt.wantStatus)
-			}
-		})
-	}
-
-	// Verify that pause takes precedence over stalled
-	stalledPoll := time.Now().Add(-3 * time.Minute) // Way past 2x interval
-	got := DetermineStatus(stalledPoll, pollInterval, true)
-	if got != "paused" {
-		t.Errorf("Paused should take precedence over stalled, got %q", got)
-	}
-}
-
 // --- SIGKILL restart: ReadValidatedStatusFile with PID lock fallback ---
 
 func TestReadValidatedStatusFile_SIGKILLRestart_StaleStatusLiveLock(t *testing.T) {

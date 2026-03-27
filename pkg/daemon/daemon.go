@@ -83,11 +83,6 @@ type Daemon struct {
 	// Prevents infinite resume loops by rate-limiting to 1 attempt per hour per agent.
 	resumeAttempts map[string]time.Time
 
-	// VerificationTracker tracks completions since last human verification and manages
-	// pause state when threshold is reached. This enforces the verifiability-first
-	// constraint by pausing autonomous operation after N completions without human review.
-	VerificationTracker *VerificationTracker
-
 	// CompletionFailureTracker tracks completion processing failures to surface them in health metrics.
 	// This prevents silent failure when CompletionOnce persistently fails (e.g., beads database issues).
 	CompletionFailureTracker *CompletionFailureTracker
@@ -247,15 +242,20 @@ func NewWithConfig(config Config) *Daemon {
 		spawnTracker = NewSpawnedIssueTrackerWithFile(cachePath)
 	}
 	// Derive thresholds from compliance level
-	verificationThreshold := daemonconfig.DeriveVerificationThreshold(config.Compliance.Default)
+	reviewThreshold := daemonconfig.DeriveReviewThreshold(config.Compliance.Default)
 	invariantThreshold := daemonconfig.DeriveInvariantThreshold(config.Compliance.Default)
+
+	// Wire compliance-derived review threshold into ComprehensionThreshold
+	// if it wasn't explicitly set (i.e., still at zero or default).
+	if config.ComprehensionThreshold == 0 || config.ComprehensionThreshold == 5 {
+		config.ComprehensionThreshold = reviewThreshold
+	}
 
 	d := &Daemon{
 		Config:                   config,
 		Scheduler:                NewSchedulerFromConfig(config),
 		SpawnedIssues:            spawnTracker,
 		resumeAttempts:           make(map[string]time.Time),
-		VerificationTracker:      NewVerificationTracker(verificationThreshold),
 		CompletionFailureTracker: NewCompletionFailureTracker(),
 		VerificationRetryTracker: NewVerificationRetryTracker(),
 		Issues:                   &defaultIssueQuerier{},
@@ -293,13 +293,18 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 	if cachePath := DefaultSpawnCachePath(); cachePath != "" {
 		spawnTracker = NewSpawnedIssueTrackerWithFile(cachePath)
 	}
+	// Wire compliance-derived review threshold into ComprehensionThreshold
+	reviewThreshold := daemonconfig.DeriveReviewThreshold(config.Compliance.Default)
+	if config.ComprehensionThreshold == 0 || config.ComprehensionThreshold == 5 {
+		config.ComprehensionThreshold = reviewThreshold
+	}
+
 	d := &Daemon{
-		Config:              config,
-		Pool:                pool,
-		Scheduler:           NewSchedulerFromConfig(config),
-		SpawnedIssues:       spawnTracker,
-		resumeAttempts:      make(map[string]time.Time),
-		VerificationTracker: NewVerificationTracker(config.VerificationPauseThreshold),
+		Config:         config,
+		Pool:           pool,
+		Scheduler:      NewSchedulerFromConfig(config),
+		SpawnedIssues:  spawnTracker,
+		resumeAttempts: make(map[string]time.Time),
 		Issues:              &defaultIssueQuerier{},
 		Spawner:             &defaultSpawner{},
 		WorkspaceVerifier:   &defaultWorkspaceVerifier{},

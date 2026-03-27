@@ -37,10 +37,6 @@ type DaemonStatus struct {
 	// Values: "running", "stalled", "paused"
 	Status string `json:"status"`
 
-	// Verification holds verification tracking information.
-	// Omitted if verification tracking is disabled (threshold = 0).
-	Verification *VerificationStatusSnapshot `json:"verification,omitempty"`
-
 	// CompletionFailures holds completion processing failure tracking information.
 	// Surfaced to enable health card alerting when daemon stops processing completions.
 	CompletionFailures *CompletionFailureSnapshot `json:"completion_failures,omitempty"`
@@ -66,24 +62,6 @@ type DaemonStatus struct {
 	// Surfaced so sketchybar widget can read queue depth without a slow bd CLI call.
 	Comprehension *ComprehensionSnapshot `json:"comprehension,omitempty"`
 
-}
-
-// VerificationStatusSnapshot is a snapshot of verification tracking state.
-type VerificationStatusSnapshot struct {
-	// IsPaused indicates whether the daemon is paused due to verification threshold.
-	IsPaused bool `json:"is_paused"`
-
-	// CompletionsSinceVerification is the count of auto-completions since last human verification.
-	CompletionsSinceVerification int `json:"completions_since_verification"`
-
-	// Threshold is the maximum auto-completions allowed before pausing.
-	Threshold int `json:"threshold"`
-
-	// LastVerification is when the last human verification occurred.
-	LastVerification time.Time `json:"last_verification"`
-
-	// RemainingBeforePause is how many more completions are allowed before pause.
-	RemainingBeforePause int `json:"remaining_before_pause"`
 }
 
 // CapacityStatus holds agent pool capacity information.
@@ -214,14 +192,8 @@ func RemoveStatusFile() error {
 }
 
 // DetermineStatus determines the daemon status based on operational metrics.
-// Returns "paused" if verification pause is active, "stalled" if it appears stuck,
-// or "running" if healthy.
-func DetermineStatus(lastPoll time.Time, pollInterval time.Duration, verificationPaused bool) string {
-	// Check verification pause first (takes precedence over stalled)
-	if verificationPaused {
-		return "paused"
-	}
-
+// Returns "stalled" if it appears stuck, or "running" if healthy.
+func DetermineStatus(lastPoll time.Time, pollInterval time.Duration, _ bool) string {
 	// If last poll was more than 2x poll interval ago, consider stalled
 	stalledThreshold := pollInterval * 2
 	if time.Since(lastPoll) > stalledThreshold {

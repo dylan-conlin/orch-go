@@ -55,10 +55,6 @@ func TestFromUserConfig_Defaults(t *testing.T) {
 	if result.CleanupEnabled != defaults.CleanupEnabled {
 		t.Errorf("CleanupEnabled = %v, want %v", result.CleanupEnabled, defaults.CleanupEnabled)
 	}
-	if result.VerificationPauseThreshold != defaults.VerificationPauseThreshold {
-		t.Errorf("VerificationPauseThreshold = %d, want %d", result.VerificationPauseThreshold, defaults.VerificationPauseThreshold)
-	}
-
 	// Verify previously-missing fields are now present and match defaults
 	if result.OrphanDetectionEnabled != defaults.OrphanDetectionEnabled {
 		t.Errorf("OrphanDetectionEnabled = %v, want %v", result.OrphanDetectionEnabled, defaults.OrphanDetectionEnabled)

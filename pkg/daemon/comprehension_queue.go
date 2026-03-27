@@ -172,6 +172,32 @@ func CheckComprehensionThrottle(querier ComprehensionQuerier, threshold int) (bo
 	return count < threshold, count, threshold
 }
 
+// DrainComprehensionUnread transitions all comprehension:unread items to processed.
+// Used by `orch daemon resume` to clear the review backlog gate.
+// Returns the number of items drained.
+func DrainComprehensionUnread() int {
+	output, err := runBdCommand("list", "--label", LabelComprehensionUnread, "--format", "ids")
+	if err != nil {
+		return 0
+	}
+	trimmed := strings.TrimSpace(string(output))
+	if trimmed == "" {
+		return 0
+	}
+	ids := strings.Split(trimmed, "\n")
+	drained := 0
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if err := TransitionToProcessed(id); err == nil {
+			drained++
+		}
+	}
+	return drained
+}
+
 // BriefFeedback represents quality feedback on a comprehension brief.
 type BriefFeedback struct {
 	BeadsID   string    `json:"beads_id"`

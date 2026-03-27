@@ -276,8 +276,6 @@ func (d *Daemon) labelReadyReview(agent CompletedAgent, completionSummary, effec
 		// Remove triage:ready to prevent re-spawn
 		verify.RemoveTriageLabels(agent.BeadsID, effectiveProjectDir)
 
-		d.recordUnverifiedCompletion(agent.BeadsID, config)
-
 		// Queue for orchestrator comprehension (fire-and-forget)
 		d.addComprehensionUnread(agent.BeadsID, effectiveProjectDir, config)
 
@@ -310,21 +308,6 @@ func (d *Daemon) fireHeadlessCompletion(beadsID, projectDir string, config Compl
 			fmt.Printf("    Headless brief generated for %s\n", beadsID)
 		}
 	}()
-}
-
-// recordUnverifiedCompletion records a completion that needs human verification.
-// Only called for label-ready-review completions, NOT for auto-completed agents.
-// Auto-completed agents are already closed by the daemon and don't need human review,
-// so they should not count toward the verification pause threshold.
-func (d *Daemon) recordUnverifiedCompletion(beadsID string, config CompletionConfig) {
-	if d.VerificationTracker != nil {
-		shouldPause := d.VerificationTracker.RecordCompletion(beadsID)
-		if shouldPause && config.Verbose {
-			status := d.VerificationTracker.Status()
-			fmt.Printf("    Verification pause triggered: %d/%d auto-completions. Resume with: orch daemon resume\n",
-				status.CompletionsSinceVerification, status.Threshold)
-		}
-	}
 }
 
 // addComprehensionUnread adds the comprehension:unread label to a completed issue.

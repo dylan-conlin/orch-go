@@ -29,8 +29,6 @@ type DaemonAPIResponse struct {
 	// Utilization metrics - tracks daemon vs manual spawn ratio to surface triage discipline
 	Utilization *DaemonUtilizationMetrics `json:"utilization,omitempty"`
 
-	// Verification holds verification tracking information for gate visibility
-	Verification *DaemonVerificationStatus `json:"verification,omitempty"`
 }
 
 // DaemonUtilizationMetrics tracks the ratio of daemon-spawned vs manual-spawned agents.
@@ -45,16 +43,6 @@ type DaemonUtilizationMetrics struct {
 	AutoCompletions int     `json:"auto_completions"`  // Count of daemon auto-completions
 	AnalysisPeriod  string  `json:"analysis_period"`   // Time window description (e.g., "Last 7 days")
 	DaysAnalyzed    int     `json:"days_analyzed"`     // Number of days in analysis window
-}
-
-// DaemonVerificationStatus tracks verification gate state for dashboard visibility.
-type DaemonVerificationStatus struct {
-	IsPaused                     bool   `json:"is_paused"`                       // Whether daemon is paused due to verification threshold
-	CompletionsSinceVerification int    `json:"completions_since_verification"`  // Count of auto-completions since last verification
-	Threshold                    int    `json:"threshold"`                       // Maximum auto-completions before pausing
-	RemainingBeforePause         int    `json:"remaining_before_pause"`          // Completions allowed before pause
-	LastVerification             string `json:"last_verification,omitempty"`     // ISO 8601 timestamp of last verification
-	LastVerificationAgo          string `json:"last_verification_ago,omitempty"` // Human-readable time since last verification
 }
 
 // handleDaemon returns the daemon status from ~/.orch/daemon-status.json.
@@ -98,19 +86,6 @@ func handleDaemon(w http.ResponseWriter, r *http.Request) {
 			resp.LastSpawnAgo = formatDurationAgo(time.Since(status.LastSpawn))
 		}
 
-		// Populate verification status for gate visibility
-		if status.Verification != nil {
-			resp.Verification = &DaemonVerificationStatus{
-				IsPaused:                     status.Verification.IsPaused,
-				CompletionsSinceVerification: status.Verification.CompletionsSinceVerification,
-				Threshold:                    status.Verification.Threshold,
-				RemainingBeforePause:         status.Verification.RemainingBeforePause,
-			}
-			if !status.Verification.LastVerification.IsZero() {
-				resp.Verification.LastVerification = status.Verification.LastVerification.Format(time.RFC3339)
-				resp.Verification.LastVerificationAgo = formatDurationAgo(time.Since(status.Verification.LastVerification))
-			}
-		}
 	}
 
 	// Get utilization metrics from events.jsonl

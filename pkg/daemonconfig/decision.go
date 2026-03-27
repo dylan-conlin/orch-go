@@ -203,7 +203,7 @@ func adjustForCompliance(base DecisionTier, level ComplianceLevel) DecisionTier 
 
 // ClassifyDecision returns the effective decision tier for a given decision class
 // and compliance level. This follows the DeriveX pattern established by the other
-// compliance functions (DeriveVerificationThreshold, etc.).
+// compliance functions (DeriveReviewThreshold, etc.).
 //
 // The tier is computed as: baseTier(class) adjusted by compliance level.
 func ClassifyDecision(class DecisionClass, level ComplianceLevel) DecisionTier {

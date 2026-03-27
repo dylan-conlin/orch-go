@@ -23,21 +23,10 @@ type SpawnGateSignal struct {
 }
 
 // CheckPreSpawnGates runs all compliance gates that must pass before spawning.
-// Checks: verification pause, completion health, rate limit.
+// Checks: completion health, comprehension queue, rate limit.
 // Returns immediately on first failure (short-circuit).
 func (d *Daemon) CheckPreSpawnGates() SpawnGateSignal {
-	// Gate 1: Verification pause — daemon pauses after N auto-completions
-	// without human verification. This enforces verifiability-first constraint.
-	if d.VerificationTracker != nil && d.VerificationTracker.IsPaused() {
-		status := d.VerificationTracker.Status()
-		return SpawnGateSignal{
-			Allowed: false,
-			Reason: fmt.Sprintf("Paused for human verification (%d/%d auto-completions). Resume with: orch daemon resume",
-				status.CompletionsSinceVerification, status.Threshold),
-		}
-	}
-
-	// Gate 2: Completion health — if completion processing is broken,
+	// Gate 1: Completion health — if completion processing is broken,
 	// pause spawning to prevent orphaning completed agents.
 	const completionFailureThreshold = 3
 	if d.CompletionFailureTracker != nil {
@@ -52,7 +41,7 @@ func (d *Daemon) CheckPreSpawnGates() SpawnGateSignal {
 		}
 	}
 
-	// Gate 3: Comprehension queue — pause spawning when too much uncomprehended work exists.
+	// Gate 2: Comprehension queue — pause spawning when too much uncomprehended work exists.
 	if d.ComprehensionQuerier != nil {
 		allowed, count, threshold := CheckComprehensionThrottle(d.ComprehensionQuerier, d.Config.ComprehensionThreshold)
 		if !allowed {
@@ -65,7 +54,7 @@ func (d *Daemon) CheckPreSpawnGates() SpawnGateSignal {
 		}
 	}
 
-	// Gate 4: Rate limit — hourly spawn cap.
+	// Gate 3: Rate limit — hourly spawn cap.
 	if d.RateLimiter != nil {
 		canSpawn, count, msg := d.RateLimiter.CanSpawn()
 		if !canSpawn {

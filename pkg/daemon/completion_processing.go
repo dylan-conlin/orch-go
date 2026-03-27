@@ -131,9 +131,7 @@ func listCompletedAgentsSingleProject(config CompletionConfig, projectDir, works
 	// Filter out issues already labeled daemon:ready-review or daemon:verification-failed.
 	// - daemon:ready-review: already processed by a previous completion cycle
 	// - daemon:verification-failed: exhausted verification retry budget, deferred for human review
-	// Without this filter, resume→re-detect→re-pause loops occur because
-	// the same cross-project Phase: Complete issues get re-counted after
-	// resume clears the VerificationTracker's seenIDs.
+	// Without this filter, re-detect loops would re-count already-processed issues.
 	for id, issue := range openIssues {
 		for _, label := range issue.Labels {
 			if label == LabelReadyReview || label == LabelVerificationFailed {

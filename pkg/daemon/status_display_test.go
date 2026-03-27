@@ -142,8 +142,8 @@ func TestFormatStatusInfo_Paused(t *testing.T) {
 		Capacity: CapacityStatus{Max: 3},
 	}
 	result := FormatStatusInfo(info)
-	if !strings.Contains(result, "PAUSED") {
-		t.Errorf("FormatStatusInfo should show PAUSED for verification pause, got %q", result)
+	if !strings.Contains(result, "paused") {
+		t.Errorf("FormatStatusInfo should show paused status, got %q", result)
 	}
 }
 

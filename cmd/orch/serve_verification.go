@@ -166,21 +166,13 @@ func handleVerification(w http.ResponseWriter, r *http.Request) {
 		resp.UnverifiedCount = count
 	}
 
-	// Heartbeat age (last human verification signal)
-	heartbeatAt, err := daemon.ReadVerificationSignal()
-	if err == nil && !heartbeatAt.IsZero() {
-		resp.HeartbeatAt = heartbeatAt.Format(time.RFC3339)
-		resp.HeartbeatAgo = formatDurationAgo(time.Since(heartbeatAt))
-	}
-
 	// Daemon pause state (validates PID liveness to detect stale files)
 	status, err := daemon.ReadValidatedStatusFile()
 	if err == nil && status != nil {
 		resp.DaemonRunning = true
 		resp.DaemonStatus = status.Status
-		if status.Verification != nil {
-			resp.DaemonPaused = status.Verification.IsPaused
-		}
+		// DaemonPaused is now driven by comprehension gate, visible via status.Status == "paused"
+		resp.DaemonPaused = status.Status == "paused"
 	}
 
 	// Override trend (verification bypasses) — cached to avoid re-reading 62MB events.jsonl

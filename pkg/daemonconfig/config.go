@@ -85,13 +85,6 @@ type Config struct {
 	// Default is 1 hour to prevent infinite loops.
 	RecoveryRateLimit time.Duration
 
-	// VerificationPauseThreshold is the maximum number of agents that can be marked
-	// ready-for-review before pausing for human verification. When the daemon marks
-	// this many issues as ready-for-review without human verification (manual orch complete),
-	// it will pause spawning until Dylan explicitly resumes. Set to 0 to disable (no pause).
-	// Default is 3.
-	VerificationPauseThreshold int
-
 	// OrphanDetectionEnabled controls whether periodic orphan detection is enabled.
 	// When enabled, the daemon detects in_progress issues with no active agent
 	// (no OpenCode session, no tmux window) and resets them to open for respawning.
@@ -269,7 +262,6 @@ func DefaultConfig() Config {
 		RecoveryInterval:               5 * time.Minute,  // Check every 5 minutes
 		RecoveryIdleThreshold:          10 * time.Minute, // Idle >10min triggers recovery
 		RecoveryRateLimit:              time.Hour,        // 1 resume per agent per hour
-		VerificationPauseThreshold:     5, // Pause after 5 unique auto-completions
 		OrphanDetectionEnabled:         true,
 		OrphanDetectionInterval:        30 * time.Minute, // Check every 30 minutes
 		OrphanAgeThreshold:             time.Hour,        // 1 hour before considering orphaned

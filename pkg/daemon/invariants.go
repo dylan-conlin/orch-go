@@ -91,11 +91,6 @@ type InvariantInput struct {
 	// if reconciliation hasn't run yet).
 	PoolActiveCount int
 
-	// VerificationCount is the number of unverified completions.
-	VerificationCount int
-	// VerificationThreshold is the configured threshold.
-	VerificationThreshold int
-
 	// CompletedAgents are agents that reported Phase: Complete.
 	// Used to check ProjectDir validity for cross-project agents.
 	CompletedAgents []CompletedAgent
@@ -141,18 +136,7 @@ func (ic *InvariantChecker) Check(input *InvariantInput) *InvariantCheckResult {
 		}
 	}
 
-	// Invariant 2: Verification counter must not exceed threshold
-	// If it does, the pause mechanism failed.
-	if input.VerificationThreshold > 0 && input.VerificationCount > input.VerificationThreshold {
-		result.Violations = append(result.Violations, InvariantViolation{
-			Name:     "verification-counter-overflow",
-			Message:  fmt.Sprintf("verification counter %d exceeds threshold %d (pause mechanism may have failed)", input.VerificationCount, input.VerificationThreshold),
-			Severity: "critical",
-			Timestamp: now,
-		})
-	}
-
-	// Invariant 3: Completed agents must have valid ProjectDir for cross-project agents
+	// Invariant 2: Completed agents must have valid ProjectDir for cross-project agents
 	// An empty ProjectDir on a cross-project agent means completion processing
 	// will run bd commands against the wrong directory.
 	for _, agent := range input.CompletedAgents {

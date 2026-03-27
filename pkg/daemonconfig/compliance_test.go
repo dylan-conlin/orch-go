@@ -124,7 +124,7 @@ func TestComplianceConfigResolve_NilMaps(t *testing.T) {
 	}
 }
 
-func TestDeriveVerificationThreshold(t *testing.T) {
+func TestDeriveReviewThreshold(t *testing.T) {
 	tests := []struct {
 		level ComplianceLevel
 		want  int
@@ -135,8 +135,8 @@ func TestDeriveVerificationThreshold(t *testing.T) {
 		{ComplianceAutonomous, 0},
 	}
 	for _, tt := range tests {
-		if got := DeriveVerificationThreshold(tt.level); got != tt.want {
-			t.Errorf("DeriveVerificationThreshold(%v) = %d, want %d", tt.level, got, tt.want)
+		if got := DeriveReviewThreshold(tt.level); got != tt.want {
+			t.Errorf("DeriveReviewThreshold(%v) = %d, want %d", tt.level, got, tt.want)
 		}
 	}
 }

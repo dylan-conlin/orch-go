@@ -93,9 +93,10 @@ func (c *ComplianceConfig) Resolve(skill, model string) ComplianceLevel {
 	return c.Default
 }
 
-// DeriveVerificationThreshold returns the verification pause threshold for a compliance level.
-// This is the number of auto-completions before the daemon pauses for human review.
-func DeriveVerificationThreshold(level ComplianceLevel) int {
+// DeriveReviewThreshold returns the review backlog threshold for a compliance level.
+// This is the number of comprehension:unread items before the daemon pauses for human review.
+// Replaces both the old verification pause threshold and separate comprehension threshold.
+func DeriveReviewThreshold(level ComplianceLevel) int {
 	switch level {
 	case ComplianceStrict:
 		return 3

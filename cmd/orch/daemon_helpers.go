@@ -2,12 +2,10 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
-	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
 // daemonConfigFromFlags builds a Config starting from DefaultConfig(),
@@ -46,18 +44,6 @@ func daemonConfigFromFlags() daemon.Config {
 	return config
 }
 
-// verificationBreakdown returns a per-project breakdown string for verification messages.
-// Best-effort: returns empty string on error so the primary count always displays.
-func verificationBreakdown() string {
-	items, err := verify.ListUnverifiedWork()
-	if err != nil || len(items) == 0 {
-		return ""
-	}
-	return verify.FormatProjectBreakdown(items)
-}
-
-// seedVerificationTracker seeds the tracker with the backlog IDs.
-// Called after daemon construction, before entering the main loop.
 // wireFocusBoost loads the current focus and wires it into the daemon for
 // priority boosting. Gracefully degrades if focus can't be loaded.
 func wireFocusBoost(d *daemon.Daemon) {
@@ -72,35 +58,6 @@ func wireFocusBoost(d *daemon.Daemon) {
 	d.FocusGoal = f.Goal
 	d.FocusBoostAmount = 1 // default: boost by 1 priority level
 	d.ProjectDirNames = daemon.BuildProjectDirNames(d.ProjectRegistry)
-}
-
-func seedVerificationTracker(d *daemon.Daemon) {
-	if d.VerificationTracker == nil {
-		return
-	}
-
-	items, err := verify.ListUnverifiedWork()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not seed verification tracker: %v\n", err)
-		return
-	}
-
-	if len(items) > 0 {
-		ids := make([]string, len(items))
-		for i, item := range items {
-			ids[i] = item.BeadsID
-		}
-		d.VerificationTracker.SeedFromBacklog(ids)
-		breakdown := verify.FormatProjectBreakdown(items)
-		fmt.Printf("  Verification backlog: %d unverified completions from previous sessions%s\n", len(items), breakdown)
-
-		if d.VerificationTracker.IsPaused() {
-			status := d.VerificationTracker.Status()
-			fmt.Printf("  Warning: Verification pause: backlog exceeds threshold (%d/%d)%s\n",
-				len(items), status.Threshold, breakdown)
-			fmt.Println("  Run 'orch daemon resume' after reviewing completed work")
-		}
-	}
 }
 
 // checkDaemonStuck returns true if the daemon appears stuck:

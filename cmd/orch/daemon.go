@@ -63,10 +63,6 @@ func runDaemonLoop() error {
 		// verification pause because cleanStaleTmuxWindows never executes.
 		periodicResult := runPeriodicTasks(s.d, timestamp, daemonVerbose, s.logger)
 
-		if s.checkVerificationPause(timestamp) {
-			continue
-		}
-
 		completionResult := s.processDaemonCompletions(timestamp)
 
 		if s.checkInvariants(timestamp, completionResult) {

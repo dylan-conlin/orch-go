@@ -28,23 +28,10 @@ func runDaemonDryRun() error {
 	// Wire focus-aware priority boost
 	wireFocusBoost(d)
 
-	// Seed verification tracker with unverified backlog
-	seedVerificationTracker(d)
 
 	result, err := d.Preview()
 	if err != nil {
 		return fmt.Errorf("preview error: %w", err)
-	}
-
-	// Show verification status in dry-run output
-	if result.VerificationPaused {
-		fmt.Printf("[DRY-RUN] Verification pause: %s\n", result.VerificationStatus)
-	} else if d.VerificationTracker != nil {
-		verifyStatus := d.VerificationTracker.Status()
-		if verifyStatus.IsEnabled() {
-			fmt.Printf("[DRY-RUN] Verification check: %d/%d unverified completions\n",
-				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
-		}
 	}
 
 	// Get current directory for context
@@ -116,22 +103,6 @@ func runDaemonOnce() error {
 	// Wire focus-aware priority boost
 	wireFocusBoost(d)
 
-	// Seed verification tracker with unverified backlog
-	seedVerificationTracker(d)
-
-	// Show verification status before spawning
-	if d.VerificationTracker != nil {
-		verifyStatus := d.VerificationTracker.Status()
-		if d.VerificationTracker.IsPaused() {
-			breakdown := verificationBreakdown()
-			fmt.Printf("Verification pause: %d unverified completions, threshold is %d%s\n",
-				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
-			fmt.Println("  Run 'orch daemon resume' after reviewing completed work to continue")
-		} else if verifyStatus.IsEnabled() {
-			fmt.Printf("Verification check: %d/%d unverified completions, proceeding\n",
-				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
-		}
-	}
 
 	result, err := d.Once()
 	if err != nil {
@@ -185,17 +156,10 @@ func runDaemonPreview() error {
 	// Wire focus-aware priority boost
 	wireFocusBoost(d)
 
-	// Seed verification tracker with unverified backlog
-	seedVerificationTracker(d)
 
 	result, err := d.Preview()
 	if err != nil {
 		return fmt.Errorf("preview error: %w", err)
-	}
-
-	// Show verification status (matches runDaemonDryRun behavior)
-	if result.VerificationPaused {
-		fmt.Printf("Verification pause: %s\n\n", result.VerificationStatus)
 	}
 
 	// Get current directory for context
@@ -403,7 +367,7 @@ func runDaemonResume() error {
 	fmt.Println("Resume signal sent")
 	fmt.Println()
 	fmt.Println("The daemon will detect the signal on the next poll cycle and resume operation.")
-	fmt.Println("The verification counter will be reset, allowing the daemon to continue spawning.")
+	fmt.Println("All comprehension:unread items will be drained, clearing the review backlog gate.")
 
 	return nil
 }

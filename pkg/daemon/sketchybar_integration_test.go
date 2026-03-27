@@ -55,26 +55,7 @@ func TestSketchybarHealthParity(t *testing.T) {
 			wantCompThresh: "",
 		},
 		{
-			name: "verification_yellow",
-			status: DaemonStatus{
-				PID:    1234,
-				Status: "running",
-				Capacity: CapacityStatus{
-					Max: 5, Active: 2, Available: 3,
-				},
-				LastPoll:   now.Add(-30 * time.Second),
-				ReadyCount: 5,
-			},
-			wantHealth:     "yellow",
-			wantActive:     2,
-			wantMax:        5,
-			wantReady:      5,
-			wantStatus:     "running",
-			wantCompCount:  "0",
-			wantCompThresh: "",
-		},
-		{
-			name: "verification_paused_red",
+			name: "comprehension_paused_red",
 			status: DaemonStatus{
 				PID:    1234,
 				Status: "paused",
@@ -83,14 +64,17 @@ func TestSketchybarHealthParity(t *testing.T) {
 				},
 				LastPoll:   now.Add(-30 * time.Second),
 				ReadyCount: 10,
+				Comprehension: &ComprehensionSnapshot{
+					Count: 8, Threshold: 5,
+				},
 			},
 			wantHealth:     "red",
 			wantActive:     0,
 			wantMax:        5,
 			wantReady:      10,
 			wantStatus:     "paused",
-			wantCompCount:  "0",
-			wantCompThresh: "",
+			wantCompCount:  "8",
+			wantCompThresh: "5",
 		},
 		{
 			name: "capacity_saturated_red",

@@ -37,9 +37,6 @@ func FromUserConfig(cfg *userconfig.Config) Config {
 		RecoveryIdleThreshold: time.Duration(cfg.DaemonRecoveryIdleThresholdMinutes()) * time.Minute,
 		RecoveryRateLimit:     time.Duration(cfg.DaemonRecoveryRateLimitMinutes()) * time.Minute,
 
-		VerificationPauseThreshold: cfg.DaemonVerificationPauseThreshold(),
-
-
 		OrphanDetectionEnabled:  cfg.DaemonOrphanDetectionEnabled(),
 		OrphanDetectionInterval: time.Duration(cfg.DaemonOrphanDetectionIntervalMinutes()) * time.Minute,
 		OrphanAgeThreshold:      time.Duration(cfg.DaemonOrphanAgeThresholdMinutes()) * time.Minute,
