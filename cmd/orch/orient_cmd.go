@@ -147,6 +147,9 @@ func runOrient() error {
 	// 14. Explore candidates (aggregated from 6 signals)
 	data.ExploreCandidates = collectExploreCandidates(projectDir, modelsDir, now)
 
+	// 15. Adoption drift (compositional signal health)
+	data.AdoptionDrift = collectAdoptionDrift(projectDir)
+
 	// 13. Session resume handoff
 	data.SessionResume = collectSessionResume()
 
@@ -924,6 +927,25 @@ func computeDivergenceAlerts(data *orient.OrientationData) []orient.DivergenceAl
 	}
 
 	return orient.ComputeDivergence(input)
+}
+
+// collectAdoptionDrift runs the adoption measurement and returns items
+// where signals have drifted below target. Only surfaces non-ok signals
+// to keep orient output concise.
+func collectAdoptionDrift(projectDir string) []orient.AdoptionDriftItem {
+	result := measureAdoption(projectDir)
+	var items []orient.AdoptionDriftItem
+	for _, sig := range result.Signals {
+		if sig.Status != "ok" {
+			items = append(items, orient.AdoptionDriftItem{
+				Signal:    sig.Name,
+				RatePct:   sig.RatePct,
+				TargetPct: sig.TargetPct,
+				Level:     sig.Status,
+			})
+		}
+	}
+	return items
 }
 
 // countDecisions counts .md files in .kb/decisions/ for stale rate computation.

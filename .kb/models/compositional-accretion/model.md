@@ -177,6 +177,8 @@ None of these traditions name the inward/outward distinction as a **general desi
 
 **2026-03-27 (audit):** Full audit of 13 artifact types confirmed CA-01, CA-03, CA-04. Extended CA-02 with signal adoption rate finding: opt-in signals plateau at 15-25% adoption regardless of template availability. Added Failure Mode 4 (low signal adoption), new constraint (adoption varies by opt-in/opt-out), 4th design criterion question. Expanded table from 7 to 13 surfaces with measured adoption rates and classifications. Added CA-06.
 
+**2026-03-27 (automation):** Built `orch harness adoption` command and wired into `orch orient` to surface adoption drift at every session start. Automated measurement confirms only 1 of 7 signals meets target (Brief tension at 100%). Also revealed measurement precision matters: ad-hoc grep vs structured frontmatter matching diverge ~40% for probe claim/verdict rates. Extends CA-02: automated monitoring is a prerequisite for the adoption-rate claim because manual audits happen too infrequently to detect drift.
+
 ---
 
 ## Claims (Testable)
@@ -206,6 +208,7 @@ None of these traditions name the inward/outward distinction as a **general desi
 **Probes:**
 - `probes/2026-03-27-probe-external-validation-luhmann-pkm-epistemology.md` — CA-05 confirmed qualitatively across 5 domains; model's novel contribution is the general design criterion
 - `probes/2026-03-27-probe-artifact-type-audit-design-criterion.md` — CA-01, CA-03, CA-04 confirmed across 13 artifact types. CA-02 extended: signal adoption rate mediates composition. Added CA-06 (opt-in vs opt-out adoption threshold).
+- `probes/2026-03-27-probe-automated-adoption-rate-measurement.md` — CA-02 extended: automated measurement via `orch harness adoption` + orient integration. Only 1/7 signals meets target. Measurement precision finding: grep vs frontmatter matching diverge ~40%.
 
 **Threads:**
 - `.kb/threads/2026-03-27-knowledge-composes-edges-doesn-t.md` — The originating insight

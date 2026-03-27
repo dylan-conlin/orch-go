@@ -132,6 +132,15 @@ type OrientationData struct {
 	SessionResume      *SessionResume     `json:"session_resume,omitempty"`
 	DivergenceAlerts   []DivergenceAlert  `json:"divergence_alerts,omitempty"`
 	ExploreCandidates  []ExploreCandidate `json:"explore_candidates,omitempty"`
+	AdoptionDrift      []AdoptionDriftItem `json:"adoption_drift,omitempty"`
+}
+
+// AdoptionDriftItem surfaces a compositional signal that has drifted below its target.
+type AdoptionDriftItem struct {
+	Signal    string  `json:"signal"`
+	RatePct   float64 `json:"rate_pct"`
+	TargetPct float64 `json:"target_pct"`
+	Level     string  `json:"level"` // "drift" or "critical"
 }
 
 // ExploreCandidate is a recommendation for `orch spawn --explore investigation "..."`.
@@ -262,6 +271,9 @@ func FormatOrientation(data *OrientationData) string {
 
 	// Health summary section
 	formatHealthSummary(&b, data.HealthSummary)
+
+	// Adoption drift (compositional signal health)
+	formatAdoptionDrift(&b, data.AdoptionDrift)
 
 	// Daemon health signals
 	formatDaemonHealth(&b, data.DaemonHealth)
@@ -445,6 +457,23 @@ func levelIcon(level string) string {
 	default:
 		return ""
 	}
+}
+
+func formatAdoptionDrift(b *strings.Builder, items []AdoptionDriftItem) {
+	if len(items) == 0 {
+		return
+	}
+	b.WriteString("Adoption drift:\n")
+	for _, item := range items {
+		icon := "[!]"
+		if item.Level == "critical" {
+			icon = "[!!!]"
+		}
+		b.WriteString(fmt.Sprintf("   %s %s: %.0f%% (target %.0f%%)\n",
+			icon, item.Signal, item.RatePct, item.TargetPct))
+	}
+	b.WriteString("   Run: orch harness adoption\n")
+	b.WriteString("\n")
 }
 
 func formatFocus(b *strings.Builder, goal string) {

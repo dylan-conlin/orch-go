@@ -1268,3 +1268,57 @@ func TestDaemonHealthJSON(t *testing.T) {
 		t.Error("daemon_health should be omitted when nil")
 	}
 }
+
+func TestFormatOrientation_AdoptionDrift(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		AdoptionDrift: []AdoptionDriftItem{
+			{Signal: "Investigation model link", RatePct: 16, TargetPct: 80, Level: "critical"},
+			{Signal: "Thread resolved_to", RatePct: 45, TargetPct: 80, Level: "drift"},
+		},
+	}
+	output := FormatOrientation(data)
+	if !strings.Contains(output, "Adoption drift") {
+		t.Error("expected adoption drift section")
+	}
+	if !strings.Contains(output, "[!!!] Investigation model link: 16% (target 80%)") {
+		t.Error("expected critical adoption drift for investigation model link")
+	}
+	if !strings.Contains(output, "[!] Thread resolved_to: 45% (target 80%)") {
+		t.Error("expected drift adoption for thread resolved_to")
+	}
+	if !strings.Contains(output, "orch harness adoption") {
+		t.Error("expected run command hint")
+	}
+}
+
+func TestFormatOrientation_AdoptionDriftEmpty(t *testing.T) {
+	data := &OrientationData{Throughput: Throughput{Days: 1}}
+	output := FormatOrientation(data)
+	if strings.Contains(output, "Adoption drift") {
+		t.Error("adoption drift section should not appear when empty")
+	}
+}
+
+func TestAdoptionDriftJSON(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		AdoptionDrift: []AdoptionDriftItem{
+			{Signal: "test", RatePct: 20, TargetPct: 80, Level: "critical"},
+		},
+	}
+	b, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+	if !strings.Contains(string(b), `"adoption_drift"`) {
+		t.Error("JSON missing adoption_drift field")
+	}
+
+	// Verify omitempty
+	data2 := &OrientationData{Throughput: Throughput{Days: 1}}
+	b2, _ := json.Marshal(data2)
+	if strings.Contains(string(b2), "adoption_drift") {
+		t.Error("adoption_drift should be omitted when nil")
+	}
+}
