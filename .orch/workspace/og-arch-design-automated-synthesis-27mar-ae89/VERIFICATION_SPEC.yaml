@@ -1,0 +1,50 @@
+verification_spec:
+  type: architect-design
+  issue: orch-go-rhwly
+
+  deliverables:
+    investigation:
+      path: .kb/investigations/2026-03-27-design-automated-synthesis-ranking.md
+      criteria:
+        - "5 decision forks identified and navigated with substrate trace"
+        - "Implementation plan with 3 components and acceptance criteria"
+        - "Defect class exposure analyzed (Class 1, 3, 5)"
+        - "Architectural choices documented with rejected alternatives"
+        - "Connection to knowledge-accretion model and HyperAgents probe"
+
+    probe:
+      path: .kb/models/knowledge-accretion/probes/2026-03-27-probe-selection-pressure-via-quality-signals.md
+      criteria:
+        - "Tests effectiveness hierarchy claim"
+        - "Extends model with attention routing mechanism"
+        - "Maps to every-spawn-composes-knowledge thread findings"
+        - "Cross-references HyperAgents handcrafted-beats-adaptive ablation"
+
+    model_merge:
+      path: .kb/models/knowledge-accretion/model.md
+      criteria:
+        - "Effectiveness hierarchy updated to include attention routing"
+        - "Probe evidence reference added to References section"
+        - "Handcrafted-beats-adaptive principle noted"
+
+  implementation_readiness:
+    components:
+      - name: "SynthesisQualitySignals function"
+        target: "pkg/verify/synthesis_quality.go (new file)"
+        acceptance: "6 signals computed from parsed Synthesis struct"
+      - name: "Brief metadata injection"
+        target: "cmd/orch/complete_brief.go (modify)"
+        acceptance: "YAML frontmatter with quality_signals in generated briefs"
+      - name: "Signal-aware comprehension ordering"
+        target: "pkg/daemon/comprehension_queue.go (modify)"
+        acceptance: "Briefs sorted by signal_count within state tiers"
+
+    blocking_questions:
+      - question: "Should signal-aware ordering extend to orch review batch listing?"
+        authority: architectural
+        recommendation: "Start with comprehension queue only"
+
+  manual_verification:
+    - "Review investigation for completeness of fork navigation"
+    - "Verify probe findings are merged into parent model"
+    - "Confirm design doesn't contradict 'synthesis is strategic orchestrator work' decision"
