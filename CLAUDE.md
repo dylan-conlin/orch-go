@@ -142,7 +142,7 @@ See `.kb/guides/event-tracking.md` for the full event type table and beads close
 - **Edit tool + tab indentation**: Svelte files in `web/src/` and Go files use tab indentation. The Read tool's line-number prefix uses a tab delimiter that collides with content tabs, causing Edit tool "String to replace not found" errors. See "Tab-Indented File Editing" section below.
 - **OAuth tokens**: Never share refresh tokens between orch (`accounts.yaml`) and Claude CLI (keychain) — rotation invalidates the copy in the other system immediately
 - **Account routing**: `accounts.yaml` `config_dir` field is REQUIRED for account routing to work — without it, `CLAUDE_CONFIG_DIR` is never injected
-- **Non-Anthropic models**: GPT-4o/GPT-5.2-codex have 67-87% stall rates on protocol-heavy skills (architect, investigation). Use Anthropic models for these.
+- **Non-Anthropic models**: GPT-5.2 and earlier have 67-87% stall rates on protocol-heavy skills. GPT-5.4 is significantly better (95% completion, N=21 across worker + orchestrator skills) but multi-model routing is pending strategic decision.
 - **BEADS_DIR**: `BEADS_DIR=~/path/.beads bd close/update/list` enables cross-project beads operations from any directory
 - **Skill sources**: Live in `orch-go/skills/src/`, deployed via `skillc deploy` to `~/.claude/skills/`
 - **URL-to-markdown**: Use `scrape <url>` CLI, NOT the web-to-markdown MCP tools (`mcp__web-to-markdown__*`). `scrape` auto-selects the best extraction strategy (API, Playwright, screenshot+vision, HTML, PDF, YouTube) per URL type. The MCP is a dumb HTML fetcher with no strategy selection.
