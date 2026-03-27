@@ -73,6 +73,48 @@ func TestProcessCompletion_ReviewTier_DoesNotAutoComplete(t *testing.T) {
 	}
 }
 
+func TestBuildCompleteCommand_UsesHeadlessNotForce(t *testing.T) {
+	args := BuildCompleteCommand("orch-go-abc123", "/some/dir")
+
+	// Must use --headless (not --force which requires --reason)
+	foundHeadless := false
+	for _, a := range args {
+		if a == "--headless" {
+			foundHeadless = true
+		}
+		if a == "--force" {
+			t.Error("BuildCompleteCommand must NOT use --force (requires --reason); use --headless instead")
+		}
+	}
+	if !foundHeadless {
+		t.Error("BuildCompleteCommand must include --headless")
+	}
+
+	// Verify full args structure
+	expected := []string{"complete", "orch-go-abc123", "--headless", "--workdir", "/some/dir"}
+	if len(args) != len(expected) {
+		t.Fatalf("args length = %d, want %d: %v", len(args), len(expected), args)
+	}
+	for i, a := range args {
+		if a != expected[i] {
+			t.Errorf("args[%d] = %q, want %q", i, a, expected[i])
+		}
+	}
+}
+
+func TestBuildCompleteCommand_NoWorkdir(t *testing.T) {
+	args := BuildCompleteCommand("orch-go-xyz", "")
+	expected := []string{"complete", "orch-go-xyz", "--headless"}
+	if len(args) != len(expected) {
+		t.Fatalf("args length = %d, want %d: %v", len(args), len(expected), args)
+	}
+	for i, a := range args {
+		if a != expected[i] {
+			t.Errorf("args[%d] = %q, want %q", i, a, expected[i])
+		}
+	}
+}
+
 func TestAutoCompleter_Interface(t *testing.T) {
 	// Verify OrcCompleter implements AutoCompleter
 	var _ AutoCompleter = (*OrcCompleter)(nil)

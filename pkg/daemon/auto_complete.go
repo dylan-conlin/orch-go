@@ -39,14 +39,21 @@ type LightAutoCompleter interface {
 // OrcCompleter is the production AutoCompleter that shells out to `orch complete`.
 type OrcCompleter struct{}
 
-// Complete shells out to `orch complete <beadsID> --force --workdir <workdir>`.
-// Uses --force to skip interactive prompts since daemon runs non-interactively.
-// The review tier is read from the workspace manifest by orch complete itself.
-func (c *OrcCompleter) Complete(beadsID, workdir string) error {
-	args := []string{"complete", beadsID, "--force"}
+// BuildCompleteCommand constructs the orch complete command args for full-tier completion.
+// Extracted for testability — verifies --headless is used (not --force which requires --reason).
+func BuildCompleteCommand(beadsID, workdir string) []string {
+	args := []string{"complete", beadsID, "--headless"}
 	if workdir != "" {
 		args = append(args, "--workdir", workdir)
 	}
+	return args
+}
+
+// Complete shells out to `orch complete <beadsID> --headless --workdir <workdir>`.
+// Uses --headless to skip interactive prompts since daemon runs non-interactively.
+// The review tier is read from the workspace manifest by orch complete itself.
+func (c *OrcCompleter) Complete(beadsID, workdir string) error {
+	args := BuildCompleteCommand(beadsID, workdir)
 
 	cmd := exec.Command("orch", args...)
 	output, err := cmd.CombinedOutput()

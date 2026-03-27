@@ -1,0 +1,15 @@
+verification:
+  type: unit-test
+  commands:
+    - command: "go test ./pkg/daemon/ -run TestBuildCompleteCommand -v"
+      expected: "PASS — both TestBuildCompleteCommand_UsesHeadlessNotForce and TestBuildCompleteCommand_NoWorkdir pass"
+    - command: "go test ./pkg/daemon/ -count=1"
+      expected: "PASS — full daemon test suite passes with no regressions"
+  assertions:
+    - "OrcCompleter.Complete() uses --headless, not --force"
+    - "BuildCompleteCommand() returns args with --headless flag"
+    - "No --force flag appears in BuildCompleteCommand output"
+  manual_steps: []
+  reproduction:
+    before: "Complete() passed --force without --reason → orch complete would fail with 'reason is required'"
+    after: "Complete() passes --headless → no --reason required, matches CompleteLight/CompleteHeadless pattern"
