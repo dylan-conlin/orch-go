@@ -32,6 +32,7 @@ func GatherSpawnContext(skillContent, task, orientationFrame, beadsID, projectDi
 			}
 			crossRepoModelDir = gapResult.FormatResult.CrossRepoModelDir
 		}
+		logKBContextTimeoutIfNeeded(gapResult.GapAnalysis, workspaceName, beadsID, projectDir, skillName)
 	}
 	if err := checkGapGating(gapAnalysis, gateOnGap, skipGapGate, gapThreshold); err != nil {
 		return "", nil, false, "", "", err
@@ -118,6 +119,7 @@ func runPreSpawnKBCheckFull(task, orientationFrame, projectDir string, staleness
 		fmt.Fprintf(os.Stderr, "%s", gcr.GapAnalysis.FormatProminentWarning())
 	}
 	if result == nil || !result.HasMatches {
+		gcr.Context = formatGapContext(gcr.GapAnalysis, nil)
 		fmt.Println("No prior knowledge found.")
 		return gcr
 	}
@@ -136,12 +138,52 @@ func runPreSpawnKBCheckFull(task, orientationFrame, projectDir string, staleness
 	}
 	formatResult := spawn.FormatContextForSpawnWithLimitAndMeta(result, maxChars, projectDir, stalenessMeta)
 	gcr.FormatResult = formatResult
-	contextContent := formatResult.Content
-	if gapSummary := gcr.GapAnalysis.FormatGapSummary(); gapSummary != "" {
-		contextContent = gapSummary + "\n\n" + contextContent
-	}
-	gcr.Context = contextContent
+	gcr.Context = formatGapContext(gcr.GapAnalysis, formatResult)
 	return gcr
+}
+
+func formatGapContext(gapAnalysis *spawn.GapAnalysis, formatResult *spawn.KBContextFormatResult) string {
+	content := ""
+	if formatResult != nil {
+		content = formatResult.Content
+	}
+	if gapAnalysis == nil {
+		return content
+	}
+	gapSummary := gapAnalysis.FormatGapSummary()
+	if gapSummary == "" {
+		return content
+	}
+	if content == "" {
+		return gapSummary
+	}
+	return gapSummary + "\n\n" + content
+}
+
+func logKBContextTimeoutIfNeeded(gapAnalysis *spawn.GapAnalysis, workspaceName, beadsID, projectDir, skillName string) {
+	if gapAnalysis == nil {
+		return
+	}
+	hasTimeout := false
+	for _, gap := range gapAnalysis.Gaps {
+		if gap.Type == spawn.GapTypeTimeout {
+			hasTimeout = true
+			break
+		}
+	}
+	if !hasTimeout {
+		return
+	}
+	logger := events.NewLogger(events.DefaultLogPath())
+	if err := logger.LogKBContextTimeout(events.KBContextTimeoutData{
+		Query:       gapAnalysis.Query,
+		ProjectDir:  projectDir,
+		Skill:       skillName,
+		BeadsID:     beadsID,
+		WorkspaceID: workspaceName,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log kb context timeout: %v\n", err)
+	}
 }
 
 func checkGapGating(gapAnalysis *spawn.GapAnalysis, gateEnabled, skipGate bool, threshold int) error {

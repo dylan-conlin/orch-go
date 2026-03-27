@@ -1,0 +1,66 @@
+verification:
+  type: bug-fix
+  issue: orch-go-ip4oc
+
+  reproduction:
+    description: "Architect agents complete without implementation issues because architect_handoff gate silently passes when SYNTHESIS.md is missing"
+    steps:
+      - "Architect at V1 level completes without writing SYNTHESIS.md"
+      - "VerifyArchitectHandoff returns Passed: true (early return on ParseSynthesis error)"
+      - "Synthesis gate (V2+) doesn't run for V1 architect"
+      - "Completion succeeds with no implementation issues created"
+    verified_fixed: true
+    verification_test: "TestVerifyArchitectHandoff_MissingSynthesis_RootCause"
+
+  automated_tests:
+    - name: "Root cause reproduction"
+      command: "go test ./pkg/verify/ -run TestVerifyArchitectHandoff_MissingSynthesis_RootCause -v"
+      expected: "PASS"
+      verified: true
+
+    - name: "Missing SYNTHESIS.md fails gate"
+      command: "go test ./pkg/verify/ -run TestVerifyArchitectHandoff_MissingSynthesis -v"
+      expected: "PASS"
+      verified: true
+
+    - name: "Comment-based opt-out recognized"
+      command: "go test ./pkg/verify/ -run TestVerifyArchitectHandoff_CommentOptOut -v"
+      expected: "PASS"
+      verified: true
+
+    - name: "Comment-based evidence recognized"
+      command: "go test ./pkg/verify/ -run TestVerifyArchitectHandoff_CommentEvidence -v"
+      expected: "PASS"
+      verified: true
+
+    - name: "Non-architect skills unaffected"
+      command: "go test ./pkg/verify/ -run TestVerifyArchitectHandoff_NonArchitectSkill -v"
+      expected: "PASS"
+      verified: true
+
+    - name: "Full verify package suite"
+      command: "go test ./pkg/verify/ -count=1"
+      expected: "PASS"
+      verified: true
+
+    - name: "Build clean"
+      command: "go build ./..."
+      expected: "Clean (no errors)"
+      verified: true
+
+    - name: "Vet clean"
+      command: "go vet ./pkg/verify/ ./cmd/orch/"
+      expected: "Clean (no warnings)"
+      verified: true
+
+  manual_verification: null
+
+  behavioral_claims:
+    - claim: "Architect without SYNTHESIS.md cannot complete"
+      evidence: "TestVerifyArchitectHandoff_MissingSynthesis_RootCause passes"
+    - claim: "Architect with Recommendation:close completes without issues"
+      evidence: "TestVerifyArchitectHandoff_CloseRecommendation_NoIssueNeeded passes"
+    - claim: "Advisory-only opt-out via Phase:Handoff comment recognized"
+      evidence: "TestVerifyArchitectHandoff_CommentOptOut passes"
+    - claim: "Non-architect skills are not affected by this change"
+      evidence: "TestVerifyArchitectHandoff_NonArchitectSkill passes"

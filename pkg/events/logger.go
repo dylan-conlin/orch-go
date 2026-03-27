@@ -82,8 +82,9 @@ const (
 	// EventTypeEmptyExecutionRetry logs when a session retries after an empty-execution classification.
 	EventTypeEmptyExecutionRetry = "session.empty_execution_retry"
 	// EventTypeModelRoute logs the daemon's model routing decision for a spawn.
-	EventTypeModelRoute          = "spawn.model_route"
-	EventTypeThinIssueDetected   = "daemon.thin_issue_detected"
+	EventTypeModelRoute        = "spawn.model_route"
+	EventTypeThinIssueDetected = "daemon.thin_issue_detected"
+	EventTypeKBContextTimeout  = "kb.context.timeout"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -469,7 +470,7 @@ func (l *Logger) LogAgentAbandoned(data AgentAbandonedData) error {
 type AgentRejectedData struct {
 	BeadsID       string `json:"beads_id"`
 	Reason        string `json:"reason"`
-	Category      string `json:"category"`                // quality, scope, approach, stale
+	Category      string `json:"category"`                 // quality, scope, approach, stale
 	OriginalSkill string `json:"original_skill,omitempty"` // Skill from the rejected work
 	OriginalModel string `json:"original_model,omitempty"` // Model from the rejected work
 }
@@ -668,19 +669,19 @@ func (l *Logger) LogReviewTierEscalated(data ReviewTierEscalatedData) error {
 
 // DuplicationMatch represents a single duplicate function pair for event logging.
 type DuplicationMatch struct {
-	FileA       string  `json:"file_a"`
-	FuncA       string  `json:"func_a"`
-	FileB       string  `json:"file_b"`
-	FuncB       string  `json:"func_b"`
-	Similarity  float64 `json:"similarity"`
+	FileA      string  `json:"file_a"`
+	FuncA      string  `json:"func_a"`
+	FileB      string  `json:"file_b"`
+	FuncB      string  `json:"func_b"`
+	Similarity float64 `json:"similarity"`
 }
 
 // DuplicationDetectedData contains the data for a duplication.detected event.
 type DuplicationDetectedData struct {
-	BeadsID   string               `json:"beads_id,omitempty"`
-	Workspace string               `json:"workspace,omitempty"`
-	Matches   []DuplicationMatch   `json:"matches"`
-	Count     int                  `json:"count"`
+	BeadsID   string             `json:"beads_id,omitempty"`
+	Workspace string             `json:"workspace,omitempty"`
+	Matches   []DuplicationMatch `json:"matches"`
+	Count     int                `json:"count"`
 }
 
 // LogDuplicationDetected logs a duplication detection event with match details.
@@ -714,10 +715,10 @@ type DuplicationSuppressedMatch struct {
 
 // DuplicationSuppressedData contains the data for a duplication.suppressed event.
 type DuplicationSuppressedData struct {
-	BeadsID   string                        `json:"beads_id,omitempty"`
-	Workspace string                        `json:"workspace,omitempty"`
-	Matches   []DuplicationSuppressedMatch  `json:"matches"`
-	Count     int                           `json:"count"`
+	BeadsID   string                       `json:"beads_id,omitempty"`
+	Workspace string                       `json:"workspace,omitempty"`
+	Matches   []DuplicationSuppressedMatch `json:"matches"`
+	Count     int                          `json:"count"`
 }
 
 // LogDuplicationSuppressed logs pairs suppressed by the allowlist for precision tracking.
@@ -938,8 +939,8 @@ type ExplorationIteratedData struct {
 	BeadsID       string `json:"beads_id,omitempty"`
 	ParentSkill   string `json:"parent_skill,omitempty"`
 	Iteration     int    `json:"iteration"`      // Current iteration number (2 = first re-exploration)
-	GapsAddressed int    `json:"gaps_addressed"`  // Number of critical gaps being addressed
-	NewWorkers    int    `json:"new_workers"`     // Number of new workers spawned for gap-filling
+	GapsAddressed int    `json:"gaps_addressed"` // Number of critical gaps being addressed
+	NewWorkers    int    `json:"new_workers"`    // Number of new workers spawned for gap-filling
 }
 
 // LogExplorationIterated logs when a judge-triggered re-exploration round occurs.

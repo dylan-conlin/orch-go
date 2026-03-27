@@ -1,0 +1,9 @@
+commands:
+  - command: go test ./pkg/events ./pkg/orch ./pkg/spawn
+    expectation: passes, covering timeout event logging and spawn-context timeout warning behavior
+    result: pass
+manual_checks:
+  - check: Timed-out KB context runs still surface a warning in generated spawn context even when no KB matches are injected
+    status: covered by automated unit test `TestFormatGapContext_TimeoutWithoutMatches`
+  - check: Timeout observability emits `kb.context.timeout` with query/project metadata
+    status: covered by automated unit tests `TestLogKBContextTimeout` and `TestLogKBContextTimeoutIfNeeded`
