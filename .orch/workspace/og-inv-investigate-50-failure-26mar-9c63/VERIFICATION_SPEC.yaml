@@ -1,0 +1,39 @@
+verification:
+  type: bug-fix
+  beads_id: orch-go-uiv9d
+
+  reproduction:
+    original_bug: "12 light auto-complete attempts failed with 'orch complete (light) failed: exit status 1'"
+    root_cause: "CompleteLight skips gate1 (explain-back) but not gate2 (verified), which requires human presence impossible in daemon"
+    fix: "Changed CompleteLight to use --headless mode (forces review-tier=auto, skipping all checkpoint gates)"
+
+  automated_tests:
+    - command: "go test ./pkg/daemon/... -run 'AutoComplete|CompleteLight|RouteCompletion|ExecuteCompletion|FireHeadless' -v"
+      expected: "All tests pass"
+      result: "PASS: 20 tests passed, 0 failed"
+    - command: "go test ./pkg/daemon/..."
+      expected: "Package passes"
+      result: "PASS: ok github.com/dylan-conlin/orch-go/pkg/daemon 23.905s"
+    - command: "make build"
+      expected: "Build succeeds"
+      result: "Building orch... OK"
+
+  behavioral_verification:
+    description: "After rebuild + daemon restart, effort:small agents completing should go through headless completion without gate2 failures"
+    steps:
+      - "make install"
+      - "orch-dashboard restart"
+      - "Wait for next effort:small agent to complete"
+      - "Check daemon.log for 'light auto-complete failed' — should be 0 new failures"
+    status: "pending (requires live daemon with new effort:small completions)"
+
+  regression_check:
+    description: "Pre-existing test failures confirmed on master (not introduced by this change)"
+    pre_existing_failures:
+      - "TestEnforcePhaseCompleteSkipsPrintMode (cmd/orch)"
+      - "TestAggregateEventsFromFile (pkg/entropy)"
+
+  discovered_work:
+    - issue: "orch-go-o0nqu"
+      title: "OrcCompleter.Complete() passes --force without required --reason"
+      severity: "latent bug (unexpercised path)"

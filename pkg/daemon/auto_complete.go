@@ -56,13 +56,13 @@ func (c *OrcCompleter) Complete(beadsID, workdir string) error {
 	return nil
 }
 
-// CompleteLight shells out to `orch complete` with targeted skip flags for light-tier work.
-// Skips explain-back and verified gates while preserving other verification.
+// CompleteLight shells out to `orch complete --headless` for light-tier work.
+// Headless mode forces review-tier=auto (skipping checkpoint gates like explain-back
+// and verified) while preserving other verification gates. Also generates a brief.
 func (c *OrcCompleter) CompleteLight(beadsID, workdir string) error {
 	args := []string{
 		"complete", beadsID,
-		"--skip-explain-back",
-		"--skip-reason", "light-tier auto-complete (effort:small)",
+		"--headless",
 	}
 	if workdir != "" {
 		args = append(args, "--workdir", workdir)

@@ -425,8 +425,9 @@ func TestExecuteCompletionRoute_AutoComplete_FiresHeadlessBrief(t *testing.T) {
 	}
 }
 
-func TestExecuteCompletionRoute_AutoCompleteLight_FiresHeadlessBrief(t *testing.T) {
-	// Auto-complete-light path should fire headless brief generation.
+func TestExecuteCompletionRoute_AutoCompleteLight_NoSeparateHeadless(t *testing.T) {
+	// Auto-complete-light path uses --headless in CompleteLight itself,
+	// so it should NOT fire a separate headless completion call.
 	headlessCalled := make(chan string, 1)
 	d := &Daemon{
 		AutoCompleter: &mockHeadlessAutoCompleter{
@@ -450,12 +451,12 @@ func TestExecuteCompletionRoute_AutoCompleteLight_FiresHeadlessBrief(t *testing.
 		t.Error("expected AutoCompleted=true for light auto-complete")
 	}
 
+	// CompleteHeadless should NOT be called separately — brief is generated
+	// by CompleteLight itself (which uses --headless).
 	select {
-	case id := <-headlessCalled:
-		if id != "proj-light" {
-			t.Errorf("CompleteHeadless beadsID = %q, want %q", id, "proj-light")
-		}
-	case <-time.After(2 * time.Second):
-		t.Error("CompleteHeadless was not called for auto-complete-light path")
+	case <-headlessCalled:
+		t.Error("CompleteHeadless should NOT be called separately for auto-complete-light path")
+	case <-time.After(100 * time.Millisecond):
+		// expected — no separate headless call
 	}
 }

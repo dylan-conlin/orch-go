@@ -389,6 +389,18 @@ Completed agent activity remains viewable via hybrid persistent layer:
 
 **Source:** Probe `probes/2026-03-26-probe-ownership-based-harness-design-evaluation.md`, design `.kb/investigations/2026-03-26-design-ownership-based-harness-prevention.md`
 
+### 11. Daemon Auto-Complete Flag Mismatch (Fixed 2026-03-26)
+
+**What happened:** `CompleteLight()` (for `effort:small` agents) passed `--skip-explain-back --skip-reason` but not `--review-tier auto` or `--headless`. Without `review-tier=auto`, checkpoint gates still applied. For Tier 1 work (bug/feature), gate2 (`--verified`) required a human — impossible in the daemon. 100% failure rate: 12/12 light auto-complete attempts failed in one day.
+
+**Root cause:** `CompleteLight` was designed before `--headless` existed. It manually skipped one interactive gate (explain-back) while leaving another (verified) that is equally impossible without a human. The correct abstraction is "non-interactive mode" (`--headless`), not individual gate skips.
+
+**Also affected:** `Complete()` passes `--force` without required `--reason`, which would fail the same way. Currently unexpercised because no auto-tier agents hit this path.
+
+**Fix:** Changed `CompleteLight()` to use `--headless` (forces `review-tier=auto`, skips all checkpoint gates, generates brief). Removed redundant `fireHeadlessCompletion` call from the light path since `--headless` already generates the brief.
+
+**Source:** Investigation `.kb/investigations/2026-03-26-inv-investigate-50-failure-rate-light.md`
+
 ---
 
 ## Constraints
@@ -597,6 +609,7 @@ Designed Gate 15 (`ownership_reconciliation`) to close the gap between agent com
 - 2026-03-22: Open-Loop Infrastructure Code Audit — 10 concrete open loops found where emission infrastructure exists but consumer/action layer is missing. Pattern named "consumer-last construction": system builds emitters + config first, never returns to build consumer. 513 accretion.delta events with no reader, 11 periodic tasks registered but never invoked, ComprehensionQuerier always nil, RejectedCount/VerificationFailures/VerificationBypasses are dead code. §7 updated (reject exists but 0 production events), §8 added.
 - 2026-03-26: Ownership-Based Harness Design Evaluation — Close-time reconciliation gate (Gate 15) designed. Key finding: bypass resistance correlates with invariant type (binary > continuous); ownership is binary, accretion is continuous. Dirty-worktree is not a new defect class but a composition of Class 3 (stale accumulation) + Class 5 (contradictory authority) + Class 0 (scope expansion). Contradictory skill text (`git add -A` in feature-impl vs NEVER in worker-base) is textbook Class 5. New "Why This Fails" §10, Evolution §Phase 12.
 - 2026-03-26: WriteVerificationSignal called from non-human paths — `WriteVerificationSignal()` was called from 3 paths (dashboard API single close, batch close, `orch complete`), only one of which is human-initiated. Automated callers reset `completionsSinceVerification` to 0, preventing the daemon from ever reaching its pause threshold. Fixed by removing calls from dashboard API and gating `complete_lifecycle.go` on `!completeHeadless && !target.IsOrchestratorSession`. Structural tests added.
+- 2026-03-26: Light Auto-Complete 100% Failure — `CompleteLight()` skipped gate1 (explain-back) but not gate2 (verified). All 12 effort:small agents failed with "gate2 missing for Tier 1 work". Fixed by switching to `--headless` mode (forces review-tier=auto, skipping all checkpoint gates). §11 added. Also discovered: `Complete()` uses `--force` without required `--reason`.
 
 ## Auto-Linked Investigations
 
