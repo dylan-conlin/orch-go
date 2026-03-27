@@ -1,7 +1,7 @@
 # Model: Daemon Autonomous Operation
 
 **Domain:** Daemon / Autonomous Spawning / Batch Processing
-**Last Updated:** 2026-03-17
+**Last Updated:** 2026-03-27
 **Synthesized From:** 39+ investigations + daemon.md guide (verified Mar 1, 2026) + 36 probes (Feb 9 – Mar 12, 2026) on poll loops, skill inference, capacity management, completion tracking, cross-project operation, dedup pipeline, verification threshold, orphan detection
 
 ---
@@ -465,6 +465,17 @@ VerificationTracker (pause after N unverified completions), orphan detector (res
 ### Phase 8: Extraction and Model Inference (Feb 2026)
 Hotspot auto-extraction gate, extraction recursion guard, model inference from skill type, content-aware dedup for duplicate-title issues.
 
+### Phase 9: Pipeline Extraction and OODA Structure (Mar 2026)
+- `spawnIssue()` dedup gauntlet extracted into composable `SpawnPipeline` with named gates (spawn_execution.go:247-300)
+- OODA phase structure formalized: Sense → Orient → Decide → Act in ooda.go with typed results
+- Cycle cache (`cachedAgentDiscoverer`) shares GetActiveAgents() across 4 periodic tasks
+- 13 periodic tasks managed via unified `PeriodicScheduler` (replaced individual last* fields)
+- Prior-art dedup gates added: `CommitDedupGate` (L6, git commit check) and `KeywordDedupGate` (L7, title keyword overlap)
+- Sibling sequencing: `ShouldDeferTestIssue()` defers test issues when implementation siblings are pending
+- SIGKILL fix: 3s reflection timeout + context shutdown gates between major operations
+- **Known issue: double logging** — DaemonLogger MultiWriter and launchd StandardOutPath both target daemon.log
+- **Known issue: no shutdown budget** — defer chain has no explicit time enforcement beyond reflection's 3s
+
 ---
 
 ## References
@@ -548,3 +559,4 @@ All 34 probes merged as of 2026-03-06. Listed chronologically with 1-line summar
 | `../harness-engineering/probes/2026-03-17-probe-pre-commit-accretion-gate-2-week-effectiveness.md` | Mar 17 | Extends | Extraction cascade pattern documented: gate signals → daemon detects hotspot → spawns extraction → hotspot count 12→3 (75% reduction). Gate's direct blocking negligible (2 blocks, both bypassed); value is in triggering extraction cascades via daemon. |
 | `2026-03-18-probe-sibling-sequencing-test-impl-ordering` | Mar 18 | Extends | Daemon lacked cross-issue coordination for same-project test vs implementation ordering; test agents could write tests for undefined types. Added `ShouldDeferTestIssue()` in Decide phase. |
 | `../investigations/2026-03-27-inv-daemon-repeatedly-killed-sigkill-investigate.md` | Mar 27 | Extends | Daemon SIGKILL from launchd: exit-time reflection (no timeout) + missing context gates between main loop operations exceeded 5s ExitTimeOut. Fixed: 3s reflection timeout, context gates, ExitTimeOut=15s. Shutdown now 23-25ms. |
+| `../investigations/2026-03-27-design-architect-daemon-reliability.md` | Mar 27 | Extends | Structural review: 6 symptoms trace to 3 roots (unbounded shutdown, dual-write logging, organic subsystem growth). Double logging confirmed as Defect Class 5 (launchd + DaemonLogger both write to daemon.log). Cycle cache already solves shared scan. Dedup pipeline extraction is stable intermediate state; CAS redesign deferred to Phase 2. 5 phased interventions recommended. |

@@ -17,17 +17,41 @@ type ProbeClaimRef struct {
 }
 
 var claimRefRe = regexp.MustCompile(`(?i)claim:\s*([A-Z]+-\d+)`)
+var impactClaimRefRe = regexp.MustCompile(`(?mi)\*\*(?:Confirms|Contradicts|Extends)\*\*[^A-Z0-9]*([A-Z]+-\d+)`)
 
 // ExtractClaimRef extracts a claim reference from probe investigation content.
-// Looks for "claim: XX-NN" in frontmatter or body.
+// Looks first for "claim: XX-NN" in frontmatter/body, then falls back to
+// claim IDs embedded in Model Impact verdict lines.
 func ExtractClaimRef(content string) *ProbeClaimRef {
 	matches := claimRefRe.FindStringSubmatch(content)
+	if len(matches) >= 2 {
+		return &ProbeClaimRef{
+			ClaimID: matches[1],
+		}
+	}
+
+	impactSection := extractSection(content, "Model Impact")
+	if impactSection == "" {
+		return nil
+	}
+
+	matches = impactClaimRefRe.FindStringSubmatch(impactSection)
 	if len(matches) < 2 {
 		return nil
 	}
+
 	return &ProbeClaimRef{
 		ClaimID: matches[1],
 	}
+}
+
+func extractSection(content, sectionName string) string {
+	pattern := regexp.MustCompile(`(?s)## ` + regexp.QuoteMeta(sectionName) + `\s*\n(.*?)(?:\n---\n|\n## |\z)`)
+	matches := pattern.FindStringSubmatch(content)
+	if len(matches) >= 2 {
+		return strings.TrimSpace(matches[1])
+	}
+	return ""
 }
 
 // CheckEvidenceIndependence checks if a probe's evidence source overlaps with

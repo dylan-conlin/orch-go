@@ -1,0 +1,80 @@
+---
+# Verification Specification for orch-go-5b9st
+# Daemon Reliability Architecture — Crash Recovery, Dedup, Observability, Shared Scan
+
+verification_type: design-review
+outcome: recommendations-produced
+
+# No code was written — this is an architect investigation
+code_changes: false
+
+deliverables:
+  investigation:
+    path: .kb/investigations/2026-03-27-design-architect-daemon-reliability.md
+    status: complete
+    sections_filled:
+      - DEKN Summary
+      - 5 Findings with evidence and source
+      - Synthesis with key insights
+      - Structured uncertainty
+      - Implementation recommendations with authority classification
+      - Defect class exposure table
+      - Composition claims table
+
+  model_update:
+    path: .kb/models/daemon-autonomous-operation/model.md
+    changes:
+      - Updated Last Updated to 2026-03-27
+      - Added Phase 9 (Pipeline Extraction and OODA Structure) to Evolution
+      - Added probe reference to Merged Probes table
+
+  issues_created:
+    - id: orch-go-dl4tn
+      title: "Fix daemon double logging"
+      type: bug
+      label: triage:ready
+      authority: implementation
+
+    - id: orch-go-vnpmv
+      title: "Add explicit shutdown budget enforcement"
+      type: task
+      label: triage:ready
+      authority: implementation
+
+    - id: orch-go-aqq5a
+      title: "Issue-creation-time dedup in architect skill"
+      type: feature
+      label: triage:review
+      authority: architectural
+
+    - id: orch-go-lno6l
+      title: "Sketchybar widget mtime liveness"
+      type: task
+      label: triage:review
+      authority: implementation
+
+decision_forks_navigated:
+  - fork: "Exit budget architecture"
+    recommendation: "Explicit per-subsystem timeouts summing to <4s with budget enforcer"
+    substrate: "Defect Class 3 (Stale Artifact Accumulation), coherence-over-patches principle"
+
+  - fork: "Dedup layering (issue-creation vs spawn-time)"
+    recommendation: "Both — spawn-time already adequate, issue-creation is upstream gap"
+    substrate: "Prior structural review (2026-03-01), evolve-by-distinction principle"
+
+  - fork: "Observability independence"
+    recommendation: "Widget uses file mtime for liveness; PID validation already in Go code"
+    substrate: "Defect Class 5 (Contradictory Authority Signals)"
+
+  - fork: "Periodic task restructuring"
+    recommendation: "Current architecture adequate — cycle cache solves expensive query sharing"
+    substrate: "Evidence: cachedAgentDiscoverer already implements shared scan"
+
+  - fork: "Minimal daemon"
+    recommendation: "Tiered scheduling intervals, not subsystem removal"
+    substrate: "Removing subsystems reduces observability without proven benefit"
+
+manual_verification:
+  - "Review investigation findings against daemon source code"
+  - "Verify double logging root cause by checking daemon.log under launchd"
+  - "Validate that Phase 1 implementation issues are correctly scoped"

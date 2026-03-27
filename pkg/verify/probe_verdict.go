@@ -20,6 +20,7 @@ type ProbeVerdict struct {
 	ModelName string // Model name (e.g., "completion-verification")
 	ProbePath string // Full path to probe file
 	Title     string // Title from "# Probe: {title}"
+	ClaimID   string // Claim ID extracted from Model Impact (e.g., "CA-05")
 	Verdict   string // confirms, contradicts, or extends
 	Details   string // Explanation text after the verdict
 	Question  string // From "## Question" section
@@ -29,6 +30,7 @@ type ProbeVerdict struct {
 var (
 	regexProbeTitle    = regexp.MustCompile(`(?m)^# Probe:\s*(.+)$`)
 	regexProbeModel    = regexp.MustCompile(`(?m)\*\*Model:\*\*\s*(.+)$`)
+	regexImpactClaim   = regexp.MustCompile(`(?mi)\*\*(?:Confirms|Contradicts|Extends)\*\*[^A-Z0-9]*([A-Z]+-\d+)`)
 	regexStructVerdict = regexp.MustCompile(`(?m)\*\*Verdict:\*\*\s*(\w+)\s*[—–-]\s*(.+)$`)
 	regexCheckConfirms = regexp.MustCompile(`(?m)^-\s*\[x\]\s*\*\*Confirms\*\*\s*(?:invariant:\s*)?(.+)$`)
 	regexCheckContra   = regexp.MustCompile(`(?m)^-\s*\[x\]\s*\*\*Contradicts\*\*\s*(?:invariant:\s*)?(.+)$`)
@@ -68,6 +70,7 @@ func ParseProbeVerdict(content []byte) ProbeVerdict {
 	if impactSection == "" {
 		return v
 	}
+	v.ClaimID = extractProbeClaimID(impactSection)
 
 	// Try structured format first: "**Verdict:** extends — description"
 	if m := regexStructVerdict.FindStringSubmatch(impactSection); len(m) >= 3 {
@@ -94,6 +97,13 @@ func ParseProbeVerdict(content []byte) ProbeVerdict {
 	}
 
 	return v
+}
+
+func extractProbeClaimID(impactSection string) string {
+	if m := regexImpactClaim.FindStringSubmatch(impactSection); len(m) >= 2 {
+		return strings.TrimSpace(m[1])
+	}
+	return ""
 }
 
 // extractProbeSection extracts the content of a markdown section from probe content.

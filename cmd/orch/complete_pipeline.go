@@ -4,9 +4,10 @@
 // Pipeline: resolveCompletionTarget → executeVerificationGates → runCompletionAdvisories → executeLifecycleTransition
 //
 // File layout:
-//   complete_pipeline.go      - Types, resolveCompletionTarget, runCompletionAdvisories
-//   complete_verification.go  - executeVerificationGates, applySkipFilters
-//   complete_lifecycle.go     - executeLifecycleTransition
+//
+//	complete_pipeline.go      - Types, resolveCompletionTarget, runCompletionAdvisories
+//	complete_verification.go  - executeVerificationGates, applySkipFilters
+//	complete_lifecycle.go     - executeLifecycleTransition
 package main
 
 import (
@@ -624,21 +625,24 @@ func cleanDiscoveredWorkTitle(description string) string {
 }
 
 // updateClaimsFromProbeVerdicts checks each probe verdict for claim references
-// and updates claims.yaml files accordingly. Only probes that explicitly
-// reference a claim ID (via "claim: XX-NN") are processed.
+// and updates claims.yaml files accordingly. Claim IDs can come from legacy
+// "claim: XX-NN" metadata or from Model Impact verdict lines.
 // For contradictions, creates a P2 triage:review beads issue.
 func updateClaimsFromProbeVerdicts(verdicts []verify.ProbeVerdict, projectDir, beadsProjectDir string) {
 	modelsDir := filepath.Join(projectDir, ".kb", "models")
 	now := time.Now()
 
 	for _, v := range verdicts {
-		// Read probe file content to check for claim reference
-		content, err := os.ReadFile(v.ProbePath)
-		if err != nil {
-			continue
+		var ref *claims.ProbeClaimRef
+		if v.ClaimID != "" {
+			ref = &claims.ProbeClaimRef{ClaimID: v.ClaimID}
+		} else {
+			content, err := os.ReadFile(v.ProbePath)
+			if err != nil {
+				continue
+			}
+			ref = claims.ExtractClaimRef(string(content))
 		}
-
-		ref := claims.ExtractClaimRef(string(content))
 		if ref == nil {
 			continue
 		}

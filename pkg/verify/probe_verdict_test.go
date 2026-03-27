@@ -12,6 +12,7 @@ func TestParseProbeVerdict(t *testing.T) {
 	tests := []struct {
 		name         string
 		content      string
+		wantClaimID  string
 		wantVerdict  string
 		wantDetails  string
 		wantTitle    string
@@ -182,8 +183,35 @@ Uses active taps.
 			wantQuestion: "Does skhd use passive event taps?",
 		},
 		{
+			name: "extracts claim id from model impact content",
+			content: `# Probe: Does compositional accretion hold externally?
+
+**Model:** compositional-accretion
+
+---
+
+## Question
+
+Does claim CA-05 generalize outside orch-go?
+
+---
+
+## Model Impact
+
+- [x] **Confirms** CA-05: The principle holds outside orch-go.
+- [ ] **Contradicts** CA-05: [not observed]
+`,
+			wantClaimID:  "CA-05",
+			wantVerdict:  "confirms",
+			wantDetails:  "CA-05: The principle holds outside orch-go.",
+			wantTitle:    "Does compositional accretion hold externally?",
+			wantModel:    "compositional-accretion",
+			wantQuestion: "Does claim CA-05 generalize outside orch-go?",
+		},
+		{
 			name:         "no model impact section",
 			content:      "# Probe: Something\n\n## Question\n\nSome question\n",
+			wantClaimID:  "",
 			wantVerdict:  "",
 			wantDetails:  "",
 			wantTitle:    "Something",
@@ -220,6 +248,9 @@ Test question
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			verdict := ParseProbeVerdict([]byte(tt.content))
+			if verdict.ClaimID != tt.wantClaimID {
+				t.Errorf("ClaimID = %q, want %q", verdict.ClaimID, tt.wantClaimID)
+			}
 			if verdict.Verdict != tt.wantVerdict {
 				t.Errorf("Verdict = %q, want %q", verdict.Verdict, tt.wantVerdict)
 			}

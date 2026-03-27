@@ -15,6 +15,7 @@ func TestExtractClaimRef(t *testing.T) {
 	}{
 		{"frontmatter claim", "---\nclaim: AE-08\nmodel: arch\n---\n", "AE-08"},
 		{"body claim", "# Probe\n\nclaim: MH-05\n\nSome findings.", "MH-05"},
+		{"model impact claim", "# Probe\n\n## Model Impact\n\n- [x] **Confirms** CA-05: Structural signals outperform bolted-on metadata\n", "CA-05"},
 		{"case insensitive", "Claim: SCT-03\n", "SCT-03"},
 		{"no claim", "# Just a probe\n\nNo claim reference.", ""},
 	}
