@@ -1,0 +1,40 @@
+verification:
+  type: investigation
+  issue: orch-go-ev88j
+
+  claims:
+    - id: codex-agents-md-loaded
+      description: "Codex CLI loads full AGENTS.md content at session start"
+      evidence: "codex exec reproduced complete AGENTS.md verbatim"
+      status: confirmed
+
+    - id: codex-stdin-context
+      description: "Codex exec accepts piped stdin as prompt (SPAWN_CONTEXT equivalent)"
+      evidence: "echo context | codex exec — GPT-5.4 parsed structured fields correctly"
+      status: confirmed
+
+    - id: codex-no-governance
+      description: "Codex CLI has no hooks system for runtime governance"
+      evidence: "codex --help shows no hook/PreToolUse/PostToolUse flags"
+      status: confirmed
+
+    - id: opencode-gpt54-supported
+      description: "OpenCode models-snapshot includes GPT-5.4 with tool_call and reasoning"
+      evidence: "grep gpt-5.4 models-snapshot.ts — found with reasoning:true, tool_call:true"
+      status: confirmed
+
+    - id: opencode-hooks-model-independent
+      description: "OpenCode plugin hooks fire for all models (experimental.chat.system.transform)"
+      evidence: "plugin/index.ts and session/llm.ts — no model gating on hook triggers"
+      status: confirmed
+
+    - id: spawn-context-frontend-agnostic
+      description: "SPAWN_CONTEXT.md is pure markdown, works with any agent frontend"
+      evidence: "Tested with claude CLI (existing), codex exec (stdin), OpenCode HTTP API (existing)"
+      status: confirmed
+
+  manual_verification:
+    - "GPT-5.4 stall rate on orchestrator protocol — requires empirical test with full skill loaded"
+    - "OpenCode orchestrator plugin — development needed, feasibility confirmed but not built"
+
+  recommendation: "OpenCode TUI over Codex CLI for GPT-5.4 orchestrator role"
