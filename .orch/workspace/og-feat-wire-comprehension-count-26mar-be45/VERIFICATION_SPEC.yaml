@@ -1,0 +1,15 @@
+commands:
+  - command: "go test ./pkg/daemon -run 'TestComputeDaemonHealth|TestSketchybar'"
+    expectation: "Targeted daemon health and sketchybar parity tests pass"
+    result: "passed"
+  - command: "bash -n /Users/dylanconlin/.config/sketchybar/helpers/event_providers/orch_status/orch_status.sh"
+    expectation: "Sketchybar event provider shell syntax is valid"
+    result: "passed"
+  - command: "luac -p /Users/dylanconlin/.config/sketchybar/items/widgets/orch.lua"
+    expectation: "Sketchybar widget Lua syntax is valid"
+    result: "passed"
+manual_checks:
+  - check: "Sketchybar widget shows `C:<count>` in the bar label and a comprehension row in the popup when daemon-status.json contains comprehension data"
+    status: "not_run"
+notes:
+  - "Full `go test ./pkg/daemon` and `go test ./cmd/orch` include unrelated pre-existing failures outside this task; targeted verification covers the comprehension wiring changes."

@@ -20,9 +20,9 @@ func TestComputeDaemonHealth_AllGreen(t *testing.T) {
 		LastCompletion: now.Add(-10 * time.Minute),
 		ReadyCount:     5,
 		Verification: &VerificationStatusSnapshot{
-			IsPaused:                    false,
-			RemainingBeforePause:        4,
-			Threshold:                   5,
+			IsPaused:                     false,
+			RemainingBeforePause:         4,
+			Threshold:                    5,
 			CompletionsSinceVerification: 1,
 		},
 		PhaseTimeout: &PhaseTimeoutSnapshot{
@@ -37,8 +37,8 @@ func TestComputeDaemonHealth_AllGreen(t *testing.T) {
 
 	summary := ComputeDaemonHealth(status, now)
 
-	if len(summary.Signals) != 6 {
-		t.Fatalf("expected 6 signals, got %d", len(summary.Signals))
+	if len(summary.Signals) != 7 {
+		t.Fatalf("expected 7 signals, got %d", len(summary.Signals))
 	}
 
 	for _, sig := range summary.Signals {
@@ -335,6 +335,34 @@ func TestComputeDaemonHealth_NoVerification(t *testing.T) {
 	// No verification data = green (not configured)
 	if sig.Level != "green" {
 		t.Errorf("expected green for no verification config, got %s", sig.Level)
+	}
+}
+
+func TestComputeDaemonHealth_ComprehensionThreshold(t *testing.T) {
+	now := time.Now()
+	status := &DaemonStatus{
+		PID:    1234,
+		Status: "running",
+		Capacity: CapacityStatus{
+			Max:       3,
+			Active:    0,
+			Available: 3,
+		},
+		LastPoll:   now.Add(-30 * time.Second),
+		ReadyCount: 5,
+		Comprehension: &ComprehensionSnapshot{
+			Count:     5,
+			Threshold: 5,
+		},
+	}
+
+	summary := ComputeDaemonHealth(status, now)
+	sig := findSignal(summary, "Comprehension")
+	if sig == nil {
+		t.Fatal("expected Comprehension signal")
+	}
+	if sig.Level != "red" {
+		t.Errorf("expected red for comprehension threshold, got %s", sig.Level)
 	}
 }
 

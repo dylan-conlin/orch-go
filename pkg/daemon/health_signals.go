@@ -12,13 +12,14 @@ type DaemonHealthSignal struct {
 	Detail string `json:"detail"` // Human-readable description
 }
 
-// DaemonHealthSummary holds all 6 health signals computed from daemon-status.json.
+// DaemonHealthSummary holds all health signals computed from daemon-status.json.
 type DaemonHealthSummary struct {
 	Signals []DaemonHealthSignal `json:"signals"`
 }
 
-// ComputeDaemonHealth derives 6 health signals from the daemon status snapshot.
-// Signals: Daemon Liveness, Capacity, Queue Depth, Verification, Unresponsive, Questions.
+// ComputeDaemonHealth derives health signals from the daemon status snapshot.
+// Signals: Daemon Liveness, Capacity, Queue Depth, Evidence Check, Unresponsive,
+// Questions, Comprehension.
 func ComputeDaemonHealth(status *DaemonStatus, now time.Time) *DaemonHealthSummary {
 	if status == nil {
 		return nil
@@ -32,6 +33,7 @@ func ComputeDaemonHealth(status *DaemonStatus, now time.Time) *DaemonHealthSumma
 			computeVerification(status),
 			computeUnresponsive(status),
 			computeQuestions(status),
+			computeComprehension(status),
 		},
 	}
 }
@@ -171,6 +173,37 @@ func computeQuestions(status *DaemonStatus) DaemonHealthSignal {
 	default:
 		sig.Level = "green"
 		sig.Detail = "no pending questions"
+	}
+	return sig
+}
+
+// computeComprehension checks comprehension queue pressure.
+// Green: 0, Yellow: >0, Red: >= threshold.
+func computeComprehension(status *DaemonStatus) DaemonHealthSignal {
+	sig := DaemonHealthSignal{Name: "Comprehension"}
+
+	if status.Comprehension == nil {
+		sig.Level = "green"
+		sig.Detail = "no pending reviews"
+		return sig
+	}
+
+	count := status.Comprehension.Count
+	threshold := status.Comprehension.Threshold
+	if threshold <= 0 {
+		threshold = DefaultComprehensionThreshold
+	}
+
+	switch {
+	case count >= threshold:
+		sig.Level = "red"
+		sig.Detail = fmt.Sprintf("%d/%d reviews pending", count, threshold)
+	case count > 0:
+		sig.Level = "yellow"
+		sig.Detail = fmt.Sprintf("%d/%d reviews pending", count, threshold)
+	default:
+		sig.Level = "green"
+		sig.Detail = fmt.Sprintf("%d/%d reviews pending", count, threshold)
 	}
 	return sig
 }

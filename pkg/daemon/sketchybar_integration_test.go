@@ -30,6 +30,8 @@ func TestSketchybarHealthParity(t *testing.T) {
 		wantMax        int
 		wantReady      int
 		wantStatus     string
+		wantCompCount  string
+		wantCompThresh string
 	}{
 		{
 			name: "all_green",
@@ -49,11 +51,13 @@ func TestSketchybarHealthParity(t *testing.T) {
 				PhaseTimeout:      &PhaseTimeoutSnapshot{UnresponsiveCount: 0, LastCheck: now},
 				QuestionDetection: &QuestionDetectionSnapshot{QuestionCount: 0, LastCheck: now},
 			},
-			wantHealth: "green",
-			wantActive: 2,
-			wantMax:    5,
-			wantReady:  5,
-			wantStatus: "running",
+			wantHealth:     "green",
+			wantActive:     2,
+			wantMax:        5,
+			wantReady:      5,
+			wantStatus:     "running",
+			wantCompCount:  "0",
+			wantCompThresh: "",
 		},
 		{
 			name: "verification_yellow",
@@ -71,11 +75,13 @@ func TestSketchybarHealthParity(t *testing.T) {
 					Threshold:            5,
 				},
 			},
-			wantHealth: "yellow",
-			wantActive: 2,
-			wantMax:    5,
-			wantReady:  5,
-			wantStatus: "running",
+			wantHealth:     "yellow",
+			wantActive:     2,
+			wantMax:        5,
+			wantReady:      5,
+			wantStatus:     "running",
+			wantCompCount:  "0",
+			wantCompThresh: "",
 		},
 		{
 			name: "verification_paused_red",
@@ -93,11 +99,13 @@ func TestSketchybarHealthParity(t *testing.T) {
 					Threshold:            3,
 				},
 			},
-			wantHealth: "red",
-			wantActive: 0,
-			wantMax:    5,
-			wantReady:  10,
-			wantStatus: "paused",
+			wantHealth:     "red",
+			wantActive:     0,
+			wantMax:        5,
+			wantReady:      10,
+			wantStatus:     "paused",
+			wantCompCount:  "0",
+			wantCompThresh: "",
 		},
 		{
 			name: "capacity_saturated_red",
@@ -115,11 +123,13 @@ func TestSketchybarHealthParity(t *testing.T) {
 					Threshold:            5,
 				},
 			},
-			wantHealth: "red",
-			wantActive: 5,
-			wantMax:    5,
-			wantReady:  15,
-			wantStatus: "running",
+			wantHealth:     "red",
+			wantActive:     5,
+			wantMax:        5,
+			wantReady:      15,
+			wantStatus:     "running",
+			wantCompCount:  "0",
+			wantCompThresh: "",
 		},
 		{
 			name: "capacity_yellow_80pct",
@@ -137,11 +147,13 @@ func TestSketchybarHealthParity(t *testing.T) {
 					Threshold:            5,
 				},
 			},
-			wantHealth: "yellow",
-			wantActive: 4,
-			wantMax:    5,
-			wantReady:  3,
-			wantStatus: "running",
+			wantHealth:     "yellow",
+			wantActive:     4,
+			wantMax:        5,
+			wantReady:      3,
+			wantStatus:     "running",
+			wantCompCount:  "0",
+			wantCompThresh: "",
 		},
 		{
 			name: "unresponsive_red",
@@ -158,11 +170,13 @@ func TestSketchybarHealthParity(t *testing.T) {
 					LastCheck:         now,
 				},
 			},
-			wantHealth: "red",
-			wantActive: 3,
-			wantMax:    5,
-			wantReady:  5,
-			wantStatus: "running",
+			wantHealth:     "red",
+			wantActive:     3,
+			wantMax:        5,
+			wantReady:      5,
+			wantStatus:     "running",
+			wantCompCount:  "0",
+			wantCompThresh: "",
 		},
 		{
 			name: "questions_yellow",
@@ -179,11 +193,36 @@ func TestSketchybarHealthParity(t *testing.T) {
 					LastCheck:     now,
 				},
 			},
-			wantHealth: "yellow",
-			wantActive: 1,
-			wantMax:    5,
-			wantReady:  2,
-			wantStatus: "running",
+			wantHealth:     "yellow",
+			wantActive:     1,
+			wantMax:        5,
+			wantReady:      2,
+			wantStatus:     "running",
+			wantCompCount:  "0",
+			wantCompThresh: "",
+		},
+		{
+			name: "comprehension_threshold_red",
+			status: DaemonStatus{
+				PID:    1234,
+				Status: "running",
+				Capacity: CapacityStatus{
+					Max: 5, Active: 2, Available: 3,
+				},
+				LastPoll:   now.Add(-30 * time.Second),
+				ReadyCount: 4,
+				Comprehension: &ComprehensionSnapshot{
+					Count:     5,
+					Threshold: 5,
+				},
+			},
+			wantHealth:     "red",
+			wantActive:     2,
+			wantMax:        5,
+			wantReady:      4,
+			wantStatus:     "running",
+			wantCompCount:  "5",
+			wantCompThresh: "5",
 		},
 		{
 			name: "queue_depth_red",
@@ -196,11 +235,13 @@ func TestSketchybarHealthParity(t *testing.T) {
 				LastPoll:   now.Add(-30 * time.Second),
 				ReadyCount: 60,
 			},
-			wantHealth: "red",
-			wantActive: 1,
-			wantMax:    5,
-			wantReady:  60,
-			wantStatus: "running",
+			wantHealth:     "red",
+			wantActive:     1,
+			wantMax:        5,
+			wantReady:      60,
+			wantStatus:     "running",
+			wantCompCount:  "0",
+			wantCompThresh: "",
 		},
 	}
 
@@ -258,6 +299,12 @@ func TestSketchybarHealthParity(t *testing.T) {
 			}
 			if bashVars["STATUS"] != tt.wantStatus {
 				t.Errorf("bash STATUS: want %s, got %s", tt.wantStatus, bashVars["STATUS"])
+			}
+			if bashVars["COMPREHENSION_COUNT"] != tt.wantCompCount {
+				t.Errorf("bash COMPREHENSION_COUNT: want %s, got %s", tt.wantCompCount, bashVars["COMPREHENSION_COUNT"])
+			}
+			if bashVars["COMPREHENSION_THRESHOLD"] != tt.wantCompThresh {
+				t.Errorf("bash COMPREHENSION_THRESHOLD: want %s, got %s", tt.wantCompThresh, bashVars["COMPREHENSION_THRESHOLD"])
 			}
 
 			// Step 5: Verify parity between Go and bash
@@ -454,11 +501,13 @@ AVAILABLE=0
 READY=0
 STATUS="off"
 HEALTH_LEVEL="green"
-UNRESPONSIVE=0
-QUESTIONS=0
-VERIFICATION_REMAINING=""
+	UNRESPONSIVE=0
+	QUESTIONS=0
+	VERIFICATION_REMAINING=""
+	COMPREHENSION_COUNT=0
+	COMPREHENSION_THRESHOLD=""
 
-if [ -f "$DAEMON_STATUS" ]; then
+	if [ -f "$DAEMON_STATUS" ]; then
   DS=$(cat "$DAEMON_STATUS" 2>/dev/null)
 
   if [ -n "$DS" ] && echo "$DS" | jq -e '.status' >/dev/null 2>&1; then
@@ -469,9 +518,15 @@ if [ -f "$DAEMON_STATUS" ]; then
     STATUS=$(echo "$DS" | jq -r '.status // "unknown"')
 
     UNRESPONSIVE=$(echo "$DS" | jq -r '.phase_timeout.unresponsive_count // 0')
-    QUESTIONS=$(echo "$DS" | jq -r '.question_detection.question_count // 0')
+	    QUESTIONS=$(echo "$DS" | jq -r '.question_detection.question_count // 0')
+	    COMPREHENSION_COUNT=$(echo "$DS" | jq -r '.comprehension.count // 0')
 
-    VERIFICATION_REMAINING=$(echo "$DS" | jq -r '
+	    COMPREHENSION_THRESHOLD=$(echo "$DS" | jq -r '
+	      if .comprehension then (.comprehension.threshold | tostring)
+	      else "" end
+	    ')
+
+	    VERIFICATION_REMAINING=$(echo "$DS" | jq -r '
       if .verification then (.verification.remaining_before_pause | tostring)
       else "" end
     ')
@@ -530,18 +585,25 @@ if [ -f "$DAEMON_STATUS" ]; then
     fi
 
     # 6. Questions
-    QUESTION_LEVEL="green"
-    if [ "$QUESTIONS" -gt 2 ]; then
-      QUESTION_LEVEL="red"
-    elif [ "$QUESTIONS" -ge 1 ]; then
-      QUESTION_LEVEL="yellow"
-    fi
+	    QUESTION_LEVEL="green"
+	    if [ "$QUESTIONS" -gt 2 ]; then
+	      QUESTION_LEVEL="red"
+	    elif [ "$QUESTIONS" -ge 1 ]; then
+	      QUESTION_LEVEL="yellow"
+	    fi
 
-    # Worst across all
-    HEALTH_LEVEL="green"
-    for LVL in "$LIVENESS_LEVEL" "$CAP_LEVEL" "$QUEUE_LEVEL" "$VERIFY_LEVEL" "$UNRESPONSIVE_LEVEL" "$QUESTION_LEVEL"; do
-      HEALTH_LEVEL=$(worst_level "$HEALTH_LEVEL" "$LVL")
-    done
+	    COMPREHENSION_LEVEL="green"
+	    if [ -n "$COMPREHENSION_THRESHOLD" ] && [ "$COMPREHENSION_THRESHOLD" != "" ] && [ "$COMPREHENSION_COUNT" -ge "$COMPREHENSION_THRESHOLD" ] 2>/dev/null; then
+	      COMPREHENSION_LEVEL="red"
+	    elif [ "$COMPREHENSION_COUNT" -gt 0 ]; then
+	      COMPREHENSION_LEVEL="yellow"
+	    fi
+
+	    # Worst across all
+	    HEALTH_LEVEL="green"
+	    for LVL in "$LIVENESS_LEVEL" "$CAP_LEVEL" "$QUEUE_LEVEL" "$VERIFY_LEVEL" "$UNRESPONSIVE_LEVEL" "$QUESTION_LEVEL" "$COMPREHENSION_LEVEL"; do
+	      HEALTH_LEVEL=$(worst_level "$HEALTH_LEVEL" "$LVL")
+	    done
   fi
 fi
 
@@ -554,6 +616,8 @@ echo "HEALTH_LEVEL=$HEALTH_LEVEL"
 echo "UNRESPONSIVE=$UNRESPONSIVE"
 echo "QUESTIONS=$QUESTIONS"
 echo "VERIFICATION_REMAINING=$VERIFICATION_REMAINING"
+echo "COMPREHENSION_COUNT=$COMPREHENSION_COUNT"
+echo "COMPREHENSION_THRESHOLD=$COMPREHENSION_THRESHOLD"
 `
 }
 
