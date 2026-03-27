@@ -338,12 +338,11 @@ func TestFormatOrientation_WithLastSessionInsight(t *testing.T) {
 
 	output := FormatOrientation(data)
 
-	// Last session insight should appear as its own section
-	if !strings.Contains(output, "Last session insight") {
-		t.Errorf("expected 'Last session insight' section in output, got:\n%s", output)
+	if strings.Contains(output, "Last session insight") {
+		t.Errorf("last session insight should not appear in thinking surface, got:\n%s", output)
 	}
-	if !strings.Contains(output, "Density matters 2x more") {
-		t.Errorf("expected insight content in output, got:\n%s", output)
+	if strings.Contains(output, "Density matters 2x more") {
+		t.Errorf("last session insight content should not appear in thinking surface, got:\n%s", output)
 	}
 }
 

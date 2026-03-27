@@ -224,6 +224,7 @@ func TestFormatThroughput_DaysHeader(t *testing.T) {
 
 func TestFormatOrientation(t *testing.T) {
 	data := &OrientationData{
+		ActiveThreads: []ActiveThread{{Name: "thinking", Title: "Keep threads", Updated: "2026-03-27", EntryCount: 1}},
 		ReadyIssues: []ReadyIssue{
 			{ID: "orch-go-abc1", Title: "Fix spawn bug", Priority: "P1"},
 			{ID: "orch-go-def2", Title: "Add model drift", Priority: "P2"},
@@ -233,6 +234,8 @@ func TestFormatOrientation(t *testing.T) {
 		},
 		UnreadBriefCount: 1,
 		FocusGoal:        "Ship orient command",
+		ClaimEdges:       "Knowledge edges:\n   tension: claim mismatch\n\n",
+		DigestSummary:    &DigestSummary{DigestCount: 1, BriefsComposed: 5, ClustersFound: 2},
 	}
 
 	output := FormatOrientation(data)
@@ -241,11 +244,11 @@ func TestFormatOrientation(t *testing.T) {
 	if !strings.Contains(output, "SESSION ORIENTATION") {
 		t.Error("missing SESSION ORIENTATION header")
 	}
-	if !strings.Contains(output, "orch-go-abc1") {
-		t.Error("missing ready issue ID")
+	if !strings.Contains(output, "Active threads:") {
+		t.Error("missing active threads section")
 	}
-	if !strings.Contains(output, "Fix spawn bug") {
-		t.Error("missing ready issue title")
+	if !strings.Contains(output, "Keep threads") {
+		t.Error("missing thread title")
 	}
 	if !strings.Contains(output, "Recent briefs") {
 		t.Error("missing recent briefs section")
@@ -253,8 +256,11 @@ func TestFormatOrientation(t *testing.T) {
 	if !strings.Contains(output, "Naming investigation") {
 		t.Error("missing brief title")
 	}
-	if !strings.Contains(output, "Ship orient command") {
-		t.Error("missing focus goal")
+	if !strings.Contains(output, "Knowledge edges:") {
+		t.Error("missing tensions section")
+	}
+	if !strings.Contains(output, "claim mismatch") {
+		t.Error("missing tension content")
 	}
 
 	// Operational sections should NOT be in orient
@@ -266,6 +272,15 @@ func TestFormatOrientation(t *testing.T) {
 	}
 	if strings.Contains(output, "Relevant models") {
 		t.Error("relevant models should not be in thinking surface")
+	}
+	if strings.Contains(output, "Ready to work:") || strings.Contains(output, "Fix spawn bug") {
+		t.Error("ready work should not be in thinking surface")
+	}
+	if strings.Contains(output, "Focus:") || strings.Contains(output, "Ship orient command") {
+		t.Error("focus should not be in thinking surface")
+	}
+	if strings.Contains(output, "5 briefs") || strings.Contains(output, "2 themes") {
+		t.Error("digest summary should not be in thinking surface")
 	}
 }
 
@@ -351,8 +366,8 @@ func TestFormatOrientation_NoReadyIssues(t *testing.T) {
 
 	output := FormatOrientation(data)
 
-	if !strings.Contains(output, "No issues ready") {
-		t.Error("should indicate no ready issues")
+	if strings.Contains(output, "Ready to work:") || strings.Contains(output, "No issues ready") {
+		t.Error("ready work section should not appear")
 	}
 }
 
@@ -389,26 +404,8 @@ func TestFormatOrientation_ActivePlans(t *testing.T) {
 
 	output := FormatOrientation(data)
 
-	if !strings.Contains(output, "Active plans:") {
-		t.Error("missing 'Active plans:' section header")
-	}
-	if !strings.Contains(output, "Ship Dashboard V2") {
-		t.Error("missing plan title")
-	}
-	if !strings.Contains(output, "[orch-go, price-watch]") {
-		t.Error("missing projects list")
-	}
-	if !strings.Contains(output, "Multi-project dashboard rewrite.") {
-		t.Error("missing TLDR")
-	}
-	if !strings.Contains(output, "[x] Phase 1: Foundation") {
-		t.Error("missing completed phase marker")
-	}
-	if !strings.Contains(output, "[>] Phase 2: Agent Cards") {
-		t.Error("missing in-progress phase marker")
-	}
-	if !strings.Contains(output, "[ ] Phase 3: Plan Panel") {
-		t.Error("missing ready phase marker")
+	if strings.Contains(output, "Active plans:") || strings.Contains(output, "Ship Dashboard V2") {
+		t.Error("plans should not be in thinking surface")
 	}
 }
 
@@ -443,23 +440,8 @@ func TestFormatOrientation_ActivePlansWithBeadsProgress(t *testing.T) {
 
 	output := FormatOrientation(data)
 
-	if !strings.Contains(output, "Active plans:") {
-		t.Error("missing 'Active plans:' section header")
-	}
-	if !strings.Contains(output, "Gate Signal vs Noise (1/4 complete)") {
-		t.Errorf("missing plan title with progress, got:\n%s", output)
-	}
-	if !strings.Contains(output, "[x] Phase 1: Gate census") {
-		t.Error("missing completed phase marker")
-	}
-	if !strings.Contains(output, "[>] Phase 2: Fix noise gates") {
-		t.Error("missing in-progress phase marker")
-	}
-	if !strings.Contains(output, "[ ] Phase 3: Retrospective audit") {
-		t.Error("missing ready phase marker")
-	}
-	if !strings.Contains(output, "[ ] Phase 4: Prospective measurement") {
-		t.Error("missing unhydrated phase marker")
+	if strings.Contains(output, "Active plans:") || strings.Contains(output, "Gate Signal vs Noise") {
+		t.Error("plans should not be in thinking surface")
 	}
 }
 
@@ -479,13 +461,8 @@ func TestFormatOrientation_ActivePlansNoProgress(t *testing.T) {
 
 	output := FormatOrientation(data)
 
-	// Title should appear without progress suffix
-	if !strings.Contains(output, "- Unhydrated Plan") {
-		t.Errorf("missing plan title, got:\n%s", output)
-	}
-	// Should NOT show "()" or "(0/0 complete)"
-	if strings.Contains(output, "( complete)") || strings.Contains(output, "(0/") {
-		t.Error("should not show empty progress")
+	if strings.Contains(output, "Unhydrated Plan") || strings.Contains(output, "Active plans:") {
+		t.Errorf("plans should not be in thinking surface, got:\n%s", output)
 	}
 }
 
@@ -1135,16 +1112,14 @@ func TestFormatOrientation_SectionOrder(t *testing.T) {
 		t.Error("tensions should appear after briefs")
 	}
 
-	// Ready work after tensions
-	readyIdx := strings.Index(output, "Ready to work:")
-	if readyIdx < tensionsIdx {
-		t.Error("ready work should appear after tensions")
+	if strings.Contains(output, "Ready to work:") {
+		t.Error("ready work should not appear in thinking surface")
 	}
-
-	// Focus after ready work
-	focusIdx := strings.Index(output, "Focus:")
-	if focusIdx < readyIdx {
-		t.Error("focus should appear after ready work")
+	if strings.Contains(output, "Focus:") {
+		t.Error("focus should not appear in thinking surface")
+	}
+	if strings.Contains(output, "Digest") {
+		t.Error("digest should not appear in thinking surface")
 	}
 
 	// Operational sections should NOT be in orient output

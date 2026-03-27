@@ -71,7 +71,8 @@ func runOrient() error {
 
 	data := &orient.OrientationData{}
 
-	// === THINKING SURFACE (threads, briefs, tensions, ready work, plans, focus) ===
+	// === THINKING SURFACE DISPLAY (threads, briefs, tensions) ===
+	// Additional fields below are still collected for --json and other consumers.
 
 	// Previous session (needed for insight and changelog date)
 	sessionsDir := filepath.Join(projectDir, ".kb", "sessions")
@@ -598,8 +599,8 @@ func collectReflectSuggestions() *orient.ReflectSummary {
 // parseReflectSuggestions parses reflect-suggestions.json into ReflectSummary.
 func parseReflectSuggestions(data []byte) *orient.ReflectSummary {
 	var raw struct {
-		Timestamp  string `json:"timestamp"`
-		Synthesis  []struct {
+		Timestamp string `json:"timestamp"`
+		Synthesis []struct {
 			Topic string `json:"topic"`
 			Count int    `json:"count"`
 		} `json:"synthesis"`

@@ -23,8 +23,8 @@ type Throughput struct {
 	AvgDurationMin int `json:"avg_duration_min"`
 
 	// Ground-truth metrics from git
-	NetLinesAdded   int     `json:"net_lines_added,omitempty"`
-	NetLinesRemoved int     `json:"net_lines_removed,omitempty"`
+	NetLinesAdded   int `json:"net_lines_added,omitempty"`
+	NetLinesRemoved int `json:"net_lines_removed,omitempty"`
 }
 
 // ReadyIssue represents a beads issue ready for work.
@@ -62,16 +62,16 @@ type HealthSummary struct {
 
 // ReflectSummary holds reflection suggestions from kb reflect daemon output.
 type ReflectSummary struct {
-	Total       int              `json:"total"`
-	Synthesis   int              `json:"synthesis"`
-	Stale       int              `json:"stale"`
-	Promote     int              `json:"promote"`
-	Drift       int              `json:"drift"`
-	Agreements  int              `json:"agreements"`
-	TopClusters []ReflectCluster `json:"top_clusters,omitempty"`
-	Age         string           `json:"age,omitempty"` // human-readable age like "2h ago"
-	SessionOrphans        int `json:"session_orphans,omitempty"`        // unlinked investigations from last session
-	SessionInvestigations int `json:"session_investigations,omitempty"` // total investigations from last session
+	Total                 int              `json:"total"`
+	Synthesis             int              `json:"synthesis"`
+	Stale                 int              `json:"stale"`
+	Promote               int              `json:"promote"`
+	Drift                 int              `json:"drift"`
+	Agreements            int              `json:"agreements"`
+	TopClusters           []ReflectCluster `json:"top_clusters,omitempty"`
+	Age                   string           `json:"age,omitempty"`                    // human-readable age like "2h ago"
+	SessionOrphans        int              `json:"session_orphans,omitempty"`        // unlinked investigations from last session
+	SessionInvestigations int              `json:"session_investigations,omitempty"` // total investigations from last session
 }
 
 // ReflectCluster represents a synthesis opportunity cluster.
@@ -97,7 +97,7 @@ type ConfigDriftItem struct {
 // DaemonHealthSignalView represents a single health signal for orient display.
 type DaemonHealthSignalView struct {
 	Name   string `json:"name"`
-	Level  string `json:"level"`  // "green", "yellow", "red"
+	Level  string `json:"level"` // "green", "yellow", "red"
 	Detail string `json:"detail"`
 }
 
@@ -113,24 +113,24 @@ type SessionResume struct {
 }
 
 // OrientationData holds all data needed to render session orientation.
-// The thinking surface (FormatOrientation) renders: threads, briefs, tensions, ready work, plans, focus.
+// The thinking surface (FormatOrientation) renders: threads, briefs, tensions.
 // Operational sections (FormatHealth) render: throughput, changelog, models, health, daemon, divergence, etc.
 type OrientationData struct {
 	// --- Thinking surface (rendered by FormatOrientation) ---
-	ActiveThreads    []ActiveThread    `json:"active_threads,omitempty"`
-	RecentBriefs     []RecentBrief     `json:"recent_briefs,omitempty"`
-	UnreadBriefCount int               `json:"unread_brief_count"`
-	DigestSummary    *DigestSummary    `json:"digest_summary,omitempty"`
-	ClaimEdges       string            `json:"claim_edges,omitempty"` // Pre-formatted claim edges text (filtered to thread-relevant)
-	ReadyIssues      []ReadyIssue      `json:"ready_issues,omitempty"`
-	ActivePlans      []PlanSummary     `json:"active_plans,omitempty"`
-	FocusGoal        string            `json:"focus_goal,omitempty"`
-	PreviousSession  *DebriefSummary   `json:"previous_session,omitempty"`
+	ActiveThreads    []ActiveThread  `json:"active_threads,omitempty"`
+	RecentBriefs     []RecentBrief   `json:"recent_briefs,omitempty"`
+	UnreadBriefCount int             `json:"unread_brief_count"`
+	DigestSummary    *DigestSummary  `json:"digest_summary,omitempty"`
+	ClaimEdges       string          `json:"claim_edges,omitempty"` // Pre-formatted claim edges text (filtered to thread-relevant)
+	ReadyIssues      []ReadyIssue    `json:"ready_issues,omitempty"`
+	ActivePlans      []PlanSummary   `json:"active_plans,omitempty"`
+	FocusGoal        string          `json:"focus_goal,omitempty"`
+	PreviousSession  *DebriefSummary `json:"previous_session,omitempty"`
 
 	// --- Context (rendered by FormatOrientation) ---
-	SessionResume    *SessionResume    `json:"session_resume,omitempty"`
-	ConfigDrift      []ConfigDriftItem `json:"config_drift,omitempty"`
-	UsageWarning     *UsageWarning     `json:"usage_warning,omitempty"`
+	SessionResume *SessionResume    `json:"session_resume,omitempty"`
+	ConfigDrift   []ConfigDriftItem `json:"config_drift,omitempty"`
+	UsageWarning  *UsageWarning     `json:"usage_warning,omitempty"`
 
 	// --- Operational (rendered by FormatHealth, not FormatOrientation) ---
 	Throughput        Throughput          `json:"throughput"`
@@ -156,10 +156,10 @@ type AdoptionDriftItem struct {
 // ExploreCandidate is a recommendation for `orch spawn --explore investigation "..."`.
 // Each candidate aggregates one or more signals into a concrete explore question.
 type ExploreCandidate struct {
-	Question string  `json:"question"`           // The explore question to spawn
-	Signal   string  `json:"signal"`             // Source signal type
-	Score    float64 `json:"score"`              // Urgency score (higher = more urgent)
-	Reason   string  `json:"reason"`             // Why this is worth exploring
+	Question string  `json:"question"` // The explore question to spawn
+	Signal   string  `json:"signal"`   // Source signal type
+	Score    float64 `json:"score"`    // Urgency score (higher = more urgent)
+	Reason   string  `json:"reason"`   // Why this is worth exploring
 }
 
 // ComputeThroughput aggregates events within the given day window.
@@ -224,7 +224,7 @@ func eventMatchesProject(e Event, prefix string) bool {
 	return strings.HasPrefix(beadsID, prefix+"-")
 }
 
-// FormatOrientation renders the thinking surface: threads, briefs, tensions, ready work.
+// FormatOrientation renders the thinking surface: threads, briefs, tensions.
 // Operational sections (throughput, health, models, daemon, etc.) are in FormatHealth.
 func FormatOrientation(data *OrientationData) string {
 	var b strings.Builder
@@ -242,25 +242,10 @@ func FormatOrientation(data *OrientationData) string {
 	// Element 2: Recent Briefs (what was learned)
 	b.WriteString(FormatRecentBriefs(data.RecentBriefs, data.UnreadBriefCount))
 
-	// Between-session digest (pre-composed clustering from daemon)
-	b.WriteString(FormatDigestSummary(data.DigestSummary))
-
 	// Element 3: Active Tensions (filtered knowledge edges)
 	if data.ClaimEdges != "" {
 		b.WriteString(data.ClaimEdges)
 	}
-
-	// Last session insight (thread continuity)
-	b.WriteString(FormatLastSessionInsight(data.PreviousSession))
-
-	// Ready work (reframed by thread relevance)
-	formatReadyIssues(&b, data.ReadyIssues)
-
-	// Active plans
-	formatActivePlans(&b, data.ActivePlans)
-
-	// Focus
-	formatFocus(&b, data.FocusGoal)
 
 	return b.String()
 }
