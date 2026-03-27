@@ -63,6 +63,14 @@ type CommitDedupGate struct {
 	// a task referencing a completed investigation is follow-up, not duplication.
 	// When nil, Check 2 behaves as before (no type filtering).
 	GetIssueTypeFunc func(beadsID string) string
+
+	// GetIssueTitleFunc looks up the title for a referenced beads ID.
+	// Used by Check 2 to distinguish contextual references from true duplicates:
+	// if the new issue's title has low keyword overlap with the referenced issue's
+	// title, the reference is contextual (background/follow-on), not duplication.
+	// When nil, Check 2 falls back to rejecting any same-type ref with commits
+	// (backward-compatible behavior).
+	GetIssueTitleFunc func(beadsID string) string
 }
 
 func (g *CommitDedupGate) Name() string      { return "commit-dedup" }
@@ -83,8 +91,10 @@ func (g *CommitDedupGate) Check(issue *Issue) GateResult {
 	}
 
 	// Check 2: Do referenced beads IDs have commits?
-	// Skip cross-type references: a task referencing a completed investigation
-	// is follow-up work (implementing recommendations), not duplication.
+	// Three layers of false-positive prevention:
+	//   a) Cross-type references are skipped (task→investigation = follow-up)
+	//   b) Title similarity: if titles differ, the reference is contextual
+	//   c) Falls back to rejection when title lookup unavailable (backward compat)
 	refs := extractReferencedBeadsIDs(issue.Description, issue.ID)
 	for _, ref := range refs {
 		if g.GetIssueTypeFunc != nil && issue.IssueType != "" {
@@ -94,6 +104,14 @@ func (g *CommitDedupGate) Check(issue *Issue) GateResult {
 			}
 		}
 		if g.HasCommitsFunc(ref) {
+			// Title similarity check: contextual references (background, follow-on)
+			// have dissimilar titles. Only reject when titles indicate same work.
+			if g.GetIssueTitleFunc != nil {
+				refTitle := g.GetIssueTitleFunc(ref)
+				if refTitle != "" && !titlesSuggestDuplication(issue.Title, refTitle) {
+					continue // Different work scope — contextual reference
+				}
+			}
 			return GateResult{
 				Gate:    g.Name(),
 				Verdict: GateReject,
@@ -128,6 +146,26 @@ func hasRecentCommitsForBeadsIDInDir(beadsID, dir string) bool {
 		return false // fail-open
 	}
 	return len(strings.TrimSpace(string(output))) > 0
+}
+
+// titlesSuggestDuplication checks if two issue titles indicate the same work
+// scope using keyword overlap. Returns true when overlap is high enough to
+// suggest duplication rather than a contextual/follow-on reference.
+//
+// Thresholds: overlap coefficient >= 0.7 AND >= 3 common keywords.
+// Higher coefficient than KeywordDedupGate (0.5) because follow-on work
+// naturally shares domain vocabulary with prior work — a 0.5 threshold
+// would reject legitimate follow-on references in the same area.
+// At 0.7, titles must share 70% of the shorter title's keywords,
+// which indicates near-identical scope rather than domain adjacency.
+func titlesSuggestDuplication(titleA, titleB string) bool {
+	kwA := extractKeywords(titleA)
+	kwB := extractKeywords(titleB)
+	common := countCommon(kwA, kwB)
+	if common < 3 {
+		return false
+	}
+	return overlapCoefficient(kwA, kwB) >= 0.7
 }
 
 // --- Keyword Dedup Gate ---

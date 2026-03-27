@@ -366,8 +366,205 @@ func TestCommitDedupGate_MixedRefsRejectsOnSameType(t *testing.T) {
 }
 
 // =============================================================================
+// CommitDedupGate Contextual Reference Tests (title similarity false positive fix)
+// =============================================================================
+
+func TestCommitDedupGate_AllowsContextualSameTypeReference(t *testing.T) {
+	// Reproduction of the false positive from orch-go-y1iy3:
+	// orch-go-m7l0n ("surface orient thinking as dashboard element") was blocked
+	// because its description mentions orch-go-d6uqc ("redesign orient as five-element
+	// thinking surface") — contextual reference to prior work, NOT duplication.
+	// The titles describe different work scopes.
+	gate := &CommitDedupGate{
+		HasCommitsFunc: func(beadsID string) bool {
+			return beadsID == "orch-go-d6uqc" // Prior issue has commits
+		},
+		GetIssueTypeFunc: func(beadsID string) string {
+			return "task" // Same type
+		},
+		GetIssueTitleFunc: func(beadsID string) string {
+			if beadsID == "orch-go-d6uqc" {
+				return "redesign orient as five-element thinking surface"
+			}
+			return ""
+		},
+	}
+	issue := &Issue{
+		ID:        "orch-go-m7l0n",
+		Title:     "surface orient thinking as dashboard element",
+		IssueType: "task",
+		Description: "The rendering split from orch-go-d6uqc already separated " +
+			"thinking from ops. This issue surfaces the thinking layer as a " +
+			"standalone dashboard component.",
+	}
+	result := gate.Check(issue)
+
+	if result.Verdict != GateAllow {
+		t.Errorf("CommitDedupGate.Check() = %v, want GateAllow for contextual same-type reference with different title", result.Verdict)
+	}
+}
+
+func TestCommitDedupGate_AllowsContextualRefFollowOnWork(t *testing.T) {
+	// Second reproduction: orch-go-ke9h0 blocked because description mentions
+	// orch-go-betfg. Follow-on work, not duplicate.
+	gate := &CommitDedupGate{
+		HasCommitsFunc: func(beadsID string) bool {
+			return beadsID == "orch-go-betfg"
+		},
+		GetIssueTypeFunc: func(beadsID string) string {
+			return "task"
+		},
+		GetIssueTitleFunc: func(beadsID string) string {
+			if beadsID == "orch-go-betfg" {
+				return "design daemon-triggered between-session composition"
+			}
+			return ""
+		},
+	}
+	issue := &Issue{
+		ID:        "orch-go-ke9h0",
+		Title:     "integration verification for between-session composition claims",
+		IssueType: "task",
+		Description: "Verify the composition pipeline designed in orch-go-betfg " +
+			"actually produces correct digest output under real conditions.",
+	}
+	result := gate.Check(issue)
+
+	if result.Verdict != GateAllow {
+		t.Errorf("CommitDedupGate.Check() = %v, want GateAllow for follow-on work referencing prior issue", result.Verdict)
+	}
+}
+
+func TestCommitDedupGate_StillRejectsTrueDuplicateWithSimilarTitle(t *testing.T) {
+	// True duplicate: same-type ref with commits AND similar titles = reject.
+	gate := &CommitDedupGate{
+		HasCommitsFunc: func(beadsID string) bool {
+			return beadsID == "orch-go-orig1"
+		},
+		GetIssueTypeFunc: func(beadsID string) string {
+			return "task"
+		},
+		GetIssueTitleFunc: func(beadsID string) string {
+			if beadsID == "orch-go-orig1" {
+				return "fix failing spawn exploration judge flag test"
+			}
+			return ""
+		},
+	}
+	issue := &Issue{
+		ID:        "orch-go-dupl1",
+		Title:     "fix spawn exploration judge flag test failure",
+		IssueType: "task",
+		Description: "The test is still failing. See orch-go-orig1 for prior attempt.",
+	}
+	result := gate.Check(issue)
+
+	if result.Verdict != GateReject {
+		t.Errorf("CommitDedupGate.Check() = %v, want GateReject for true duplicate with similar title", result.Verdict)
+	}
+}
+
+func TestCommitDedupGate_NilTitleFuncStillRejects(t *testing.T) {
+	// Backward compat: when GetIssueTitleFunc is nil, behaves as before (rejects).
+	gate := &CommitDedupGate{
+		HasCommitsFunc: func(beadsID string) bool {
+			return beadsID == "orch-go-paatt"
+		},
+		GetIssueTypeFunc: func(beadsID string) string {
+			return "task"
+		},
+		// GetIssueTitleFunc is nil — no title lookup available
+	}
+	issue := &Issue{
+		ID:          "orch-go-94bxz",
+		Title:       "Implement fix",
+		IssueType:   "task",
+		Description: "Follow-up. Issue: orch-go-paatt.",
+	}
+	result := gate.Check(issue)
+
+	if result.Verdict != GateReject {
+		t.Errorf("CommitDedupGate.Check() = %v, want GateReject when GetIssueTitleFunc is nil (backward compat)", result.Verdict)
+	}
+}
+
+func TestCommitDedupGate_EmptyRefTitleStillRejects(t *testing.T) {
+	// When title lookup returns empty (issue not found), fall back to rejection.
+	gate := &CommitDedupGate{
+		HasCommitsFunc: func(beadsID string) bool {
+			return beadsID == "orch-go-paatt"
+		},
+		GetIssueTypeFunc: func(beadsID string) string {
+			return "task"
+		},
+		GetIssueTitleFunc: func(beadsID string) string {
+			return "" // Unknown title
+		},
+	}
+	issue := &Issue{
+		ID:          "orch-go-94bxz",
+		Title:       "Implement fix",
+		IssueType:   "task",
+		Description: "Refs orch-go-paatt.",
+	}
+	result := gate.Check(issue)
+
+	if result.Verdict != GateReject {
+		t.Errorf("CommitDedupGate.Check() = %v, want GateReject when referenced title is empty", result.Verdict)
+	}
+}
+
+// =============================================================================
 // extractKeywords Tests
 // =============================================================================
+
+// =============================================================================
+// titlesSuggestDuplication Tests
+// =============================================================================
+
+func TestTitlesSuggestDuplication_IdenticalTitles(t *testing.T) {
+	if !titlesSuggestDuplication(
+		"fix failing spawn exploration judge flag test",
+		"fix failing spawn exploration judge flag test",
+	) {
+		t.Error("identical titles should suggest duplication")
+	}
+}
+
+func TestTitlesSuggestDuplication_NearIdenticalTitles(t *testing.T) {
+	if !titlesSuggestDuplication(
+		"fix failing spawn exploration judge flag test",
+		"fix spawn exploration judge flag test failure",
+	) {
+		t.Error("near-identical titles should suggest duplication")
+	}
+}
+
+func TestTitlesSuggestDuplication_DomainAdjacentTitles(t *testing.T) {
+	// Same domain area but different work scope — should NOT suggest duplication
+	if titlesSuggestDuplication(
+		"surface orient thinking as dashboard element",
+		"redesign orient as five-element thinking surface",
+	) {
+		t.Error("domain-adjacent but different-scope titles should NOT suggest duplication")
+	}
+}
+
+func TestTitlesSuggestDuplication_CompletelyDifferentTitles(t *testing.T) {
+	if titlesSuggestDuplication(
+		"add authentication middleware",
+		"fix spawn exploration judge flag test",
+	) {
+		t.Error("completely different titles should NOT suggest duplication")
+	}
+}
+
+func TestTitlesSuggestDuplication_ShortTitlesBelow3Keywords(t *testing.T) {
+	// Even with 100% overlap, < 3 common keywords should not trigger
+	if titlesSuggestDuplication("fix bug", "fix bug") {
+		t.Error("titles with < 3 keywords should NOT suggest duplication")
+	}
+}
 
 func TestExtractKeywords_BasicExtraction(t *testing.T) {
 	kw := extractKeywords("Fix failing spawn exploration judge flag test")

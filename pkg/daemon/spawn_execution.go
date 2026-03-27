@@ -267,8 +267,9 @@ func (d *Daemon) buildSpawnPipeline() *SpawnPipeline {
 	// GetIssueTypeFunc enables cross-type reference filtering: a task referencing
 	// a completed investigation is follow-up work, not duplication.
 	commitDedupGate := &CommitDedupGate{
-		HasCommitsFunc:   d.CommitChecker,
-		GetIssueTypeFunc: GetBeadsIssueType,
+		HasCommitsFunc:    d.CommitChecker,
+		GetIssueTypeFunc:  GetBeadsIssueType,
+		GetIssueTitleFunc: GetBeadsIssueTitle,
 	}
 
 	// Build gate list with required gates

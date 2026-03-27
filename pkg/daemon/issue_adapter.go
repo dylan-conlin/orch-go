@@ -389,6 +389,31 @@ func GetBeadsIssueType(beadsID string) string {
 	return issue.IssueType
 }
 
+// GetBeadsIssueTitle looks up the title for a beads issue ID.
+// Falls open: returns empty string on error (issue not found, beads unavailable).
+// Used by CommitDedupGate to distinguish contextual references from true duplicates.
+func GetBeadsIssueTitle(beadsID string) string {
+	// Try RPC first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			issue, err := client.Show(beadsID)
+			if err == nil {
+				return issue.Title
+			}
+		}
+	}
+
+	// Fallback to CLI
+	issue, err := beads.FallbackShow(beadsID, "")
+	if err != nil {
+		return "" // Fail-open: unknown title
+	}
+	return issue.Title
+}
+
 // FindInProgressByTitle returns the first in_progress issue with a matching title.
 // Delegates to FindInProgressByTitleForProject with empty projectDir.
 func FindInProgressByTitle(title string) *Issue {
