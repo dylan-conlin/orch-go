@@ -94,6 +94,9 @@ func TestRenderDebrief(t *testing.T) {
 		WhatWeLearned: []string{
 			"Added JWT auth middleware with refresh tokens",
 		},
+		OpenQuestions: []string{
+			"Should token refresh remain middleware-driven or move into a shared client?",
+		},
 		WhatHappened: []string{
 			"Completed: `feature-impl` (orch-go-abc1) — Added JWT auth",
 			"Spawned: `investigation` — investigate auth patterns",
@@ -121,6 +124,10 @@ func TestRenderDebrief(t *testing.T) {
 		t.Error("expected What We Learned section")
 	}
 
+	if !strings.Contains(output, "## Open Questions") {
+		t.Error("expected Open Questions section")
+	}
+
 	if !strings.Contains(output, "## What's In Flight") {
 		t.Error("expected In Flight section")
 	}
@@ -136,9 +143,16 @@ func TestRenderDebrief(t *testing.T) {
 		t.Error("expected skill in output")
 	}
 
-	// Verify section order: Learned before Happened (comprehension order)
+	// Verify section order: Learned before Open Questions before Happened
 	learnedIdx := strings.Index(output, "## What We Learned")
+	openQuestionsIdx := strings.Index(output, "## Open Questions")
 	happenedIdx := strings.Index(output, "## What Happened")
+	if learnedIdx >= openQuestionsIdx {
+		t.Error("Open Questions should appear after What We Learned")
+	}
+	if openQuestionsIdx >= happenedIdx {
+		t.Error("Open Questions should appear before What Happened")
+	}
 	if learnedIdx >= happenedIdx {
 		t.Error("What We Learned should appear before What Happened")
 	}
@@ -236,12 +250,19 @@ func TestRenderDebriefWithDriftAndFriction(t *testing.T) {
 		t.Error("expected Friction Summary section")
 	}
 
-	// Check section order: Learned < Drift < Friction < In Flight
+	// Check section order: Learned < Open Questions < Drift < Friction < In Flight
 	learnedIdx := strings.Index(output, "## What We Learned")
+	openQuestionsIdx := strings.Index(output, "## Open Questions")
 	driftIdx := strings.Index(output, "## Drift Summary")
 	frictionIdx := strings.Index(output, "## Friction Summary")
 	inFlightIdx := strings.Index(output, "## What's In Flight")
 
+	if learnedIdx >= openQuestionsIdx {
+		t.Error("Open Questions should appear after What We Learned")
+	}
+	if openQuestionsIdx >= driftIdx {
+		t.Error("Drift Summary should appear after Open Questions")
+	}
 	if learnedIdx >= driftIdx {
 		t.Error("Drift Summary should appear after What We Learned")
 	}

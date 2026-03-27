@@ -1,0 +1,62 @@
+# VERIFICATION_SPEC.yaml — auto-apply routing labels on issue creation
+# Beads ID: orch-go-5d2qd
+
+deliverables:
+  - path: pkg/routing/inference.go
+    type: new-file
+    description: Shared skill inference helpers extracted from daemon routing logic.
+    verification: go test ./pkg/routing
+
+  - path: pkg/routing/labels.go
+    type: new-file
+    description: Routing-label enrichment that infers `skill:*` and `area:*` labels during issue creation.
+    verification: go test ./pkg/routing
+
+  - path: pkg/daemon/skill_inference.go
+    type: source-update
+    description: Daemon skill inference now delegates to the shared routing package.
+    verification: go test ./pkg/daemon -run 'TestInferSkill|TestInferSkillFromDescription|TestInferSkillFromIssue|TestInferModelFromSkill|TestInferBrowserToolFromLabels|TestInferEffortFromLabels|TestRouteModel'
+
+  - path: pkg/beads/client_operations.go
+    type: source-update
+    description: RPC issue creation enriches labels before sending the create request.
+    verification: go test ./pkg/beads
+
+  - path: pkg/beads/cli_client.go
+    type: source-update
+    description: CLI-backed issue creation enriches labels before building `bd create` args.
+    verification: go test ./pkg/beads
+
+  - path: pkg/beads/client_fallback.go
+    type: source-update
+    description: Fallback `bd create` path enriches labels before shelling out.
+    verification: go test ./pkg/beads
+
+  - path: pkg/beads/cli_client_test.go
+    type: test-update
+    description: Verifies CLI create args include inferred routing labels.
+    verification: go test ./pkg/beads
+
+  - path: pkg/beads/client_test.go
+    type: test-update
+    description: Verifies RPC create requests include inferred routing labels.
+    verification: go test ./pkg/beads
+
+automated_verification:
+  - command: go test ./pkg/routing ./pkg/beads
+    expected: All routing helpers and beads creation-path tests pass.
+  - command: go test ./pkg/daemon -run 'TestInferSkill|TestInferSkillFromDescription|TestInferSkillFromIssue|TestInferModelFromSkill|TestInferBrowserToolFromLabels|TestInferEffortFromLabels|TestRouteModel'
+    expected: Daemon inference behavior remains green after extraction to the shared routing package.
+
+manual_verification:
+  - step: Create a typed issue via a repo path that uses `pkg/beads` create helpers and confirm the issue now persists an inferred `skill:*` label and, when applicable, an inferred `area:*` label.
+    command: Not run in this session.
+    when: When validating against a live beads database or dashboard flow.
+
+design_decisions:
+  - decision: Extract routing inference into a new `pkg/routing` package instead of duplicating daemon logic in beads creation code.
+    reason: Creation-time enrichment and daemon-time spawning now share one inference source, reducing drift.
+  - decision: Preserve explicit `skill:*` and `area:*` labels and only add missing routing labels.
+    reason: Human-authored routing overrides must remain authoritative.
+  - decision: Infer area labels from concrete path/domain keywords and keep skill inference as the guaranteed routing backstop for typed issues.
+    reason: Skill routing must always persist for supported issue types, while area inference remains opportunistic and low-risk.

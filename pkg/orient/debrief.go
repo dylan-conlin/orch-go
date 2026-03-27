@@ -15,11 +15,12 @@ const (
 
 // DebriefSummary holds extracted data from a session debrief file.
 type DebriefSummary struct {
-	Date         string   `json:"date"`
-	WhatHappened []string `json:"what_happened,omitempty"`
+	Date          string   `json:"date"`
+	WhatHappened  []string `json:"what_happened,omitempty"`
 	WhatWeLearned []string `json:"what_we_learned,omitempty"`
-	InFlight     []string `json:"in_flight,omitempty"`
-	WhatsNext    []string `json:"whats_next,omitempty"`
+	OpenQuestions []string `json:"open_questions,omitempty"`
+	InFlight      []string `json:"in_flight,omitempty"`
+	WhatsNext     []string `json:"whats_next,omitempty"`
 }
 
 // FindLatestDebrief returns the path to the most recent debrief file
@@ -72,6 +73,7 @@ func ParseDebriefSummary(content string) *DebriefSummary {
 	// Extract sections
 	summary.WhatHappened = extractSection(content, "## What Happened", maxDebriefItems)
 	summary.WhatWeLearned = extractSection(content, "## What We Learned", maxDebriefItems)
+	summary.OpenQuestions = extractSection(content, "## Open Questions", maxDebriefItems)
 	summary.InFlight = extractSection(content, "## What's In Flight", maxDebriefItems)
 	summary.WhatsNext = extractSection(content, "## What's Next", maxDebriefItems)
 
@@ -160,7 +162,7 @@ func FormatPreviousSession(summary *DebriefSummary) string {
 	}
 
 	// Check if there's any content worth showing
-	if len(summary.WhatHappened) == 0 && len(summary.WhatWeLearned) == 0 &&
+	if len(summary.WhatHappened) == 0 && len(summary.WhatWeLearned) == 0 && len(summary.OpenQuestions) == 0 &&
 		len(summary.InFlight) == 0 && len(summary.WhatsNext) == 0 {
 		return ""
 	}
@@ -174,6 +176,9 @@ func FormatPreviousSession(summary *DebriefSummary) string {
 	}
 	if len(summary.WhatWeLearned) > 0 {
 		b.WriteString(fmt.Sprintf("   Learned: %s\n", strings.Join(summary.WhatWeLearned, "; ")))
+	}
+	if len(summary.OpenQuestions) > 0 {
+		b.WriteString(fmt.Sprintf("   Open questions: %s\n", strings.Join(summary.OpenQuestions, "; ")))
 	}
 	if len(summary.InFlight) > 0 {
 		b.WriteString(fmt.Sprintf("   In flight: %s\n", strings.Join(summary.InFlight, "; ")))

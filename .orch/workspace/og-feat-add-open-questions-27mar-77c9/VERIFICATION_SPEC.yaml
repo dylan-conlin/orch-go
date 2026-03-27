@@ -1,0 +1,16 @@
+version: 1
+summary: Add Open Questions to the session debrief template and generated debrief structure.
+changes:
+  - path: .kb/sessions/TEMPLATE.md
+    expectation: Template includes an `## Open Questions` section between `## What We Learned` and `## What's In Flight`.
+  - path: pkg/debrief/debrief.go
+    expectation: Rendered debriefs include an `Open Questions` section, defaulting to `(none)` when empty.
+  - path: pkg/orient/debrief.go
+    expectation: Debrief summaries parse and surface `Open Questions` content.
+verification:
+  automated:
+    - command: go test ./pkg/debrief ./pkg/orient
+      expectation: PASS; render and orient parsing tests cover the new section.
+      result: pass
+  manual: []
+discovered_work: none

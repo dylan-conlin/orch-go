@@ -30,16 +30,17 @@ type InFlightIssue struct {
 
 // DebriefData holds all data needed to render a session debrief.
 type DebriefData struct {
-	Date             string               `json:"date"`
-	Duration         string               `json:"duration,omitempty"`
-	Focus            string               `json:"focus"`
-	FocusAlignment   *FocusAlignmentData  `json:"focus_alignment,omitempty"`
-	WhatWeLearned    []string             `json:"what_we_learned,omitempty"`
-	DriftSummary     []string             `json:"drift_summary,omitempty"`
-	FrictionSummary  []string             `json:"friction_summary,omitempty"`
-	WhatHappened     []string             `json:"what_happened,omitempty"`
-	InFlight         []string             `json:"in_flight,omitempty"`
-	WhatsNext        []string             `json:"whats_next,omitempty"`
+	Date            string              `json:"date"`
+	Duration        string              `json:"duration,omitempty"`
+	Focus           string              `json:"focus"`
+	FocusAlignment  *FocusAlignmentData `json:"focus_alignment,omitempty"`
+	WhatWeLearned   []string            `json:"what_we_learned,omitempty"`
+	OpenQuestions   []string            `json:"open_questions,omitempty"`
+	DriftSummary    []string            `json:"drift_summary,omitempty"`
+	FrictionSummary []string            `json:"friction_summary,omitempty"`
+	WhatHappened    []string            `json:"what_happened,omitempty"`
+	InFlight        []string            `json:"in_flight,omitempty"`
+	WhatsNext       []string            `json:"whats_next,omitempty"`
 }
 
 // DebriefFilePath returns the file path for a debrief on the given date.
@@ -50,10 +51,11 @@ func DebriefFilePath(projectDir, date string) string {
 // RenderDebrief renders a DebriefData into markdown matching the template format.
 //
 // Section order is designed for comprehension, not chronology:
-//   1. What We Learned (insights first — the durable value of the session)
-//   2. What's In Flight (current state awareness)
-//   3. What's Next (strategic direction, not task list)
-//   4. What Happened (event log — reference, not lead)
+//  1. What We Learned (insights first — the durable value of the session)
+//  2. Open Questions (named gaps left unresolved by the session)
+//  3. What's In Flight (current state awareness)
+//  4. What's Next (strategic direction, not task list)
+//  5. What Happened (event log — reference, not lead)
 func RenderDebrief(data *DebriefData) string {
 	var b strings.Builder
 
@@ -78,6 +80,10 @@ func RenderDebrief(data *DebriefData) string {
 	// Position: how does this change your approach going forward?
 	b.WriteString("## What We Learned\n\n")
 	writeList(&b, data.WhatWeLearned)
+
+	// Open Questions — unresolved gaps, tensions, or decisions needing evidence
+	b.WriteString("## Open Questions\n\n")
+	writeList(&b, data.OpenQuestions)
 
 	// Drift Summary — models with stale knowledge detected during today's spawns
 	if len(data.DriftSummary) > 0 {

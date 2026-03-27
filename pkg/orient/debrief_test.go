@@ -21,6 +21,10 @@ func TestParseDebriefSummary_BasicDebrief(t *testing.T) {
 - decided to use JWT for auth
 - new constraint on debriefs
 
+## Open Questions
+
+- should we split auth refresh from the middleware path?
+
 ## What's In Flight
 
 - orch-go-abc1: Fix spawn crash on empty skill (in_progress)
@@ -51,6 +55,10 @@ func TestParseDebriefSummary_BasicDebrief(t *testing.T) {
 		t.Errorf("expected 2 WhatWeLearned items, got %d", len(summary.WhatWeLearned))
 	}
 
+	if len(summary.OpenQuestions) != 1 {
+		t.Errorf("expected 1 OpenQuestions item, got %d", len(summary.OpenQuestions))
+	}
+
 	if len(summary.InFlight) != 2 {
 		t.Errorf("expected 2 InFlight items, got %d", len(summary.InFlight))
 	}
@@ -66,6 +74,9 @@ func TestParseDebriefSummary_BasicDebrief(t *testing.T) {
 	// Verify content parsing strips list markers
 	if summary.WhatWeLearned[0] != "decided to use JWT for auth" {
 		t.Errorf("expected 'decided to use JWT for auth', got %q", summary.WhatWeLearned[0])
+	}
+	if summary.OpenQuestions[0] != "should we split auth refresh from the middleware path?" {
+		t.Errorf("unexpected open question: %q", summary.OpenQuestions[0])
 	}
 
 	// Verify bullet list items are parsed correctly
@@ -195,6 +206,9 @@ func TestFormatPreviousSession(t *testing.T) {
 		WhatWeLearned: []string{
 			"decided to use JWT for auth",
 		},
+		OpenQuestions: []string{
+			"should we split auth refresh from the middleware path?",
+		},
 		InFlight: []string{
 			"orch-go-abc1: Fix spawn crash on empty skill (in_progress)",
 		},
@@ -217,6 +231,9 @@ func TestFormatPreviousSession(t *testing.T) {
 	}
 	if !contains(result, "Learned:") {
 		t.Errorf("expected 'Changed:' section, got:\n%s", result)
+	}
+	if !contains(result, "Open questions:") {
+		t.Errorf("expected 'Open questions:' section, got:\n%s", result)
 	}
 	if !contains(result, "In flight:") {
 		t.Errorf("expected 'In flight:' section, got:\n%s", result)
