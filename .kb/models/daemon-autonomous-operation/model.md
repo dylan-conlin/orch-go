@@ -271,17 +271,34 @@ The daemon **runs from orch-go** (its orchestration home) but **polls all kb-reg
 
 Beyond poll-spawn-complete, the daemon runs a set of **periodic tasks** at configurable intervals:
 
-| Task | Default Interval | Purpose |
-|------|-----------------|---------|
-| kb reflect | 1h | Synthesis of quick entries and open investigations |
-| Cleanup | 6h | Close stale tmux windows for completed agents |
-| Recovery | 5m | Detect and reset idle agents |
-| Orphan detection | configurable | Reset dead agents to `open` |
-| Knowledge health | configurable | Create issues for stale kb artifacts |
+| Task | Default Interval | Purpose | Category |
+|------|-----------------|---------|----------|
+| kb reflect | 1h | Synthesis of quick entries and open investigations | Method-core |
+| Cleanup | 6h | Close stale tmux windows for completed agents | Substrate |
+| Recovery | 5m | Detect and reset idle agents | Substrate |
+| Orphan detection | 30m | Reset dead agents to `open` | Substrate |
+| Phase timeout | 5m | Flag unresponsive agents | Substrate |
+| Question detection | 5m | Surface QUESTION phase agents | Bridge |
+| Agreement check | 30m | Create issues for failing agreements | Substrate |
+| Beads health | 1h | Collect health snapshot metrics | Substrate |
+| Artifact sync | 24h | Detect artifact drift, create issues | Substrate |
+| Registry refresh | 5m | Pick up new projects without restart | Substrate |
+| Verification-failed escalation | 30m | Promote stuck agents to triage:review | Substrate |
+| Lightweight cleanup | 30m | Close stale --no-track issues | Substrate |
+| Capacity poll | 5m | Write account capacity cache | Substrate |
+| Audit select | 168h | Random quality audit selection | Method-core |
+| **Compose (planned)** | **2h** | **Between-session brief composition** | **Method-core** |
+
+**Task categories (from 2026-03-26 daemon behaviors investigation):**
+- **Substrate:** Execution infrastructure (what agents run, when, capacity)
+- **Bridge:** Daemon serving comprehension (throttle, verification, question detection)
+- **Method-core:** Knowledge composition (reflect, audit, compose) — the product surface
 
 **Daemon cleanup note:** Even when OpenCode manages session TTL, `RunPeriodicCleanup` must still run to close stale tmux windows. The daemon cleanup runs when due and updates `lastCleanup`.
 
-**Agreement checking (planned):** Agreement checking follows the same periodic task pattern — detect-create-spawn-verify sub-cycle feeding into the existing poll-spawn-complete loop. Agreement failures create `triage:ready` issues which daemon then spawns. This makes the daemon self-healing: it detects its own contract violations.
+**Agreement checking:** Agreement checking follows the periodic task pattern — detect-create-spawn-verify sub-cycle feeding into the existing poll-spawn-complete loop. Agreement failures create `triage:ready` issues which daemon then spawns. This makes the daemon self-healing: it detects its own contract violations.
+
+**Comprehension queue conditional labeling (Mar 27, 2026):** The comprehension queue supports selective population — not all completions must enter the queue. Maintenance work (bugs, debug, infra) can bypass `AddComprehensionUnread()` while still generating briefs for composition. No downstream consumer assumes 1:1 completion:label correspondence. This enables different treatment for maintenance vs knowledge-producing work.
 
 ### Config Construction Divergence
 
@@ -560,3 +577,8 @@ All 34 probes merged as of 2026-03-06. Listed chronologically with 1-line summar
 | `2026-03-18-probe-sibling-sequencing-test-impl-ordering` | Mar 18 | Extends | Daemon lacked cross-issue coordination for same-project test vs implementation ordering; test agents could write tests for undefined types. Added `ShouldDeferTestIssue()` in Decide phase. |
 | `../investigations/2026-03-27-inv-daemon-repeatedly-killed-sigkill-investigate.md` | Mar 27 | Extends | Daemon SIGKILL from launchd: exit-time reflection (no timeout) + missing context gates between main loop operations exceeded 5s ExitTimeOut. Fixed: 3s reflection timeout, context gates, ExitTimeOut=15s. Shutdown now 23-25ms. |
 | `../investigations/2026-03-27-design-architect-daemon-reliability.md` | Mar 27 | Extends | Structural review: 6 symptoms trace to 3 roots (unbounded shutdown, dual-write logging, organic subsystem growth). Double logging confirmed as Defect Class 5 (launchd + DaemonLogger both write to daemon.log). Cycle cache already solves shared scan. Dedup pipeline extraction is stable intermediate state; CAS redesign deferred to Phase 2. 5 phased interventions recommended. |
+| `2026-03-27-probe-between-session-composition-integration` | Mar 27 | Extends | Composition integrates cleanly as 14th periodic task. Comprehension queue supports conditional labeling (maintenance bypass). No new state needed — brief count derived from file timestamps. OODA loop and compose are independent execution paths. First method-core periodic task alongside substrate/bridge tasks. |
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-13-design-compliance-dial-mechanism.md

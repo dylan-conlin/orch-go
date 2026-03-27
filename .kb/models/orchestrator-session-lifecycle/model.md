@@ -1,7 +1,7 @@
 # Model: Orchestrator Session Lifecycle
 
 **Domain:** Orchestrator / Meta-Orchestration / Session Management
-**Last Updated:** 2026-03-12
+**Last Updated:** 2026-03-27
 **Synthesized From:** 40 investigations (Dec 21, 2025 - Jan 7, 2026) on orchestrator session boundaries, completion verification, frame collapse, checkpoint discipline, and hierarchical completion model. Updated Feb 2026 per probe findings: removed deleted session registry references, updated hierarchy to strategic comprehender pattern. Updated Mar 2026 (18 probes merged): skill injection path map, behavioral compliance gap, cross-project injection failure, constraint dilution, orientation preservation dimension. Updated 2026-03-11: expanded failure mode taxonomy from 5→12 modes via 6-investigation cross-reference; added intent displacement, error-correction feedback, staleness, injection failure, MUST fatigue, temporal decay, and knowledge surfacing gap. Updated 2026-03-12: added failure mode #13 (architect design bypass via issue framing) — 5-layer failure chain where issue description framing overrides architect design surfaced only as kb context pointer. Updated 2026-03-12: added evidence quality stratification from 67-claim inventory across 7 investigations and 4 probes — 14 high-confidence multi-source claims identified, replication failure caveat highlighted for dilution curve thresholds.
 
 ---
@@ -71,17 +71,20 @@ Five distinct paths inject orchestrator skill content into sessions:
 
 ### Session Types and Boundaries
 
-Three distinct session types exist with different completion patterns:
+Four distinct session types exist with different completion patterns:
 
 | Session Type | Boundary Trigger | Handoff Mechanism | Artifact | Beads Tracking |
 |--------------|------------------|-------------------|----------|----------------|
 | **Worker** | `Phase: Complete` + `/exit` | SPAWN_CONTEXT → SYNTHESIS | SYNTHESIS.md | Required |
 | **Orchestrator** | SESSION_HANDOFF.md + wait | ORCHESTRATOR_CONTEXT → SESSION_HANDOFF | SESSION_HANDOFF.md | Skipped |
 | **Cross-session** | End of working day | Manual reflection | SESSION_HANDOFF.md | N/A |
+| **Frustration** | Signal-driven (behavioral or user text) | Question + failure context | FRUSTRATION_BOUNDARY.md | Via Phase: Boundary |
 
 **Worker boundaries:** Protocol-driven. Agent reports completion via beads comment, exits, waits for orchestrator verification.
 
 **Orchestrator boundaries:** State-driven. Agent writes handoff artifact, waits (doesn't exit), meta-orchestrator reviews and completes.
+
+**Frustration boundaries:** Signal-driven. Detected via compound behavioral signals (headless workers) or user text analysis (interactive sessions). Carries forward the QUESTION, not the CONVERSATION — new session gets a fresh cognitive frame with only the original question and a diagnosis of what didn't work. Designed Mar 2026 after observing that mid-session reframing ("let me stop") doesn't reset attention patterns. See `.kb/investigations/2026-03-27-design-frustration-detection-session-boundary.md`.
 
 **Cross-session boundaries:** Manual checkpointing when Dylan ends work session.
 
@@ -341,7 +344,19 @@ The COMPREHEND → TRIAGE → SYNTHESIZE frame describes what the orchestrator d
 
 **Reference:** Probe `2026-03-12-probe-68gcy-architect-design-ignored-spawn-context-analysis.md`
 
+### 14. Cognitive Mode Lock-In — Mid-Session Attention Pattern Resistance (Mar 2026)
 
+**What happens:** An agent or orchestrator recognizes it's in a degraded state ("You're right. Let me stop") but continues producing the same pattern of analysis. The verbal acknowledgment doesn't reset the attention patterns established by the conversation history.
+
+**Root cause:** The conversation's accumulated attention patterns form a cognitive frame (see Frame Shift section). Mid-session instructions ("let me stop", "try something completely different") compete against the frame's gravity. The frame defines what the model sees as relevant — "let me stop" is processed WITHIN the degraded frame, not from outside it. This is structurally identical to frame collapse detection being impossible from inside the collapsed frame (failure mode #1).
+
+**Evidence:** Real session where orchestrator said "You're right. Let me stop" then produced more of the same analysis. Dylan manually closed the session and started fresh — the system should automate this.
+
+**Why prompts don't fix this:** Same mechanism as failure mode #1 (frame collapse): "Framing shapes perception and available actions. Instructions can be overridden by situational reasoning, but framing defines what's visible." A new session = new frame = genuine cognitive reset.
+
+**Status:** Design complete — frustration boundary mechanism proposed (two-track: interactive via UserPromptSubmit hook, headless via compound coaching signals + daemon respawn). Implementation pending.
+
+**Reference:** Probe `2026-03-27-probe-frustration-detection-session-boundary-design.md`, Investigation `2026-03-27-design-frustration-detection-session-boundary.md`
 
 Several failure modes amplify each other:
 
@@ -352,6 +367,9 @@ Several failure modes amplify each other:
 | Temporal Decay (#11) amplifies Competing Hierarchy (#3) | System prompt signal constant while skill signal decays |
 | Injection Failure (#9) makes prompt failures (#1-4) irrelevant | If skill never reaches agent, all prompt-level failures are moot |
 | Architect Design Bypass (#13) amplifies Knowledge Surfacing Gap (#12) | Architect designs committed to .kb/ but surfaced as low-salience pointers; issue framing wins |
+| Cognitive Mode Lock-In (#14) is caused by Frame Collapse (#1) | Both stem from "framing is stronger than instructions"; #14 is the specific case where self-correction fails mid-session |
+| Temporal Decay (#11) amplifies Cognitive Mode Lock-In (#14) | Longer sessions = deeper frame entrenchment = harder to break out via prompts |
+| Error-Correction Loop (#7) can trigger Cognitive Mode Lock-In (#14) | Repeated corrections drive agent into defensive pattern that becomes the locked frame |
 
 ### Primary Evolutionary Drivers (Jan→Mar 2026)
 
@@ -645,6 +663,7 @@ Three failure modes drove the majority of the skill's evolution:
 | `2026-03-12-probe-orchestrator-skill-investigation-cluster-contradiction-analysis.md` | Contradicts + Extends | 4 direct contradictions in skill investigation cluster: constraint budget (≤4) cited as established despite replication failure; skillc test fix claimed but broken; emphasis language as anti-pattern vs compliance tool. Probe-to-downstream propagation failure identified as systemic risk. Constraint budget qualified to "hypothesized" |
 | `2026-03-12-probe-orchestrator-skill-model-gap-analysis.md` | Confirms + Extends | Gap analysis: 44% of this model is skill-specific content; 5 probes should migrate to orchestrator-skill model; 5 gaps identified in new model; boundary defined (sessions = state/completion, skill = injection/dilution/enforcement) |
 | `2026-03-19-probe-command-invoked-telemetry.md` | Extends | Added `command.invoked` event type for measurement command usage tracking; caller context detection via CLAUDE_CONTEXT/ORCH_SPAWNED env vars; instruments 6 diagnostic commands (harness audit/report/gate-effectiveness, health, doctor, stats) |
+| `2026-03-27-probe-frustration-detection-session-boundary-design.md` | Extends | 4th session boundary type (frustration boundary) — signal-driven, carries question not conversation. New failure mode #14 (Cognitive Mode Lock-In). Validates "framing > instructions" as theoretical basis for why session boundaries work and prompts don't. |
 
 **Note (Mar 12, 2026):** A dedicated orchestrator-skill model exists at `.kb/models/orchestrator-skill/model.md`. ~44% of this model's content (skill injection paths, skill failure modes, skill evolution) overlaps. Future skill-specific updates should target the orchestrator-skill model; this model should reference it.
 
