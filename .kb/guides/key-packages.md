@@ -49,6 +49,7 @@
 - `consequence_sensor.go`: validates architect outputs declare how gate effects will be observed
 - `plan_hydration.go`: hydrates multi-phase architect plans into implementation issues
 - `synthesis_parser.go`: parses SYNTHESIS.md to extract phases (`ExtractPhases`), TLDRs, and structured sections
+- `synthesis_quality.go`: computes 6 quality signals from parsed Synthesis — structural_completeness, evidence_specificity, model_connection, connective_reasoning, tension_quality, insight_vs_report. `ComputeSynthesisQuality()` returns `SynthesisQuality` with signal count and `MeetsThreshold()` for advisory gates
 
 ## pkg/daemon/ + pkg/daemonconfig/ (Daemon)
 
@@ -66,7 +67,7 @@
 - Cycle cache (`cycle_cache.go`): shares `GetActiveAgents()` across periodic tasks to avoid redundant queries
 - Audit selection: random quality audits weighted toward auto-completed work
 - Capacity polling: account capacity cache for `orch status`
-- Comprehension queue (`comprehension_queue.go`): two-state lifecycle (unread/processed), spawn throttling
+- Comprehension queue (`comprehension_queue.go`): two-state lifecycle (unread/processed), spawn throttling, quality signal parsing (`ParseBriefSignals`, `ParseBriefSignalCount`), queue ordering by signal count (`OrderBriefsBySignals`), brief feedback tracking (`RecordBriefFeedback`)
 - Resume signal (`resume_signal.go`): file-based daemon resume trigger
 - Shutdown budget (`shutdown_budget.go`): explicit time budgets for shutdown phases (4s total, launchd 5s - 1s safety)
 - Launchd log dedup (`log.go`): detects stdout redirect to avoid double logging under launchd

@@ -42,7 +42,7 @@ The daemon is an autonomous agent spawner that:
 | `workspace_verify.go` | Post-spawn workspace verification — detects phantom spawns (L7) |
 | `interfaces.go` | Shared interfaces: `WorkspaceVerifier`, `IssueUpdater` |
 | `spawn_execution.go` | Spawn pipeline: dedup gates, pool slot, status update, spawn, workspace verify |
-| `comprehension_queue.go` | Two-state comprehension lifecycle (unread/processed), spawn throttling by unread count |
+| `comprehension_queue.go` | Two-state comprehension lifecycle (unread/processed), spawn throttling by unread count, quality signal parsing and queue ordering |
 | `resume_signal.go` | Resume signal file for manual daemon resumption (`~/.orch/daemon-resume.signal`) |
 | `prior_art_dedup.go` | Prior-art dedup gates: commit-based (L6) and keyword-based (L7) duplicate detection |
 | `health_signals.go` | Health signal computation (traffic-light levels) for sketchybar widget |
@@ -409,6 +409,21 @@ When an agent completes, the daemon can wake a headless orchestrator instance to
 - Auto-files discovered work without prompting
 
 **Code reference:** `pkg/daemon/auto_complete.go`, `cmd/orch/complete_cmd.go`
+
+### Comprehension Queue
+
+The daemon tracks a two-state comprehension lifecycle to prevent spawning faster than the orchestrator can review:
+
+- **comprehension:unread** — agent work is done, orchestrator hasn't reviewed yet
+- **comprehension:processed** — orchestrator reviewed, brief generated, Dylan hasn't read yet
+
+**Spawn throttling:** `CheckComprehensionThrottle()` blocks new spawns when unread count exceeds threshold (default: 5). Fail-open on query errors.
+
+**Quality signal ordering:** Briefs include quality metadata in YAML frontmatter (6 signals from `pkg/verify/synthesis_quality.go`). `ParseBriefSignals()` extracts per-signal detail, `OrderBriefsBySignals()` sorts the read queue by signal count and configurable priority signals. This lets the orchestrator read the highest-quality briefs first.
+
+**Brief feedback:** `RecordBriefFeedback()` records "shallow" or "good" ratings per brief, stored in `.kb/briefs/feedback/`. This data can inform future quality threshold tuning.
+
+**Code reference:** `pkg/daemon/comprehension_queue.go`
 
 ---
 

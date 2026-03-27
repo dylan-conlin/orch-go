@@ -511,6 +511,14 @@ After verification gates pass, `orch complete` runs advisory checks. These are i
 
 **Output:** Warning showing duplicate pairs. Does not block completion but may trigger review tier escalation.
 
+### Synthesis Quality Advisory
+
+**File:** `pkg/verify/synthesis_quality.go`
+
+**What it checks:** Computes 6 mechanically-detectable quality signals from SYNTHESIS.md: structural_completeness (3+/4 D.E.K.N. sections populated), evidence_specificity (concrete file paths/test output), model_connection (kb model references), connective_reasoning (connective language), tension_quality (questions in unexplored section), insight_vs_report (insight lines > report lines).
+
+**Output:** Quality summary embedded in brief frontmatter (`signal_count`, per-signal `score`/`detected`/`evidence`). Used by comprehension queue to order brief reading priority. Does not block completion.
+
 ### Hotspot Advisory
 
 **What it checks:** Whether the agent added >50 lines to files already >800 lines. Warns about accretion.
