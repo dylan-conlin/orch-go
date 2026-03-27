@@ -369,7 +369,7 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier s
 	// so by the time this check runs, the issue should exist.
 	if !isOrch && ShouldRunGate(verifyLevel, GateArchitectHandoff) {
 		result.GatesRun = append(result.GatesRun, GateArchitectHandoff)
-		handoffResult := VerifyArchitectHandoff(workspacePath, result.Skill, beadsID, projectDir)
+		handoffResult := VerifyArchitectHandoff(workspacePath, result.Skill, beadsID, projectDir, comments)
 		if handoffResult != nil {
 			if !handoffResult.Passed {
 				result.Passed = false

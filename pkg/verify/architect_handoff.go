@@ -49,12 +49,16 @@ func IsActionableArchitectRecommendation(recommendation string) bool {
 // corresponding implementation issues in beads.
 //
 // When beadsID is non-empty and the recommendation is actionable, the gate checks
-// that an implementation issue exists (title containing "from architect <beadsID>").
+// that an implementation issue exists via three signals (in order):
+//  1. Title pattern: issue title contains "(from architect <beadsID>)" (auto-created)
+//  2. Comment evidence: "Phase: Handoff - Created implementation issues:" in comments
+//  3. Comment opt-out: "No implementation issues:" in Phase: Handoff comment
+//
 // The auto-create mechanism runs before this gate in the completion pipeline,
-// so by the time this check runs, the issue should exist.
+// so by the time this check runs, the title-pattern issue should exist.
 //
 // Returns a passing result for non-architect skills.
-func VerifyArchitectHandoff(workspacePath, skill, beadsID, projectDir string) *VerificationResult {
+func VerifyArchitectHandoff(workspacePath, skill, beadsID, projectDir string, comments []Comment) *VerificationResult {
 	result := &VerificationResult{Passed: true}
 
 	// Only applies to architect skill
@@ -65,7 +69,17 @@ func VerifyArchitectHandoff(workspacePath, skill, beadsID, projectDir string) *V
 	// Try to parse SYNTHESIS.md
 	synthesis, err := ParseSynthesis(workspacePath)
 	if err != nil {
-		// If SYNTHESIS.md doesn't exist, the synthesis gate handles that separately
+		// Architect skill REQUIRES SYNTHESIS.md with a Recommendation field.
+		// Previously this returned passing (deferring to the V2+ synthesis gate),
+		// but architect defaults to V1 where the synthesis gate doesn't run.
+		// This was the root cause of 9/9 architect completions closing without
+		// implementation issues — the gate silently passed.
+		result.Passed = false
+		result.Errors = append(result.Errors,
+			fmt.Sprintf("SYNTHESIS.md is missing or unparseable — architect skill requires "+
+				"SYNTHESIS.md with **Recommendation:** field. "+
+				"Valid values: %s", formatValidRecommendations()))
+		result.GatesFailed = append(result.GatesFailed, GateArchitectHandoff)
 		return result
 	}
 
@@ -93,26 +107,74 @@ func VerifyArchitectHandoff(workspacePath, skill, beadsID, projectDir string) *V
 	// For actionable recommendations, verify implementation issue exists.
 	// Skip this check if beadsID is empty (e.g., unit tests without beads context).
 	if IsActionableArchitectRecommendation(recommendation) && beadsID != "" {
+		// Check 1: Title pattern match (auto-created issues)
 		exists, err := HasImplementationFollowUp(beadsID, projectDir)
 		if err != nil {
 			// Beads query failed — don't block completion on infrastructure issues,
 			// but warn so the orchestrator can investigate.
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("Could not verify implementation issue exists for architect %s: %v", beadsID, err))
-		} else if !exists {
-			result.Passed = false
-			result.Errors = append(result.Errors,
-				fmt.Sprintf("Architect recommendation is %q but no implementation issue found for %s. "+
-					"Expected an issue with title containing \"(from architect %s)\". "+
-					"Auto-create may have failed — check stderr output above, or create manually via: "+
-					"bd create \"<title> (from architect %s)\" --type task -l triage:ready",
-					recommendation, beadsID, beadsID, beadsID))
-			result.GatesFailed = append(result.GatesFailed, GateArchitectHandoff)
 			return result
 		}
+
+		if exists {
+			return result
+		}
+
+		// Check 2: Comment evidence — architect manually created issues and reported them
+		// Pattern: "Phase: Handoff - Created implementation issues: <ids>"
+		if hasHandoffIssueEvidence(comments) {
+			return result
+		}
+
+		// Check 3: Comment opt-out — architect explicitly declared no issues with reason
+		// Pattern: "No implementation issues: <reason>"
+		if hasHandoffOptOut(comments) {
+			result.Warnings = append(result.Warnings,
+				"Architect declared 'No implementation issues' — design is advisory only")
+			return result
+		}
+
+		// No implementation issue found via any signal
+		result.Passed = false
+		result.Errors = append(result.Errors,
+			fmt.Sprintf("Architect recommendation is %q but no implementation issue found for %s. "+
+				"Expected one of:\n"+
+				"  1. Issue with title containing \"(from architect %s)\" (auto-created)\n"+
+				"  2. Comment: \"Phase: Handoff - Created implementation issues: <ids>\"\n"+
+				"  3. Comment: \"Phase: Handoff - No implementation issues: <reason>\"\n"+
+				"Auto-create may have failed — create manually via: "+
+				"bd create \"<title> (from architect %s)\" --type task -l triage:ready",
+				recommendation, beadsID, beadsID, beadsID))
+		result.GatesFailed = append(result.GatesFailed, GateArchitectHandoff)
+		return result
 	}
 
 	return result
+}
+
+// hasHandoffIssueEvidence checks beads comments for evidence that the architect
+// manually created implementation issues (reported in Phase: Handoff comment).
+func hasHandoffIssueEvidence(comments []Comment) bool {
+	for _, c := range comments {
+		lower := strings.ToLower(c.Text)
+		if strings.Contains(lower, "phase: handoff") && strings.Contains(lower, "created implementation issues") {
+			return true
+		}
+	}
+	return false
+}
+
+// hasHandoffOptOut checks beads comments for an explicit opt-out from creating
+// implementation issues (architect declared design is advisory-only).
+func hasHandoffOptOut(comments []Comment) bool {
+	for _, c := range comments {
+		lower := strings.ToLower(c.Text)
+		if strings.Contains(lower, "no implementation issues:") {
+			return true
+		}
+	}
+	return false
 }
 
 // formatValidRecommendations returns a human-readable list of valid recommendations.
