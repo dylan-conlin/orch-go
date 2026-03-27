@@ -421,6 +421,8 @@ func TestSpawnPipeline_Integration_AllLayersPass(t *testing.T) {
 			&TitleDedupMemoryGate{Tracker: tracker},
 			&TitleDedupBeadsGate{FindFunc: func(title string) *Issue { return nil }},
 			&FreshStatusGate{GetStatusFunc: func(beadsID string) (string, error) { return "open", nil }},
+			&CommitDedupGate{HasCommitsFunc: func(beadsID string) bool { return false }},
+			&KeywordDedupGate{FindOverlapFunc: func(title, selfID string) (bool, string) { return false, "" }},
 		},
 		AdvisoryChecks: []AdvisoryCheck{
 			&SpawnCountAdvisory{Tracker: tracker, Threshold: 3},
@@ -433,8 +435,8 @@ func TestSpawnPipeline_Integration_AllLayersPass(t *testing.T) {
 	if !result.Allowed {
 		t.Errorf("Pipeline rejected unexpectedly: %s by %s", result.RejectionMessage, result.RejectedBy)
 	}
-	if len(result.GateResults) != 5 {
-		t.Errorf("GateResults length = %d, want 5", len(result.GateResults))
+	if len(result.GateResults) != 7 {
+		t.Errorf("GateResults length = %d, want 7", len(result.GateResults))
 	}
 }
 

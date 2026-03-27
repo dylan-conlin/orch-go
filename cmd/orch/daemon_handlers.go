@@ -22,6 +22,9 @@ func runDaemonDryRun() error {
 	// NOTE: Extraction system disabled. Hotspot checking not configured.
 	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
 
+	// Wire commit dedup checker for prior-art detection.
+	d.CommitChecker = daemon.HasRecentCommitsForBeadsID
+
 	// Wire focus-aware priority boost
 	wireFocusBoost(d)
 
@@ -175,6 +178,9 @@ func runDaemonPreview() error {
 
 	// NOTE: Extraction system disabled. Hotspot checking not configured.
 	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
+
+	// Wire commit dedup checker for prior-art detection.
+	d.CommitChecker = daemon.HasRecentCommitsForBeadsID
 
 	// Wire focus-aware priority boost
 	wireFocusBoost(d)

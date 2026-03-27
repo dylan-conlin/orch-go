@@ -155,6 +155,12 @@ type Daemon struct {
 	// ArtifactSync provides periodic artifact drift analysis and issue creation.
 	ArtifactSync ArtifactSyncService
 
+	// CommitChecker checks if a beads ID has associated commits in git history.
+	// Used by CommitDedupGate to prevent spawning work that has already been
+	// committed. When nil, the gate is skipped. Production code sets this to
+	// hasRecentCommitsForBeadsID; tests leave it nil to avoid git subprocess calls.
+	CommitChecker func(beadsID string) bool
+
 
 
 

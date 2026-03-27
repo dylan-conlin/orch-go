@@ -262,14 +262,33 @@ func (d *Daemon) buildSpawnPipeline() *SpawnPipeline {
 		}
 	}
 
+	// Build commit dedup gate: checks if referenced beads IDs have git commits.
+	// Uses d.CommitChecker when set (production); nil skips the gate (tests).
+	commitDedupGate := &CommitDedupGate{
+		HasCommitsFunc: d.CommitChecker,
+	}
+
+	// Build gate list with required gates
+	gates := []SpawnGate{
+		&SpawnTrackerGate{Tracker: d.SpawnedIssues},     // L1: Spawn cache (ID)
+		&SessionDedupGate{},                              // L2: Session/tmux existence
+		&TitleDedupMemoryGate{Tracker: d.SpawnedIssues}, // L3: Title dedup (in-memory)
+		titleDedupGate,                                   // L4: Title dedup (beads DB)
+		freshStatusGate,                                  // L5: Fresh status re-check
+		commitDedupGate,                                  // L6: Referenced issue commit check
+	}
+
+	// Add keyword dedup gate when spawn tracker is available
+	if d.SpawnedIssues != nil {
+		gates = append(gates, &KeywordDedupGate{ // L7: Keyword overlap dedup
+			FindOverlapFunc: func(title, selfID string) (bool, string) {
+				return FindKeywordOverlap(d.SpawnedIssues, title, selfID)
+			},
+		})
+	}
+
 	return &SpawnPipeline{
-		Gates: []SpawnGate{
-			&SpawnTrackerGate{Tracker: d.SpawnedIssues},          // L1: Spawn cache (ID)
-			&SessionDedupGate{},                                   // L2: Session/tmux existence
-			&TitleDedupMemoryGate{Tracker: d.SpawnedIssues},      // L3: Title dedup (in-memory)
-			titleDedupGate,                                        // L4: Title dedup (beads DB)
-			freshStatusGate,                                       // L5: Fresh status re-check
-		},
+		Gates: gates,
 		AdvisoryChecks: []AdvisoryCheck{
 			&SpawnCountAdvisory{Tracker: d.SpawnedIssues, Threshold: 3},
 		},

@@ -139,6 +139,10 @@ func daemonSetup() (*daemonLoopState, error) {
 	// fails open (ComprehensionQuerier is nil, so the check is skipped entirely).
 	d.ComprehensionQuerier = &daemon.BeadsComprehensionQuerier{}
 
+	// Wire commit dedup checker for prior-art detection.
+	// Checks if referenced beads IDs in issue descriptions already have commits.
+	d.CommitChecker = daemon.HasRecentCommitsForBeadsID
+
 	// Wire beads health service (reuses collectHealthSnapshot from doctor_health.go)
 	d.BeadsHealth = daemon.NewDefaultBeadsHealthService(collectHealthSnapshot, getHealthStore())
 
