@@ -201,21 +201,13 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 	}
 
 	// Transition comprehension:unread → comprehension:processed.
-	// Runs regardless of IsClosed: auto-completed agents are already closed
-	// when the orchestrator reviews them via orch complete.
-	if target.BeadsID != "" {
+	// Only on interactive orch complete (not headless, not orchestrator).
+	// This lets comprehension:unread survive until human review, serving as
+	// the single daemon throttle gate. Headless/automated completions leave
+	// the label intact so the daemon sees accurate review backlog counts.
+	if target.BeadsID != "" && !completeHeadless && !target.IsOrchestratorSession {
 		if err := daemon.TransitionToProcessedInDir(target.BeadsID, target.BeadsProjectDir); err != nil {
 			// Non-critical: label may not exist (e.g., manual completion, not daemon-queued)
-		}
-
-		// Signal human verification to daemon — only when Dylan is the actor.
-		// Headless completions (daemon-triggered) and orchestrator sessions are
-		// automated; signaling from those paths resets the daemon's
-		// completionsSinceVerification counter, defeating the comprehension throttle.
-		if !completeHeadless && !target.IsOrchestratorSession {
-			if err := daemon.WriteVerificationSignal(); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to signal human verification to daemon: %v\n", err)
-			}
 		}
 	}
 
