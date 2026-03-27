@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -580,4 +581,199 @@ func TestVerificationFailedEscalation_PicksUpArchitectHandoffFailures(t *testing
 	if !strings.Contains(LabelVerificationFailed, "verification-failed") {
 		t.Error("LabelVerificationFailed must contain 'verification-failed' for escalation scanner alignment")
 	}
+}
+
+// TestCompletionOnce_ArchitectHandoffGateFailure_WithLiveBeads is the integration test
+// that exercises the full daemon auto-complete path with a real beads database.
+// This closes the gap identified in the original task: "verification_failed_escalation.go
+// should label it, but untested with live beads."
+//
+// The test:
+// 1. Initializes a beads project in a temp dir
+// 2. Creates an issue and adds "Phase: Complete" comment
+// 3. Sets up an architect workspace with missing Recommendation (triggers gate failure)
+// 4. Runs CompletionOnce → ProcessCompletion → VerifyCompletionCompliance
+// 5. Verifies: gate failure flows through retry tracker AND label is applied on exhaustion
+func TestCompletionOnce_ArchitectHandoffGateFailure_WithLiveBeads(t *testing.T) {
+	// Initialize beads in a temp dir
+	projectDir := t.TempDir()
+	out, err := runBdCommandInDirForTest(projectDir, "init")
+	if err != nil {
+		t.Skipf("bd init failed (bd CLI not available?): %v: %s", err, out)
+	}
+
+	// Create an issue
+	out, err = runBdCommandInDirForTest(projectDir, "create", "design caching layer", "--type", "task", "--json")
+	if err != nil {
+		t.Fatalf("bd create failed: %v: %s", err, out)
+	}
+
+	// Parse issue ID from JSON output (may have warning text before the JSON block)
+	var created struct {
+		ID string `json:"id"`
+	}
+	outStr := string(out)
+	// Find the JSON object in the output (bd may print warnings before it)
+	jsonStart := strings.Index(outStr, "{")
+	jsonEnd := strings.LastIndex(outStr, "}")
+	if jsonStart >= 0 && jsonEnd > jsonStart {
+		if jsonErr := json.Unmarshal([]byte(outStr[jsonStart:jsonEnd+1]), &created); jsonErr != nil {
+			t.Fatalf("failed to parse issue JSON: %v: %s", jsonErr, outStr)
+		}
+	}
+	if created.ID == "" {
+		t.Fatalf("could not parse issue ID from bd create output: %s", outStr)
+	}
+
+	// Transition to in_progress
+	_, err = runBdCommandInDirForTest(projectDir, "update", created.ID, "--status", "in_progress")
+	if err != nil {
+		t.Fatalf("bd update failed: %v", err)
+	}
+
+	// Add Phase: Complete comment
+	_, err = runBdCommandInDirForTest(projectDir, "comments", "add", created.ID, "Phase: Complete - Design document written")
+	if err != nil {
+		t.Fatalf("bd comments add failed: %v", err)
+	}
+
+	// Create architect workspace
+	wsDir := filepath.Join(projectDir, ".orch", "workspace", "og-arch-test-live")
+	if mkErr := os.MkdirAll(wsDir, 0755); mkErr != nil {
+		t.Fatal(mkErr)
+	}
+
+	// AGENT_MANIFEST.json — V1 architect
+	manifest := map[string]string{
+		"workspace_name": "og-arch-test-live",
+		"skill":          "architect",
+		"beads_id":       created.ID,
+		"project_dir":    projectDir,
+		"spawn_time":     "2026-03-27T00:00:00Z",
+		"tier":           "full",
+		"verify_level":   "V1",
+		"review_tier":    "review",
+	}
+	manifestJSON, _ := json.Marshal(manifest)
+	os.WriteFile(filepath.Join(wsDir, "AGENT_MANIFEST.json"), manifestJSON, 0644)
+
+	// SPAWN_CONTEXT.md
+	os.WriteFile(filepath.Join(wsDir, "SPAWN_CONTEXT.md"),
+		[]byte("## SKILL GUIDANCE (architect)\nArchitect instructions.\n"), 0644)
+
+	// SYNTHESIS.md WITHOUT **Recommendation:** — triggers architect_handoff gate
+	os.WriteFile(filepath.Join(wsDir, "SYNTHESIS.md"),
+		[]byte("## TLDR\nDesigned caching layer.\n\n## Next\nImplement it.\n"), 0644)
+
+	tracker := NewVerificationRetryTracker()
+
+	d := &Daemon{
+		VerificationRetryTracker: tracker,
+		Completions: &mockCompletionFinder{
+			ListCompletedAgentsFunc: func(config CompletionConfig) ([]CompletedAgent, error) {
+				return []CompletedAgent{
+					{
+						BeadsID:       created.ID,
+						Title:         "design caching layer",
+						Status:        "in_progress",
+						PhaseSummary:  "Design document written",
+						WorkspacePath: wsDir,
+						ProjectDir:    "",
+					},
+				}, nil
+			},
+		},
+	}
+
+	config := CompletionConfig{
+		ProjectDir: projectDir,
+	}
+
+	// Run first completion cycle
+	result, err := d.CompletionOnce(config)
+	if err != nil {
+		t.Fatalf("CompletionOnce error: %v", err)
+	}
+
+	if len(result.Processed) != 1 {
+		t.Fatalf("expected 1 processed, got %d", len(result.Processed))
+	}
+
+	compResult := result.Processed[0]
+
+	// MUST have an error (gate failure)
+	if compResult.Error == nil {
+		t.Fatal("expected verification error from architect_handoff gate failure")
+	}
+
+	// Error should mention "Recommendation" (the missing field that triggers the gate)
+	errMsg := compResult.Error.Error()
+	if !strings.Contains(errMsg, "Recommendation") {
+		t.Errorf("error should mention 'Recommendation', got: %s", errMsg)
+	}
+
+	// GatesFailed should include architect_handoff
+	foundGate := false
+	for _, g := range compResult.Verification.GatesFailed {
+		if g == "architect_handoff" {
+			foundGate = true
+		}
+	}
+	if !foundGate {
+		t.Errorf("expected 'architect_handoff' in GatesFailed, got %v", compResult.Verification.GatesFailed)
+	}
+
+	// Retry tracker should have recorded 1 failure
+	if tracker.Attempts(created.ID) != 1 {
+		t.Errorf("expected 1 attempt, got %d", tracker.Attempts(created.ID))
+	}
+
+	// Exhaust the retry budget (3 attempts for local)
+	d.CompletionOnce(config)
+	d.CompletionOnce(config)
+
+	if !tracker.IsExhausted(created.ID, false) {
+		t.Error("should be exhausted after 3 attempts")
+	}
+
+	// Verify the label was applied to the beads issue
+	out, err = runBdCommandInDirForTest(projectDir, "show", created.ID, "--json")
+	if err != nil {
+		t.Fatalf("bd show failed: %v: %s", err, out)
+	}
+
+	// bd show --json returns an array of issues
+	var issues []struct {
+		Labels []string `json:"labels"`
+	}
+	outStr = string(out)
+	jsonStart = strings.Index(outStr, "[")
+	jsonEnd = strings.LastIndex(outStr, "]")
+	if jsonStart >= 0 && jsonEnd > jsonStart {
+		if jsonErr := json.Unmarshal([]byte(outStr[jsonStart:jsonEnd+1]), &issues); jsonErr != nil {
+			t.Fatalf("failed to parse issue JSON: %v: %s", jsonErr, outStr)
+		}
+	}
+	if len(issues) == 0 {
+		t.Fatalf("bd show returned no issues: %s", outStr)
+	}
+
+	foundLabel := false
+	for _, l := range issues[0].Labels {
+		if l == LabelVerificationFailed {
+			foundLabel = true
+		}
+	}
+	if !foundLabel {
+		t.Errorf("expected label %q on issue after retry exhaustion, got %v", LabelVerificationFailed, issues[0].Labels)
+	}
+}
+
+// runBdCommandInDirForTest wraps bd CLI with BEADS_DIR set to the project's .beads directory.
+func runBdCommandInDirForTest(projectDir string, args ...string) ([]byte, error) {
+	beadsDir := filepath.Join(projectDir, ".beads")
+	cmd := exec.Command("bd", args...)
+	cmd.Dir = projectDir
+	cmd.Env = append(os.Environ(), "BEADS_DIR="+beadsDir)
+	return cmd.CombinedOutput()
 }
