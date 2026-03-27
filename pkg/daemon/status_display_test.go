@@ -140,11 +140,6 @@ func TestFormatStatusInfo_Paused(t *testing.T) {
 		PID:     42,
 		Status:  "paused",
 		Capacity: CapacityStatus{Max: 3},
-		Verification: &VerificationStatusSnapshot{
-			IsPaused:                     true,
-			CompletionsSinceVerification: 5,
-			Threshold:                    3,
-		},
 	}
 	result := FormatStatusInfo(info)
 	if !strings.Contains(result, "PAUSED") {

@@ -33,25 +33,8 @@ func TestSense_CollectsIssues(t *testing.T) {
 	}
 }
 
-func TestSense_GatesBlock(t *testing.T) {
-	tracker := NewVerificationTracker(1)
-	tracker.RecordCompletion("test-1") // triggers pause at threshold=1
-
-	d := &Daemon{
-		VerificationTracker: tracker,
-		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
-			return []Issue{}, nil
-		}},
-	}
-
-	result := d.Sense(nil)
-	if result.GateSignal.Allowed {
-		t.Error("Sense() gate should be blocked when verification paused")
-	}
-	if result.GateSignal.Reason == "" {
-		t.Error("Sense() should provide block reason")
-	}
-}
+// Removed: VerificationTracker was removed from Daemon
+// TestSense_GatesBlock tested VerificationTracker-based gate blocking which no longer exists.
 
 func TestSense_IssueQueryError(t *testing.T) {
 	d := &Daemon{
@@ -456,31 +439,8 @@ func TestOODA_FullCycle_EmptyQueue(t *testing.T) {
 	}
 }
 
-func TestOODA_FullCycle_GatesBlock(t *testing.T) {
-	tracker := NewVerificationTracker(1)
-	tracker.RecordCompletion("test-1")
-
-	d := &Daemon{
-		VerificationTracker: tracker,
-		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
-			}, nil
-		}},
-	}
-
-	sense := d.Sense(nil)
-	orient := d.Orient(sense)
-	decision := d.Decide(orient, nil)
-	result, err := d.Act(decision)
-
-	if err != nil {
-		t.Fatalf("OODA cycle error: %v", err)
-	}
-	if result.Processed {
-		t.Error("OODA cycle should not process when gates block")
-	}
-}
+// Removed: VerificationTracker was removed from Daemon
+// TestOODA_FullCycle_GatesBlock tested VerificationTracker-based gate blocking which no longer exists.
 
 // TestOODA_BehavioralEquivalence verifies that the OODA cycle produces
 // the same result as the original OnceExcluding for the same inputs.

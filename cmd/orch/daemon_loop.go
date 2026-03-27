@@ -13,7 +13,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/group"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
-	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
 // daemonLoopState holds shared state for the daemon main loop.
@@ -160,9 +159,6 @@ func daemonSetup() (*daemonLoopState, error) {
 	// instead of labeling for orchestrator review.
 	d.AutoCompleter = &daemon.OrcCompleter{}
 
-	// Seed verification tracker with unverified backlog from previous sessions
-	seedVerificationTracker(d)
-
 	// Reconcile spawn cache against live sessions.
 	// After reboot, agents are dead but their spawn cache entries persist (6h TTL).
 	// Without this, the daemon refuses to re-spawn until TTL expires.
@@ -234,10 +230,10 @@ func (s *daemonLoopState) logDaemonConfig() {
 	} else {
 		s.dlog.Printf("  Orphan detection:  disabled\n")
 	}
-	if s.config.VerificationPauseThreshold > 0 {
-		s.dlog.Printf("  Verify threshold:  %d (pause after N unverified completions)\n", s.config.VerificationPauseThreshold)
+	if s.config.ComprehensionThreshold > 0 {
+		s.dlog.Printf("  Review threshold:  %d (pause when comprehension queue exceeds threshold)\n", s.config.ComprehensionThreshold)
 	} else {
-		s.dlog.Printf("  Verify threshold:  disabled\n")
+		s.dlog.Printf("  Review threshold:  disabled\n")
 	}
 	if s.config.InvariantCheckEnabled && s.config.InvariantViolationThreshold > 0 {
 		s.dlog.Printf("  Invariant check:   enabled (pause after %d consecutive violation cycles)\n", s.config.InvariantViolationThreshold)
@@ -322,15 +318,8 @@ func (s *daemonLoopState) processDaemonCompletions(timestamp string) *daemon.Com
 				// the counter by 2, making the daemon pause at half the expected
 				// number of completions.
 
-				// Check if verification tracker was paused by ProcessCompletion
-				if s.d.VerificationTracker != nil && s.d.VerificationTracker.IsPaused() {
-					verifyStatus := s.d.VerificationTracker.Status()
-					breakdown := verificationBreakdown()
-					s.dlog.Printf("[%s] Verification threshold reached: %d/%d agents ready for review%s\n",
-						timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
-					s.dlog.Printf("[%s]    Daemon will pause spawning on next cycle\n", timestamp)
-					s.dlog.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work\n", timestamp)
-				}
+				// Note: VerificationTracker was removed — verification pause is now handled
+				// by the review backlog gate (comprehension threshold) in CheckPreSpawnGates.
 
 				// Log the completion
 				event := events.Event{
@@ -528,97 +517,24 @@ func (s *daemonLoopState) runDaemonSpawnCycle(timestamp string) spawnCycleResult
 	return spawnCycleResult{spawned: spawnedThisCycle}
 }
 
-// checkDaemonSignals checks for verification and resume signals between cycles.
+// checkDaemonSignals checks for resume signals between cycles.
 func (s *daemonLoopState) checkDaemonSignals(timestamp string) {
-	// Check for verification signal (human ran `orch complete`)
-	if s.d.VerificationTracker != nil {
-		if verified, err := daemon.CheckAndClearVerificationSignal(); err != nil {
-			s.dlog.Errorf("[%s] Warning: failed to check verification signal: %v\n", timestamp, err)
-		} else if verified {
-			s.d.VerificationTracker.RecordHumanVerification()
-			s.dlog.Printf("[%s] Human verification detected - verification counter reset\n", timestamp)
-		}
-	}
-
 	// Check for resume signal (manual resume command)
 	// This allows Dylan to resume the daemon without running orch complete.
 	// Also clears invariant checker pause state.
+	// Resume drains all comprehension:unread → processed to clear the gate.
 	if resumed, err := daemon.CheckAndClearResumeSignal(); err != nil {
 		s.dlog.Errorf("[%s] Warning: failed to check resume signal: %v\n", timestamp, err)
 	} else if resumed {
-		if s.d.VerificationTracker != nil {
-			s.d.VerificationTracker.Resume()
-		}
 		if s.d.InvariantChecker != nil {
 			s.d.InvariantChecker.Resume()
 		}
-		s.dlog.Printf("[%s] Daemon resumed manually - verification counter and invariant checker reset\n", timestamp)
+		s.dlog.Printf("[%s] Daemon resumed manually - invariant checker reset\n", timestamp)
 	}
 }
 
-// checkVerificationPause checks if the daemon should pause for human verification.
-// Returns true if the cycle should be skipped (daemon is paused).
-func (s *daemonLoopState) checkVerificationPause(timestamp string) bool {
-	if s.d.VerificationTracker == nil {
-		return false
-	}
-	verifyStatus := s.d.VerificationTracker.Status()
-	if s.d.VerificationTracker.IsPaused() {
-		// Re-sync tracker with actual backlog before staying paused.
-		// Issues may have been closed via headless completion, bd close, or
-		// other non-interactive paths that don't write verification signals.
-		items, err := verify.ListUnverifiedWork()
-		if err == nil {
-			ids := make([]string, len(items))
-			for i, item := range items {
-				ids[i] = item.BeadsID
-			}
-			if s.d.VerificationTracker.ResyncWithBacklog(ids) {
-				s.dlog.Printf("[%s] Verification auto-resumed: backlog dropped below threshold after resync\n", timestamp)
-				return false
-			}
-		}
-
-		verifyStatus = s.d.VerificationTracker.Status() // refresh after resync
-		breakdown := verificationBreakdown()
-		s.dlog.Printf("[%s] Verification pause: %d unverified completions, threshold is %d%s\n",
-			timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
-		s.dlog.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work to continue\n", timestamp)
-
-		// Write status file during pause so last_poll stays fresh
-		// and status correctly shows "paused" instead of going stale.
-		pauseStatus := daemon.DaemonStatus{
-			PID: os.Getpid(),
-			Capacity: daemon.CapacityStatus{
-				Max:       s.config.MaxAgents,
-				Active:    s.d.ActiveCount(),
-				Available: s.d.AvailableSlots(),
-			},
-			LastPoll:       time.Now(),
-			LastSpawn:      s.lastSpawn,
-			LastCompletion: s.lastCompletion,
-			Status:         "paused",
-			Verification: &daemon.VerificationStatusSnapshot{
-				IsPaused:                     true,
-				CompletionsSinceVerification: verifyStatus.CompletionsSinceVerification,
-				Threshold:                    verifyStatus.Threshold,
-				LastVerification:             verifyStatus.LastVerification,
-				RemainingBeforePause:         verifyStatus.RemainingBeforePause(),
-			},
-		}
-		if err := daemon.WriteStatusFile(pauseStatus); err != nil && daemonVerbose {
-			s.dlog.Errorf("Warning: failed to write status file: %v\n", err)
-		}
-
-		time.Sleep(s.config.PollInterval)
-		return true
-	}
-	if verifyStatus.IsEnabled() {
-		s.dlog.Printf("[%s] Verification check: %d/%d unverified completions, proceeding\n",
-			timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
-	}
-	return false
-}
+// checkVerificationPause is removed — comprehension gate (Gate 2 in
+// CheckPreSpawnGates) is the single review backlog throttle now.
 
 // checkInvariants runs self-check invariants to catch scope-expansion bugs at runtime.
 // Returns true if the cycle should be skipped (daemon is paused due to violations).
@@ -653,17 +569,10 @@ func (s *daemonLoopState) checkInvariants(timestamp string, completionResult *da
 		// Fail-open: if listing fails, use the partial list from completion results
 	}
 
-	verifyStatus := daemon.VerificationStatus{}
-	if s.d.VerificationTracker != nil {
-		verifyStatus = s.d.VerificationTracker.Status()
-	}
-
 	invariantInput := &daemon.InvariantInput{
-		ActiveCount:           s.d.ActiveCount(),
-		MaxAgents:             s.config.MaxAgents,
-		VerificationCount:     verifyStatus.CompletionsSinceVerification,
-		VerificationThreshold: verifyStatus.Threshold,
-		CompletedAgents:       completedAgents,
+		ActiveCount:    s.d.ActiveCount(),
+		MaxAgents:      s.config.MaxAgents,
+		CompletedAgents: completedAgents,
 	}
 
 	checkResult := s.d.InvariantChecker.Check(invariantInput)
@@ -708,22 +617,6 @@ func (s *daemonLoopState) checkInvariants(timestamp string, completionResult *da
 
 // writeDaemonStatusFile writes the daemon status file with current state and snapshots.
 func (s *daemonLoopState) writeDaemonStatusFile(readyCount int, periodicResult periodicTasksResult) {
-	var verificationSnapshot *daemon.VerificationStatusSnapshot
-	isPaused := false
-	if s.d.VerificationTracker != nil {
-		verifyStatus := s.d.VerificationTracker.Status()
-		isPaused = verifyStatus.IsPaused
-		if verifyStatus.IsEnabled() {
-			verificationSnapshot = &daemon.VerificationStatusSnapshot{
-				IsPaused:                     verifyStatus.IsPaused,
-				CompletionsSinceVerification: verifyStatus.CompletionsSinceVerification,
-				Threshold:                    verifyStatus.Threshold,
-				LastVerification:             verifyStatus.LastVerification,
-				RemainingBeforePause:         verifyStatus.RemainingBeforePause(),
-			}
-		}
-	}
-
 	var completionFailureSnapshot *daemon.CompletionFailureSnapshot
 	if s.d.CompletionFailureTracker != nil {
 		snapshot := s.d.CompletionFailureTracker.Snapshot()
@@ -762,8 +655,7 @@ func (s *daemonLoopState) writeDaemonStatusFile(readyCount int, periodicResult p
 		LastSpawn:            s.lastSpawn,
 		LastCompletion:       s.lastCompletion,
 		ReadyCount:           readyCount,
-		Status:               daemon.DetermineStatus(pollTime, s.config.PollInterval, isPaused),
-		Verification:         verificationSnapshot,
+		Status:               daemon.DetermineStatus(pollTime, s.config.PollInterval, false),
 		CompletionFailures:   completionFailureSnapshot,
 		PhaseTimeout:      periodicResult.PhaseTimeoutSnapshot,
 		QuestionDetection: periodicResult.QuestionDetectionSnapshot,

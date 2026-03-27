@@ -589,30 +589,5 @@ func TestPreview_SpawnableCountTracksAllPassingIssues(t *testing.T) {
 	}
 }
 
-func TestPreview_ShowsVerificationPaused(t *testing.T) {
-	tracker := NewVerificationTracker(2)
-	tracker.RecordCompletion("test-1")
-	tracker.RecordCompletion("test-2")
-	// Tracker should now be paused (2/2)
-
-	d := &Daemon{
-		VerificationTracker: tracker,
-		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{ID: "proj-1", Title: "Issue", Priority: 0, IssueType: "feature", Status: "open"},
-			}, nil
-		}},
-	}
-
-	result, err := d.Preview()
-	if err != nil {
-		t.Fatalf("Preview() unexpected error: %v", err)
-	}
-
-	if !result.VerificationPaused {
-		t.Error("Preview() should report verification paused")
-	}
-	if result.VerificationStatus == "" {
-		t.Error("Preview() should set verification status message")
-	}
-}
+// Removed: VerificationTracker was removed from Daemon
+// TestPreview_ShowsVerificationPaused tested VerificationTracker-based pause reporting which no longer exists.

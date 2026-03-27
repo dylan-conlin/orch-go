@@ -24,8 +24,6 @@ type PreviewResult struct {
 	Message            string
 	RateLimited        bool             // True if rate limit would prevent spawning
 	RateStatus         string           // Rate limit status message (e.g., "5/20 spawns in last hour")
-	VerificationPaused bool             // True if verification pause would prevent spawning
-	VerificationStatus string           // Verification pause status message
 	HotspotWarnings       []HotspotWarning       // Warnings about hotspot areas this issue may touch
 	ChannelHealthWarnings []ChannelHealthWarning // Skills with rework=0 + high completions (silent channel)
 	RejectedIssues        []RejectedIssue        // Issues that were rejected with reasons
@@ -67,14 +65,6 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 			result.Message = msg
 			// Still collect rejected issues even if rate limited
 		}
-	}
-
-	// Check verification pause status (matches CheckPreSpawnGates gate 1)
-	if d.VerificationTracker != nil && d.VerificationTracker.IsPaused() {
-		status := d.VerificationTracker.Status()
-		result.VerificationPaused = true
-		result.VerificationStatus = fmt.Sprintf("Paused for human verification (%d/%d auto-completions). Resume with: orch daemon resume",
-			status.CompletionsSinceVerification, status.Threshold)
 	}
 
 	// Get all issues and categorize them

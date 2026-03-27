@@ -79,34 +79,6 @@ func TestInvariantChecker_ActiveCountWithinRange(t *testing.T) {
 	}
 }
 
-func TestInvariantChecker_VerificationCounterOverflow(t *testing.T) {
-	ic := NewInvariantChecker(3, 5)
-	result := ic.Check(&InvariantInput{
-		MaxAgents:             5,
-		VerificationCount:     4,
-		VerificationThreshold: 3,
-	})
-	if !result.HasViolations() {
-		t.Fatal("verification counter exceeding threshold should be a violation")
-	}
-	if result.Violations[0].Name != "verification-counter-overflow" {
-		t.Errorf("expected verification-counter-overflow, got %s", result.Violations[0].Name)
-	}
-}
-
-func TestInvariantChecker_VerificationCounterAtThreshold(t *testing.T) {
-	ic := NewInvariantChecker(3, 5)
-	// Exactly at threshold is OK (pause is supposed to trigger AT threshold)
-	result := ic.Check(&InvariantInput{
-		MaxAgents:             5,
-		VerificationCount:     3,
-		VerificationThreshold: 3,
-	})
-	if result.HasViolations() {
-		t.Error("verification counter at threshold should NOT be a violation")
-	}
-}
-
 func TestInvariantChecker_CompletionMissingProjectDir(t *testing.T) {
 	ic := NewInvariantChecker(3, 5)
 	result := ic.Check(&InvariantInput{
@@ -249,29 +221,25 @@ func TestInvariantChecker_Resume(t *testing.T) {
 func TestInvariantChecker_CriticalCount(t *testing.T) {
 	ic := NewInvariantChecker(3, 5)
 	result := ic.Check(&InvariantInput{
-		ActiveCount:           -1,   // critical
-		MaxAgents:             5,
-		VerificationCount:     10,   // critical
-		VerificationThreshold: 3,
+		ActiveCount: -1, // critical
+		MaxAgents:   5,
 		CompletedAgents: []CompletedAgent{
 			{BeadsID: "test-untracked-abc"}, // warning
 		},
 	})
-	if result.CriticalCount() != 2 {
-		t.Errorf("expected 2 critical violations, got %d", result.CriticalCount())
+	if result.CriticalCount() != 1 {
+		t.Errorf("expected 1 critical violation (negative active count), got %d", result.CriticalCount())
 	}
 }
 
 func TestInvariantChecker_MultipleViolationsInOneCycle(t *testing.T) {
 	ic := NewInvariantChecker(3, 5)
 	result := ic.Check(&InvariantInput{
-		ActiveCount:           -1,
-		MaxAgents:             5,
-		VerificationCount:     10,
-		VerificationThreshold: 3,
+		ActiveCount: -1,
+		MaxAgents:   5,
 	})
-	if len(result.Violations) != 2 {
-		t.Errorf("expected 2 violations, got %d", len(result.Violations))
+	if len(result.Violations) != 1 {
+		t.Errorf("expected 1 violation (negative active count), got %d", len(result.Violations))
 	}
 }
 

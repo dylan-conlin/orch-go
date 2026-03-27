@@ -19,12 +19,7 @@ func TestComputeDaemonHealth_AllGreen(t *testing.T) {
 		LastSpawn:      now.Add(-5 * time.Minute),
 		LastCompletion: now.Add(-10 * time.Minute),
 		ReadyCount:     5,
-		Verification: &VerificationStatusSnapshot{
-			IsPaused:                     false,
-			RemainingBeforePause:         4,
-			Threshold:                    5,
-			CompletionsSinceVerification: 1,
-		},
+		// Note: Verification field removed — review backlog managed by comprehension gate
 		PhaseTimeout: &PhaseTimeoutSnapshot{
 			UnresponsiveCount: 0,
 			LastCheck:         now,
@@ -192,63 +187,9 @@ func TestComputeDaemonHealth_MediumQueue(t *testing.T) {
 	}
 }
 
-func TestComputeDaemonHealth_VerificationPaused(t *testing.T) {
-	now := time.Now()
-	status := &DaemonStatus{
-		PID:    1234,
-		Status: "paused",
-		Capacity: CapacityStatus{
-			Max:       3,
-			Active:    0,
-			Available: 3,
-		},
-		LastPoll:   now.Add(-30 * time.Second),
-		ReadyCount: 5,
-		Verification: &VerificationStatusSnapshot{
-			IsPaused:             true,
-			RemainingBeforePause: 0,
-			Threshold:            5,
-		},
-	}
-
-	summary := ComputeDaemonHealth(status, now)
-	sig := findSignal(summary, "Evidence Check")
-	if sig == nil {
-		t.Fatal("expected Evidence Check signal")
-	}
-	if sig.Level != "red" {
-		t.Errorf("expected red for paused verification, got %s", sig.Level)
-	}
-}
-
-func TestComputeDaemonHealth_VerificationLow(t *testing.T) {
-	now := time.Now()
-	status := &DaemonStatus{
-		PID:    1234,
-		Status: "running",
-		Capacity: CapacityStatus{
-			Max:       3,
-			Active:    0,
-			Available: 3,
-		},
-		LastPoll:   now.Add(-30 * time.Second),
-		ReadyCount: 5,
-		Verification: &VerificationStatusSnapshot{
-			IsPaused:             false,
-			RemainingBeforePause: 1,
-			Threshold:            5,
-		},
-	}
-
-	summary := ComputeDaemonHealth(status, now)
-	sig := findSignal(summary, "Evidence Check")
-	if sig == nil {
-		t.Fatal("expected Evidence Check signal")
-	}
-	if sig.Level != "yellow" {
-		t.Errorf("expected yellow for 1 remaining, got %s", sig.Level)
-	}
-}
+// Removed: VerificationTracker was removed from Daemon
+// TestComputeDaemonHealth_VerificationPaused and TestComputeDaemonHealth_VerificationLow
+// tested VerificationStatusSnapshot which no longer exists.
 
 func TestComputeDaemonHealth_UnresponsiveAgents(t *testing.T) {
 	now := time.Now()

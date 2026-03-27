@@ -171,90 +171,9 @@ func TestRouteIssueForSpawn_StrictComplianceAllowsArchitectEscalation(t *testing
 	}
 }
 
-// --- Verification ceiling tests ---
-
-func TestExecuteCompletionRoute_AutoComplete_DoesNotRecordVerification(t *testing.T) {
-	// Auto-completed agents should NOT count toward verification ceiling
-	tracker := NewVerificationTracker(3)
-	d := &Daemon{
-		VerificationTracker: tracker,
-		AutoCompleter: &mockAutoCompleter{
-			CompleteFunc: func(beadsID, workdir string) error {
-				return nil
-			},
-		},
-	}
-
-	agent := CompletedAgent{BeadsID: "proj-1", PhaseSummary: "done"}
-	route := CompletionRoute{Action: "auto-complete", ReviewTier: "auto"}
-	signal := CompletionVerifySignal{Passed: true}
-	config := CompletionConfig{ProjectDir: "/tmp"}
-
-	result := d.ExecuteCompletionRoute(agent, route, signal, config)
-	if !result.AutoCompleted {
-		t.Error("expected AutoCompleted=true")
-	}
-
-	status := tracker.Status()
-	if status.CompletionsSinceVerification != 0 {
-		t.Errorf("auto-complete should not increment verification counter, got %d", status.CompletionsSinceVerification)
-	}
-}
-
-func TestExecuteCompletionRoute_LabelReadyReview_RecordsVerification(t *testing.T) {
-	// label-ready-review completions SHOULD count toward verification ceiling
-	tracker := NewVerificationTracker(3)
-	d := &Daemon{
-		VerificationTracker: tracker,
-	}
-
-	agent := CompletedAgent{BeadsID: "proj-1", PhaseSummary: "done"}
-	route := CompletionRoute{Action: "label-ready-review", ReviewTier: "review"}
-	signal := CompletionVerifySignal{Passed: true}
-	config := CompletionConfig{ProjectDir: "/tmp"}
-
-	// labelReadyReview will fail because verify.AddLabel needs real beads,
-	// but we can test that the tracker would be called in the right code path.
-	// Instead, test recordUnverifiedCompletion directly.
-	d.recordUnverifiedCompletion("proj-1", config)
-
-	status := tracker.Status()
-	if status.CompletionsSinceVerification != 1 {
-		t.Errorf("label-ready-review should increment verification counter, got %d", status.CompletionsSinceVerification)
-	}
-
-	// Suppress unused variable warnings
-	_ = agent
-	_ = route
-	_ = signal
-}
-
-func TestExecuteCompletionRoute_AutoCompleteLight_DoesNotRecordVerification(t *testing.T) {
-	tracker := NewVerificationTracker(3)
-	d := &Daemon{
-		VerificationTracker: tracker,
-		AutoCompleter: &mockLightAutoCompleter{
-			CompleteLightFunc: func(beadsID, workdir string) error {
-				return nil
-			},
-		},
-	}
-
-	agent := CompletedAgent{BeadsID: "proj-2", Labels: []string{"effort:small"}, PhaseSummary: "done"}
-	route := CompletionRoute{Action: "auto-complete-light"}
-	signal := CompletionVerifySignal{Passed: true}
-	config := CompletionConfig{ProjectDir: "/tmp"}
-
-	result := d.ExecuteCompletionRoute(agent, route, signal, config)
-	if !result.AutoCompleted {
-		t.Error("expected AutoCompleted=true for light auto-complete")
-	}
-
-	status := tracker.Status()
-	if status.CompletionsSinceVerification != 0 {
-		t.Errorf("light auto-complete should not increment verification counter, got %d", status.CompletionsSinceVerification)
-	}
-}
+// Note: VerificationTracker-based ceiling tests removed — VerificationTracker was
+// replaced by the comprehension threshold gate. Auto-complete vs label-ready-review
+// routing is tested below.
 
 func TestRouteCompletion_ScanTier_AutoCompletes(t *testing.T) {
 	// Scan-tier work (investigations, probes) should auto-complete.
