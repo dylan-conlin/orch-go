@@ -133,8 +133,13 @@ func DeriveArchitectEscalationEnabled(level ComplianceLevel) bool {
 	return level <= ComplianceStandard
 }
 
-// DeriveSynthesisRequired returns whether SYNTHESIS.md is required at the given level.
-func DeriveSynthesisRequired(level ComplianceLevel) bool {
+// DeriveSynthesisRequired returns whether SYNTHESIS.md is required at the given
+// compliance level and spawn tier. Light-tier spawns never require synthesis
+// regardless of compliance level.
+func DeriveSynthesisRequired(level ComplianceLevel, tier string) bool {
+	if tier == "light" {
+		return false
+	}
 	return level <= ComplianceStandard
 }
 

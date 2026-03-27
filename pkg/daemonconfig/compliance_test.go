@@ -177,18 +177,31 @@ func TestDeriveArchitectEscalationEnabled(t *testing.T) {
 
 func TestDeriveSynthesisRequired(t *testing.T) {
 	tests := []struct {
+		name  string
 		level ComplianceLevel
+		tier  string
 		want  bool
 	}{
-		{ComplianceStrict, true},
-		{ComplianceStandard, true},
-		{ComplianceRelaxed, false},
-		{ComplianceAutonomous, false},
+		// Non-light tiers respect compliance level
+		{"strict/standard tier", ComplianceStrict, "standard", true},
+		{"standard/standard tier", ComplianceStandard, "standard", true},
+		{"relaxed/standard tier", ComplianceRelaxed, "standard", false},
+		{"autonomous/standard tier", ComplianceAutonomous, "standard", false},
+		{"strict/deep tier", ComplianceStrict, "deep", true},
+		{"strict/empty tier", ComplianceStrict, "", true},
+
+		// Light tier always skips synthesis regardless of compliance
+		{"strict/light tier", ComplianceStrict, "light", false},
+		{"standard/light tier", ComplianceStandard, "light", false},
+		{"relaxed/light tier", ComplianceRelaxed, "light", false},
+		{"autonomous/light tier", ComplianceAutonomous, "light", false},
 	}
 	for _, tt := range tests {
-		if got := DeriveSynthesisRequired(tt.level); got != tt.want {
-			t.Errorf("DeriveSynthesisRequired(%v) = %v, want %v", tt.level, got, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DeriveSynthesisRequired(tt.level, tt.tier); got != tt.want {
+				t.Errorf("DeriveSynthesisRequired(%v, %q) = %v, want %v", tt.level, tt.tier, got, tt.want)
+			}
+		})
 	}
 }
 
