@@ -87,7 +87,7 @@ This model describes the general loop, catalogs known instances, and identifies 
 |-------|-----------|-------------|
 | **Capture** | Embedded in existing workflow; costs nothing extra | Requires separate reflection step; agents skip it |
 | **Accumulation** | Survives sessions; queryable; bounded growth | Session-local; grows unbounded; unqueryable |
-| **Clustering** | Explicit metadata key; machine-readable | Relies on human to notice pattern; natural language only |
+| **Clustering** | Explicit metadata key; machine-readable. For structured signals with "unresolved question" sections, cluster on the question — it converges where narratives diverge | Relies on human to notice pattern; natural language only |
 | **Synthesis** | Has authority to recommend design; human in loop | Pure reporting; no one acts on clusters |
 | **Design Response** | Targets system, not instances; verifiable | Patches individual instances; no way to measure |
 
@@ -140,6 +140,19 @@ This model describes the general loop, catalogs known instances, and identifies 
 **Synthesis:** Daemon or orchestrator surfaces: "feature-impl workers report partial fit 4x this month"
 **Design Response:** Skill boundary redesign, spawn heuristic update
 **Stage maturity:** Capture 🔲 not yet built | Accumulation 🔲 | Clustering 🔲 | Synthesis 🔲 | Response 🔲
+
+### Instance 6: Brief Composition → Thread Updates
+
+**Signal:** BRIEF.md (Frame/Resolution/Tension sections) produced by full-tier agents on completion
+**Accumulation:** `.kb/briefs/{beads-id}.md` — persistent, survives sessions, ~1-3 per day
+**Clustering:** `orch compose` clusters by content similarity; Tension sections cluster better than Frames (unresolved questions converge when briefs share an underlying gap)
+**Synthesis:** Orchestrator presents digest to Dylan at session start; Dylan engages with clusters conversationally
+**Design Response:** Thread updates (append entries, create new threads), model probes, or decisions
+**Stage maturity:** Capture ✅ | Accumulation ✅ | Clustering 🔲 designed, not built | Synthesis ⚠️ manual (orchestrator session) | Response ⚠️ manual (thread operations)
+
+**Key finding (2026-03-26):** Briefs are structured signals — their Tension section (open questions) clusters at higher semantic precision than their Frame section (narrative). This extends the clustering resolution hierarchy for structured signal types: when signals have a "what's unresolved" section, cluster on the question, not the narrative.
+
+**Design constraint:** Composition must stop at Stage 3 (clustering) and not complete Stage 4 (synthesis). The boundary is intentional — per the Understanding Through Engagement principle, synthesis requires Dylan's participation. The digest artifact includes "draft thread proposals" but does NOT modify threads directly. See `.kb/investigations/2026-03-26-design-brief-composition-layer.md`.
 
 ---
 
@@ -231,6 +244,7 @@ This model describes the general loop, catalogs known instances, and identifies 
 | 2026-03-20 | Extended: Layer 5 Vision Gate Design | Second probe from LED magnetic letters. Designed multimodal vision gate (multi-angle renders + structured checklists) to close the coverage gap. Key finding: "Gate Over Remind" extends across abstraction levels when the gate is multimodal. Calibration protocol required before blocking mode. |
 | 2026-03-25 | Extended: Spatial Composition Gap | Probe from LED totem toppers sled port layout. Gate coverage gap has a sub-class: inter-feature clearance in constrained volumes. USB-C pocket (14mm depth) and cable channel collide at 0.9mm separation — invisible to L1-L3 gates. Caught only by design-phase spatial reasoning. Suggests a Layer 1.5 "clearance matrix" gate for compositional pocket validation. |
 | 2026-03-25 | Extended: Physical Realizability Gap | Probe from LED totem toppers assembly feasibility review. 9/9 connectivity probes pass but three physical transitions are unvalidated: wire gauge vs gallery dimensions (22AWG won't fit), wiring gap 1.2mm overlap (0.2mm margin), button-to-PVC actuator reach (0.2mm margin). Probes verify topology, not physics. Cross-component interfaces (sled + PVC + purchased parts) have no signal capture mechanism. |
+| 2026-03-26 | New instance: Brief Composition (Instance 6) + Extended clustering stage | Probe from brief composition layer design. Briefs are structured signals whose Tension sections cluster better than Frame sections — unresolved questions converge when briefs share an underlying gap. Extended "Works When" column for clustering stage. Also identified a new design parameter: the Stage 3/4 boundary is a choice, not fixed — how much synthesis to include in automation depends on trust in the automated actor and value of human participation. |
 
 ---
 

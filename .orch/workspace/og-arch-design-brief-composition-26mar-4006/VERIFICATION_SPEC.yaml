@@ -1,0 +1,50 @@
+name: brief-composition-layer-design
+type: architect
+issue: orch-go-c5ha1
+
+verification:
+  design_completeness:
+    description: All 5 design forks navigated with substrate-traced recommendations
+    forks:
+      - name: who_composes
+        resolution: orchestrator_session
+        substrate: Understanding Through Engagement, Comprehension artifacts thread
+      - name: when_trigger
+        resolution: accumulation_threshold_session_start
+        substrate: signal-to-design-loop Stage 3, Asymmetric Velocity
+      - name: output_artifact
+        resolution: digest_with_draft_proposals
+        substrate: Provenance, epistemic dishonesty thread
+      - name: queue_interaction
+        resolution: composition_does_not_drain_queue
+        substrate: Asymmetric Velocity, epistemic dishonesty thread
+      - name: closed_loop_management
+        resolution: epistemic_labeling_three_layers
+        substrate: Provenance, closed-loop risk thread
+
+  artifacts_produced:
+    - path: .kb/investigations/2026-03-26-design-brief-composition-layer.md
+      type: investigation
+    - path: .kb/global/models/signal-to-design-loop/probes/2026-03-26-probe-brief-composition-as-clustering-stage-instance.md
+      type: probe
+    - path: .kb/global/models/signal-to-design-loop.md
+      type: model_update
+      changes: "New Instance 6, extended clustering stage description, new evolution entry"
+
+  composition_claims:
+    - id: CC-1
+      claim: "Composition never modifies threads directly"
+      verification: "Design specifies draft proposals only; no thread.Append() in compose path"
+    - id: CC-2
+      claim: "Queue state unchanged by composition"
+      verification: "Design explicitly excludes TransitionToProcessed from compose path"
+    - id: CC-3
+      claim: "Every digest includes epistemic status label"
+      verification: "Digest format template includes mandatory epistemic status section"
+    - id: CC-4
+      claim: "Digest clusters trace to specific brief IDs"
+      verification: "Digest format requires brief IDs + clustering rationale per cluster"
+
+  manual_verification:
+    - "Orchestrator reviews investigation for coherence with product decision"
+    - "Dylan confirms composition approach matches how he wants to engage with briefs"
