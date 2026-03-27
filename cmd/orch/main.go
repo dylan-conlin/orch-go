@@ -85,6 +85,7 @@ func init() {
 	rootCmd.AddCommand(decisionsCmd)
 	rootCmd.AddCommand(comprehensionCmd)
 	rootCmd.AddCommand(benchCmd)
+	rootCmd.AddCommand(composeCmd)
 }
 
 var (

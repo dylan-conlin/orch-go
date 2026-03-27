@@ -1,0 +1,46 @@
+verification:
+  type: implementation
+  issue: orch-go-hmdan
+
+  tests:
+    command: "go test ./pkg/compose/ -v -count=1"
+    expected: "15 tests pass (PASS)"
+    actual: "15 tests pass — TestParseBrief, TestParseBriefFallbackID, TestExtractKeywords, TestKeywordOverlap, TestClusterBriefs, TestClusterBriefsEmpty, TestLoadBriefs, TestLoadThreads, TestLoadThreadsMissingDir, TestMatchClusterToThreads, TestWriteDigest, TestComposeEndToEnd, TestWeightedKeywords, TestFilterCommonKeywords, TestFilterCommonKeywordsSmallCorpus"
+
+  build:
+    command: "go build ./pkg/compose/ && go vet ./pkg/compose/"
+    expected: "Clean build and vet"
+    actual: "Clean (no output)"
+
+  smoke_test:
+    command: "go run ./cmd/orch/ compose (requires daemon build fix)"
+    expected: "Produces digest with multiple clusters from 71 briefs"
+    actual: "9 clusters, 3 unclustered, 71 briefs composed. CLI build blocked by pre-existing daemon VerificationTracker error."
+    note: "Verified via standalone test program that imports only pkg/compose"
+
+  claims_verified:
+    - id: CC-1
+      claim: "Composition never modifies threads directly"
+      verified: true
+      evidence: "compose package has no thread write operations; pkg/compose/threads.go only reads thread files"
+    - id: CC-2
+      claim: "Queue state is unchanged by composition"
+      verified: true
+      evidence: "compose package does not import pkg/daemon; no calls to TransitionToProcessed or RemoveComprehensionUnread"
+    - id: CC-3
+      claim: "Every digest includes epistemic status label"
+      verified: true
+      evidence: "DefaultEpistemicStatus constant included in every digest via renderDigest(); TestWriteDigest verifies presence"
+    - id: CC-4
+      claim: "Digest clusters trace to specific brief IDs"
+      verified: true
+      evidence: "Every cluster lists member brief IDs with content rationale; TestWriteDigest verifies brief IDs in output"
+
+  manual_steps:
+    - "Fix pre-existing daemon VerificationTracker build error to enable `go run ./cmd/orch/ compose`"
+    - "Run `orch compose` against real briefs and verify clusters match Dylan's mental model"
+
+  known_limitations:
+    - "Cluster names are keyword-based (rough); could benefit from LLM naming in Phase 2"
+    - "Two briefs with prose titles instead of beads IDs get parsed with first word as ID"
+    - "Full CLI build blocked by pre-existing daemon package error (unrelated to compose)"
