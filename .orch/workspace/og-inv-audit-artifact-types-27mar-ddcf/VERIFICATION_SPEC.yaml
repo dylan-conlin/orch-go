@@ -1,0 +1,82 @@
+verification:
+  type: investigation
+  issue: orch-go-y85zx
+  workspace: og-inv-audit-artifact-types-27mar-ddcf
+
+  automated_checks:
+    - name: "Probe file exists"
+      command: "test -f .kb/models/compositional-accretion/probes/2026-03-27-probe-artifact-type-audit-design-criterion.md"
+      expected: "exit 0"
+      result: "PASS"
+
+    - name: "Probe has all 4 required sections"
+      command: "grep -c '## Question\\|## What I Tested\\|## What I Observed\\|## Model Impact' .kb/models/compositional-accretion/probes/2026-03-27-probe-artifact-type-audit-design-criterion.md"
+      expected: "4"
+      result: "PASS"
+
+    - name: "Model updated with Failure Mode 4"
+      command: "grep -c 'Failure Mode 4' .kb/models/compositional-accretion/model.md"
+      expected: ">= 1"
+      result: "PASS"
+
+    - name: "Model has 4th design criterion question"
+      command: "grep -c 'adoption rate' .kb/models/compositional-accretion/model.md"
+      expected: ">= 1"
+      result: "PASS"
+
+    - name: "Model table expanded to 13 surfaces"
+      command: "grep -c 'COMPOSING\\|PILING UP\\|MIXED\\|INERT' .kb/models/compositional-accretion/model.md"
+      expected: ">= 13"
+      result: "PASS"
+
+    - name: "CA-06 claim added"
+      command: "grep -c 'CA-06' .kb/models/compositional-accretion/model.md"
+      expected: ">= 1"
+      result: "PASS"
+
+    - name: "SYNTHESIS.md exists"
+      command: "test -f .orch/workspace/og-inv-audit-artifact-types-27mar-ddcf/SYNTHESIS.md"
+      expected: "exit 0"
+      result: "PASS"
+
+    - name: "BRIEF.md exists"
+      command: "test -f .orch/workspace/og-inv-audit-artifact-types-27mar-ddcf/BRIEF.md"
+      expected: "exit 0"
+      result: "PASS"
+
+  evidence_summary:
+    data_sources:
+      - ".kb/briefs/*.md (73 briefs)"
+      - ".kb/investigations/*.md (365 active)"
+      - ".kb/investigations/archived/*.md (854 archived)"
+      - ".kb/models/*/probes/*.md (306 probes)"
+      - ".kb/threads/*.md (60 threads)"
+      - ".kb/decisions/*.md (44 decisions)"
+      - ".kb/sessions/*-debrief.md (18 debriefs)"
+      - ".orch/workspace/*/SYNTHESIS.md (31 files)"
+      - ".orch/workspace/*/VERIFICATION_SPEC.yaml (85 files)"
+      - ".orch/workspace/*/BRIEF.md (17 files)"
+      - ".kb/guides/*.md (37 guides)"
+      - ".kb/models/*/model.md (45 models)"
+      - ".beads/issues.jsonl (2,136 issues)"
+
+    key_findings:
+      - "Briefs: 100% tension adoption (opt-out) → COMPOSING"
+      - "Investigations: 18% model link, 20% defect-class (opt-in) → PILING UP (81.9% orphan)"
+      - "Beads: 18% enriched (opt-in) → PILING UP"
+      - "Probes: 84% Model Impact (natural), 18% claim/verdict (formal) → COMPOSING with gap"
+      - "Model extended: signal adoption rate mediates composition; opt-in signals plateau at 15-25%"
+
+  manual_verification_required:
+    - description: "Review whether 4th design criterion question (adoption rate) is correctly calibrated"
+      reason: "The 80% threshold is inferred from the gap between opt-in (15-25%) and opt-out (84-100%), not directly measured"
+
+  deliverables:
+    - path: ".kb/models/compositional-accretion/probes/2026-03-27-probe-artifact-type-audit-design-criterion.md"
+      description: "Full audit probe with measurements across 13 artifact types"
+    - path: ".kb/models/compositional-accretion/model.md"
+      description: "Updated model with Failure Mode 4, adoption constraint, 4th criterion question, CA-06"
+    - path: ".orch/workspace/og-inv-audit-artifact-types-27mar-ddcf/SYNTHESIS.md"
+      description: "Session synthesis with plain-language summary"
+    - path: ".orch/workspace/og-inv-audit-artifact-types-27mar-ddcf/BRIEF.md"
+      description: "Comprehension brief for Dylan"
