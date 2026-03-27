@@ -35,6 +35,10 @@ var SkillVerifyLevelDefaults = map[string]string{
 	"exploration-orchestrator":  VerifyV1,
 
 	// V2: Evidence — implementation-focused skills
+	// Note: feature-impl defaults to V2 here, but light-tier spawns cap this
+	// to V0 via VerifyLevelForTier (see TierMaxVerifyLevel). This means
+	// light-tier feature-impl gets acknowledge-only verification, skipping
+	// test evidence and synthesis gates that full-tier feature-impl requires.
 	"feature-impl":         VerifyV2,
 	"systematic-debugging": VerifyV2,
 	"reliability-testing":  VerifyV2,
