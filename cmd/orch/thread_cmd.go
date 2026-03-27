@@ -2,14 +2,18 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/identity"
 	"github.com/dylan-conlin/orch-go/pkg/thread"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var threadWorkdir string
@@ -205,8 +209,66 @@ Examples:
 }
 
 var (
-	threadResolveTo string
+	threadResolveTo    string
+	threadUpdateStatus string
+	threadUpdateTo     string
 )
+
+var threadInputIsTerminal = func(reader io.Reader) bool {
+	file, ok := reader.(*os.File)
+	if !ok {
+		return false
+	}
+	return term.IsTerminal(int(file.Fd()))
+}
+
+func promptResolvedTo(reader *bufio.Reader, writer io.Writer) (string, error) {
+	for {
+		if _, err := fmt.Fprint(writer, "Resolved to (model, decision, or brief): "); err != nil {
+			return "", err
+		}
+
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			return "", err
+		}
+		response = strings.TrimSpace(response)
+		if response != "" {
+			return response, nil
+		}
+
+		if _, err := fmt.Fprint(writer, "Resolved without artifact - confirm? [y/N]: "); err != nil {
+			return "", err
+		}
+
+		confirm, err := reader.ReadString('\n')
+		if err != nil {
+			return "", err
+		}
+
+		switch strings.ToLower(strings.TrimSpace(confirm)) {
+		case "y", "yes":
+			return "", nil
+		}
+	}
+}
+
+func resolveToForStatus(cmd *cobra.Command, status, resolvedTo string) (string, error) {
+	if status != thread.StatusResolved {
+		return resolvedTo, nil
+	}
+
+	if strings.TrimSpace(resolvedTo) != "" {
+		return strings.TrimSpace(resolvedTo), nil
+	}
+
+	stdin := cmd.InOrStdin()
+	if !threadInputIsTerminal(stdin) {
+		return "", fmt.Errorf("--status resolved requires interactive input or --to")
+	}
+
+	return promptResolvedTo(bufio.NewReader(stdin), cmd.ErrOrStderr())
+}
 
 var threadResolveCmd = &cobra.Command{
 	Use:   "resolve <slug>",
@@ -225,14 +287,65 @@ Examples:
 			return err
 		}
 
-		if err := thread.Resolve(dir, slug, threadResolveTo); err != nil {
+		resolvedTo, err := resolveToForStatus(cmd, thread.StatusResolved, threadResolveTo)
+		if err != nil {
 			return err
 		}
 
-		if threadResolveTo != "" {
-			fmt.Printf("Thread resolved: %s -> %s\n", slug, threadResolveTo)
+		if err := thread.Resolve(dir, slug, resolvedTo); err != nil {
+			return err
+		}
+
+		if resolvedTo != "" {
+			fmt.Printf("Thread resolved: %s -> %s\n", slug, resolvedTo)
 		} else {
 			fmt.Printf("Thread resolved: %s\n", slug)
+		}
+		return nil
+	},
+}
+
+var threadUpdateCmd = &cobra.Command{
+	Use:   "update <slug>",
+	Short: "Update a thread's lifecycle status",
+	Long: `Update a thread's lifecycle status.
+
+Examples:
+  orch thread update enforcement-comprehension --status active
+  orch thread update enforcement-comprehension --status resolved
+  orch thread update enforcement-comprehension --status resolved --to ".kb/models/enforcement.md"`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		slug := args[0]
+		if strings.TrimSpace(threadUpdateStatus) == "" {
+			return fmt.Errorf("--status is required")
+		}
+
+		dir, err := threadsDir()
+		if err != nil {
+			return err
+		}
+
+		status := thread.NormalizeStatus(strings.TrimSpace(threadUpdateStatus))
+		switch status {
+		case thread.StatusForming, thread.StatusActive, thread.StatusConverged, thread.StatusSubsumed, thread.StatusResolved:
+		default:
+			return fmt.Errorf("invalid thread status %q", threadUpdateStatus)
+		}
+
+		resolvedTo, err := resolveToForStatus(cmd, status, threadUpdateTo)
+		if err != nil {
+			return err
+		}
+
+		if err := thread.UpdateStatus(dir, slug, status, resolvedTo); err != nil {
+			return err
+		}
+
+		if resolvedTo != "" {
+			fmt.Printf("Thread updated: %s (%s -> %s)\n", slug, status, resolvedTo)
+		} else {
+			fmt.Printf("Thread updated: %s (%s)\n", slug, status)
 		}
 		return nil
 	},
@@ -274,11 +387,14 @@ func init() {
 	threadCmd.AddCommand(threadListCmd)
 	threadCmd.AddCommand(threadShowCmd)
 	threadCmd.AddCommand(threadResolveCmd)
+	threadCmd.AddCommand(threadUpdateCmd)
 	threadCmd.AddCommand(threadLinkCmd)
 
 	threadCmd.PersistentFlags().StringVar(&threadWorkdir, "workdir", "", "Target project directory (for cross-project thread operations)")
 	threadNewCmd.Flags().StringVar(&threadNewFrom, "from", "", "Parent thread slug (creates child thread with spawned_from reference)")
 	threadResolveCmd.Flags().StringVar(&threadResolveTo, "to", "", "Target artifact path (e.g., .kb/models/enforcement.md)")
+	threadUpdateCmd.Flags().StringVar(&threadUpdateStatus, "status", "", "New lifecycle status (forming, active, converged, subsumed, resolved)")
+	threadUpdateCmd.Flags().StringVar(&threadUpdateTo, "to", "", "Target artifact path or brief when resolving")
 }
 
 func threadStatusIcon(status string) string {

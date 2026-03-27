@@ -306,6 +306,41 @@ Some insight.
 	}
 }
 
+func TestUpdateStatus(t *testing.T) {
+	dir := tempThreadsDir(t)
+
+	content := `---
+title: "Update status test"
+status: active
+created: 2026-03-01
+updated: 2026-03-01
+resolved_to: ""
+---
+
+# Update status test
+
+## 2026-03-01
+
+Some insight.
+`
+	os.WriteFile(filepath.Join(dir, "2026-03-01-update-status-test.md"), []byte(content), 0644)
+
+	err := UpdateStatus(dir, "update-status-test", StatusResolved, "decision: shipped in dashboard")
+	if err != nil {
+		t.Fatalf("UpdateStatus failed: %v", err)
+	}
+
+	updated, _ := os.ReadFile(filepath.Join(dir, "2026-03-01-update-status-test.md"))
+	s := string(updated)
+
+	if !strings.Contains(s, "status: resolved") {
+		t.Error("status not updated")
+	}
+	if !strings.Contains(s, "resolved_to: \"decision: shipped in dashboard\"") {
+		t.Error("resolved_to not updated")
+	}
+}
+
 func TestTodaysEntries(t *testing.T) {
 	dir := tempThreadsDir(t)
 	today := time.Now().Format("2006-01-02")

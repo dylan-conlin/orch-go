@@ -346,8 +346,8 @@ func Show(threadsDir, slug string) (*Thread, error) {
 	return thread, nil
 }
 
-// Resolve marks a thread as resolved with an optional target artifact path.
-func Resolve(threadsDir, slug, resolvedTo string) error {
+// UpdateStatus updates a thread's lifecycle state and optional resolution target.
+func UpdateStatus(threadsDir, slug, status, resolvedTo string) error {
 	path, _ := findThreadBySlug(threadsDir, slug)
 	if path == "" {
 		return fmt.Errorf("thread %q not found", slug)
@@ -361,11 +361,18 @@ func Resolve(threadsDir, slug, resolvedTo string) error {
 	content := string(data)
 	today := time.Now().Format("2006-01-02")
 
-	content = updateFrontmatter(content, "status", "resolved")
+	content = updateFrontmatter(content, "status", status)
 	content = updateFrontmatter(content, "updated", today)
-	content = updateFrontmatterQuoted(content, "resolved_to", resolvedTo)
+	if IsResolved(status) || resolvedTo != "" {
+		content = updateFrontmatterQuoted(content, "resolved_to", resolvedTo)
+	}
 
 	return os.WriteFile(path, []byte(content), 0644)
+}
+
+// Resolve marks a thread as resolved with an optional target artifact path.
+func Resolve(threadsDir, slug, resolvedTo string) error {
+	return UpdateStatus(threadsDir, slug, StatusResolved, resolvedTo)
 }
 
 // updateFrontmatterQuoted updates a quoted field in the YAML frontmatter.
