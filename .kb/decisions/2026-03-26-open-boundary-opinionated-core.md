@@ -183,4 +183,5 @@ This decision creates pressure for:
 
 ## Auto-Linked Investigations
 
+- .kb/investigations/2026-03-26-design-minimum-open-release-bundle.md
 - .kb/investigations/2026-03-26-inv-inventory-current-system-into-core.md

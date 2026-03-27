@@ -10,15 +10,17 @@
 
 The dashboard is a **3-page SPA** (Svelte 5 + SvelteKit, adapter-static) served by `orch serve` (Go backend on port 3348) with a Vite dev server on port 5188 proxying to the backend.
 
-**Five routes, two rendering modes:**
-- `/` (Threads/Home) — Thread-first comprehension surface: active thread entries, latest brief inline, open tensions, condensed operational summary (redesigned 2026-03-26)
+**Four routes, comprehension-first home:**
+- `/` (Threads/Home) — Pure comprehension surface: threads, briefs, questions, review queue, condensed operational summary (execution residue subtracted 2026-03-26)
 - `/briefs` — Brief reading queue: agent-produced comprehension artifacts with mark-as-read
-- `/work-graph` — Work tracking: beads issue tree with dependencies, attention signals, verification gates
+- `/work-graph` — Work tracking: beads issue tree with dependencies, attention signals, verification gates, plus execution monitoring (agent grids, event streams)
 - `/knowledge-tree` — Knowledge browsing: .kb/ artifact tree, session timeline (3 tabs: Knowledge/Work/Timeline)
 
-**Critical context (Option A+):** The Dashboard (`/`) is Dylan's primary agent monitoring layer. Dylan also uses the Knowledge Tree Work tab daily for issue tracking. The Work Graph is the intended primary work-tracking layer (once stable). Dashboard failure = Dylan is blind to agent health. This makes dashboard reliability tier-0 infrastructure.
+**Dead route removed:** `/thinking` (Thinking Products digest) was a prototype with no backend — concept absorbed by threads + briefs. Deleted 2026-03-26.
 
-The architecture uses a **two-mode design** (Operational/Historical) to separate daily coordination from deep analysis. SSE connections enable real-time updates but are constrained by HTTP/1.1's 6-connection limit. Progressive disclosure and stable sorting prevent information overload while maintaining scan-ability.
+**Critical context (Option A+):** The Dashboard (`/`) is Dylan's primary comprehension and review surface. The Work Graph is the execution monitoring and work-tracking layer. Dashboard failure = Dylan is blind to what agents learned. This makes dashboard reliability tier-0 infrastructure.
+
+SSE connections enable real-time updates but are constrained by HTTP/1.1's 6-connection limit. The home page uses SSE only for agent count summaries; heavy execution rendering lives on the Work route.
 
 ---
 
@@ -63,7 +65,7 @@ The architecture uses a **two-mode design** (Operational/Historical) to separate
 ### Key Components
 
 **Frontend (Svelte 5 + SvelteKit):**
-- `web/src/routes/+page.svelte` - Main dashboard page (~1043 lines, predominantly Svelte 4 patterns)
+- `web/src/routes/+page.svelte` - Main dashboard page (~345 lines, comprehension-only after execution subtraction)
 - `web/src/routes/work-graph/+page.svelte` - Work graph page (~1043 lines)
 - `web/src/routes/knowledge-tree/+page.svelte` - Knowledge tree page (~371 lines, Svelte 5 runes)
 - `web/src/lib/stores/` - 25+ reactive stores (agents, beads, daemon, wip, attention, work-graph, etc.)
@@ -97,21 +99,19 @@ The attention pipeline (`pkg/attention/`) serves exclusively *work* signals (stu
 
 ### State Transitions
 
-**Dashboard mode lifecycle:**
+**Home page lifecycle (post-subtraction):**
 
 ```
 User loads dashboard
     ↓
-Mode = Operational (default, from localStorage)
+Shows: Threads, Briefs badge, Questions, Review Queue
     ↓
-Shows: Active agents, Needs Attention, Recent Wins
+Condensed summary line: "N active · N ready · N need review — View Work →"
     ↓
-User clicks "Historical" toggle
-    ↓
-Mode = Historical
-    ↓
-Shows: Full Swarm Map, Archive, SSE panels, all filters
+Execution details available at /work-graph
 ```
+
+*Note:* The operational/historical mode toggle was removed in the 2026-03-26 execution subtraction. The home page is now always "comprehension mode." Execution monitoring is on the Work route.
 
 **SSE connection lifecycle:**
 
@@ -131,8 +131,8 @@ Remaining 4-5 slots for API fetches
 
 ### Critical Invariants
 
-1. **Two-mode design is mutually exclusive** - Cannot show both Operational and Historical views simultaneously
-2. **SSE Events auto-connect, Agentlog is opt-in** - Connection pool management
+1. **Home page is comprehension-only** - Execution residue (agent grids, event streams, coaching, services) was subtracted 2026-03-26; execution monitoring lives on Work route. The operational/historical mode toggle was removed.
+2. **SSE Events auto-connect, Agentlog is opt-in** - Connection pool management. Home page uses SSE only for agent count summaries in the condensed operational line.
 3. **beadsFetchThreshold controls remote queries** - 5+ ready issues triggers `bd ready` shell-out
 4. **Progressive disclosure via collapsed panels** - Event panels start collapsed, expand on click
 5. **Stable sort maintains scan-ability** - Agent order doesn't change unless status changes

@@ -160,4 +160,5 @@ This decision creates pressure for four follow-on moves:
 
 ## Auto-Linked Investigations
 
+- .kb/investigations/2026-03-26-design-minimum-comprehension-surface.md
 - .kb/investigations/2026-03-26-inv-rewrite-readme-around-thread-comprehension.md
