@@ -290,6 +290,60 @@ func TestDaemonStatus_ZeroLastSpawn(t *testing.T) {
 	}
 }
 
+func TestDaemonStatus_ComprehensionRoundTrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	status := DaemonStatus{
+		Status: "running",
+		Comprehension: &ComprehensionSnapshot{
+			Count:     8,
+			Threshold: 5,
+		},
+	}
+
+	if err := WriteStatusFile(status); err != nil {
+		t.Fatalf("WriteStatusFile failed: %v", err)
+	}
+
+	read, err := ReadStatusFile()
+	if err != nil {
+		t.Fatalf("ReadStatusFile failed: %v", err)
+	}
+
+	if read.Comprehension == nil {
+		t.Fatal("Comprehension snapshot should not be nil after round-trip")
+	}
+	if read.Comprehension.Count != 8 {
+		t.Errorf("Comprehension.Count = %d, want 8", read.Comprehension.Count)
+	}
+	if read.Comprehension.Threshold != 5 {
+		t.Errorf("Comprehension.Threshold = %d, want 5", read.Comprehension.Threshold)
+	}
+}
+
+func TestDaemonStatus_ComprehensionOmittedWhenNil(t *testing.T) {
+	status := DaemonStatus{
+		Status: "running",
+	}
+
+	data, err := json.Marshal(status)
+	if err != nil {
+		t.Fatalf("Failed to marshal: %v", err)
+	}
+
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("Failed to unmarshal: %v", err)
+	}
+
+	if _, ok := m["comprehension"]; ok {
+		t.Error("comprehension key should be omitted when nil")
+	}
+}
+
 func TestReadValidatedStatusFile_StaleFile(t *testing.T) {
 	// Simulate stale daemon-status.json from a crashed daemon:
 	// file exists with a PID that is no longer alive.

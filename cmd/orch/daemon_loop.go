@@ -734,6 +734,19 @@ func (s *daemonLoopState) writeDaemonStatusFile(readyCount int, periodicResult p
 	// DetermineStatus to see a stale pollTime and return "stalled" incorrectly.
 	pollTime := time.Now()
 
+	var comprehensionSnapshot *daemon.ComprehensionSnapshot
+	if s.d.ComprehensionQuerier != nil {
+		threshold := s.d.Config.ComprehensionThreshold
+		if threshold <= 0 {
+			threshold = daemon.DefaultComprehensionThreshold
+		}
+		_, count, _ := daemon.CheckComprehensionThrottle(s.d.ComprehensionQuerier, threshold)
+		comprehensionSnapshot = &daemon.ComprehensionSnapshot{
+			Count:     count,
+			Threshold: threshold,
+		}
+	}
+
 	status := daemon.DaemonStatus{
 		PID: os.Getpid(),
 		Capacity: daemon.CapacityStatus{
@@ -752,6 +765,7 @@ func (s *daemonLoopState) writeDaemonStatusFile(readyCount int, periodicResult p
 		QuestionDetection: periodicResult.QuestionDetectionSnapshot,
 		AgreementCheck:    periodicResult.AgreementCheckSnapshot,
 		BeadsHealth:       periodicResult.BeadsHealthSnapshot,
+		Comprehension:     comprehensionSnapshot,
 	}
 	if err := daemon.WriteStatusFile(status); err != nil && daemonVerbose {
 		s.dlog.Errorf("Warning: failed to write status file: %v\n", err)

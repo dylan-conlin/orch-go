@@ -62,6 +62,10 @@ type DaemonStatus struct {
 	// Surfaced to show issue/code health trends in daemon status and dashboard.
 	BeadsHealth *BeadsHealthSnapshot `json:"beads_health,omitempty"`
 
+	// Comprehension holds the comprehension queue snapshot.
+	// Surfaced so sketchybar widget can read queue depth without a slow bd CLI call.
+	Comprehension *ComprehensionSnapshot `json:"comprehension,omitempty"`
+
 }
 
 // VerificationStatusSnapshot is a snapshot of verification tracking state.
@@ -92,6 +96,15 @@ type CapacityStatus struct {
 
 	// Available is the number of slots available for spawning.
 	Available int `json:"available"`
+}
+
+// ComprehensionSnapshot is a point-in-time snapshot of the comprehension queue.
+type ComprehensionSnapshot struct {
+	// Count is the number of comprehension:unread items (plus legacy pending).
+	Count int `json:"count"`
+
+	// Threshold is the configured maximum before spawning pauses.
+	Threshold int `json:"threshold"`
 }
 
 // StatusFilePath returns the path to the daemon status file.
