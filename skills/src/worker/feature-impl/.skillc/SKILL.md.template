@@ -230,12 +230,29 @@ Quality checks (debug statements, commit format, placeholder data, orphaned file
 
 ## Completion
 
+**Check your tier in SPAWN_CONTEXT.md** — tier determines which completion deliverables are required.
+
+### Light Tier
+
 1. Self-review passed
 2. All configured phases completed
 3. All deliverables created and reported via `bd comment`
 4. If web/ modified: visual verification completed with evidence
 5. Report: `bd comments add <beads-id> "Phase: Complete - [summary]"` (FIRST — before commit)
 6. Commit. **Session complete** — no further actions needed.
+
+SYNTHESIS.md is **not required**. VERIFICATION_SPEC.yaml is **not required**.
+
+### Full Tier (Standard / Deep)
+
+1. Self-review passed
+2. All configured phases completed
+3. All deliverables created and reported via `bd comment`
+4. If web/ modified: visual verification completed with evidence
+5. **Create SYNTHESIS.md** in workspace using the template from `.orch/templates/SYNTHESIS.md`
+6. **Create VERIFICATION_SPEC.yaml** with exact commands run, expectations verified, and manual steps
+7. Report: `bd comments add <beads-id> "Phase: Complete - [summary with test evidence]"` (FIRST — before commit)
+8. Commit (including SYNTHESIS.md and VERIFICATION_SPEC.yaml). **Session complete** — no further actions needed.
 
 ---
 
