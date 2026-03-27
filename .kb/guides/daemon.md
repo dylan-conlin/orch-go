@@ -44,6 +44,13 @@ The daemon is an autonomous agent spawner that:
 | `spawn_execution.go` | Spawn pipeline: dedup gates, pool slot, status update, spawn, workspace verify |
 | `comprehension_queue.go` | Two-state comprehension lifecycle (unread/processed), spawn throttling by unread count |
 | `resume_signal.go` | Resume signal file for manual daemon resumption (`~/.orch/daemon-resume.signal`) |
+| `prior_art_dedup.go` | Prior-art dedup gates: commit-based (L6) and keyword-based (L7) duplicate detection |
+| `health_signals.go` | Health signal computation (traffic-light levels) for sketchybar widget |
+| `compliance.go` | Compliance signal producers — pre-spawn gates, enforcement checks |
+| `coordination.go` | Coordination logic — routing, scheduling, prioritization consuming compliance signals |
+| `preview.go` | Preview mode: rejected issue reasons, would-spawn candidates |
+| `status_display.go` | Status display formatting for `orch daemon status` command |
+| `invariants.go` | Runtime invariant checking with violation severity tracking |
 
 **Related packages:**
 - `pkg/daemonconfig/` — ComplianceConfig, allocation profiles

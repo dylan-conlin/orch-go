@@ -117,9 +117,10 @@
 
 ## pkg/events/ (Event System)
 
-- Structured event types: `session.spawned`, `agent.completed`, `agent.rejected`, `spawn.gate_decision`, `daemon.architect_escalation`, etc.
+- Structured event types: `session.spawned`, `agent.completed`, `agent.rejected`, `spawn.gate_decision`, `daemon.architect_escalation`, `spawn.model_route`, `daemon.thin_issue_detected`, `kb.context.timeout`, etc.
 - `events.jsonl` append-only log for telemetry
 - Event enrichment fields for beads close hook
+- Specialized event emitters: `kb_context_timeout.go`, `model_route.go`, `thin_issue.go`, `decision.go`, `command.go`
 
 ## pkg/discovery/ (Agent Discovery)
 

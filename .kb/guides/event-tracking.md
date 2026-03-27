@@ -2,7 +2,7 @@
 
 **Purpose:** Reference for all event types logged to `~/.orch/events.jsonl` for stats aggregation.
 
-**Last verified:** 2026-03-26
+**Last verified:** 2026-03-27
 
 ---
 
@@ -93,6 +93,9 @@
 | `loop.iteration` | loop controller | Individual iteration of a `--loop` spawn cycle |
 | `loop.complete` | loop controller | Final outcome of a `--loop` spawn cycle |
 | `session.empty_execution_retry` | review/verify | Session retried after empty-execution classification |
+| `spawn.model_route` | daemon | Daemon model routing decision for a spawn (skill→model mapping) |
+| `daemon.thin_issue_detected` | daemon orient | Issue flagged as thin (insufficient context for spawning) |
+| `kb.context.timeout` | spawn pipeline | KB context gathering timed out during spawn |
 
 **Enrichment fields:** `verification.failed`, `agent.completed`, `verification.bypassed`, and `verification.auto_skipped` events include a `verification_level` field (V0-V3) tracking what "verified" means at completion.
 

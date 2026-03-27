@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for all gates that block `orch complete`. Read this before debugging completion issues or adding new gates.
 
-**Last verified:** Mar 25, 2026
+**Last verified:** Mar 27, 2026
 
 ---
 
@@ -15,7 +15,7 @@ orch complete <id>
        │
        ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  VerifyCompletionFull (9 gates)                                 │
+│  VerifyCompletionFull (14 gates)                                │
 │  - Phase: Complete check                                        │
 │  - SYNTHESIS.md check (full tier)                               │
 │  - Skill constraints                                            │
@@ -25,6 +25,11 @@ orch complete <id>
 │  - Test evidence (implementation skills + code changes)         │
 │  - Git diff (SYNTHESIS claims vs actual)                        │
 │  - Build verification (Go projects)                             │
+│  - Accretion gate (file size growth)                            │
+│  - Probe-to-model merge (probes must update parent model)       │
+│  - Architect handoff (recommendations + follow-up issues)       │
+│  - Consequence sensor (architect gate/hook observability)        │
+│  - Explain-back (orchestrator comprehension)                    │
 └─────────────────────────────────────────────────────────────────┘
        │
        ▼
@@ -288,7 +293,73 @@ bd comment <id> "Tests: npm test - 15 passing, 0 failing"
 
 ---
 
-### 10. Liveness Check (PROMPTS/BLOCKING - conditional)
+### 10. Accretion Gate (BLOCKING)
+
+**File:** `pkg/verify/accretion.go`
+
+**What it checks:** Files modified by the agent haven't grown beyond accretion thresholds. Errors on files >1500 lines with >50 line additions. Warns on files >800 lines with >50 line additions.
+
+**How to pass:** Keep changes small or extract when files are large. Net-negative deltas (extractions) pass automatically.
+
+**Bypass:** `--skip-accretion`
+
+---
+
+### 11. Probe-to-Model Merge (BLOCKING)
+
+**File:** `pkg/verify/probe_model_merge.go`
+
+**What it checks:** Probes with "contradicts" or "extends" verdicts have corresponding updates to the parent `model.md` in the git diff since spawn time.
+
+**When it applies:** Only when probe files exist in `.kb/models/*/probes/`.
+
+**How to pass:** Merge probe findings into parent model.md before completing.
+
+**Bypass:** `--skip-probe-model-merge`
+
+---
+
+### 12. Architect Handoff (BLOCKING)
+
+**File:** `pkg/verify/architect_handoff.go`
+
+**What it checks:** Architect agents declare explicit recommendations (implement, spawn, close, etc.) and actionable recommendations have corresponding implementation issues created.
+
+**When it applies:** Architect skill only.
+
+**How to pass:** Include `RECOMMENDATION:` line in beads comments with a valid value. Create follow-up issues for actionable recommendations.
+
+**Bypass:** `--skip-architect-handoff`
+
+---
+
+### 13. Consequence Sensor (BLOCKING)
+
+**File:** `pkg/verify/consequence_sensor.go`
+
+**What it checks:** Every gate/hook recommended by an architect declares how its effect will be observed. If no sensor exists, must explicitly state "none — open loop".
+
+**When it applies:** Architect skill only, when SYNTHESIS mentions gates or hooks.
+
+**How to pass:** Include consequence sensor declarations for recommended gates/hooks.
+
+**Bypass:** `--skip-consequence-sensor`
+
+---
+
+### 14. Explain-Back (INTERACTIVE)
+
+**File:** `pkg/verify/explain_back.go`
+
+**What it checks:** Orchestrator provides a non-empty explanation of what was built and why (comprehension verification).
+
+**How to pass:** Use `--explain "description of what was built"` with `orch complete`.
+
+**Bypass:** `--headless` (auto-skips), `--skip-explain-back`
+
+---
+
+### 15. Liveness Check (PROMPTS/BLOCKING - conditional)
 
 **File:** `cmd/orch/main.go:890-940`
 
@@ -313,7 +384,7 @@ bd comment <id> "Tests: npm test - 15 passing, 0 failing"
 
 ---
 
-### 11. Repro Verification (DISABLED)
+### 16. Repro Verification (DISABLED)
 
 **File:** `cmd/orch/main.go:935-951`
 
@@ -333,9 +404,14 @@ bd comment <id> "Tests: npm test - 15 passing, 0 failing"
 
 | Flag | What it bypasses |
 |------|------------------|
-| `--force` | All gates (1-10) |
-| `--headless` | Interactive gates (liveness prompt, repro check) — auto-generates brief to `.kb/briefs/` |
+| `--force` | All gates (1-15) |
+| `--headless` | Interactive gates (explain-back, liveness prompt, repro check) — auto-generates brief to `.kb/briefs/` |
 | `--approve` | Gate 6 (visual verification) - adds approval comment |
+| `--skip-accretion` | Gate 10 (accretion) |
+| `--skip-probe-model-merge` | Gate 11 (probe-to-model merge) |
+| `--skip-architect-handoff` | Gate 12 (architect handoff) |
+| `--skip-consequence-sensor` | Gate 13 (consequence sensor) |
+| `--skip-explain-back` | Gate 14 (explain-back) |
 
 ---
 
