@@ -16,9 +16,9 @@ import (
 // GatePlanHydration is the gate name for plan hydration advisory checks.
 const GatePlanHydration = "plan_hydration"
 
-// regexPhaseHeading matches ### Phase headings in plan files.
+// regexPlanPhaseHeading matches ### Phase headings in plan files.
 // Matches both "### Phase 1: Name" and "### Name" (unnumbered) under a ## Phases section.
-var regexPhaseHeading = regexp.MustCompile(`(?m)^### .+`)
+var regexPlanPhaseHeading = regexp.MustCompile(`(?m)^### .+`)
 
 // PlanHydrationResult contains the advisory outcome of the plan hydration check.
 type PlanHydrationResult struct {
@@ -106,6 +106,6 @@ func CountPlanPhases(content string) int {
 	}
 
 	// Count ### headings within the Phases section
-	matches := regexPhaseHeading.FindAllString(phasesSection, -1)
+	matches := regexPlanPhaseHeading.FindAllString(phasesSection, -1)
 	return len(matches)
 }
