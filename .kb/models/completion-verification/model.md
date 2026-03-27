@@ -203,7 +203,10 @@ The daemon implements a **two-phase design**: it triages (automated gates) but d
 - Explain-back (gate1), behavioral verification (gate2), discovered work disposition, checkpoint enforcement, and liveness check are **CLI-only** — they require interactive/human involvement and cannot be automated
 - The full gate pipeline including human gates fires during `orch complete`
 
-**VerificationTracker (review pace governor):**
+**VerificationTracker (review pace governor) — PLANNED FOR REMOVAL (orch-go-5e02e):**
+- Being collapsed into single comprehension:unread gate. See `.kb/investigations/2026-03-27-design-simplify-daemon-throttling.md`.
+- Key finding: comprehension gate was broken for label-ready-review items (headless completion race removes unread label before daemon polls). Fix: gate TransitionToProcessed on interactive-only.
+- Current state (until implementation completes):
 - `IsPaused()` checked before each spawn — blocks new work when review backlog exceeds threshold (default: 3)
 - `SeedFromBacklog()` persists tracker state across daemon restarts
 - **Dual signal mechanism:**

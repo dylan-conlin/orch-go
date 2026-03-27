@@ -1,0 +1,23 @@
+verification:
+  type: architect-design
+  commands_run:
+    - "Code audit: traced all three completion routes through coordination.go"
+    - "Code audit: verified TransitionToProcessed runs for headless in complete_lifecycle.go:203-207"
+    - "Code audit: enumerated all 22 files consuming VerificationTracker"
+    - "Code audit: verified comprehension gate in compliance.go Gate 3"
+    - "Code audit: traced headless completion race for label-ready-review items"
+  expectations_verified:
+    - "Verification tracker and comprehension queue are measuring the same thing (review backlog)"
+    - "Comprehension gate is broken for label-ready-review items due to headless completion race"
+    - "Verification tracker stale-state required ongoing patches (ResyncWithBacklog)"
+    - "Single gate (comprehension:unread) with TransitionToProcessed gated on interactive-only eliminates both problems"
+  artifacts_produced:
+    - ".kb/investigations/2026-03-27-design-simplify-daemon-throttling.md"
+    - ".kb/models/completion-verification/model.md (updated with planned removal note)"
+  issues_created:
+    - "orch-go-sdpx1: Phase 1 — Gate TransitionToProcessed on interactive only"
+    - "orch-go-4ekc1: Phase 2 — Remove verification tracker, collapse gates"
+    - "orch-go-ziyvv: Phase 3 — Update surfaces and resume mechanism"
+  manual_verification:
+    - "Orchestrator should review the investigation findings, particularly the headless completion race (Finding 2)"
+    - "Threshold values (strict=3, standard=8, relaxed=20, autonomous=0) may need adjustment"
