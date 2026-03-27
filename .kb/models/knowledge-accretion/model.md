@@ -635,6 +635,7 @@ kb reflect --type stale
 **Probes:**
 - 2026-03-26: Minimum Open Release Bundle Definition — Artifact formats score 2.6/5 for standalone comprehensibility; composition model invisibility identified as contributing factor to orphan rates. Extends the model's understanding of why knowledge attractors are weaker than structural (code) attractors.
 - 2026-03-27: Selection Pressure via Quality Signals — Design analysis for automated synthesis ranking. Extends hierarchy with "attention routing" (quality metadata in artifacts affects read ordering). Six mechanically-detectable signals map to every-spawn-composes-knowledge quality spectrum. HyperAgents' "handcrafted beats self-modified" confirmed as design principle for signal taxonomies.
+- 2026-03-27: signal_count Distribution Empirical Measurement — Retroactive measurement across 70 briefs confirms signal_count has discriminating power (mean 2.9/6, range 1-5, roughly normal). Two signals are useless: `structural` (100% prevalence) and `model_conn` (10%). Two carry the load: `connective` (47%) and `tension_q` (34%). Recommends 4-signal version dropping the degenerate signals.
 
 ## Auto-Linked Investigations
 
