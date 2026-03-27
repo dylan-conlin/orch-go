@@ -85,6 +85,17 @@ func runOrient() error {
 	readState := loadBriefReadStateForOrient(projectDir)
 	data.RecentBriefs, data.UnreadBriefCount = orient.ScanRecentBriefs(briefsDir, readState, 5)
 
+	// Between-session digests
+	digestsDir := filepath.Join(projectDir, ".kb", "digests")
+	var prevSessionDate time.Time
+	if data.PreviousSession != nil && data.PreviousSession.Date != "" {
+		prevSessionDate, _ = time.Parse("2006-01-02", data.PreviousSession.Date)
+	}
+	data.DigestSummary = orient.ScanRecentDigests(digestsDir, prevSessionDate)
+	if data.DigestSummary != nil {
+		data.DigestSummary.MaintenanceCount = orient.CountMaintenanceBriefs(briefsDir, prevSessionDate)
+	}
+
 	// Element 3: Active tensions (claim edges from models)
 	modelsDir := filepath.Join(projectDir, ".kb", "models")
 	data.ClaimEdges = collectClaimEdges(modelsDir, now)

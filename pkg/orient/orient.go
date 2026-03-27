@@ -120,6 +120,7 @@ type OrientationData struct {
 	ActiveThreads    []ActiveThread    `json:"active_threads,omitempty"`
 	RecentBriefs     []RecentBrief     `json:"recent_briefs,omitempty"`
 	UnreadBriefCount int               `json:"unread_brief_count"`
+	DigestSummary    *DigestSummary    `json:"digest_summary,omitempty"`
 	ClaimEdges       string            `json:"claim_edges,omitempty"` // Pre-formatted claim edges text (filtered to thread-relevant)
 	ReadyIssues      []ReadyIssue      `json:"ready_issues,omitempty"`
 	ActivePlans      []PlanSummary     `json:"active_plans,omitempty"`
@@ -240,6 +241,9 @@ func FormatOrientation(data *OrientationData) string {
 
 	// Element 2: Recent Briefs (what was learned)
 	b.WriteString(FormatRecentBriefs(data.RecentBriefs, data.UnreadBriefCount))
+
+	// Between-session digest (pre-composed clustering from daemon)
+	b.WriteString(FormatDigestSummary(data.DigestSummary))
 
 	// Element 3: Active Tensions (filtered knowledge edges)
 	if data.ClaimEdges != "" {
