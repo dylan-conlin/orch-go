@@ -47,7 +47,7 @@ import {
 } from "fs"
 import { homedir } from "os"
 import { join, dirname } from "path"
-import { exec } from "child_process"
+import { exec, execFile } from "child_process"
 
 const LOG_PREFIX = "[coaching]"
 const DEBUG = process.env.ORCH_PLUGIN_DEBUG === "1"
@@ -56,6 +56,21 @@ const MAX_LINES = 1000 // Keep last 1000 lines
 const STRATEGIC_PAUSE_MS = 30 * 1000 // 30 seconds = strategic pause
 const VARIATION_THRESHOLD = 5 // 5+ variations triggers behavioral_variation metric
 const COACH_SESSION_ID = process.env.ORCH_COACH_SESSION_ID || "" // Coach session to stream metrics to
+const FRUSTRATION_COMPOUND_WINDOW_MS = 20 * 60 * 1000
+
+const FRUSTRATION_SIGNAL_LABELS: Record<string, string> = {
+  behavioral_variation: "thrashing",
+  time_in_phase: "stuck",
+  circular_pattern: "contradicting prior work",
+  tool_failure_rate: "repeated tool failures",
+}
+
+const FRUSTRATION_SIGNAL_PRIORITY = [
+  "behavioral_variation",
+  "time_in_phase",
+  "circular_pattern",
+  "tool_failure_rate",
+]
 
 function log(...args: any[]) {
   if (DEBUG) console.log(LOG_PREFIX, ...args)
@@ -438,6 +453,7 @@ interface FrameCollapseState {
  */
 interface WorkerHealthState {
   sessionId: string
+  beadsID?: string
   sessionStartTime: number          // When session started (for time_in_phase)
   consecutiveToolFailures: number   // For tool_failure_rate
   estimatedTokensUsed: number       // For context_usage
@@ -447,6 +463,53 @@ interface WorkerHealthState {
   totalReadBytes: number            // For token estimation
   lastWarningType?: string          // Type of last health signal injected
   lastWarningValue?: number         // Value of last health signal injected
+  variation: VariationState
+  boundarySignals: Record<string, number>
+  boundaryReported: boolean
+}
+
+export function parsePhaseCommentFromCommand(command: string): string | null {
+  const match = command.match(/bd\s+comments?\s+add\s+\S+\s+["']Phase:\s*([^"']+)["']/i)
+  if (!match) return null
+
+  const phaseSummary = match[1].trim()
+  const phaseName = phaseSummary.split(" - ", 2)[0]?.trim()
+  return phaseName || null
+}
+
+function sortFrustrationSignalTypes(signalTypes: string[]): string[] {
+  return [...signalTypes].sort((a, b) => {
+    const aIndex = FRUSTRATION_SIGNAL_PRIORITY.indexOf(a)
+    const bIndex = FRUSTRATION_SIGNAL_PRIORITY.indexOf(b)
+    const safeA = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex
+    const safeB = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex
+    return safeA - safeB
+  })
+}
+
+export function summarizeCompoundSignals(signalTypes: string[]): string {
+  const labels = sortFrustrationSignalTypes(signalTypes)
+    .map((signalType) => FRUSTRATION_SIGNAL_LABELS[signalType])
+    .filter(Boolean)
+
+  if (labels.length === 0) return "compound frustration detected"
+  if (labels.length === 1) return labels[0]
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`
+  return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`
+}
+
+export function getActiveCompoundSignals(
+  boundarySignals: Record<string, number>,
+  now: number,
+): string[] {
+  return sortFrustrationSignalTypes(
+    Object.entries(boundarySignals)
+      .filter(([signalType, detectedAt]) => {
+        if (!(signalType in FRUSTRATION_SIGNAL_LABELS)) return false
+        return now - detectedAt <= FRUSTRATION_COMPOUND_WINDOW_MS
+      })
+      .map(([signalType]) => signalType),
+  )
 }
 
 
@@ -899,6 +962,8 @@ async function injectHealthSignal(
 async function trackWorkerHealth(
   client: any,
   state: WorkerHealthState,
+  directory: string,
+  investigationRecommendations: InvestigationRecommendation[],
   tool: string,
   success: boolean,
   args: any,
@@ -933,6 +998,7 @@ async function trackWorkerHealth(
 
       // Inject "Pain" signal into agent context
       await injectHealthSignal(client, state, "tool_failure_rate", state.consecutiveToolFailures)
+      await recordFrustrationSignal(state, "tool_failure_rate", now, directory)
     }
   } else {
     // Reset on success
@@ -987,16 +1053,83 @@ async function trackWorkerHealth(
     // Inject signal if over threshold
     if (minutesInPhase >= TIME_IN_PHASE_WARNING_MINUTES) {
       await injectHealthSignal(client, state, "time_in_phase", minutesInPhase)
+      await recordFrustrationSignal(state, "time_in_phase", now, directory)
     }
   }
 
   // 4. commit_gap: Track time since last commit (detect via git commands in bash)
   if (tool === "bash" && args?.command) {
     const command = args.command as string
+    const phaseName = parsePhaseCommentFromCommand(command)
+    if (phaseName && phaseName.toLowerCase() !== "boundary") {
+      state.lastPhaseUpdate = now
+    }
+
     // Detect successful git commit
     if (command.includes("git commit") && success) {
       state.lastCommitTime = now
       log(`Worker: git commit detected, updating lastCommitTime`)
+    }
+
+    const timeSinceLastTool = now - state.variation.lastToolTimestamp
+    if (timeSinceLastTool >= STRATEGIC_PAUSE_MS) {
+      state.variation.currentGroup = null
+      state.variation.variationCount = 0
+    }
+
+    const group = classifyBashCommand(command)
+    state.variation.lastToolTimestamp = now
+    state.variation.variationHistory.push({ group, command, timestamp: now })
+    if (state.variation.variationHistory.length > 20) {
+      state.variation.variationHistory.shift()
+    }
+
+    if (group !== "other") {
+      if (state.variation.currentGroup === group) {
+        state.variation.variationCount++
+        if (state.variation.variationCount >= VARIATION_THRESHOLD) {
+          writeMetric({
+            timestamp,
+            session_id: state.sessionId,
+            metric_type: "behavioral_variation",
+            value: state.variation.variationCount,
+            details: {
+              group,
+              commands: state.variation.variationHistory
+                .filter((entry) => entry.group === group)
+                .slice(-VARIATION_THRESHOLD)
+                .map((entry) => entry.command.substring(0, 100)),
+              threshold: VARIATION_THRESHOLD,
+            },
+          })
+          await recordFrustrationSignal(state, "behavioral_variation", now, directory)
+        }
+      } else {
+        state.variation.currentGroup = group
+        state.variation.variationCount = 1
+      }
+    }
+
+    const decisionKeywords = detectArchitecturalDecision(command)
+    if (decisionKeywords && decisionKeywords.length > 0) {
+      const contradiction = findContradiction(decisionKeywords, investigationRecommendations)
+      if (contradiction) {
+        writeMetric({
+          timestamp,
+          session_id: state.sessionId,
+          metric_type: "circular_pattern",
+          value: 1,
+          details: {
+            decision_command: command.substring(0, 200),
+            decision_keywords: decisionKeywords,
+            contradicts_investigation: contradiction.fileName,
+            recommendation: contradiction.next.substring(0, 200),
+            recommendation_keywords: contradiction.keywords,
+            recommendation_date: contradiction.date,
+          },
+        })
+        await recordFrustrationSignal(state, "circular_pattern", now, directory)
+      }
     }
   }
 
@@ -1043,6 +1176,47 @@ function execAsync(command: string): Promise<string> {
       resolve(stdout)
     })
   })
+}
+
+function execFileAsync(command: string, args: string[], cwd?: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { cwd, timeout: 10000 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(stderr || error.message))
+        return
+      }
+      resolve(stdout)
+    })
+  })
+}
+
+async function maybeReportFrustrationBoundary(state: WorkerHealthState, directory: string): Promise<void> {
+  if (state.boundaryReported || !state.beadsID) {
+    return
+  }
+
+  const activeSignals = getActiveCompoundSignals(state.boundarySignals, Date.now())
+  if (activeSignals.length < 2) {
+    return
+  }
+
+  const summary = summarizeCompoundSignals(activeSignals)
+  try {
+    await execFileAsync("bd", ["comments", "add", state.beadsID, `Phase: Boundary - ${summary}`], directory)
+    state.boundaryReported = true
+  } catch (err) {
+    log("Failed to report frustration boundary:", err)
+  }
+}
+
+async function recordFrustrationSignal(
+  state: WorkerHealthState,
+  signalType: string,
+  detectedAt: number,
+  directory: string,
+): Promise<void> {
+  state.boundarySignals[signalType] = detectedAt
+  await maybeReportFrustrationBoundary(state, directory)
 }
 
 /**
@@ -1325,6 +1499,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
           const now = Date.now()
           workerState = {
             sessionId,
+            beadsID: input.session?.metadata?.beads_id,
             sessionStartTime: now,
             consecutiveToolFailures: 0,
             estimatedTokensUsed: 0,
@@ -1332,16 +1507,28 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
             lastCommitTime: 0,           // 0 means no commit yet
             totalToolCalls: 0,
             totalReadBytes: 0,
+            variation: {
+              currentGroup: null,
+              variationCount: 0,
+              lastToolTimestamp: now,
+              variationHistory: [],
+            },
+            boundarySignals: {},
+            boundaryReported: false,
           }
           workerHealthStates.set(sessionId, workerState)
           log(`Created worker health state for session ${sessionId}`)
+        }
+
+        if (!workerState.beadsID) {
+          workerState.beadsID = input.session?.metadata?.beads_id
         }
 
         // Determine if tool succeeded (check for error in output)
         const success = !output?.error && !output?.isError
 
         // Track worker health metrics
-        await trackWorkerHealth(client, workerState, tool, success, input.args, output)
+        await trackWorkerHealth(client, workerState, directory, investigationRecommendations, tool, success, input.args, output)
 
         // Skip orchestrator metrics for workers
         return

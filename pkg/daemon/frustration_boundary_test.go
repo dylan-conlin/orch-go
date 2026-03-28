@@ -112,8 +112,6 @@ func TestBuildBoundaryFeedback(t *testing.T) {
 	)
 	checks := []string{
 		"Original question: Original question",
-		"What was tried:",
-		"- Tried path A",
 		"What did not work: thrashing and stuck",
 		"/tmp/FRUSTRATION_BOUNDARY.md",
 	}
@@ -121,5 +119,8 @@ func TestBuildBoundaryFeedback(t *testing.T) {
 		if !strings.Contains(feedback, check) {
 			t.Fatalf("feedback missing %q: %s", check, feedback)
 		}
+	}
+	if strings.Contains(feedback, "What was tried:") {
+		t.Fatalf("feedback should keep rework prompt minimal: %s", feedback)
 	}
 }

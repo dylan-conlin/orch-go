@@ -280,17 +280,11 @@ func buildBoundaryFeedback(task, summary string, attempts []string, artifactPath
 	if task != "" {
 		parts = append(parts, fmt.Sprintf("Original question: %s", task))
 	}
-	if len(attempts) > 0 {
-		parts = append(parts, "What was tried:")
-		for _, attempt := range attempts {
-			parts = append(parts, "- "+attempt)
-		}
-	}
 	if summary != "" {
 		parts = append(parts, fmt.Sprintf("What did not work: %s", summary))
 	}
 	if artifactPath != "" {
-		parts = append(parts, fmt.Sprintf("See %s for the failure-path handoff.", artifactPath))
+		parts = append(parts, fmt.Sprintf("See %s for the failure-path diagnosis.", artifactPath))
 	}
 	parts = append(parts, "Start fresh from the original question instead of continuing the prior frame.")
 	return strings.Join(parts, "\n")
