@@ -60,3 +60,18 @@ func (a *EventLoggerAdapter) LogServiceStarted(serviceName, projectPath string, 
 		},
 	})
 }
+
+// LogServiceUnresponsive logs a service unresponsive event (process alive but not serving).
+func (a *EventLoggerAdapter) LogServiceUnresponsive(serviceName, projectPath string, pid, consecutiveFailures int) error {
+	return a.logger.Log(events.Event{
+		Type:      events.EventTypeServiceUnresponsive,
+		SessionID: serviceName,
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"service_name":         serviceName,
+			"project_path":         projectPath,
+			"pid":                  pid,
+			"consecutive_failures": consecutiveFailures,
+		},
+	})
+}

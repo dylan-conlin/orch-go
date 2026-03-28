@@ -4,6 +4,7 @@ package service
 import (
 	"bufio"
 	"fmt"
+	"net/http"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -11,13 +12,22 @@ import (
 	"time"
 )
 
+// HealthProbe defines an HTTP health check for a specific service.
+// When configured, the monitor makes HTTP GET requests to the URL and
+// considers the service unresponsive if it fails consecutively.
+type HealthProbe struct {
+	URL     string        // Health check endpoint (e.g., "http://127.0.0.1:4096/session")
+	Timeout time.Duration // HTTP request timeout
+}
+
 // ServiceState represents the state of a single service at a point in time.
 type ServiceState struct {
 	Name         string
 	PID          int
 	Status       string // "running", "stopped", etc.
 	LastSeen     time.Time
-	RestartCount int
+	RestartCount      int
+	UnresponsiveCount int // Consecutive health check failures while PID unchanged
 }
 
 // ServiceNotifier defines the interface for sending service crash notifications.
@@ -31,7 +41,13 @@ type EventLogger interface {
 	LogServiceCrashed(serviceName, projectPath string, oldPID, newPID int) error
 	LogServiceRestarted(serviceName, projectPath string, newPID, restartCount int, autoRestart bool) error
 	LogServiceStarted(serviceName, projectPath string, pid int) error
+	LogServiceUnresponsive(serviceName, projectPath string, pid, consecutiveFailures int) error
 }
+
+// DefaultUnresponsiveThreshold is the number of consecutive health check failures
+// before a service is considered unresponsive and force-restarted.
+// At 10s polling interval, 3 failures = 30 seconds of unresponsiveness.
+const DefaultUnresponsiveThreshold = 3
 
 // ServiceMonitor monitors overmind-managed services and detects crashes.
 type ServiceMonitor struct {
@@ -41,8 +57,10 @@ type ServiceMonitor struct {
 	eventLogger  EventLogger
 	mu           sync.RWMutex
 	interval     time.Duration
-	autoRestart  bool // Whether to auto-restart crashed services
-	sessionStart time.Time
+	autoRestart           bool // Whether to auto-restart crashed services
+	sessionStart          time.Time
+	healthProbes          map[string]HealthProbe // service name → health check config
+	unresponsiveThreshold int                    // consecutive failures before restart
 }
 
 // NewMonitor creates a new ServiceMonitor for the given project path.
@@ -55,9 +73,20 @@ func NewMonitor(projectPath string, notifier ServiceNotifier, eventLogger EventL
 		notifier:     notifier,
 		eventLogger:  eventLogger,
 		interval:     interval,
-		autoRestart:  autoRestart,
-		sessionStart: time.Now(),
+		autoRestart:           autoRestart,
+		sessionStart:          time.Now(),
+		healthProbes:          make(map[string]HealthProbe),
+		unresponsiveThreshold: DefaultUnresponsiveThreshold,
 	}
+}
+
+// AddHealthProbe registers an HTTP health check for a specific service.
+// When the service's PID is unchanged but the health check fails for
+// unresponsiveThreshold consecutive polls, the service is force-restarted.
+func (m *ServiceMonitor) AddHealthProbe(serviceName string, probe HealthProbe) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.healthProbes[serviceName] = probe
 }
 
 // Start begins the monitoring loop in a background goroutine.
@@ -77,7 +106,8 @@ func (m *ServiceMonitor) Start() {
 	}()
 }
 
-// Poll runs a single monitoring cycle: fetch current state, detect crashes, update state.
+// Poll runs a single monitoring cycle: fetch current state, detect crashes,
+// run health probes, and update state.
 func (m *ServiceMonitor) Poll() error {
 	// Run overmind status to get current service states
 	currentStates, err := m.fetchOvermindStatus()
@@ -116,10 +146,111 @@ func (m *ServiceMonitor) Poll() error {
 		currentStates, _ = m.fetchOvermindStatus()
 	}
 
+	// Run HTTP health probes for services that have them configured.
+	// This detects unresponsiveness (process alive but not serving) which
+	// PID-based crash detection cannot catch.
+	unresponsiveServices := m.checkHealthProbes(currentStates)
+	if m.autoRestart && len(unresponsiveServices) > 0 {
+		for _, svc := range unresponsiveServices {
+			fmt.Printf("Service %s is unresponsive (PID %d, %d consecutive failures), restarting\n",
+				svc.Name, svc.PID, svc.UnresponsiveCount)
+
+			if m.eventLogger != nil {
+				m.eventLogger.LogServiceUnresponsive(svc.Name, m.projectPath, svc.PID, svc.UnresponsiveCount)
+			}
+
+			if err := m.notifier.ServiceCrashed(
+				fmt.Sprintf("⚠️ %s unresponsive (PID %d alive but not serving, %d failures), restarting",
+					svc.Name, svc.PID, svc.UnresponsiveCount),
+				m.projectPath,
+			); err != nil {
+				fmt.Printf("Failed to send unresponsive notification for %s: %v\n", svc.Name, err)
+			}
+
+			if err := m.restartService(svc.Name); err != nil {
+				fmt.Printf("Failed to restart unresponsive service %s: %v\n", svc.Name, err)
+			} else {
+				time.Sleep(1 * time.Second)
+				newStates, _ := m.fetchOvermindStatus()
+				for _, s := range newStates {
+					if s.Name == svc.Name {
+						if m.eventLogger != nil {
+							m.eventLogger.LogServiceRestarted(svc.Name, m.projectPath, s.PID, svc.RestartCount+1, true)
+						}
+						break
+					}
+				}
+			}
+		}
+		// Re-fetch status after restarts
+		currentStates, _ = m.fetchOvermindStatus()
+	}
+
 	// Update state for next poll
 	m.updateState(currentStates)
 
 	return nil
+}
+
+// checkHealthProbes runs HTTP health checks for services that have probes configured.
+// Returns services that have exceeded the unresponsive threshold.
+func (m *ServiceMonitor) checkHealthProbes(currentStates []ServiceState) []ServiceState {
+	var unresponsive []ServiceState
+
+	for _, current := range currentStates {
+		probe, hasProbe := m.healthProbes[current.Name]
+		if !hasProbe || current.Status != "running" {
+			continue
+		}
+
+		healthy := m.probeHealth(probe)
+		last, exists := m.lastState[current.Name]
+
+		if healthy {
+			// Reset unresponsive counter on success
+			if exists {
+				last.UnresponsiveCount = 0
+				m.lastState[current.Name] = last
+			}
+			continue
+		}
+
+		// Health check failed — only count if PID unchanged (not a crash)
+		if !exists || last.PID != current.PID {
+			continue
+		}
+
+		last.UnresponsiveCount++
+		m.lastState[current.Name] = last
+
+		if last.UnresponsiveCount >= m.unresponsiveThreshold {
+			unresponsive = append(unresponsive, ServiceState{
+				Name:              current.Name,
+				PID:               current.PID,
+				Status:            current.Status,
+				LastSeen:          time.Now(),
+				RestartCount:      last.RestartCount,
+				UnresponsiveCount: last.UnresponsiveCount,
+			})
+			// Reset counter after triggering restart
+			last.UnresponsiveCount = 0
+			m.lastState[current.Name] = last
+		}
+	}
+
+	return unresponsive
+}
+
+// probeHealth makes an HTTP GET request to the health probe URL.
+// Returns true if the service responds with any 2xx status code.
+func (m *ServiceMonitor) probeHealth(probe HealthProbe) bool {
+	client := &http.Client{Timeout: probe.Timeout}
+	resp, err := client.Get(probe.URL)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode >= 200 && resp.StatusCode < 300
 }
 
 // detectAndHandleCrashes detects crashed services and handles notifications/logging.
@@ -269,7 +400,7 @@ func detectCrashes(lastState map[string]ServiceState, currentList []ServiceState
 // updateState updates the internal state map with new service states.
 func (m *ServiceMonitor) updateState(states []ServiceState) {
 	for _, s := range states {
-		// If service already exists, preserve restart count
+		// If service already exists, preserve restart count and unresponsive count
 		if existing, ok := m.lastState[s.Name]; ok {
 			// If PID changed, increment restart count
 			if existing.PID != s.PID && s.PID != 0 {
@@ -277,6 +408,8 @@ func (m *ServiceMonitor) updateState(states []ServiceState) {
 			} else {
 				s.RestartCount = existing.RestartCount
 			}
+			// Preserve unresponsive count across state updates
+			s.UnresponsiveCount = existing.UnresponsiveCount
 		}
 		m.lastState[s.Name] = s
 	}

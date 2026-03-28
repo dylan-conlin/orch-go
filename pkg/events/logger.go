@@ -34,6 +34,8 @@ const (
 	EventTypeServiceRestarted = "service.restarted"
 	// EventTypeServiceStarted indicates a service started (first time seen).
 	EventTypeServiceStarted = "service.started"
+	// EventTypeServiceUnresponsive indicates a service is running but not responding to health checks.
+	EventTypeServiceUnresponsive = "service.unresponsive"
 	// EventTypeVerificationBypassed indicates a verification gate was bypassed via --skip-* flag.
 	EventTypeVerificationBypassed = "verification.bypassed"
 	// EventTypeVerificationAutoSkipped indicates a verification gate was auto-skipped due to skill-class or file type exemption.

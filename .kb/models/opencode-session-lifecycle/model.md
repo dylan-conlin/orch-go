@@ -1,7 +1,7 @@
 # Model: OpenCode Session Lifecycle
 
 **Domain:** OpenCode Integration / Session Management
-**Last Updated:** 2026-03-21
+**Last Updated:** 2026-03-28
 **Synthesized From:** 24 investigations (2025-12-19 to 2026-01-08) into OpenCode HTTP API, session persistence, SSE monitoring, and plugin system
 
 ---
@@ -110,6 +110,7 @@ Polls every 500ms until busy→idle transition.
 3. **Completion detection supports both SSE and polling** - SSE via `/event`, polling via `GET /session/status`
 4. **Sessions can have TTL** - `TimeTTL` field on creation enables automatic expiration; 0 = no expiration (default)
 5. **Session directory is explicitly set at creation** - `CreateSession` accepts `directory` parameter and sets `x-opencode-directory` header (cross-project bug fixed)
+6. **Server can become unresponsive without crashing** - The Bun process stays alive (same PID) but the event loop blocks, making the HTTP server stop responding. PID-based crash detection (overmind `--auto-restart`, ServiceMonitor) cannot detect this. Requires HTTP liveness probing. (Added 2026-03-28)
 
 ---
 
@@ -158,6 +159,21 @@ Polls every 500ms until busy→idle transition.
 - Breaking change, no migration guide
 
 **Fix (Jan 8):** Updated skills and plugins to use `session.status` event
+
+### Failure Mode 5: Server Unresponsiveness Without Crash (Added 2026-03-28)
+
+**Symptom:** OpenCode on port 4096 stops responding to HTTP requests during long sessions (20+ hours). No crash reports, no OOM kills. Process stays alive with unchanged PID.
+
+**Root cause:** The SSE subscription mechanism in `Bus.publish()` awaits ALL accumulated subscribers. Dead or slow SSE subscribers block the event loop, making the HTTP server unresponsive.
+
+**Why supervision didn't detect it:**
+- Overmind `--auto-restart` only triggers on process death
+- ServiceMonitor only checked PID changes (`last.PID != current.PID`)
+- Zero `service.crashed` events in event log despite repeated unresponsiveness
+
+**Fix (2026-03-28):** Added HTTP liveness probing to `pkg/service/monitor.go`. 3 consecutive health check failures (30s) with unchanged PID triggers force-restart via overmind. Logs `service.unresponsive` events.
+
+**Remaining (OpenCode fork):** SSE subscription accumulation needs defensive measures: subscriber timeout, max listener enforcement, writeSSE error handling.
 
 ---
 
@@ -266,6 +282,7 @@ Polls every 500ms until busy→idle transition.
 | `2026-02-18-probe-api-prefix-history.md` | 2026-02-18 | orch-go always used `/session` (never `/api/sessions`); no committed `/api` prefix in OpenCode server history; no SPA proxy stripping — contradicts model's "POST /api/sessions" claim |
 | `2026-02-20-probe-coaching-plugin-injection.md` | 2026-02-20 | Plugin injection uses `client.session.prompt` with `noReply: true` (message insertion, not system prompt mutation); `tool.execute.after` fires for gpt-5.2-codex sessions |
 | `2026-03-21-probe-knowledge-decay-verification.md` | 2026-03-21 | Two stale constraints corrected: `GET /session/status` enables polling (not SSE-only); `TimeTTL` enables session expiration; `retry` status type documented; cross-project directory bug confirmed fixed |
+| `2026-03-28-probe-opencode-server-unresponsiveness-liveness-gap.md` | 2026-03-28 | Server becomes unresponsive without crashing; PID-based supervision blind to event loop blocking; added HTTP liveness probing to ServiceMonitor |
 
 **Primary Evidence (Verify These):**
 - `pkg/opencode/client.go` - HTTP REST client (~728 lines)

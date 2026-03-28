@@ -1,7 +1,12 @@
 package service
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -168,9 +173,11 @@ func (m *MockNotifier) ServiceCrashed(serviceName string, projectPath string) er
 func TestServiceMonitorPoll(t *testing.T) {
 	mockNotifier := &MockNotifier{}
 	monitor := &ServiceMonitor{
-		projectPath: "/test/project",
-		lastState:   make(map[string]ServiceState),
-		notifier:    mockNotifier,
+		projectPath:           "/test/project",
+		lastState:             make(map[string]ServiceState),
+		notifier:              mockNotifier,
+		healthProbes:          make(map[string]HealthProbe),
+		unresponsiveThreshold: DefaultUnresponsiveThreshold,
 	}
 
 	// Simulate first poll (services running)
@@ -233,4 +240,187 @@ func contains(slice []string, val string) bool {
 		}
 	}
 	return false
+}
+
+// MockEventLogger satisfies the EventLogger interface for testing.
+type MockEventLogger struct {
+	crashed      []string
+	restarted    []string
+	started      []string
+	unresponsive []string
+}
+
+func (m *MockEventLogger) LogServiceCrashed(serviceName, projectPath string, oldPID, newPID int) error {
+	m.crashed = append(m.crashed, serviceName)
+	return nil
+}
+
+func (m *MockEventLogger) LogServiceRestarted(serviceName, projectPath string, newPID, restartCount int, autoRestart bool) error {
+	m.restarted = append(m.restarted, serviceName)
+	return nil
+}
+
+func (m *MockEventLogger) LogServiceStarted(serviceName, projectPath string, pid int) error {
+	m.started = append(m.started, serviceName)
+	return nil
+}
+
+func (m *MockEventLogger) LogServiceUnresponsive(serviceName, projectPath string, pid, consecutiveFailures int) error {
+	m.unresponsive = append(m.unresponsive, fmt.Sprintf("%s:%d", serviceName, consecutiveFailures))
+	return nil
+}
+
+// TestCheckHealthProbes_HealthyService verifies that healthy services reset unresponsive count.
+func TestCheckHealthProbes_HealthyService(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		w.Write([]byte("[]"))
+	}))
+	defer server.Close()
+
+	monitor := &ServiceMonitor{
+		projectPath: "/test",
+		lastState: map[string]ServiceState{
+			"opencode": {Name: "opencode", PID: 1234, Status: "running", UnresponsiveCount: 2},
+		},
+		healthProbes: map[string]HealthProbe{
+			"opencode": {URL: server.URL, Timeout: 2 * time.Second},
+		},
+		unresponsiveThreshold: 3,
+	}
+
+	currentStates := []ServiceState{
+		{Name: "opencode", PID: 1234, Status: "running"},
+	}
+
+	unresponsive := monitor.checkHealthProbes(currentStates)
+	if len(unresponsive) != 0 {
+		t.Errorf("Expected no unresponsive services, got %d", len(unresponsive))
+	}
+	if monitor.lastState["opencode"].UnresponsiveCount != 0 {
+		t.Errorf("Expected UnresponsiveCount reset to 0, got %d", monitor.lastState["opencode"].UnresponsiveCount)
+	}
+}
+
+// TestCheckHealthProbes_UnresponsiveService verifies unresponsive detection after threshold.
+func TestCheckHealthProbes_UnresponsiveService(t *testing.T) {
+	var requestCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	monitor := &ServiceMonitor{
+		projectPath: "/test",
+		lastState: map[string]ServiceState{
+			"opencode": {Name: "opencode", PID: 1234, Status: "running", UnresponsiveCount: 0},
+		},
+		healthProbes: map[string]HealthProbe{
+			"opencode": {URL: server.URL, Timeout: 2 * time.Second},
+		},
+		unresponsiveThreshold: 3,
+	}
+
+	currentStates := []ServiceState{
+		{Name: "opencode", PID: 1234, Status: "running"},
+	}
+
+	// First two checks — not yet at threshold
+	for i := 1; i <= 2; i++ {
+		unresponsive := monitor.checkHealthProbes(currentStates)
+		if len(unresponsive) != 0 {
+			t.Errorf("Poll %d: Expected no unresponsive services, got %d", i, len(unresponsive))
+		}
+	}
+
+	// Third check — reaches threshold
+	unresponsive := monitor.checkHealthProbes(currentStates)
+	if len(unresponsive) != 1 {
+		t.Fatalf("Poll 3: Expected 1 unresponsive service, got %d", len(unresponsive))
+	}
+	if unresponsive[0].Name != "opencode" {
+		t.Errorf("Expected 'opencode', got '%s'", unresponsive[0].Name)
+	}
+	if monitor.lastState["opencode"].UnresponsiveCount != 0 {
+		t.Errorf("Expected counter reset, got %d", monitor.lastState["opencode"].UnresponsiveCount)
+	}
+}
+
+// TestCheckHealthProbes_PIDChange skips count when PID changes.
+func TestCheckHealthProbes_PIDChange(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	monitor := &ServiceMonitor{
+		projectPath: "/test",
+		lastState: map[string]ServiceState{
+			"opencode": {Name: "opencode", PID: 1234, Status: "running", UnresponsiveCount: 2},
+		},
+		healthProbes: map[string]HealthProbe{
+			"opencode": {URL: server.URL, Timeout: 2 * time.Second},
+		},
+		unresponsiveThreshold: 3,
+	}
+
+	currentStates := []ServiceState{
+		{Name: "opencode", PID: 5678, Status: "running"},
+	}
+
+	unresponsive := monitor.checkHealthProbes(currentStates)
+	if len(unresponsive) != 0 {
+		t.Errorf("Expected no unresponsive after PID change, got %d", len(unresponsive))
+	}
+}
+
+// TestCheckHealthProbes_NoProbeConfigured verifies services without probes are skipped.
+func TestCheckHealthProbes_NoProbeConfigured(t *testing.T) {
+	monitor := &ServiceMonitor{
+		projectPath:           "/test",
+		lastState:             map[string]ServiceState{"web": {Name: "web", PID: 1234, Status: "running"}},
+		healthProbes:          map[string]HealthProbe{},
+		unresponsiveThreshold: 3,
+	}
+
+	unresponsive := monitor.checkHealthProbes([]ServiceState{{Name: "web", PID: 1234, Status: "running"}})
+	if len(unresponsive) != 0 {
+		t.Errorf("Expected no checks, got %d", len(unresponsive))
+	}
+}
+
+// TestCheckHealthProbes_ConnectionRefused verifies connection refused behavior.
+func TestCheckHealthProbes_ConnectionRefused(t *testing.T) {
+	monitor := &ServiceMonitor{
+		projectPath: "/test",
+		lastState: map[string]ServiceState{
+			"opencode": {Name: "opencode", PID: 1234, Status: "running", UnresponsiveCount: 0},
+		},
+		healthProbes: map[string]HealthProbe{
+			"opencode": {URL: "http://127.0.0.1:19999/session", Timeout: 500 * time.Millisecond},
+		},
+		unresponsiveThreshold: 2,
+	}
+
+	currentStates := []ServiceState{{Name: "opencode", PID: 1234, Status: "running"}}
+
+	monitor.checkHealthProbes(currentStates)
+	unresponsive := monitor.checkHealthProbes(currentStates)
+	if len(unresponsive) != 1 {
+		t.Errorf("Expected 1 unresponsive, got %d", len(unresponsive))
+	}
+}
+
+// TestAddHealthProbe verifies the AddHealthProbe method.
+func TestAddHealthProbe(t *testing.T) {
+	monitor := NewMonitor("/test", &MockNotifier{}, &MockEventLogger{}, 10*time.Second, true)
+	monitor.AddHealthProbe("opencode", HealthProbe{
+		URL:     "http://127.0.0.1:4096/session",
+		Timeout: 5 * time.Second,
+	})
+
+	if _, ok := monitor.healthProbes["opencode"]; !ok {
+		t.Error("Expected health probe registered")
+	}
 }

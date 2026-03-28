@@ -1,0 +1,12 @@
+verification:
+  type: behavior
+  automated:
+    - name: service package tests
+      command: go test ./pkg/service/ -v
+      expected: all 10 tests pass (including 6 new health probe tests)
+    - name: full build
+      command: go build ./cmd/orch/
+      expected: clean build, no errors
+  evidence:
+    tests_run: "go test ./pkg/service/ -v — 10 passed, 0 failed (0.310s)"
+    build_verified: "go build ./cmd/orch/ — clean build"

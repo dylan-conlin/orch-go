@@ -210,8 +210,15 @@ func runServe(portNum int) error {
 	eventLogger := events.NewDefaultLogger()
 	eventAdapter := service.NewEventLoggerAdapter(eventLogger)
 	serviceMonitor = service.NewMonitor(sourceDir, notifier, eventAdapter, 10*time.Second, true)
+	// Add HTTP liveness probe for OpenCode — detects when the process is alive
+	// but the event loop is blocked (e.g., from SSE subscription accumulation).
+	// PID-based crash detection cannot catch this failure mode.
+	serviceMonitor.AddHealthProbe("opencode", service.HealthProbe{
+		URL:     serverURL + "/session",
+		Timeout: 5 * time.Second,
+	})
 	serviceMonitor.Start()
-	fmt.Println("Started service monitor (polling every 10s, auto-restart enabled)")
+	fmt.Println("Started service monitor (polling every 10s, auto-restart enabled, opencode health probe)")
 
 	// Initialize LIKELY_DONE cache for attention signals
 	globalLikelyDoneCache = attention.NewLikelyDoneCache()
