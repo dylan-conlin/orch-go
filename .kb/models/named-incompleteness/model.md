@@ -1,9 +1,9 @@
 # Model: Generative systems are organized around named incompleteness
 
 **Domain:** Cross-cutting: knowledge system design, agent coordination, product design, epistemology
-**Last Updated:** 2026-03-27
+**Last Updated:** 2026-03-28
 **Promoted From:** Thread "Generative systems are organized around named incompleteness" (2026-03-27-generative-systems-are-organized-around.md)
-**Validation Status:** WORKING HYPOTHESIS, STRENGTHENING — subsumption of three child models confirmed analytically (same core prediction, same reason). Cross-domain pattern confirmed qualitatively via external validation probe (Luhmann, Popper, Kuhn, Lakatos, PKM). Spatial structure claim confirmed across 4 independent traditions: information geometry (constraint surfaces), formal logic (inquisitive semantics proof), cognitive science (TOT/FOK/curiosity fMRI), bibliometrics (6x citation density at research fronts). Spatial mechanism refined: gaps define constraint surfaces (submanifolds), not just coordinates. No quantitative measurement of composition rates. No disconfirmation attempts.
+**Validation Status:** WORKING HYPOTHESIS, CONFIRMED QUANTITATIVELY — subsumption of three child models confirmed analytically (same core prediction, same reason). Cross-domain pattern confirmed qualitatively via external validation probe (Luhmann, Popper, Kuhn, Lakatos, PKM). Spatial structure claim confirmed across 4 independent traditions: information geometry (constraint surfaces), formal logic (inquisitive semantics proof), cognitive science (TOT/FOK/curiosity fMRI), bibliometrics (6x citation density at research fronts). Spatial mechanism refined: gaps define constraint surfaces (submanifolds), not just coordinates. **First quantitative confirmation (2026-03-28):** 373 RAG papers embedded with sentence-transformers show questions clustering significantly tighter than findings (d=0.20, permutation p=0.0086, 95% CI [0.009, 0.045] excludes zero). Effect replicates across two embedding models and survives length control. Pilot d=0.27 was overestimated (typical); true d≈0.20 (small but real). NI has now produced and confirmed one quantitative prediction.
 
 ---
 
@@ -70,7 +70,7 @@ The naming is what transforms raw ignorance into a compositional signal. An orph
 
 | ID | Claim | How to Verify |
 |----|-------|---------------|
-| NI-01 | Named gaps compose; unnamed completeness doesn't. Two questions about the same gap converge because the gap is one coordinate. Two conclusions about different findings don't converge because they point everywhere. | Compare clustering effectiveness of gap-carrying artifacts (briefs with tensions) vs conclusion-carrying artifacts (SYNTHESIS.md, session debriefs) in `orch compose` output. Measure auto-clustering rates. |
+| NI-01 | Named gaps compose; unnamed completeness doesn't. Two questions about the same gap converge because the gap is one coordinate. Two conclusions about different findings don't converge because they point everywhere. **Confirmed quantitatively (2026-03-28):** 373 RAG papers show questions clustering significantly tighter than findings (d=0.20, permutation p=0.0086, 95% CI [0.009, 0.045] excludes zero). Replicates across two embedding models; survives length control. Pilot d=0.27 overestimated true effect. | Compare clustering effectiveness of gap-carrying artifacts (briefs with tensions) vs conclusion-carrying artifacts (SYNTHESIS.md, session debriefs) in `orch compose` output. Measure auto-clustering rates. **Cross-subfield replication:** Test in LLM evaluation, agent coordination, biomedical NLP. |
 | NI-02 | Every orch-go success preserves named incompleteness; every failure prematurely closes it. | For each system feature, classify whether it preserves or closes named incompleteness. Predict success/failure from this classification alone. Measure against actual outcome (compose rate, adoption rate, orphan rate). |
 | NI-03 | The mechanism is substrate-independent — same prediction, same reason, across domains. The reason is information-theoretic (gaps are specific coordinates in possibility space; conclusions are generic). | Take a domain NI hasn't been tested in (bibliometrics, education design, open source governance). Predict which features compose based on whether they name their incompleteness. Measure. |
 | NI-04 | Named incompleteness subsumes compositional-accretion, attractor-gate, and knowledge-accretion as instances. "Subsumes" means: NI makes the same core prediction as each child model, for the same reason. Child models add domain-specific mechanics, boundary conditions, and measurements that NI doesn't cover. | Find a prediction where NI disagrees with a child model. If none exists, NI is a strict generalization at the "why" level. Identify which child model predictions are independent of NI. |
@@ -182,9 +182,9 @@ Verification specs, deployment configs, gate logic — these need completeness. 
 
 **Boundary:** Named incompleteness applies to knowledge-producing surfaces, not to operational infrastructure. The design criterion from compositional-accretion ("not all surfaces need to compose") applies here too.
 
-### 5. The Model Is Retrodictive, Not Yet Predictive
+### 5. The Model Has One Confirmed Prediction
 
-All current evidence comes from explaining observations already made. No prediction has been generated and then tested. The claims table provides candidate predictions, but until one is tested and confirmed, the model remains explanatory rather than predictive.
+Most evidence comes from explaining observations already made. However, the 373-paper bibliometrics study (2026-03-28) was a genuine prediction-then-test: NI-01 predicted questions would cluster tighter than findings in semantic embedding space, and the study confirmed this (d=0.20, p=0.0086). One confirmed quantitative prediction does not make the model fully predictive — cross-subfield replication and additional prediction types are needed.
 
 ---
 
@@ -225,3 +225,5 @@ Principle test: does named incompleteness make the same prediction everywhere, f
 ### Probes
 - `probes/2026-03-27-probe-subsumption-analysis-child-models.md` — NI-04 confirmed with qualification: subsumption is at the "why" level; child models add independent "how/what/when" predictions
 - `probes/2026-03-28-probe-spatial-structure-questions-vs-statements-cross-domain.md` — NI-01/NI-03 confirmed with refinement: 4 independent traditions (info geometry, formal logic, cognitive science, bibliometrics) converge on gaps being more structured than conclusions. Mechanism refined: gaps define constraint surfaces (submanifolds), not just coordinates. NLP embedding measurement identified as empirical gap (testable prediction).
+- `probes/2026-03-28-probe-bibliometrics-pilot-questions-vs-findings-clustering.md` — NI-01/NI-03 extended: 50 RAG papers embedded with sentence-transformers show questions clustering tighter (d=0.27), reversing TF-IDF result. Confirms composition works through semantic reference, not lexical resemblance. Underpowered at N=50 (permutation p=0.196); need N≥240 for 80% power. Critical method finding: parametric tests on pairwise similarities inflate significance.
+- `probes/2026-03-28-probe-bibliometrics-full-study-373-papers.md` — NI-01/NI-03 **confirmed**: 373 RAG papers, permutation p=0.0086, d=0.20, 95% CI [0.009, 0.045] excludes zero. Replicates across two embedding models, survives length control. Pilot d=0.27 was overestimated (true d≈0.20). First confirmed quantitative prediction of NI model.

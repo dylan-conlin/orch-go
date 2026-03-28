@@ -1,0 +1,61 @@
+verification:
+  type: empirical-study
+  issue: orch-go-yf1ru
+
+  primary_analysis:
+    test: permutation_test
+    n_papers: 373
+    n_permutations: 5000
+    observed_diff: 0.0275
+    p_value: 0.0086
+    threshold: 0.05
+    result: PASS
+
+  effect_size:
+    cohens_d: 0.195
+    raw_diff: 0.0275
+    classification: small-but-real
+
+  confidence_interval:
+    method: bootstrap
+    n_bootstrap: 5000
+    ci_low: 0.0093
+    ci_high: 0.0454
+    excludes_zero: true
+
+  replication:
+    model_2:
+      name: paraphrase-MiniLM-L3-v2
+      diff: 0.0216
+      perm_p: 0.035
+      result: PASS
+
+  controls:
+    length_controlled:
+      diff: 0.0496
+      perm_p: 0.0
+      result: PASS (not a length artifact)
+    cross_type_ordering:
+      qq: 0.290
+      qf: 0.269
+      ff: 0.262
+      expected: QQ > QF > FF
+      result: PASS
+
+  artifacts:
+    investigation: .kb/investigations/2026-03-28-inv-run-240-paper-bibliometrics-study.md
+    probe: .kb/models/named-incompleteness/probes/2026-03-28-probe-bibliometrics-full-study-373-papers.md
+    model_updated: .kb/models/named-incompleteness/model.md
+    results: /tmp/biblio-240/results.json
+    scripts: /tmp/biblio-240/
+
+  probe_to_model_merge:
+    probe: probes/2026-03-28-probe-bibliometrics-full-study-373-papers.md
+    model: .kb/models/named-incompleteness/model.md
+    sections_updated:
+      - Validation Status (WORKING HYPOTHESIS → CONFIRMED QUANTITATIVELY)
+      - NI-01 claim (pilot → confirmed)
+      - Constraint 5 (retrodictive → one confirmed prediction)
+      - Probes section (added new probe reference)
+
+  manual_steps: none
