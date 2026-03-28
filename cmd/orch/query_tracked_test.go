@@ -128,19 +128,21 @@ func TestJoinWithReasonCodes_MissingSession(t *testing.T) {
 	}
 }
 
-func TestJoinWithReasonCodes_SessionDead(t *testing.T) {
+func TestJoinWithReasonCodes_SessionIdle(t *testing.T) {
+	// An idle OpenCode session is alive (running but not processing).
+	// SessionDead should NOT be set — idle != dead.
 	issues := []beads.Issue{
-		{ID: "orch-go-400", Title: "Dead session", Status: "in_progress", Labels: []string{"orch:agent"}},
+		{ID: "orch-go-400", Title: "Idle session", Status: "in_progress", Labels: []string{"orch:agent"}},
 	}
 	manifests := map[string]*spawn.AgentManifest{
 		"orch-go-400": {
 			BeadsID:    "orch-go-400",
-			SessionID:  "sess-dead",
+			SessionID:  "sess-idle",
 			ProjectDir: "/tmp/project",
 		},
 	}
 	liveness := map[string]execution.SessionStatusInfo{
-		"sess-dead": {Type: "idle"},
+		"sess-idle": {Type: "idle"},
 	}
 
 	results := discovery.JoinWithReasonCodes(issues, manifests, liveness, nil)
@@ -149,8 +151,8 @@ func TestJoinWithReasonCodes_SessionDead(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
 	r := results[0]
-	if !r.SessionDead {
-		t.Error("expected SessionDead=true")
+	if r.SessionDead {
+		t.Error("expected SessionDead=false for idle session (idle != dead)")
 	}
 	if r.Status != "idle" {
 		t.Errorf("expected Status idle, got %s", r.Status)
@@ -254,8 +256,11 @@ func TestJoinWithReasonCodes_MultipleAgents(t *testing.T) {
 	if !results[1].MissingPhase {
 		t.Error("agent 602: expected MissingPhase=true (no phase in map)")
 	}
-	if !results[2].SessionDead {
-		t.Error("agent 603: expected SessionDead=true")
+	if results[2].SessionDead {
+		t.Error("agent 603: expected SessionDead=false for idle session (idle != dead)")
+	}
+	if results[2].Status != "idle" {
+		t.Errorf("agent 603: expected Status idle, got %s", results[2].Status)
 	}
 	if results[2].Phase != "Planning - reading code" {
 		t.Errorf("agent 603: expected Phase 'Planning - reading code', got %q", results[2].Phase)

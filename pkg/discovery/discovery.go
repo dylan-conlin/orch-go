@@ -479,7 +479,6 @@ func JoinWithReasonCodes(
 			agent.Status = "active"
 			agent.IsProcessing = true
 		case "idle":
-			agent.SessionDead = true
 			agent.Status = "idle"
 			agent.Reason = "session_idle"
 		case "retry":
