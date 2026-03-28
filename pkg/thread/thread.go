@@ -21,6 +21,7 @@ type Thread struct {
 	Created     string // YYYY-MM-DD
 	Updated     string // YYYY-MM-DD
 	ResolvedTo  string
+	PromotedTo  string   // artifact path this thread was promoted into
 	SpawnedFrom string   // thread slug this was spawned from
 	Spawned     []string // thread slugs spawned from this thread
 	ActiveWork  []string // beads IDs of active work on this thread
@@ -45,6 +46,7 @@ type ThreadSummary struct {
 	Created     string `json:"created"`
 	Updated     string `json:"updated"`
 	ResolvedTo  string `json:"resolved_to,omitempty"`
+	PromotedTo  string `json:"promoted_to,omitempty"`
 	LatestEntry string `json:"latest_entry"`
 	EntryCount  int    `json:"entry_count"`
 	Filename    string `json:"filename"`
@@ -309,6 +311,7 @@ func List(threadsDir string) ([]ThreadSummary, error) {
 			Created:     thread.Created,
 			Updated:     thread.Updated,
 			ResolvedTo:  thread.ResolvedTo,
+			PromotedTo:  thread.PromotedTo,
 			LatestEntry: latestEntry,
 			EntryCount:  len(thread.Entries),
 			Filename:    e.Name(),
@@ -560,6 +563,8 @@ func parseFrontmatterLine(thread *Thread, line string) {
 		thread.Updated = value
 	case "resolved_to":
 		thread.ResolvedTo = value
+	case "promoted_to":
+		thread.PromotedTo = value
 	case "spawned_from":
 		thread.SpawnedFrom = value
 	}

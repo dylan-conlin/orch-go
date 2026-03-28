@@ -7,13 +7,14 @@ const (
 	StatusConverged = "converged" // Thread reached a conclusion, formalized into artifact
 	StatusSubsumed  = "subsumed"  // Thread absorbed into another thread
 	StatusResolved  = "resolved"  // Legacy terminal state (backward compat)
+	StatusPromoted  = "promoted"  // Thread promoted into a durable artifact (model, decision)
 )
 
 // IsResolved returns true if the status is any terminal state
 // (resolved, converged, or subsumed).
 func IsResolved(status string) bool {
 	switch status {
-	case StatusResolved, StatusConverged, StatusSubsumed:
+	case StatusResolved, StatusConverged, StatusSubsumed, StatusPromoted:
 		return true
 	}
 	return false
