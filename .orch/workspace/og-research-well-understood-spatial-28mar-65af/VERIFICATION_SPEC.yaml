@@ -1,0 +1,54 @@
+verification:
+  type: research-probe
+  issue: orch-go-4k8z9
+  workspace: og-research-well-understood-spatial-28mar-65af
+
+  automated_checks:
+    - name: "Probe file exists"
+      command: "test -f .kb/models/named-incompleteness/probes/2026-03-28-probe-spatial-structure-questions-vs-statements-cross-domain.md"
+      expected: "exit 0"
+      result: "PASS"
+
+    - name: "Probe has verdict"
+      command: "grep -c 'verdict: confirms' .kb/models/named-incompleteness/probes/2026-03-28-probe-spatial-structure-questions-vs-statements-cross-domain.md"
+      expected: ">= 1"
+      result: "PASS"
+
+    - name: "Probe has cross-domain synthesis table"
+      command: "grep -c 'Information geometry\\|Formal logic\\|Cognitive science\\|Bibliometrics' .kb/models/named-incompleteness/probes/2026-03-28-probe-spatial-structure-questions-vs-statements-cross-domain.md"
+      expected: ">= 4"
+      result: "PASS"
+
+    - name: "Model updated with probe reference"
+      command: "grep -c '2026-03-28-probe-spatial-structure' .kb/models/named-incompleteness/model.md"
+      expected: ">= 1"
+      result: "PASS"
+
+    - name: "Model validation status updated"
+      command: "grep -c 'STRENGTHENING' .kb/models/named-incompleteness/model.md"
+      expected: ">= 1"
+      result: "PASS"
+
+    - name: "Model core mechanism refined"
+      command: "grep -c 'constraint surface' .kb/models/named-incompleteness/model.md"
+      expected: ">= 1"
+      result: "PASS"
+
+    - name: "SYNTHESIS.md exists"
+      command: "test -f .orch/workspace/og-research-well-understood-spatial-28mar-65af/SYNTHESIS.md"
+      expected: "exit 0"
+      result: "PASS"
+
+    - name: "BRIEF.md exists"
+      command: "test -f .orch/workspace/og-research-well-understood-spatial-28mar-65af/BRIEF.md"
+      expected: "exit 0"
+      result: "PASS"
+
+  manual_checks:
+    - name: "Constraint surface refinement doesn't change NI predictions"
+      description: "Verify the language change from 'coordinates' to 'constraint surfaces' preserves all existing predictions while adding explanatory power"
+      status: "PENDING — for orchestrator review"
+
+    - name: "Cross-domain evidence is genuinely independent"
+      description: "Confirm the 4 traditions arrived at convergent conclusions via independent methods, not just cross-citing the same source"
+      status: "PASS — info geometry (mathematical proof), formal logic (logical proof), cognitive science (fMRI/behavioral experiments), bibliometrics (citation network analysis) use different methodologies"
