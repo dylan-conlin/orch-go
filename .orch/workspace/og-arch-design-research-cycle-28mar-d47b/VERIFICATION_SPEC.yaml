@@ -1,0 +1,42 @@
+---
+# Verification Specification for: Design Research Cycle
+# Issue: orch-go-47ppm
+# Type: architect (design investigation)
+
+verification_type: design
+design_artifact: .kb/investigations/2026-03-28-inv-design-research-cycle-autoresearch-style.md
+
+# Design completeness checks
+design_checks:
+  - name: Investigation file complete with all sections
+    status: PASS
+    evidence: "Investigation has D.E.K.N. summary, 6 findings, synthesis, structured uncertainty, implementation recommendations, composition claims"
+
+  - name: All design forks navigated with substrate consultation
+    status: PASS
+    evidence: "6 forks (placement, trigger, hypothesis, execution, eval, aggregation) each resolved with citations to autoresearch investigation, NI model, CA model, --loop design, principles"
+
+  - name: Blocking questions surfaced as beads entities
+    status: PASS
+    evidence: "orch-go-ugaml (claims table format, architectural), orch-go-7n9we (daemon boundary, strategic)"
+
+  - name: Implementation issues created with decomposition
+    status: PASS
+    evidence: "orch-go-jhz2s (command), orch-go-2o0my (skill), orch-go-bhois (orient), orch-go-9ac1e (integration)"
+
+  - name: Composition claims enumerated
+    status: PASS
+    evidence: "3 composition claims: CC-1 (spawn→probe→merge), CC-2 (orient displays claim status), CC-3 (prior probe context)"
+
+  - name: Defect class exposure analyzed
+    status: PASS
+    evidence: "Class 0 (scope expansion in parser), Class 3 (stale probes), Class 5 (contradictory claim status)"
+
+# Manual verification needed
+manual_checks:
+  - "Orchestrator reviews design recommendations for alignment with system direction"
+  - "Dylan reviews daemon integration boundary question (strategic authority)"
+  - "Claims table format standardization decision (architectural authority)"
+
+# No automated tests — this is a design artifact
+automated_tests: none
