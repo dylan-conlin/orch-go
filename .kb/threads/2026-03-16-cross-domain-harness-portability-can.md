@@ -1,9 +1,9 @@
 ---
 title: "Cross-domain harness portability — can structural enforcement transfer to music production and 3D modeling?"
-status: open
+status: resolved
 created: 2026-03-16
-updated: 2026-03-16
-resolved_to: ""
+updated: 2026-03-28
+resolved_to: "culled: training-confound thread covers cross-domain better"
 ---
 
 # Cross-domain harness portability — can structural enforcement transfer to music production and 3D modeling?

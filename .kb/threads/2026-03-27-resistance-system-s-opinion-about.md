@@ -1,9 +1,9 @@
 ---
 title: "Resistance is the system's opinion about whether work belongs"
-status: converged
+status: subsumed
 created: 2026-03-27
-updated: 2026-03-27
-resolved_to: ".kb/threads/2026-03-27-product-surface-five-elements-not.md"
+updated: 2026-03-28
+resolved_to: ""
 ---
 
 # Resistance is the system's opinion about whether work belongs

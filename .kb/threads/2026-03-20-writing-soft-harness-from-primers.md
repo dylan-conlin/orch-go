@@ -1,8 +1,8 @@
 ---
 title: "Writing soft harness — from primers to a skill that enforces story-first, earned abstractions, emotional honesty"
-status: open
+status: forming
 created: 2026-03-20
-updated: 2026-03-20
+updated: 2026-03-28
 resolved_to: ""
 ---
 

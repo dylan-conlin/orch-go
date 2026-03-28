@@ -1,8 +1,8 @@
 ---
 title: "Quality audit bootstrapping — random baseline produces the data that teaches the system what to audit"
-status: open
+status: subsumed
 created: 2026-03-20
-updated: 2026-03-20
+updated: 2026-03-28
 resolved_to: ""
 ---
 

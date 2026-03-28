@@ -1,54 +1,42 @@
-# Session Synthesis
-
-**Agent:** og-work-probe-ni-02-28mar-a2ae
-**Issue:** orch-go-rwusj
-**Duration:** 2026-03-28
-**Outcome:** success
-
+---
+beads_id: orch-go-rwusj
+category: knowledge
+quality_signals:
+  structural_completeness:
+    score: "4/4"
+    detected: true
+    evidence: "TLDR, Delta, Evidence, Knowledge"
+  evidence_specificity:
+    score: "true"
+    detected: true
+    evidence: "fail"
+  model_connection:
+    score: "true"
+    detected: true
+    evidence: ".kb/models/"
+  connective_reasoning:
+    score: "true"
+    detected: true
+    evidence: ""
+  tension_quality:
+    score: "true"
+    detected: true
+    evidence: ""
+  insight_vs_report:
+    score: "6/6"
+    detected: true
+    evidence: ""
+signal_count: 6
+signal_total: 6
 ---
 
-## TLDR
+# Brief: orch-go-rwusj
+
+## Frame
 
 Classified 17 orch-go features by whether they preserve or close named incompleteness. The NI classification correctly predicted outcomes (success/failure/mixed) for all 17, matching measured adoption rates, compose rates, and orphan rates. Verdict: confirms NI-02 with circularity qualification — most features are in-sample, but the gradient prediction (degree of NI preservation predicts degree of success) and the SYNTHESIS.md intervention trajectory provide genuine out-of-sample evidence.
 
----
-
-## Delta (What Changed)
-
-### Files Created
-- `.kb/models/named-incompleteness/probes/2026-03-28-probe-feature-level-ni-preservation-classification.md` — Full probe document with 17-feature classification table, failure mode mapping, circularity assessment, and gradient finding
-
-### Files Modified
-- None
-
-### Commits
-- Pending
-
----
-
-## Evidence (What Was Observed)
-
-- 7 features that preserve NI all show success outcomes (100% adoption, low orphan rates, compose effectively)
-- 5 features that close NI all show failure outcomes (100% bypass rate, 81.9% orphan rate, pile-up)
-- 3 features with mixed NI show mixed outcomes (18-57% adoption), and the degree of preservation correlates with degree of success
-- The SYNTHESIS.md intervention (adding UnexploredQuestions = named gap) improved the feature from pure pile-up to 87% gap-naming adoption
-- All 4 model failure modes (premature closure, unnamed gaps, gap inflation, false gaps) map to observed orch-go failures
-
-### Data Sources
-- Artifact type audit probe (2026-03-27): 13 artifact types with measured adoption rates
-- Automated adoption rate probe (2026-03-27): 7 signals with live measurements
-- Accretion gate effectiveness probe (2026-03-17): 55 firings, 100% bypass rate over 2 weeks
-- Named-incompleteness model.md: failure mode descriptions and thread lineage
-
----
-
-## Architectural Choices
-
-No architectural choices — task was within existing patterns.
-
----
-
-## Knowledge (What Was Learned)
+## Resolution
 
 ### New Artifacts
 - `.kb/models/named-incompleteness/probes/2026-03-28-probe-feature-level-ni-preservation-classification.md` — NI-02 probe
@@ -59,20 +47,7 @@ No architectural choices — task was within existing patterns.
 ### Key Finding: The Gradient
 The most precise and hardest-to-dismiss evidence is the gradient: mixed features show partial success proportional to their NI preservation rate. This is a stronger prediction than binary success/failure because it's quantitative and harder to produce by post-hoc rationalization.
 
----
-
-## Next (What Should Happen)
-
-**Recommendation:** close
-
-- [x] All deliverables complete (probe document with verdict)
-- [x] Evidence sources cited with measurements
-- [x] Probe has claim/verdict frontmatter and Model Impact section
-- [x] Ready for `orch complete orch-go-rwusj`
-
----
-
-## Unexplored Questions
+## Tension
 
 **Questions that emerged during this session that weren't directly in scope:**
 
@@ -83,18 +58,3 @@ The most precise and hardest-to-dismiss evidence is the gradient: mixed features
 **What remains unclear:**
 - Whether the 7 in-sample success features would have been correctly predicted BEFORE the model was built, or whether the model was shaped to fit them
 - Whether NI-02 generalizes to other systems (this probe is one system only)
-
----
-
-## Friction
-
-No friction — smooth session. Metrics from prior probes were well-organized and readily accessible.
-
----
-
-## Session Metadata
-
-**Skill:** research
-**Model:** claude-opus-4-6
-**Workspace:** `.orch/workspace/og-work-probe-ni-02-28mar-a2ae/`
-**Beads:** `bd show orch-go-rwusj`

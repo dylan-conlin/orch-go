@@ -1,8 +1,8 @@
 ---
 title: "Model-driven strategy — models generate inquiry, confirmed inquiry generates direction, not models → implementation"
-status: open
+status: subsumed
 created: 2026-03-19
-updated: 2026-03-19
+updated: 2026-03-28
 resolved_to: ""
 ---
 

@@ -150,19 +150,21 @@ The daemon prevents duplicate spawns via 7 sequential layers. Layer 0 is process
 
 ### Sibling Sequencing (Test Deferral)
 
-When test-writing and implementation issues from the same project are both in the ready queue, the daemon defers test issues until implementation siblings complete. This prevents build breakage from tests referencing types that haven't been implemented yet.
+When test-writing and implementation issues from the same epic are both in the ready queue, the daemon defers test issues until implementation siblings complete. This prevents build breakage from tests referencing types that haven't been implemented yet.
 
-**Mechanism:** `ShouldDeferTestIssue()` runs in the Decide phase (before compliance checks) and examines all issues in the prioritized queue. A test-like issue (detected via title/description heuristics) is deferred when same-project siblings that are NOT test-like have status `open` or `in_progress`.
+**Mechanism:** `ShouldDeferTestIssue()` runs in the Decide phase (before compliance checks) and examines all issues in the prioritized queue. A test-like issue (detected via title/description heuristics) is deferred when same-project **epic-child** siblings that are NOT test-like have status `open` or `in_progress`. Both the test issue and the blocking sibling must be in `epicChildIDs` — standalone issues in the same project are NOT considered siblings.
 
-**Data source:** `ListReadyIssues()` returns both `open` and `in_progress` issues, so in-progress sibling visibility requires no additional queries (respects No Local Agent State constraint).
+**Data source:** `ListReadyIssues()` returns both `open` and `in_progress` issues, so in-progress sibling visibility requires no additional queries (respects No Local Agent State constraint). `epicChildIDs` is populated by `expandTriageReadyEpics()` during the Orient phase.
 
 **Heuristic patterns:** Title/description containing: "write tests", "add tests", "test coverage", "table-driven", "test-driven", "unit test", "integration test", "tests for", "testing".
 
-**Failure mode:** False negatives — test issues without recognizable keywords will not be deferred and may be spawned alongside implementation siblings. This is acceptable: false positives (implementation issues incorrectly deferred) would be worse.
+**Failure modes:**
+- False negatives — test issues without recognizable keywords will not be deferred and may be spawned alongside implementation siblings. This is acceptable: false positives (implementation issues incorrectly deferred) would be worse.
+- Prior false positive (fixed Mar 28, 2026): project-prefix-only matching caused unrelated standalone issues to block each other. Fix: require epic child membership for both issues.
 
-**Origin:** Discovered Mar 18, 2026 on scrape project. Test agent (scrape-9w3) wrote tests for `ghIssue`/`ghPullRequest`/`anthropicRequest` types that hadn't been implemented yet by sibling agents (scrape-52p, scrape-gdh).
+**Origin:** Discovered Mar 18, 2026 on scrape project. Test agent (scrape-9w3) wrote tests for `ghIssue`/`ghPullRequest`/`anthropicRequest` types that hadn't been implemented yet by sibling agents (scrape-52p, scrape-gdh). Narrowed to epic-children-only Mar 28, 2026 after false dependency detected between orch-go-47ppm and orch-go-3zxfz.
 
-**Source:** `pkg/daemon/sibling_sequencing.go`, called from `ooda.go:Decide()`
+**Source:** `pkg/daemon/sibling_sequencing.go`, called from `ooda.go:Decide()` and `preview.go:Preview()`
 
 ### Verification Threshold (VerificationTracker)
 
@@ -578,6 +580,7 @@ All 34 probes merged as of 2026-03-06. Listed chronologically with 1-line summar
 | `../investigations/2026-03-27-inv-daemon-repeatedly-killed-sigkill-investigate.md` | Mar 27 | Extends | Daemon SIGKILL from launchd: exit-time reflection (no timeout) + missing context gates between main loop operations exceeded 5s ExitTimeOut. Fixed: 3s reflection timeout, context gates, ExitTimeOut=15s. Shutdown now 23-25ms. |
 | `../investigations/2026-03-27-design-architect-daemon-reliability.md` | Mar 27 | Extends | Structural review: 6 symptoms trace to 3 roots (unbounded shutdown, dual-write logging, organic subsystem growth). Double logging confirmed as Defect Class 5 (launchd + DaemonLogger both write to daemon.log). Cycle cache already solves shared scan. Dedup pipeline extraction is stable intermediate state; CAS redesign deferred to Phase 2. 5 phased interventions recommended. |
 | `2026-03-27-probe-between-session-composition-integration` | Mar 27 | Extends | Composition integrates cleanly as 14th periodic task. Comprehension queue supports conditional labeling (maintenance bypass). No new state needed — brief count derived from file timestamps. OODA loop and compose are independent execution paths. First method-core periodic task alongside substrate/bridge tasks. |
+| `../investigations/2026-03-28-inv-daemon-defers-unrelated-issues-implementation.md` | Mar 28 | Corrects | Sibling sequencing false positive: project-prefix-only matching caused unrelated standalone issues (orch-go-47ppm vs orch-go-3zxfz) to block each other. Fix: require both issues to be epic children. |
 
 ## Auto-Linked Investigations
 

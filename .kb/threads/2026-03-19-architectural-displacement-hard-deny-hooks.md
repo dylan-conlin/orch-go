@@ -1,9 +1,9 @@
 ---
 title: "Architectural displacement — hard deny hooks prevent wrong action but don't ensure right action, agents route code to wrong packages"
-status: open
+status: resolved
 created: 2026-03-19
-updated: 2026-03-19
-resolved_to: ""
+updated: 2026-03-28
+resolved_to: "culled: operational, create issue if resurfaces"
 ---
 
 # Architectural displacement — hard deny hooks prevent wrong action but don't ensure right action, agents route code to wrong packages

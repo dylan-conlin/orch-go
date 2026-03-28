@@ -1,9 +1,9 @@
 ---
 title: "Measurement command identity crisis — 10 commands, 3 namespaces, no caller telemetry, who uses what?"
-status: open
+status: resolved
 created: 2026-03-19
-updated: 2026-03-19
-resolved_to: ""
+updated: 2026-03-28
+resolved_to: "culled: operational debt, not a thread"
 ---
 
 # Measurement command identity crisis — 10 commands, 3 namespaces, no caller telemetry, who uses what?

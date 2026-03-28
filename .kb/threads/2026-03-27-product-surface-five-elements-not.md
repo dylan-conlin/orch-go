@@ -1,8 +1,8 @@
 ---
 title: "The product surface is five elements, not three — shape and resistance join threads, briefs, and tensions"
-status: converged
+status: subsumed
 created: 2026-03-27
-updated: 2026-03-27
+updated: 2026-03-28
 resolved_to: ""
 ---
 

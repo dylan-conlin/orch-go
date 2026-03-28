@@ -1,9 +1,9 @@
 ---
 title: "AI-assisted physical fabrication — Smithy DFM gap and LED letters harness are instances of the same compositional correctness problem"
-status: open
+status: resolved
 created: 2026-03-20
-updated: 2026-03-20
-resolved_to: ""
+updated: 2026-03-28
+resolved_to: "culled: domain-specific, no active work"
 ---
 
 # AI-assisted physical fabrication — Smithy DFM gap and LED letters harness are instances of the same compositional correctness problem

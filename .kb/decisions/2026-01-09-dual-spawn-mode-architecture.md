@@ -165,6 +165,7 @@ orch spawn --mode opencode investigation "task"
 
 ## Auto-Linked Investigations
 
+- .kb/investigations/2026-03-28-inv-implement-orch-research-command-claims.md
 - .kb/investigations/archived/2026-01-09-inv-implement-claude-mode-spawn-pkg.md
 - .kb/investigations/archived/2025-12-20-inv-make-headless-mode-default-deprecate.md
 - .kb/investigations/archived/2026-01-10-inv-fix-dual-mode-spawn-bug.md
