@@ -1,0 +1,18 @@
+summary: Wire orient-triggered compose behind the unprocessed-brief threshold and surface the resulting digest path + top cluster in orientation output.
+commands:
+  - command: go test ./pkg/orient
+    expectation: orient formatting and digest parsing tests pass, covering digest summary rendering and digested-brief ID extraction.
+    result: pass
+  - command: go test ./pkg/compose ./pkg/orient
+    expectation: compose + orient packages pass together.
+    result: fail
+    details: pkg/compose has an unrelated date-sensitive failure in TestCC4_OrientSurfacesDigestOnReturn when the fixture date catches up to the real calendar (tracked in orch-go-n5huq).
+  - command: go test ./cmd/orch
+    expectation: cmd/orch builds and tests so orient command wiring is validated end-to-end.
+    result: fail
+    details: blocked by pre-existing unrelated compile error in pkg/service/monitor.go (unused net/http import), tracked in orch-go-kd6cl.
+manual_checks:
+  - check: Read updated orient formatting and command wiring to confirm compose runs only when unprocessed brief count >= 5 and surfaces digest path + key cluster when successful.
+    result: pass
+notes:
+  - Validation for cmd/orch is currently limited by unrelated repo failures outside this task's scope.
