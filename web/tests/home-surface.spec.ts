@@ -84,7 +84,7 @@ How much content can the surface expose before it becomes a wall of text instead
 		});
 	});
 
-	await page.route('**/api/beads', async (route) => {
+	await page.route(/\/api\/beads(?:\?.*)?$/, async (route) => {
 		await route.fulfill({
 			status: 200,
 			contentType: 'application/json',
@@ -127,11 +127,26 @@ How much content can the surface expose before it becomes a wall of text instead
 		});
 	});
 
-	await page.route('**/api/agents**', async (route) => {
+	await page.route(/\/api\/agents(?:\?.*)?$/, async (route) => {
 		await route.fulfill({
 			status: 200,
 			contentType: 'application/json',
-			body: JSON.stringify([])
+			body: JSON.stringify([
+				{
+					id: 'agent-active',
+					status: 'active',
+					phase: 'Implementing',
+					spawned_at: '2026-03-26T10:00:00Z',
+					updated_at: '2026-03-26T10:05:00Z'
+				},
+				{
+					id: 'agent-review',
+					status: 'active',
+					phase: 'Complete - ready for review',
+					spawned_at: '2026-03-26T09:45:00Z',
+					updated_at: '2026-03-26T10:04:00Z'
+				}
+			])
 		});
 	});
 
@@ -177,6 +192,9 @@ test('renders thread, brief, and question content inline on the home surface', a
 
 	await page.goto('/');
 
+	await expect(page.getByTestId('home-header-status')).toContainText('1 active');
+	await expect(page.getByTestId('home-header-status')).toContainText('0 ready');
+	await expect(page.getByTestId('home-header-status')).toContainText('1 need review');
 	await expect(page.getByTestId('thread-inline-entry-threads-as-primary-artifact-thinking')).toContainText('Reading through briefs now reveals the actual argument');
 	await expect(page.getByTestId('home-briefs-card')).toContainText('The home surface still feels like monitoring');
 	await expect(page.getByTestId('home-brief-section-orch-go-uiv9d-resolution')).toContainText('Render the frame, resolution, and tension excerpts inline');

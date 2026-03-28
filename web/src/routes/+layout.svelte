@@ -1,8 +1,9 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
-	import { connectionStatus } from '$lib/stores/agents';
+	import { connectionStatus, trulyActiveAgents, needsReviewAgents } from '$lib/stores/agents';
 	import { usage } from '$lib/stores/usage';
+	import { beads } from '$lib/stores/beads';
 	import { theme, mode, getEffective } from '$lib/stores/theme';
 	import { page } from '$app/stores';
 	import { ThemeToggle } from '$lib/components/theme-toggle';
@@ -34,6 +35,9 @@
 				return 'bg-red-500';
 		}
 	});
+
+	let showHomeHeaderStatus = $derived($page.url.pathname === '/');
+	let homeReadyCount = $derived($beads?.ready_issues ?? 0);
 
 	onMount(() => {
 		theme.init();
@@ -86,6 +90,27 @@
 					</nav>
 				</div>
 				<div class="flex flex-1 items-center justify-end gap-1.5 sm:gap-3 min-w-0">
+					{#if showHomeHeaderStatus}
+						<div
+							class="flex items-center gap-1 rounded-full border border-border/70 bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground"
+							data-testid="home-header-status"
+						>
+							<a href="/work-graph" class="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-foreground transition-colors hover:bg-background">
+								<span class="font-semibold">{$trulyActiveAgents.length}</span>
+								<span>active</span>
+							</a>
+							<span aria-hidden="true">·</span>
+							<a href="/work-graph" class="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-foreground transition-colors hover:bg-background">
+								<span class="font-semibold">{homeReadyCount}</span>
+								<span>ready</span>
+							</a>
+							<span aria-hidden="true">·</span>
+							<a href="/work-graph" class="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-foreground transition-colors hover:bg-background">
+								<span class="font-semibold">{$needsReviewAgents.length}</span>
+								<span>need review</span>
+							</a>
+						</div>
+					{/if}
 					{#if $usage && !$usage.error}
 						<Tooltip.Root>
 							<Tooltip.Trigger>

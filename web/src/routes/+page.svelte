@@ -5,8 +5,6 @@
 	import { QuestionsSection } from '$lib/components/questions-section';
 	import {
 		agents,
-		trulyActiveAgents,
-		needsReviewAgents,
 		connectSSE,
 		disconnectSSE,
 		connectionStatus,
@@ -468,20 +466,4 @@
 		bind:expanded={sectionState.reviewQueue}
 	/>
 
-	<!-- ═══════════════════════════════════════════════════════════ -->
-	<!-- CONDENSED OPERATIONAL SUMMARY -->
-	<!-- ═══════════════════════════════════════════════════════════ -->
-
-	<div class="rounded-lg border bg-card px-3 py-2">
-		<div class="flex items-center justify-between">
-			<span class="text-xs text-muted-foreground">
-				{$trulyActiveAgents.length} agent{$trulyActiveAgents.length === 1 ? '' : 's'} active
-				· {$readyIssues?.count ?? 0} ready
-				· {$needsReviewAgents.length} need review
-			</span>
-			<a href="/work-graph" class="text-xs font-medium text-foreground hover:underline">
-				View Work →
-			</a>
-		</div>
-	</div>
 </div>

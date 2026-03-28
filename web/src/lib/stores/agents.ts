@@ -359,16 +359,16 @@ export const atRiskAgents = derived(agents, ($agents) =>
 export const needsReviewAgents = derived(agents, ($agents) =>
 	$agents.filter((a) => 
 		a.status === 'active' && 
-		a.phase?.toLowerCase() === 'complete'
+		a.phase?.toLowerCase().startsWith('complete')
 	)
 );
 
 // Truly active: running agents that are NOT in needs-review state
-// These are the agents consuming capacity
+// These are the agents consuming capacity (both actively processing and idle between requests)
 export const trulyActiveAgents = derived(agents, ($agents) =>
-	$agents.filter((a) => 
-		a.status === 'active' && 
-		a.phase?.toLowerCase() !== 'complete'
+	$agents.filter((a) =>
+		(a.status === 'active' || a.status === 'idle') &&
+		!a.phase?.toLowerCase().startsWith('complete')
 	)
 );
 
