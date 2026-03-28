@@ -1,6 +1,6 @@
 # Probe: Do Tensions Cluster Tighter Than Conclusions in orch-go's Brief Corpus?
 
-**Model:** named-incompleteness (generative-systems-are-organized-around)
+**Model:** named-incompleteness
 **Date:** 2026-03-28
 **Status:** Complete
 **claim:** NI-01

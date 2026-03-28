@@ -1,6 +1,6 @@
 # Probe: Subsumption Analysis — Does Named Incompleteness Subsume Three Child Models?
 
-**Model:** generative-systems-are-organized-around
+**Model:** named-incompleteness
 **Date:** 2026-03-27
 **Status:** Complete
 **claim:** NI-04
