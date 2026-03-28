@@ -131,7 +131,7 @@ Remaining 4-5 slots for API fetches
 
 ### Critical Invariants
 
-1. **Home page is comprehension-only** - Execution residue (agent grids, event streams, coaching, services) was subtracted 2026-03-26; execution monitoring lives on Work route. The operational/historical mode toggle was removed.
+1. **Home page is comprehension-first with ambient liveness** - Execution residue (agent grids, event streams, coaching, services) was subtracted 2026-03-26; execution monitoring lives on Work route. The operational/historical mode toggle was removed. However, **liveness assurance** is a third information category distinct from both comprehension and execution — it provides ambient proof the system is alive (activity descriptions + recency timestamps) without the cognitive overhead of full execution monitoring. The condensed operational summary should render per-agent activity pulse, not just counts. (Evidence: 2026-03-27 pulse probe — SSE activity data arrives at home page but is discarded to a bare count.)
 2. **SSE Events auto-connect, Agentlog is opt-in** - Connection pool management. Home page uses SSE only for agent count summaries in the condensed operational line.
 3. **beadsFetchThreshold controls remote queries** - 5+ ready issues triggers `bd ready` shell-out
 4. **Progressive disclosure via collapsed panels** - Event panels start collapsed, expand on click
@@ -140,7 +140,7 @@ Remaining 4-5 slots for API fetches
 7. **buildActiveAgentMap() is local-project-scoped** - Cross-project graph requests get nodes but NOT active agent enrichment. Any cross-project in_progress issue shows 'unassigned' as a result.
 8. **Promoted sections must participate in pinnedTreeIds deduplication** - Any section that pulls items out of the work-graph tree must register IDs in `pinnedTreeIds` to prevent double-rendering. Currently only the WIP section does this; Ready to Complete does not.
 9. **State persistence: localStorage primary, URL hash for deep-linking** - UI state (expansion, tab selection, view mode) persists in localStorage; URL hash used additionally for bookmarkable views (knowledge-tree tabs).
-10. **Content mode vs metadata mode** - Comprehension surfaces must render *content* (prose, synthesis, question text) not *metadata* (counts, badges, titles). The product feel requires content mode for the comprehension layer; metadata mode is appropriate for operational/execution surfaces. (Evidence: 2026-03-26 probe — all three identity-defining elements existed as metadata, product feel only emerged when rendering switched to content.)
+10. **Three rendering modes: content, metadata, presence** - Comprehension surfaces render *content* (prose, synthesis, question text); execution surfaces render *metadata* (counts, badges, status labels). A third mode — *presence* — renders activity descriptions with recency timestamps ("Reading files... 3s ago") to provide ambient liveness proof. Content mode is for the comprehension layer; metadata mode for operational summaries; presence mode for the liveness assurance layer. (Evidence: 2026-03-26 probe established content vs metadata; 2026-03-27 pulse probe identified presence as a third mode — neither full execution content nor bare metadata.)
 
 ---
 
@@ -443,7 +443,7 @@ Plugin error → OpenCode internal 500 → orch status fails → API can't get a
 
 ### Merged Probes
 
-16 probes merged into this model (14 on 2026-03-06, 2 on 2026-03-26):
+17 probes merged into this model (14 on 2026-03-06, 2 on 2026-03-26, 1 on 2026-03-27):
 
 | Probe | Verdict | Summary |
 |-------|---------|---------|
@@ -463,6 +463,7 @@ Plugin error → OpenCode internal 500 → orch status fails → API can't get a
 | `2026-02-25-probe-dashboard-web-ui-framework-and-responsive-patterns` | EXTENDS | Full tech stack: shadcn-svelte + Tailwind v3 + 28 themes + 25 stores + 5-tier responsive grid |
 | `2026-03-26-probe-minimum-comprehension-surface-product-identity` | EXTENDS | Product triangle (threads + briefs + tensions) rendered as content, not metadata. Content mode vs metadata mode is the product/dashboard distinction. Invariant 10 added. |
 | `2026-03-26-probe-ranking-attention-layer-boundary` | EXTENDS + CONTRADICTS | Attention pipeline is exclusively work-focused; reading surface has no ordering intelligence beyond mod-time. "Ranking intelligence" decomposes into 3 layers: substrate (exists), method-expressing (missing — thread-grouping, tension surfacing), learned (future). Partially contradicts treating ranking as single held-back surface. |
+| `2026-03-27-probe-pulse-signal-liveness-assurance-gap` | EXTENDS | Comprehension/execution binary has a third category: liveness assurance. SSE activity data reaches home page but is discarded to bare counts. Identifies "presence mode" (activity + recency) as distinct from content mode and metadata mode. Invariants 1 and 10 updated. |
 
 ## Auto-Linked Investigations
 
