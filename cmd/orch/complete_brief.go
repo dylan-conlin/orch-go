@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dylan-conlin/orch-go/pkg/compose"
+	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -23,7 +25,15 @@ func generateHeadlessBrief(target CompletionTarget) error {
 		return fmt.Errorf("cannot read SYNTHESIS.md: %w", err)
 	}
 
-	brief := buildBriefFromSynthesis(target.BeadsID, synthesis)
+	// Classify brief category from issue metadata
+	var issueType, skill string
+	if target.Issue != nil {
+		issueType = target.Issue.IssueType
+		skill = inferSkillForBrief(target.Issue)
+	}
+	category := compose.ClassifyBriefCategory(issueType, skill, target.Identifier)
+
+	brief := buildBriefFromSynthesis(target.BeadsID, synthesis, category)
 
 	briefDir := filepath.Join(target.WorkProjectDir, ".kb", "briefs")
 	if err := os.MkdirAll(briefDir, 0755); err != nil {
@@ -45,13 +55,16 @@ func generateHeadlessBrief(target CompletionTarget) error {
 //   - Frame: TLDR (what the agent was doing and why)
 //   - Resolution: Knowledge + Delta (what was learned/changed)
 //   - Tension: UnexploredQuestions or Next (what remains open)
-func buildBriefFromSynthesis(beadsID string, s *verify.Synthesis) string {
+func buildBriefFromSynthesis(beadsID string, s *verify.Synthesis, category string) string {
 	var b strings.Builder
 
 	// Compute quality signals and prepend as YAML frontmatter
 	quality := verify.ComputeSynthesisQuality(s)
 	b.WriteString("---\n")
 	b.WriteString(fmt.Sprintf("beads_id: %s\n", beadsID))
+	if category != "" {
+		b.WriteString(fmt.Sprintf("category: %s\n", category))
+	}
 	b.WriteString("quality_signals:\n")
 	for _, sig := range quality.Signals {
 		b.WriteString(fmt.Sprintf("  %s:\n", sig.Name))
@@ -101,4 +114,17 @@ func buildBriefFromSynthesis(beadsID string, s *verify.Synthesis) string {
 	}
 
 	return b.String()
+}
+
+// inferSkillForBrief resolves the skill for an issue using the same inference
+// chain as daemon spawn: label > title > issue type.
+func inferSkillForBrief(issue *verify.Issue) string {
+	if skill := daemon.InferSkillFromLabels(issue.Labels); skill != "" {
+		return skill
+	}
+	if skill := daemon.InferSkillFromTitle(issue.Title); skill != "" {
+		return skill
+	}
+	skill, _ := daemon.InferSkill(issue.IssueType)
+	return skill
 }

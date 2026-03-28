@@ -14,6 +14,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/claims"
+	"github.com/dylan-conlin/orch-go/pkg/compose"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
@@ -29,6 +30,12 @@ var (
 	orientJSON      bool
 	orientSkipReady bool
 	orientHook      bool
+)
+
+var (
+	orientComposeTimeout  = 2 * time.Second
+	orientComposeFunc     = compose.Compose
+	orientWriteDigestFunc = compose.WriteDigest
 )
 
 var orientCmd = &cobra.Command{
@@ -86,11 +93,12 @@ func runOrient() error {
 
 	// Element 2: Recent briefs
 	briefsDir := filepath.Join(projectDir, ".kb", "briefs")
+	digestsDir := orientDigestsDir(projectDir)
 	readState := loadBriefReadStateForOrient(projectDir)
 	data.RecentBriefs, data.UnreadBriefCount = orient.ScanRecentBriefs(briefsDir, readState, 5)
+	data.ComposeSummary = collectComposeSummary(briefsDir, orientThreadsDir(projectDir), digestsDir, readState)
 
 	// Between-session digests
-	digestsDir := filepath.Join(projectDir, ".kb", "digests")
 	var prevSessionDate time.Time
 	if data.PreviousSession != nil && data.PreviousSession.Date != "" {
 		prevSessionDate, _ = time.Parse("2006-01-02", data.PreviousSession.Date)
@@ -989,6 +997,97 @@ func loadBriefReadStateForOrient(projectDir string) map[string]bool {
 		}
 	}
 	return result
+}
+
+type orientComposeResult struct {
+	digest *compose.Digest
+	err    error
+}
+
+func collectComposeSummary(briefsDir, threadsDir, digestsDir string, readState map[string]bool) *orient.ComposeSummary {
+	unprocessedBriefs := countUnprocessedBriefs(briefsDir, digestsDir, readState)
+	if unprocessedBriefs < 5 {
+		return nil
+	}
+
+	resultCh := make(chan orientComposeResult, 1)
+	go func() {
+		digest, err := orientComposeFunc(briefsDir, threadsDir)
+		resultCh <- orientComposeResult{digest: digest, err: err}
+	}()
+
+	timer := time.NewTimer(orientComposeTimeout)
+	defer timer.Stop()
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil || result.digest == nil {
+			return nil
+		}
+		path, err := orientWriteDigestFunc(result.digest, digestsDir)
+		if err != nil {
+			return &orient.ComposeSummary{
+				UnprocessedBriefs: unprocessedBriefs,
+				BriefsComposed:    result.digest.BriefsComposed,
+				ClustersFound:     result.digest.ClustersFound,
+				Clusters:          summarizeComposeClusters(result.digest, 3),
+				Note:              fmt.Sprintf("digest write skipped: %v", err),
+			}
+		}
+		return &orient.ComposeSummary{
+			UnprocessedBriefs: unprocessedBriefs,
+			BriefsComposed:    result.digest.BriefsComposed,
+			ClustersFound:     result.digest.ClustersFound,
+			DigestPath:        path,
+			Clusters:          summarizeComposeClusters(result.digest, 3),
+		}
+	case <-timer.C:
+		return &orient.ComposeSummary{
+			UnprocessedBriefs: unprocessedBriefs,
+			Note:              "skipped: compose exceeded 2s budget",
+		}
+	}
+}
+
+func countUnprocessedBriefs(briefsDir, digestsDir string, readState map[string]bool) int {
+	briefs, err := compose.LoadBriefs(briefsDir)
+	if err != nil {
+		return 0
+	}
+
+	digested := orient.DigestedBriefIDs(digestsDir)
+	count := 0
+	for _, brief := range briefs {
+		if !readState[brief.ID] || !digested[brief.ID] {
+			count++
+		}
+	}
+	return count
+}
+
+func summarizeComposeClusters(digest *compose.Digest, limit int) []orient.ComposeClusterSummary {
+	if digest == nil || len(digest.Clusters) == 0 {
+		return nil
+	}
+	if len(digest.Clusters) < limit {
+		limit = len(digest.Clusters)
+	}
+	clusters := make([]orient.ComposeClusterSummary, 0, limit)
+	for _, cluster := range digest.Clusters[:limit] {
+		clusters = append(clusters, orient.ComposeClusterSummary{
+			Name:       cluster.Name,
+			BriefCount: len(cluster.Briefs),
+		})
+	}
+	return clusters
+}
+
+func orientThreadsDir(projectDir string) string {
+	return filepath.Join(projectDir, ".kb", "threads")
+}
+
+func orientDigestsDir(projectDir string) string {
+	return filepath.Join(projectDir, ".kb", "digests")
 }
 
 // countDecisions counts .md files in .kb/decisions/ for stale rate computation.

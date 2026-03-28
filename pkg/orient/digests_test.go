@@ -207,3 +207,32 @@ func TestFormatDigestSummary_MultipleDigests(t *testing.T) {
 		t.Errorf("expected aggregated brief count, got %q", result)
 	}
 }
+
+func TestDigestedBriefIDs(t *testing.T) {
+	dir := t.TempDir()
+	digest := `---
+date: 2026-03-28
+briefs_composed: 4
+clusters_found: 1
+---
+
+## Cluster 1: auth / routing / drift
+
+**Briefs:** orch-go-a1, orch-go-b2
+
+## Unclustered Briefs
+
+- **orch-go-c3** - Summary
+- **orch-go-d4** - Summary
+`
+	if err := os.WriteFile(filepath.Join(dir, "2026-03-28-digest.md"), []byte(digest), 0644); err != nil {
+		t.Fatalf("write digest: %v", err)
+	}
+
+	ids := DigestedBriefIDs(dir)
+	for _, id := range []string{"orch-go-a1", "orch-go-b2", "orch-go-c3", "orch-go-d4"} {
+		if !ids[id] {
+			t.Fatalf("expected %s to be marked digested", id)
+		}
+	}
+}

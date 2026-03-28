@@ -1,10 +1,14 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"testing"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/compose"
 	"github.com/dylan-conlin/orch-go/pkg/orient"
 )
 
@@ -493,5 +497,213 @@ func TestIsStopWord(t *testing.T) {
 	}
 	if isStopWord("enforcement") {
 		t.Error("'enforcement' should not be a stop word")
+	}
+}
+
+func TestCollectComposeSummary(t *testing.T) {
+	dir := t.TempDir()
+	briefsDir := filepath.Join(dir, ".kb", "briefs")
+	threadsDir := filepath.Join(dir, ".kb", "threads")
+	digestsDir := filepath.Join(dir, ".kb", "digests")
+	if err := os.MkdirAll(briefsDir, 0755); err != nil {
+		t.Fatalf("mkdir briefs: %v", err)
+	}
+	if err := os.MkdirAll(threadsDir, 0755); err != nil {
+		t.Fatalf("mkdir threads: %v", err)
+	}
+
+	for i := 0; i < 5; i++ {
+		domain := "token refresh"
+		if i >= 3 {
+			domain = "daemon liveness"
+		}
+		content := fmt.Sprintf(`# Brief: orch-go-sum%d
+
+## Frame
+
+The %s path is failing during orient startup.
+
+## Resolution
+
+Adjusted %s handling to reduce repeated errors.
+
+## Tension
+
+Should %s be surfaced earlier?
+`, i, domain, domain, domain)
+		path := filepath.Join(briefsDir, fmt.Sprintf("orch-go-sum%d.md", i))
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatalf("write brief %d: %v", i, err)
+		}
+	}
+
+	oldTimeout := orientComposeTimeout
+	orientComposeTimeout = 2 * time.Second
+	defer func() { orientComposeTimeout = oldTimeout }()
+
+	summary := collectComposeSummary(briefsDir, threadsDir, digestsDir, nil)
+	if summary == nil {
+		t.Fatal("expected compose summary")
+	}
+	if summary.UnprocessedBriefs != 5 {
+		t.Fatalf("UnprocessedBriefs = %d, want 5", summary.UnprocessedBriefs)
+	}
+	if summary.BriefsComposed != 5 {
+		t.Fatalf("BriefsComposed = %d, want 5", summary.BriefsComposed)
+	}
+	if summary.ClustersFound == 0 {
+		t.Fatal("expected clusters_found to be set")
+	}
+	if summary.DigestPath == "" {
+		t.Fatal("expected digest path")
+	}
+	if len(summary.Clusters) == 0 {
+		t.Fatal("expected at least one compose cluster")
+	}
+	if summary.Note != "" {
+		t.Fatalf("Note = %q, want empty", summary.Note)
+	}
+	entries, err := os.ReadDir(digestsDir)
+	if err != nil {
+		t.Fatalf("read digests dir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 digest file, got %d", len(entries))
+	}
+}
+
+func TestCollectComposeSummary_Timeout(t *testing.T) {
+	dir := t.TempDir()
+	briefsDir := filepath.Join(dir, ".kb", "briefs")
+	threadsDir := filepath.Join(dir, ".kb", "threads")
+	digestsDir := filepath.Join(dir, ".kb", "digests")
+	if err := os.MkdirAll(briefsDir, 0755); err != nil {
+		t.Fatalf("mkdir briefs: %v", err)
+	}
+	if err := os.MkdirAll(threadsDir, 0755); err != nil {
+		t.Fatalf("mkdir threads: %v", err)
+	}
+	for i := 0; i < 5; i++ {
+		content := fmt.Sprintf(`# Brief: orch-go-timeout%d
+
+## Frame
+
+Timeout brief %d.
+`, i, i)
+		path := filepath.Join(briefsDir, fmt.Sprintf("orch-go-timeout%d.md", i))
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatalf("write brief %d: %v", i, err)
+		}
+	}
+
+	oldTimeout := orientComposeTimeout
+	oldCompose := orientComposeFunc
+	orientComposeTimeout = 10 * time.Millisecond
+	orientComposeFunc = func(briefsDir, threadsDir string) (*compose.Digest, error) {
+		<-time.After(50 * time.Millisecond)
+		return &compose.Digest{}, nil
+	}
+	defer func() {
+		orientComposeTimeout = oldTimeout
+		orientComposeFunc = oldCompose
+	}()
+
+	summary := collectComposeSummary(briefsDir, threadsDir, digestsDir, nil)
+	if summary == nil {
+		t.Fatal("expected timeout summary")
+	}
+	if summary.Note != "skipped: compose exceeded 2s budget" {
+		t.Fatalf("Note = %q, want timeout note", summary.Note)
+	}
+	if len(summary.Clusters) != 0 {
+		t.Fatalf("expected no clusters on timeout, got %d", len(summary.Clusters))
+	}
+}
+
+func TestCollectComposeSummary_SkipsBelowThreshold(t *testing.T) {
+	dir := t.TempDir()
+	briefsDir := filepath.Join(dir, ".kb", "briefs")
+	threadsDir := filepath.Join(dir, ".kb", "threads")
+	digestsDir := filepath.Join(dir, ".kb", "digests")
+	if err := os.MkdirAll(briefsDir, 0755); err != nil {
+		t.Fatalf("mkdir briefs: %v", err)
+	}
+	if err := os.MkdirAll(threadsDir, 0755); err != nil {
+		t.Fatalf("mkdir threads: %v", err)
+	}
+	if err := os.MkdirAll(digestsDir, 0755); err != nil {
+		t.Fatalf("mkdir digests: %v", err)
+	}
+
+	for i := 0; i < 4; i++ {
+		content := fmt.Sprintf(`# Brief: orch-go-thr%d
+
+## Frame
+
+Brief %d frame.
+`, i, i)
+		path := filepath.Join(briefsDir, fmt.Sprintf("orch-go-thr%d.md", i))
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatalf("write brief %d: %v", i, err)
+		}
+	}
+
+	if summary := collectComposeSummary(briefsDir, threadsDir, digestsDir, nil); summary != nil {
+		t.Fatal("expected nil compose summary below threshold")
+	}
+}
+
+func TestCountUnprocessedBriefs(t *testing.T) {
+	dir := t.TempDir()
+	briefsDir := filepath.Join(dir, "briefs")
+	digestsDir := filepath.Join(dir, "digests")
+	if err := os.MkdirAll(briefsDir, 0755); err != nil {
+		t.Fatalf("mkdir briefs: %v", err)
+	}
+	if err := os.MkdirAll(digestsDir, 0755); err != nil {
+		t.Fatalf("mkdir digests: %v", err)
+	}
+
+	for _, id := range []string{"orch-go-a1", "orch-go-b2", "orch-go-c3"} {
+		content := fmt.Sprintf(`# Brief: %s
+
+## Frame
+
+Frame for %s.
+
+## Resolution
+
+Resolution for %s.
+`, id, id, id)
+		path := filepath.Join(briefsDir, id+".md")
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatalf("write %s: %v", id, err)
+		}
+	}
+
+	digest := `---
+date: 2026-03-28
+briefs_composed: 2
+clusters_found: 1
+---
+
+## Cluster 1
+
+**Briefs:** orch-go-a1
+
+## Unclustered Briefs
+
+- **orch-go-b2** - Summary
+`
+	if err := os.WriteFile(filepath.Join(digestsDir, "2026-03-28-digest.md"), []byte(digest), 0644); err != nil {
+		t.Fatalf("write digest: %v", err)
+	}
+
+	count := countUnprocessedBriefs(briefsDir, digestsDir, map[string]bool{
+		"orch-go-a1": true,
+		"orch-go-b2": true,
+	})
+	if count != 1 {
+		t.Fatalf("countUnprocessedBriefs = %d, want 1", count)
 	}
 }

@@ -234,8 +234,18 @@ func TestFormatOrientation(t *testing.T) {
 		},
 		UnreadBriefCount: 1,
 		FocusGoal:        "Ship orient command",
-		ClaimEdges:       "Knowledge edges:\n   tension: claim mismatch\n\n",
-		DigestSummary:    &DigestSummary{DigestCount: 1, BriefsComposed: 5, ClustersFound: 2},
+		ComposeSummary: &ComposeSummary{
+			UnprocessedBriefs: 5,
+			BriefsComposed:    5,
+			ClustersFound:     2,
+			DigestPath:        ".kb/digests/2026-03-28-digest.md",
+			Clusters: []ComposeClusterSummary{
+				{Name: "token refresh", BriefCount: 3},
+				{Name: "daemon liveness", BriefCount: 2},
+			},
+		},
+		ClaimEdges:    "Knowledge edges:\n   tension: claim mismatch\n\n",
+		DigestSummary: &DigestSummary{DigestCount: 1, BriefsComposed: 5, ClustersFound: 2},
 	}
 
 	output := FormatOrientation(data)
@@ -255,6 +265,18 @@ func TestFormatOrientation(t *testing.T) {
 	}
 	if !strings.Contains(output, "Naming investigation") {
 		t.Error("missing brief title")
+	}
+	if !strings.Contains(output, "Digest available: 2 clusters across 5 briefs.") {
+		t.Error("missing compose summary section")
+	}
+	if !strings.Contains(output, "Key cluster: token refresh (3 briefs).") {
+		t.Error("missing key compose cluster summary")
+	}
+	if !strings.Contains(output, "Digest path: .kb/digests/2026-03-28-digest.md") {
+		t.Error("missing digest path")
+	}
+	if !strings.Contains(output, "token refresh (3 briefs)") {
+		t.Error("missing compose cluster summary")
 	}
 	if !strings.Contains(output, "Knowledge edges:") {
 		t.Error("missing tensions section")
@@ -279,8 +301,26 @@ func TestFormatOrientation(t *testing.T) {
 	if strings.Contains(output, "Focus:") || strings.Contains(output, "Ship orient command") {
 		t.Error("focus should not be in thinking surface")
 	}
-	if strings.Contains(output, "5 briefs") || strings.Contains(output, "2 themes") {
+	if strings.Contains(output, "Between sessions: 5 briefs cluster into 2 themes") {
 		t.Error("digest summary should not be in thinking surface")
+	}
+}
+
+func TestFormatOrientation_ComposeTimeoutNote(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		ComposeSummary: &ComposeSummary{
+			Note: "skipped: compose exceeded 2s budget",
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	if !strings.Contains(output, "Cross-cutting patterns:") {
+		t.Error("missing compose section header")
+	}
+	if !strings.Contains(output, "skipped: compose exceeded 2s budget") {
+		t.Error("missing compose timeout note")
 	}
 }
 

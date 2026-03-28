@@ -120,21 +120,38 @@ type PromotionCandidate struct {
 	EntryCount int    `json:"entry_count"`
 }
 
+// ComposeClusterSummary is a concise cluster surfaced during orient.
+type ComposeClusterSummary struct {
+	Name       string `json:"name"`
+	BriefCount int    `json:"brief_count"`
+}
+
+// ComposeSummary holds the fast-path compose results for orient.
+type ComposeSummary struct {
+	UnprocessedBriefs int                     `json:"unprocessed_briefs,omitempty"`
+	BriefsComposed    int                     `json:"briefs_composed,omitempty"`
+	ClustersFound     int                     `json:"clusters_found,omitempty"`
+	DigestPath        string                  `json:"digest_path,omitempty"`
+	Clusters          []ComposeClusterSummary `json:"clusters,omitempty"`
+	Note              string                  `json:"note,omitempty"`
+}
+
 // OrientationData holds all data needed to render session orientation.
 // The thinking surface (FormatOrientation) renders: threads, briefs, tensions.
 // Operational sections (FormatHealth) render: throughput, changelog, models, health, daemon, divergence, etc.
 type OrientationData struct {
 	// --- Thinking surface (rendered by FormatOrientation) ---
-	ActiveThreads      []ActiveThread       `json:"active_threads,omitempty"`
-	PromotionReady     []PromotionCandidate `json:"promotion_ready,omitempty"`
-	RecentBriefs     []RecentBrief   `json:"recent_briefs,omitempty"`
-	UnreadBriefCount int             `json:"unread_brief_count"`
-	DigestSummary    *DigestSummary  `json:"digest_summary,omitempty"`
-	ClaimEdges       string          `json:"claim_edges,omitempty"` // Pre-formatted claim edges text (filtered to thread-relevant)
-	ReadyIssues      []ReadyIssue    `json:"ready_issues,omitempty"`
-	ActivePlans      []PlanSummary   `json:"active_plans,omitempty"`
-	FocusGoal        string          `json:"focus_goal,omitempty"`
-	PreviousSession  *DebriefSummary `json:"previous_session,omitempty"`
+	ActiveThreads    []ActiveThread       `json:"active_threads,omitempty"`
+	PromotionReady   []PromotionCandidate `json:"promotion_ready,omitempty"`
+	RecentBriefs     []RecentBrief        `json:"recent_briefs,omitempty"`
+	UnreadBriefCount int                  `json:"unread_brief_count"`
+	DigestSummary    *DigestSummary       `json:"digest_summary,omitempty"`
+	ComposeSummary   *ComposeSummary      `json:"compose_summary,omitempty"`
+	ClaimEdges       string               `json:"claim_edges,omitempty"` // Pre-formatted claim edges text (filtered to thread-relevant)
+	ReadyIssues      []ReadyIssue         `json:"ready_issues,omitempty"`
+	ActivePlans      []PlanSummary        `json:"active_plans,omitempty"`
+	FocusGoal        string               `json:"focus_goal,omitempty"`
+	PreviousSession  *DebriefSummary      `json:"previous_session,omitempty"`
 
 	// --- Context (rendered by FormatOrientation) ---
 	SessionResume *SessionResume    `json:"session_resume,omitempty"`
@@ -253,6 +270,7 @@ func FormatOrientation(data *OrientationData) string {
 
 	// Element 2: Recent Briefs (what was learned)
 	b.WriteString(FormatRecentBriefs(data.RecentBriefs, data.UnreadBriefCount))
+	b.WriteString(FormatComposeSummary(data.ComposeSummary))
 
 	// Element 3: Active Tensions (filtered knowledge edges)
 	if data.ClaimEdges != "" {

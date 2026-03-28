@@ -4,9 +4,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+)
+
+var (
+	digestBriefsLineRe      = regexp.MustCompile(`\*\*Briefs:\*\*\s+(.+)$`)
+	digestUnclusteredLineRe = regexp.MustCompile(`^- \*\*([\w-]+)\*\*`)
 )
 
 // DigestSummary holds aggregated digest data for orient display.
@@ -59,6 +65,48 @@ func ScanRecentDigests(digestsDir string, prevSessionDate time.Time) *DigestSumm
 	}
 
 	return &summary
+}
+
+// DigestedBriefIDs returns the set of brief IDs already included in digest artifacts.
+func DigestedBriefIDs(digestsDir string) map[string]bool {
+	entries, err := os.ReadDir(digestsDir)
+	if err != nil {
+		return nil
+	}
+
+	ids := make(map[string]bool)
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+
+		path := filepath.Join(digestsDir, e.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if m := digestBriefsLineRe.FindStringSubmatch(line); len(m) == 2 {
+				for _, id := range strings.Split(m[1], ",") {
+					id = strings.TrimSpace(id)
+					if id != "" {
+						ids[id] = true
+					}
+				}
+				continue
+			}
+			if m := digestUnclusteredLineRe.FindStringSubmatch(line); len(m) == 2 {
+				ids[m[1]] = true
+			}
+		}
+	}
+
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids
 }
 
 // CountMaintenanceBriefs counts briefs with `category: maintenance` in their frontmatter.

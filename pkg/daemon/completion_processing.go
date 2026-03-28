@@ -59,6 +59,7 @@ type CompletedAgent struct {
 	BeadsID       string
 	Title         string
 	Status        string   // open or in_progress
+	IssueType     string   // bug, feature, task, investigation, etc.
 	PhaseSummary  string   // Summary from "Phase: Complete - <summary>"
 	WorkspacePath string   // Path to agent workspace (if found)
 	ProjectDir    string   // Source project directory (for cross-project operations)
@@ -199,6 +200,7 @@ func listCompletedAgentsSingleProject(config CompletionConfig, projectDir, works
 			BeadsID:       id,
 			Title:         issue.Title,
 			Status:        issue.Status,
+			IssueType:     issue.IssueType,
 			PhaseSummary:  phaseStatus.Summary,
 			WorkspacePath: workspacePath,
 			ProjectDir:    projectDir,

@@ -17,7 +17,7 @@ func TestBuildBriefFromSynthesis(t *testing.T) {
 		UnexploredQuestions: "Does the brief quality degrade without human review?",
 	}
 
-	brief := buildBriefFromSynthesis("orch-go-abc12", s)
+	brief := buildBriefFromSynthesis("orch-go-abc12", s, "knowledge")
 
 	if !strings.Contains(brief, "# Brief: orch-go-abc12") {
 		t.Error("Brief missing title with beads ID")
@@ -48,7 +48,7 @@ func TestBuildBriefFallbacks(t *testing.T) {
 			TLDR:  "Test",
 			Delta: "Changed files X and Y",
 		}
-		brief := buildBriefFromSynthesis("test-123", s)
+		brief := buildBriefFromSynthesis("test-123", s, "knowledge")
 		if !strings.Contains(brief, s.Delta) {
 			t.Error("Resolution should fall back to Delta")
 		}
@@ -59,7 +59,7 @@ func TestBuildBriefFallbacks(t *testing.T) {
 			TLDR: "Test",
 			Next: "Follow up with integration testing",
 		}
-		brief := buildBriefFromSynthesis("test-123", s)
+		brief := buildBriefFromSynthesis("test-123", s, "knowledge")
 		if !strings.Contains(brief, s.Next) {
 			t.Error("Tension should fall back to Next")
 		}
@@ -67,7 +67,7 @@ func TestBuildBriefFallbacks(t *testing.T) {
 
 	t.Run("Empty synthesis produces placeholder text", func(t *testing.T) {
 		s := &verify.Synthesis{}
-		brief := buildBriefFromSynthesis("test-123", s)
+		brief := buildBriefFromSynthesis("test-123", s, "knowledge")
 		if !strings.Contains(brief, "(No TLDR in SYNTHESIS.md)") {
 			t.Error("Empty TLDR should show placeholder")
 		}
@@ -155,7 +155,7 @@ func TestBuildBriefFromSynthesis_HasQualityFrontmatter(t *testing.T) {
 		UnexploredQuestions: "How does signal_count correlate with brief feedback ratings?",
 	}
 
-	brief := buildBriefFromSynthesis("orch-go-abc12", s)
+	brief := buildBriefFromSynthesis("orch-go-abc12", s, "knowledge")
 
 	// Should start with YAML frontmatter
 	if !strings.HasPrefix(brief, "---\n") {
@@ -185,7 +185,7 @@ func TestBuildBriefFromSynthesis_HasQualityFrontmatter(t *testing.T) {
 
 func TestBuildBriefFromSynthesis_EmptyFrontmatter(t *testing.T) {
 	s := &verify.Synthesis{}
-	brief := buildBriefFromSynthesis("test-empty", s)
+	brief := buildBriefFromSynthesis("test-empty", s, "maintenance")
 
 	if !strings.Contains(brief, "signal_count: 0") {
 		t.Error("Empty synthesis should have signal_count: 0")
@@ -204,7 +204,7 @@ func TestBuildBriefFromSynthesis_PerSignalDetail(t *testing.T) {
 		UnexploredQuestions: "How does signal_count correlate?",
 	}
 
-	brief := buildBriefFromSynthesis("orch-go-detail", s)
+	brief := buildBriefFromSynthesis("orch-go-detail", s, "knowledge")
 
 	// Per-signal detail should include detected field
 	if !strings.Contains(brief, "detected:") {
@@ -228,7 +228,7 @@ func TestBuildBriefFromSynthesis_PerSignalParseable(t *testing.T) {
 	s := &verify.Synthesis{
 		TLDR: "Simple brief",
 	}
-	brief := buildBriefFromSynthesis("orch-go-parse", s)
+	brief := buildBriefFromSynthesis("orch-go-parse", s, "knowledge")
 
 	// Each of the 6 signals should appear
 	expectedSignals := []string{
@@ -240,6 +240,31 @@ func TestBuildBriefFromSynthesis_PerSignalParseable(t *testing.T) {
 			t.Errorf("Frontmatter missing signal %q", sig)
 		}
 	}
+}
+
+func TestBuildBriefFromSynthesis_CategoryInFrontmatter(t *testing.T) {
+	s := &verify.Synthesis{TLDR: "Fixed a bug"}
+
+	t.Run("maintenance category", func(t *testing.T) {
+		brief := buildBriefFromSynthesis("test-1", s, "maintenance")
+		if !strings.Contains(brief, "category: maintenance") {
+			t.Error("Frontmatter should contain category: maintenance")
+		}
+	})
+
+	t.Run("knowledge category", func(t *testing.T) {
+		brief := buildBriefFromSynthesis("test-2", s, "knowledge")
+		if !strings.Contains(brief, "category: knowledge") {
+			t.Error("Frontmatter should contain category: knowledge")
+		}
+	})
+
+	t.Run("empty category omitted", func(t *testing.T) {
+		brief := buildBriefFromSynthesis("test-3", s, "")
+		if strings.Contains(brief, "category:") {
+			t.Error("Empty category should not appear in frontmatter")
+		}
+	})
 }
 
 func TestGenerateHeadlessBriefNoSynthesis(t *testing.T) {
