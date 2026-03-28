@@ -1,0 +1,38 @@
+verification:
+  type: design
+  investigation: .kb/investigations/2026-03-27-inv-design-thread-model-promotion-lifecycle.md
+
+  design_outputs:
+    investigation_complete:
+      check: "Investigation has Status: Complete and all sections filled"
+      result: PASS
+
+    implementation_issues_created:
+      check: "4 beads issues created with descriptions and triage:ready labels"
+      result: PASS
+      issues:
+        - orch-go-jp1ti: "Thread package: StatusPromoted, PromotedTo, Promote(), PromotionReady()"
+        - orch-go-5ithk: "Command: orch thread promote --as model|decision"
+        - orch-go-yf3xa: "Orient: surface converged threads as promotion-ready"
+        - orch-go-6kjp7: "Integration: verify promotion lifecycle end-to-end"
+
+    composition_claims_documented:
+      check: "3 composition claims with verification methods defined"
+      result: PASS
+      claims:
+        - CC-1: "Promoted threads display correctly in thread list and orient"
+        - CC-2: "Bidirectional provenance flows after promotion"
+        - CC-3: "Absorbed thread ancestry chains update on promotion"
+
+    dependency_graph_reported:
+      check: "Dependencies reported via beads comment for orchestrator to wire"
+      result: PASS
+
+    defect_class_exposure_documented:
+      check: "Relevant defect classes identified with mitigations"
+      result: PASS
+      classes: [3, 5, 1]
+
+  manual_verification_required:
+    - "Orchestrator reviews design decisions: multi-target promotion (model|decision) and new StatusPromoted"
+    - "Dylan confirms: should promotion also support --as principle (append to ~/.kb/principles.md)?"
