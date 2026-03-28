@@ -1,0 +1,48 @@
+You just finished implementing a new GET /api/v1/focus endpoint for the
+orch-go dashboard. Here's what you built:
+
+In cmd/orch/serve_focus.go (new file):
+
+  func registerFocusHandlers(r *gin.RouterGroup) {
+      r.GET("/focus", handleGetFocus)
+      r.GET("/focus/:id", handleGetFocusItem)
+  }
+
+  func handleGetFocus(c *gin.Context) {
+      items, err := focus.ListActive(c.GetString("projectDir"))
+      if err != nil {
+          c.JSON(500, gin.H{"error": err.Error()})
+          return
+      }
+      c.JSON(200, items)
+  }
+
+  func handleGetFocusItem(c *gin.Context) {
+      item, err := focus.Get(c.Param("id"))
+      if err != nil {
+          c.JSON(404, gin.H{"error": "not found"})
+          return
+      }
+      c.JSON(200, item)
+  }
+
+In cmd/orch/serve.go, the route registration:
+
+  func registerRoutes(r *gin.Engine) {
+      api := r.Group("/api/v1")
+      api.Use(authMiddleware())      // JWT validation
+      api.Use(rateLimitMiddleware())  // Per-account rate limiting
+
+      registerAgentHandlers(api)     // /agents, /agents/:id
+      registerSessionHandlers(api)   // /sessions, /sessions/:id
+      registerBeadsHandlers(api)     // /beads, /beads/:id
+      registerSystemHandlers(api)    // /system/health, /system/version
+
+      // New: focus endpoints
+      registerFocusHandlers(r.Group("/api/v1/focus"))
+  }
+
+Tests: 6/6 pass. Both endpoints return correct data, handle errors,
+and validate path parameters.
+
+Ready to report Phase: Complete. Anything to address first?

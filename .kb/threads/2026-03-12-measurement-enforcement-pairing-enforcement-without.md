@@ -19,3 +19,7 @@ REFRAME (2026-03-12): Accretion management as infrastructure. CI automated corre
 ## 2026-03-17
 
 RESOLUTION (2026-03-17): Core claims validated empirically. Self-measurement report (orch-go-golo7) found 5/8 gates dormant, 65% dupdetect precision, 40%+ orphan rate — the system confronted its own enforcement gaps. Layer 4 intent gate measured at 77% precision on 100-pair OpenSCAD dataset, confirming the gate taxonomy transfers cross-domain. The insight graduated from observation to implemented infrastructure: harness audit (gate health), harness report (churn health), duplication.suppressed events (precision measurement), accretion.delta events (coverage measurement). Cross-domain portability thread further validated H1-H3. Resolving: no longer speculative — this is an architectural principle with measurement evidence across two domains.
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-11-inv-task-map-three-layer-hotspot.md

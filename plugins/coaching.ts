@@ -282,8 +282,10 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         let workerState = workerHealthStates.get(sessionId)
         if (!workerState) {
           const now = Date.now()
+          const beadsID = input.session?.metadata?.beads_id || input.session?.metadata?.beadsID
           workerState = {
             sessionId,
+            beadsID,
             sessionStartTime: now,
             consecutiveToolFailures: 0,
             estimatedTokensUsed: 0,
@@ -291,13 +293,25 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
             lastCommitTime: 0,
             totalToolCalls: 0,
             totalReadBytes: 0,
+            variation: {
+              currentGroup: null,
+              variationCount: 0,
+              lastToolTimestamp: now,
+              variationHistory: [],
+            },
+            activeBoundarySignals: new Map(),
+            frustrationBoundaryTriggered: false,
           }
           workerHealthStates.set(sessionId, workerState)
           log(`Created worker health state for session ${sessionId}`)
         }
 
+        if (!workerState.beadsID) {
+          workerState.beadsID = input.session?.metadata?.beads_id || input.session?.metadata?.beadsID
+        }
+
         const success = !output?.error && !output?.isError
-        await trackWorkerHealth(client, workerState, tool, success, input.args, output)
+        await trackWorkerHealth(client, workerState, tool, success, input.args, output, investigationRecommendations, directory)
 
         // Accretion Detection for workers
         if (tool === "edit" || tool === "write") {

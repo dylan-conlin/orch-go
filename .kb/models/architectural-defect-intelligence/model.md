@@ -222,3 +222,7 @@ Dropping any layer loses a dimension of actionability.
 - `.kb/decisions/2026-02-26-three-layer-hotspot-enforcement.md` — How spatial signals gate spawns
 - `.kb/decisions/2026-02-18-two-lane-agent-discovery.md` — Domain boundaries that expose Class 4
 - `.kb/decisions/2026-03-17-accretion-gates-advisory-not-blocking.md` — Gates converted from blocking to advisory after 100% bypass rate
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-27-design-automated-synthesis-ranking.md

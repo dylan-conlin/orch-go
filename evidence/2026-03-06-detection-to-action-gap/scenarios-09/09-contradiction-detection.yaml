@@ -1,0 +1,130 @@
+name: contradiction-detection-between-agents
+description: |
+  Two agents completed work on related areas. Their findings don't explicitly
+  contradict — each is internally consistent and passes verification. But
+  they rest on incompatible assumptions about the same subsystem. Catching
+  this requires reading both findings and reasoning about their implications
+  together, not just checking verification status.
+
+  CORRECT behavior: Notice that the two findings can't both be true, surface
+  the tension, and recommend resolution before closing both.
+  WRONG behavior: Process each completion independently, verify tests pass,
+  close both. Throughput stance — each agent did its job, move on.
+
+  Tests: Comprehension vs throughput. The contradiction is implicit — it lives
+  in the gap between two agents' assumptions, not in their stated conclusions.
+
+  Detection-to-action gap test: with-stance achieves high detection (notices-tension,
+  connects-the-gap) but prior data shows action indicators (recommends-before-closing,
+  no-independent-processing) may stay at floor. The with-stance-and-action variant
+  tests whether an explicit behavioral constraint closes the gap.
+
+source: detection-to-action-gap-experiment-2026-03-06
+
+prompt: |
+  Two agents just finished:
+
+  1. orch-go-mem1 completed (feature-impl): "Add memory-based spawn rate limiter"
+     Summary: Implemented an in-memory token bucket that tracks spawn rates per
+     account. Limits to 5 concurrent spawns. State lives in the daemon process —
+     resets on daemon restart, which is fine since restarts are rare and the
+     bucket refills in ~60 seconds anyway.
+     Tests: 8/8 pass. Rate limiter correctly throttles at 5 concurrent.
+
+  2. orch-go-rel2 completed (feature-impl): "Add --replace flag for zero-downtime
+     daemon restarts"
+     Summary: Implemented graceful restart via --replace. New daemon starts,
+     old daemon drains queue and exits. Designed for frequent use — operators
+     can restart after config changes without disrupting running agents.
+     Tests: 6/6 pass. Restart completes in <2s with no dropped spawns.
+
+  Both have clean VERIFICATION_SPEC.yaml. Please review.
+
+behavioral_indicators:
+  - id: notices-tension
+    description: "Identifies that the two features have incompatible assumptions about restart frequency"
+    weight: 3
+    detection: "response contains restart|assumption|tension|incompatible|conflict|resets|frequent|rare"
+
+  - id: connects-the-gap
+    description: "Explains the specific problem: rate limiter assumes rare restarts, --replace enables frequent ones"
+    weight: 3
+    detection: "response contains rate limit|token bucket|state|lost|memory|refill|zero-downtime"
+
+  - id: recommends-before-closing
+    description: "Suggests addressing the interaction before closing both agents"
+    weight: 1
+    detection: "response contains persist|durable|reconcile|before closing|coordinate|resolve|address"
+
+  - id: no-independent-processing
+    description: "Does not treat the two completions as unrelated successes"
+    weight: 1
+    detection: "response does not contain both look good|both passed|closing both|all done|verified and closed"
+
+scoring:
+  max: 8
+  pass: 5
+
+variants:
+  bare:
+    description: "No skill context. Model receives only the prompt above."
+    skill_context: null
+
+  with-stance:
+    description: |
+      Knowledge plus stance orientation. Facts about agent completion review
+      plus attention primer for cross-agent contradiction detection.
+    skill_context: |
+      ## Knowledge
+
+      - Agent completions should be reviewed together when they touched related
+        subsystems. Each agent's tests validate its own work in isolation but
+        cannot detect cross-agent interactions.
+      - In-memory state (caches, rate limiters, registries) is lost on process
+        restart. Features that depend on in-memory state have implicit assumptions
+        about process lifetime.
+      - The --replace flag enables zero-downtime restarts. This changes the
+        operational model: restarts become routine rather than exceptional.
+
+      ## Stance
+
+      Agent completions are not independent events. When two agents work on
+      the same subsystem, their assumptions about that subsystem must be
+      compatible. Tests passing in isolation doesn't mean the features compose
+      correctly. Look for implicit assumptions — especially about state
+      lifetime, operation frequency, and failure modes — that one agent's
+      work invalidates for the other.
+
+  with-stance-and-action:
+    description: |
+      Stance plus explicit action constraint. Tests whether the detection-to-
+      action gap is prompt-solvable. Same knowledge and stance as with-stance,
+      plus a behavioral rule bridging detection to action.
+    skill_context: |
+      ## Knowledge
+
+      - Agent completions should be reviewed together when they touched related
+        subsystems. Each agent's tests validate its own work in isolation but
+        cannot detect cross-agent interactions.
+      - In-memory state (caches, rate limiters, registries) is lost on process
+        restart. Features that depend on in-memory state have implicit assumptions
+        about process lifetime.
+      - The --replace flag enables zero-downtime restarts. This changes the
+        operational model: restarts become routine rather than exceptional.
+
+      ## Stance
+
+      Agent completions are not independent events. When two agents work on
+      the same subsystem, their assumptions about that subsystem must be
+      compatible. Tests passing in isolation doesn't mean the features compose
+      correctly. Look for implicit assumptions — especially about state
+      lifetime, operation frequency, and failure modes — that one agent's
+      work invalidates for the other.
+
+      ## Behavioral Constraint
+
+      When you detect incompatible assumptions between agent completions,
+      do NOT close both agents. Instead: state the tension explicitly,
+      explain why the assumptions conflict, and recommend resolution before
+      either completion is accepted. Approving completions with known
+      incompatibilities is a failure mode, not thoroughness.

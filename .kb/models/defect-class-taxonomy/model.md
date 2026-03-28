@@ -296,5 +296,6 @@ Stale artifact accumulation (3) makes scope expansion (0) dangerous. Cross-proje
 
 ## Auto-Linked Investigations
 
+- .kb/investigations/2026-03-27-design-architect-daemon-reliability.md
 - .kb/investigations/2026-03-05-inv-post-mortem-price-watch-orchestration.md
 - .kb/investigations/2026-02-28-audit-stalled-agent-failure-patterns.md

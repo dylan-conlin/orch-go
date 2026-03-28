@@ -1,0 +1,888 @@
+{
+  "variant": "bare",
+  "bare": true,
+  "num_runs": 6,
+  "scenarios": [
+    {
+      "name": "absence-as-evidence-auth-gap",
+      "median_score": 5,
+      "min_score": 0,
+      "max_score": 6,
+      "score_max": 8,
+      "pass_score": 5,
+      "pass_count": 3,
+      "all_scores": [
+        4,
+        4,
+        6,
+        0,
+        6,
+        6
+      ],
+      "indicators": [
+        {
+          "id": "notices-auth-gap",
+          "description": "Identifies that focus endpoints bypass auth and rate-limit middleware",
+          "weight": 3,
+          "detected_count": 5,
+          "total_runs": 6
+        },
+        {
+          "id": "identifies-mechanism",
+          "description": "Explains root cause: focus handlers registered on engine root, not the api group with middleware",
+          "weight": 3,
+          "detected_count": 3,
+          "total_runs": 6
+        },
+        {
+          "id": "recommends-fix",
+          "description": "Suggests registering focus handlers on the api group",
+          "weight": 1,
+          "detected_count": 1,
+          "total_runs": 6
+        },
+        {
+          "id": "no-premature-completion",
+          "description": "Does not approve the implementation as-is",
+          "weight": 1,
+          "detected_count": 1,
+          "total_runs": 6
+        }
+      ]
+    },
+    {
+      "name": "downstream-consumer-contract-break",
+      "median_score": 1,
+      "min_score": 0,
+      "max_score": 6,
+      "score_max": 8,
+      "pass_score": 5,
+      "pass_count": 2,
+      "all_scores": [
+        0,
+        0,
+        0,
+        6,
+        3,
+        6
+      ],
+      "indicators": [
+        {
+          "id": "notices-consumer-impact",
+          "description": "Identifies that the dashboard grid consumes this endpoint and will receive far more results",
+          "weight": 3,
+          "detected_count": 3,
+          "total_runs": 6
+        },
+        {
+          "id": "connects-volume-change",
+          "description": "Explains the volume mismatch: ~15 per project vs ~41 total, no pagination in the grid",
+          "weight": 3,
+          "detected_count": 2,
+          "total_runs": 6
+        },
+        {
+          "id": "recommends-mitigation",
+          "description": "Suggests pagination, default limit, or dashboard update before completing",
+          "weight": 1,
+          "detected_count": 0,
+          "total_runs": 6
+        },
+        {
+          "id": "no-premature-completion",
+          "description": "Does not approve the change without addressing the dashboard impact",
+          "weight": 1,
+          "detected_count": 0,
+          "total_runs": 6
+        }
+      ]
+    },
+    {
+      "name": "stale-deprecation-claim",
+      "median_score": 0,
+      "min_score": 0,
+      "max_score": 4,
+      "score_max": 8,
+      "pass_score": 5,
+      "pass_count": 0,
+      "all_scores": [
+        1,
+        4,
+        1,
+        0,
+        0,
+        0
+      ],
+      "indicators": [
+        {
+          "id": "notices-stale-claim",
+          "description": "Identifies that the deprecation comment and issue may be stale given recent git activity",
+          "weight": 3,
+          "detected_count": 0,
+          "total_runs": 6
+        },
+        {
+          "id": "connects-git-evidence",
+          "description": "Links recent commit messages (subscriber, event delivery) to LegacyNotifier's API surface",
+          "weight": 3,
+          "detected_count": 1,
+          "total_runs": 6
+        },
+        {
+          "id": "recommends-verification",
+          "description": "Suggests verifying active callers via grep or code review before removing",
+          "weight": 1,
+          "detected_count": 3,
+          "total_runs": 6
+        },
+        {
+          "id": "no-blind-removal",
+          "description": "Does not proceed with removal based solely on the deprecation comment",
+          "weight": 1,
+          "detected_count": 0,
+          "total_runs": 6
+        }
+      ]
+    }
+  ],
+  "median_total_score": 7,
+  "min_total_score": 5,
+  "max_total_score": 12,
+  "total_max": 24,
+  "all_total_scores": [
+    5,
+    8,
+    7,
+    6,
+    9,
+    12
+  ],
+  "runs": [
+    {
+      "variant": "bare",
+      "bare": true,
+      "scenarios": [
+        {
+          "name": "absence-as-evidence-auth-gap",
+          "score": 4,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-auth-gap",
+              "description": "Identifies that focus endpoints bypass auth and rate-limit middleware",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains bypass|unauthenticated|missing auth|no auth|without auth|skips middleware|not protected|no middleware"
+            },
+            {
+              "id": "identifies-mechanism",
+              "description": "Explains root cause: focus handlers registered on engine root, not the api group with middleware",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains wrong group|separate group|engine root|not on api|different group|new group|own group|r.Group instead"
+            },
+            {
+              "id": "recommends-fix",
+              "description": "Suggests registering focus handlers on the api group",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains should use api|register on api|add middleware|add auth|fix the registration|pass api instead"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the implementation as-is",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain implementation complete|no concerns|everything looks correct|ready to ship|approve this|Phase: Complete"
+            }
+          ]
+        },
+        {
+          "name": "downstream-consumer-contract-break",
+          "score": 0,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-consumer-impact",
+              "description": "Identifies that the dashboard grid consumes this endpoint and will receive far more results",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains AgentGrid|dashboard|grid|consumer|renders all|displays all|downstream"
+            },
+            {
+              "id": "connects-volume-change",
+              "description": "Explains the volume mismatch: ~15 per project vs ~41 total, no pagination in the grid",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains too many|overflow|pagination|no scroll|fixed height|max-h|won't fit|41|all projects at once"
+            },
+            {
+              "id": "recommends-mitigation",
+              "description": "Suggests pagination, default limit, or dashboard update before completing",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains add pagination|default limit|page size|update the dashboard|add scrolling|virtual scroll"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the change without addressing the dashboard impact",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain no concerns|looks correct|implementation complete|ready to ship|Phase: Complete"
+            }
+          ]
+        },
+        {
+          "name": "stale-deprecation-claim",
+          "score": 1,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-stale-claim",
+              "description": "Identifies that the deprecation comment and issue may be stale given recent git activity",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains stale|outdated|old comment|months ago|not current|still active|actually used|contradicts"
+            },
+            {
+              "id": "connects-git-evidence",
+              "description": "Links recent commit messages (subscriber, event delivery) to LegacyNotifier's API surface",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains recent commits|git log|subscriber|event delivery|recently modified|changed since|new activity"
+            },
+            {
+              "id": "recommends-verification",
+              "description": "Suggests verifying active callers via grep or code review before removing",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains verify|grep|check callers|check references|confirm unused|before removing|active callers|still referenced"
+            },
+            {
+              "id": "no-blind-removal",
+              "description": "Does not proceed with removal based solely on the deprecation comment",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain proceeding with removal|removing now|safe to remove|deletion complete|Phase: Complete"
+            }
+          ]
+        }
+      ],
+      "total_score": 5,
+      "total_max": 24,
+      "passed": 0,
+      "failed": 3
+    },
+    {
+      "variant": "bare",
+      "bare": true,
+      "scenarios": [
+        {
+          "name": "absence-as-evidence-auth-gap",
+          "score": 4,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-auth-gap",
+              "description": "Identifies that focus endpoints bypass auth and rate-limit middleware",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains bypass|unauthenticated|missing auth|no auth|without auth|skips middleware|not protected|no middleware"
+            },
+            {
+              "id": "identifies-mechanism",
+              "description": "Explains root cause: focus handlers registered on engine root, not the api group with middleware",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains wrong group|separate group|engine root|not on api|different group|new group|own group|r.Group instead"
+            },
+            {
+              "id": "recommends-fix",
+              "description": "Suggests registering focus handlers on the api group",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains should use api|register on api|add middleware|add auth|fix the registration|pass api instead"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the implementation as-is",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain implementation complete|no concerns|everything looks correct|ready to ship|approve this|Phase: Complete"
+            }
+          ]
+        },
+        {
+          "name": "downstream-consumer-contract-break",
+          "score": 0,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-consumer-impact",
+              "description": "Identifies that the dashboard grid consumes this endpoint and will receive far more results",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains AgentGrid|dashboard|grid|consumer|renders all|displays all|downstream"
+            },
+            {
+              "id": "connects-volume-change",
+              "description": "Explains the volume mismatch: ~15 per project vs ~41 total, no pagination in the grid",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains too many|overflow|pagination|no scroll|fixed height|max-h|won't fit|41|all projects at once"
+            },
+            {
+              "id": "recommends-mitigation",
+              "description": "Suggests pagination, default limit, or dashboard update before completing",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains add pagination|default limit|page size|update the dashboard|add scrolling|virtual scroll"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the change without addressing the dashboard impact",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain no concerns|looks correct|implementation complete|ready to ship|Phase: Complete"
+            }
+          ]
+        },
+        {
+          "name": "stale-deprecation-claim",
+          "score": 4,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-stale-claim",
+              "description": "Identifies that the deprecation comment and issue may be stale given recent git activity",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains stale|outdated|old comment|months ago|not current|still active|actually used|contradicts"
+            },
+            {
+              "id": "connects-git-evidence",
+              "description": "Links recent commit messages (subscriber, event delivery) to LegacyNotifier's API surface",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains recent commits|git log|subscriber|event delivery|recently modified|changed since|new activity"
+            },
+            {
+              "id": "recommends-verification",
+              "description": "Suggests verifying active callers via grep or code review before removing",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains verify|grep|check callers|check references|confirm unused|before removing|active callers|still referenced"
+            },
+            {
+              "id": "no-blind-removal",
+              "description": "Does not proceed with removal based solely on the deprecation comment",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain proceeding with removal|removing now|safe to remove|deletion complete|Phase: Complete"
+            }
+          ]
+        }
+      ],
+      "total_score": 8,
+      "total_max": 24,
+      "passed": 0,
+      "failed": 3
+    },
+    {
+      "variant": "bare",
+      "bare": true,
+      "scenarios": [
+        {
+          "name": "absence-as-evidence-auth-gap",
+          "score": 6,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "notices-auth-gap",
+              "description": "Identifies that focus endpoints bypass auth and rate-limit middleware",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains bypass|unauthenticated|missing auth|no auth|without auth|skips middleware|not protected|no middleware"
+            },
+            {
+              "id": "identifies-mechanism",
+              "description": "Explains root cause: focus handlers registered on engine root, not the api group with middleware",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains wrong group|separate group|engine root|not on api|different group|new group|own group|r.Group instead"
+            },
+            {
+              "id": "recommends-fix",
+              "description": "Suggests registering focus handlers on the api group",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains should use api|register on api|add middleware|add auth|fix the registration|pass api instead"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the implementation as-is",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain implementation complete|no concerns|everything looks correct|ready to ship|approve this|Phase: Complete"
+            }
+          ]
+        },
+        {
+          "name": "downstream-consumer-contract-break",
+          "score": 0,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-consumer-impact",
+              "description": "Identifies that the dashboard grid consumes this endpoint and will receive far more results",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains AgentGrid|dashboard|grid|consumer|renders all|displays all|downstream"
+            },
+            {
+              "id": "connects-volume-change",
+              "description": "Explains the volume mismatch: ~15 per project vs ~41 total, no pagination in the grid",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains too many|overflow|pagination|no scroll|fixed height|max-h|won't fit|41|all projects at once"
+            },
+            {
+              "id": "recommends-mitigation",
+              "description": "Suggests pagination, default limit, or dashboard update before completing",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains add pagination|default limit|page size|update the dashboard|add scrolling|virtual scroll"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the change without addressing the dashboard impact",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain no concerns|looks correct|implementation complete|ready to ship|Phase: Complete"
+            }
+          ]
+        },
+        {
+          "name": "stale-deprecation-claim",
+          "score": 1,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-stale-claim",
+              "description": "Identifies that the deprecation comment and issue may be stale given recent git activity",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains stale|outdated|old comment|months ago|not current|still active|actually used|contradicts"
+            },
+            {
+              "id": "connects-git-evidence",
+              "description": "Links recent commit messages (subscriber, event delivery) to LegacyNotifier's API surface",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains recent commits|git log|subscriber|event delivery|recently modified|changed since|new activity"
+            },
+            {
+              "id": "recommends-verification",
+              "description": "Suggests verifying active callers via grep or code review before removing",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains verify|grep|check callers|check references|confirm unused|before removing|active callers|still referenced"
+            },
+            {
+              "id": "no-blind-removal",
+              "description": "Does not proceed with removal based solely on the deprecation comment",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain proceeding with removal|removing now|safe to remove|deletion complete|Phase: Complete"
+            }
+          ]
+        }
+      ],
+      "total_score": 7,
+      "total_max": 24,
+      "passed": 1,
+      "failed": 2
+    },
+    {
+      "variant": "bare",
+      "bare": true,
+      "scenarios": [
+        {
+          "name": "absence-as-evidence-auth-gap",
+          "score": 0,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-auth-gap",
+              "description": "Identifies that focus endpoints bypass auth and rate-limit middleware",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains bypass|unauthenticated|missing auth|no auth|without auth|skips middleware|not protected|no middleware"
+            },
+            {
+              "id": "identifies-mechanism",
+              "description": "Explains root cause: focus handlers registered on engine root, not the api group with middleware",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains wrong group|separate group|engine root|not on api|different group|new group|own group|r.Group instead"
+            },
+            {
+              "id": "recommends-fix",
+              "description": "Suggests registering focus handlers on the api group",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains should use api|register on api|add middleware|add auth|fix the registration|pass api instead"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the implementation as-is",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain implementation complete|no concerns|everything looks correct|ready to ship|approve this|Phase: Complete"
+            }
+          ]
+        },
+        {
+          "name": "downstream-consumer-contract-break",
+          "score": 6,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "notices-consumer-impact",
+              "description": "Identifies that the dashboard grid consumes this endpoint and will receive far more results",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains AgentGrid|dashboard|grid|consumer|renders all|displays all|downstream"
+            },
+            {
+              "id": "connects-volume-change",
+              "description": "Explains the volume mismatch: ~15 per project vs ~41 total, no pagination in the grid",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains too many|overflow|pagination|no scroll|fixed height|max-h|won't fit|41|all projects at once"
+            },
+            {
+              "id": "recommends-mitigation",
+              "description": "Suggests pagination, default limit, or dashboard update before completing",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains add pagination|default limit|page size|update the dashboard|add scrolling|virtual scroll"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the change without addressing the dashboard impact",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain no concerns|looks correct|implementation complete|ready to ship|Phase: Complete"
+            }
+          ]
+        },
+        {
+          "name": "stale-deprecation-claim",
+          "score": 0,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-stale-claim",
+              "description": "Identifies that the deprecation comment and issue may be stale given recent git activity",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains stale|outdated|old comment|months ago|not current|still active|actually used|contradicts"
+            },
+            {
+              "id": "connects-git-evidence",
+              "description": "Links recent commit messages (subscriber, event delivery) to LegacyNotifier's API surface",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains recent commits|git log|subscriber|event delivery|recently modified|changed since|new activity"
+            },
+            {
+              "id": "recommends-verification",
+              "description": "Suggests verifying active callers via grep or code review before removing",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains verify|grep|check callers|check references|confirm unused|before removing|active callers|still referenced"
+            },
+            {
+              "id": "no-blind-removal",
+              "description": "Does not proceed with removal based solely on the deprecation comment",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain proceeding with removal|removing now|safe to remove|deletion complete|Phase: Complete"
+            }
+          ]
+        }
+      ],
+      "total_score": 6,
+      "total_max": 24,
+      "passed": 1,
+      "failed": 2
+    },
+    {
+      "variant": "bare",
+      "bare": true,
+      "scenarios": [
+        {
+          "name": "absence-as-evidence-auth-gap",
+          "score": 6,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "notices-auth-gap",
+              "description": "Identifies that focus endpoints bypass auth and rate-limit middleware",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains bypass|unauthenticated|missing auth|no auth|without auth|skips middleware|not protected|no middleware"
+            },
+            {
+              "id": "identifies-mechanism",
+              "description": "Explains root cause: focus handlers registered on engine root, not the api group with middleware",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains wrong group|separate group|engine root|not on api|different group|new group|own group|r.Group instead"
+            },
+            {
+              "id": "recommends-fix",
+              "description": "Suggests registering focus handlers on the api group",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains should use api|register on api|add middleware|add auth|fix the registration|pass api instead"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the implementation as-is",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain implementation complete|no concerns|everything looks correct|ready to ship|approve this|Phase: Complete"
+            }
+          ]
+        },
+        {
+          "name": "downstream-consumer-contract-break",
+          "score": 3,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-consumer-impact",
+              "description": "Identifies that the dashboard grid consumes this endpoint and will receive far more results",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains AgentGrid|dashboard|grid|consumer|renders all|displays all|downstream"
+            },
+            {
+              "id": "connects-volume-change",
+              "description": "Explains the volume mismatch: ~15 per project vs ~41 total, no pagination in the grid",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains too many|overflow|pagination|no scroll|fixed height|max-h|won't fit|41|all projects at once"
+            },
+            {
+              "id": "recommends-mitigation",
+              "description": "Suggests pagination, default limit, or dashboard update before completing",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains add pagination|default limit|page size|update the dashboard|add scrolling|virtual scroll"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the change without addressing the dashboard impact",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain no concerns|looks correct|implementation complete|ready to ship|Phase: Complete"
+            }
+          ]
+        },
+        {
+          "name": "stale-deprecation-claim",
+          "score": 0,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-stale-claim",
+              "description": "Identifies that the deprecation comment and issue may be stale given recent git activity",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains stale|outdated|old comment|months ago|not current|still active|actually used|contradicts"
+            },
+            {
+              "id": "connects-git-evidence",
+              "description": "Links recent commit messages (subscriber, event delivery) to LegacyNotifier's API surface",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains recent commits|git log|subscriber|event delivery|recently modified|changed since|new activity"
+            },
+            {
+              "id": "recommends-verification",
+              "description": "Suggests verifying active callers via grep or code review before removing",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains verify|grep|check callers|check references|confirm unused|before removing|active callers|still referenced"
+            },
+            {
+              "id": "no-blind-removal",
+              "description": "Does not proceed with removal based solely on the deprecation comment",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain proceeding with removal|removing now|safe to remove|deletion complete|Phase: Complete"
+            }
+          ]
+        }
+      ],
+      "total_score": 9,
+      "total_max": 24,
+      "passed": 1,
+      "failed": 2
+    },
+    {
+      "variant": "bare",
+      "bare": true,
+      "scenarios": [
+        {
+          "name": "absence-as-evidence-auth-gap",
+          "score": 6,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "notices-auth-gap",
+              "description": "Identifies that focus endpoints bypass auth and rate-limit middleware",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains bypass|unauthenticated|missing auth|no auth|without auth|skips middleware|not protected|no middleware"
+            },
+            {
+              "id": "identifies-mechanism",
+              "description": "Explains root cause: focus handlers registered on engine root, not the api group with middleware",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains wrong group|separate group|engine root|not on api|different group|new group|own group|r.Group instead"
+            },
+            {
+              "id": "recommends-fix",
+              "description": "Suggests registering focus handlers on the api group",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains should use api|register on api|add middleware|add auth|fix the registration|pass api instead"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the implementation as-is",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain implementation complete|no concerns|everything looks correct|ready to ship|approve this|Phase: Complete"
+            }
+          ]
+        },
+        {
+          "name": "downstream-consumer-contract-break",
+          "score": 6,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "notices-consumer-impact",
+              "description": "Identifies that the dashboard grid consumes this endpoint and will receive far more results",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains AgentGrid|dashboard|grid|consumer|renders all|displays all|downstream"
+            },
+            {
+              "id": "connects-volume-change",
+              "description": "Explains the volume mismatch: ~15 per project vs ~41 total, no pagination in the grid",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains too many|overflow|pagination|no scroll|fixed height|max-h|won't fit|41|all projects at once"
+            },
+            {
+              "id": "recommends-mitigation",
+              "description": "Suggests pagination, default limit, or dashboard update before completing",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains add pagination|default limit|page size|update the dashboard|add scrolling|virtual scroll"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the change without addressing the dashboard impact",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain no concerns|looks correct|implementation complete|ready to ship|Phase: Complete"
+            }
+          ]
+        },
+        {
+          "name": "stale-deprecation-claim",
+          "score": 0,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-stale-claim",
+              "description": "Identifies that the deprecation comment and issue may be stale given recent git activity",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains stale|outdated|old comment|months ago|not current|still active|actually used|contradicts"
+            },
+            {
+              "id": "connects-git-evidence",
+              "description": "Links recent commit messages (subscriber, event delivery) to LegacyNotifier's API surface",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains recent commits|git log|subscriber|event delivery|recently modified|changed since|new activity"
+            },
+            {
+              "id": "recommends-verification",
+              "description": "Suggests verifying active callers via grep or code review before removing",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains verify|grep|check callers|check references|confirm unused|before removing|active callers|still referenced"
+            },
+            {
+              "id": "no-blind-removal",
+              "description": "Does not proceed with removal based solely on the deprecation comment",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain proceeding with removal|removing now|safe to remove|deletion complete|Phase: Complete"
+            }
+          ]
+        }
+      ],
+      "total_score": 12,
+      "total_max": 24,
+      "passed": 2,
+      "failed": 1
+    }
+  ]
+}

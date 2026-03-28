@@ -1,0 +1,187 @@
+model: architectural-enforcement
+version: 1
+last_audit: "2026-03-19"
+
+claims:
+  - id: AE-01
+    text: "Gates must be infrastructure-enforced, not instruction-reliant"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "17:1 system-prompt signal advantage drowns skill constraints (Feb 24 investigation)"
+        date: "2026-02-24"
+        verdict: confirms
+      - source: "Orchestrator uses bd close despite skill saying orch complete — system prompt signal wins"
+        date: "2026-02-24"
+        verdict: confirms
+    last_validated: "2026-02-24"
+    domain_tags: ["gates", "enforcement", "infrastructure", "hooks"]
+    falsifies_if: "Prompt-level gate constraints reliably prevent violations in >90% of agent sessions (N>50) without infrastructure backing"
+    tensions: []
+    model_md_ref: "## Critical Invariants #1"
+
+  - id: AE-02
+    text: "Gates must be passable by the gated party — knowledge-producing skills need exemptions"
+    type: invariant
+    scope: local
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Architect agents must read hotspot files to design decomposition — blocking defeats purpose"
+        date: "2026-02-14"
+        verdict: confirms
+      - source: "Probe: two passability mechanisms confirmed — skill exemption (hotspot gate) + operation scoping (governance hook blocks Edit/Write, permits Read). Investigation og-inv-design-analysis-hard-19mar-2503 read governance-protected files to analyze displacement."
+        date: "2026-03-19"
+        verdict: confirms
+    last_validated: "2026-03-19"
+    domain_tags: ["gates", "exemptions", "architect", "investigation"]
+    falsifies_if: "Knowledge-producing agents can complete their work without reading files they would be gated from"
+    tensions: []
+    model_md_ref: "## Critical Invariants #2"
+
+  - id: AE-03
+    text: "Escape hatches must exist but with accountability (--force-hotspot requires --architect-ref)"
+    type: mechanism
+    scope: local
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Three-layer architect routing design (Feb 24)"
+        date: "2026-02-24"
+        verdict: confirms
+      - source: "Principle: critical paths need independent secondary paths"
+        date: "2026-02-14"
+        verdict: confirms
+    last_validated: "2026-02-24"
+    domain_tags: ["gates", "escape-hatch", "architect", "hotspot"]
+    falsifies_if: "Removing all escape hatches produces better outcomes than accountability-gated escape hatches (measured by completion rate and architectural compliance, N>50)"
+    tensions: []
+    model_md_ref: "## Critical Invariants #3"
+
+  - id: AE-04
+    text: "Toolchain reliability underlies all prompt-level enforcement — silent skillc failures undermine the system"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "skillc deploy exits 0 on partial failure — 4 independent failure points identified (Feb 25)"
+        date: "2026-02-25"
+        verdict: confirms
+      - source: "Feature-impl skill was 7 weeks stale (checksum 047ddb2689b3 vs 76a3920c0fe9)"
+        date: "2026-02-25"
+        verdict: confirms
+    last_validated: "2026-02-25"
+    domain_tags: ["toolchain", "skillc", "deployment", "skills"]
+    falsifies_if: "Prompt-level enforcement works reliably even when deployed skill content is stale (agents derive rules from other sources)"
+    tensions: []
+    model_md_ref: "## Critical Invariants #4"
+
+  - id: AE-05
+    text: "Shared configuration must have a single source of truth — parallel config dirs create enforcement gaps"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "Config dir drift probe — personal sessions ran without hooks/skills/CLAUDE.md (Feb 27)"
+        date: "2026-02-27"
+        verdict: confirms
+    last_validated: "2026-02-27"
+    domain_tags: ["config", "enforcement", "drift", "symlinks"]
+    falsifies_if: "Parallel config directories can be kept in sync reliably without structural elimination (symlinks)"
+    tensions: []
+    model_md_ref: "## Critical Invariants #5"
+
+  - id: AE-06
+    text: "Behavioral constraints dilute at 5+ co-resident items, inert at 10+ — constraint type determines enforcement mechanism"
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Constraint dilution threshold test (N=8, Mar 1)"
+        date: "2026-03-01"
+        verdict: confirms
+      - source: "Orchestrator skill audit: 87 behavioral constraints, ~83 non-functional (Mar 2 probe)"
+        date: "2026-03-02"
+        verdict: confirms
+    last_validated: "2026-03-02"
+    domain_tags: ["constraints", "dilution", "behavioral", "skills", "hooks"]
+    falsifies_if: "10+ behavioral constraints in a skill produce compliance rates significantly above bare Claude baseline (>20pp, N>20)"
+    tensions:
+      - claim: SCT-02
+        model: skill-content-transfer
+        type: confirms
+        note: "Both models agree on 5+ dilution threshold from same evidence base"
+    model_md_ref: "## Critical Invariants #6"
+
+  - id: AE-07
+    text: "Hotspot severity requires multi-dimensional assessment — bloat + fix-density + coupling compound"
+    type: mechanism
+    scope: local
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "Fix-density hotspot trajectory overlap probe (Mar 11)"
+        date: "2026-03-11"
+        verdict: confirms
+      - source: "800-line threshold empirically validated — files above it have disproportionate fix density AND coupling"
+        date: "2026-03-11"
+        verdict: confirms
+    last_validated: "2026-03-11"
+    domain_tags: ["hotspot", "accretion", "fix-density", "coupling"]
+    falsifies_if: "Line count alone predicts hotspot impact as accurately as multi-dimensional assessment (measured by fix-rate correlation, N>20 files)"
+    tensions: []
+    model_md_ref: "## Critical Invariants #7"
+
+  - id: AE-08
+    text: "Gates are signaling infrastructure, not quality gates — no measurable quality difference between enforced and bypassed cohorts"
+    type: mechanism
+    scope: local
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Mar 17 gate effectiveness cohort (529 spawns, 258 with gates): enforced 81.1% vs bypassed 74.2% completion"
+        date: "2026-03-17"
+        verdict: confirms
+      - source: "Both cohorts 100% verification rate, pre-commit gate 2 blocks both bypassed, but 75% hotspot reduction"
+        date: "2026-03-17"
+        verdict: confirms
+    last_validated: "2026-03-17"
+    domain_tags: ["gates", "signaling", "enforcement", "extraction", "hotspot"]
+    falsifies_if: "Gate enforcement produces measurably higher individual agent quality than bypass cohort (>10pp difference, N>100)"
+    tensions: []
+    model_md_ref: "## Critical Invariants #8"
+
+  - id: AE-09
+    text: "Enforcement without guidance creates displacement — deny hooks without redirect hints produce architecturally wrong code placement"
+    type: mechanism
+    scope: local
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Exploration orch-go-javy8 (3 investigations, Mar 19): 2 confirmed + 1 probable displacement instances"
+        date: "2026-03-19"
+        verdict: confirms
+      - source: "Agent scs-sp-8dm: concurrency gate displaced to spawn_preflight.go (115 lines)"
+        date: "2026-03-19"
+        verdict: confirms
+      - source: "Worker-base skill overclaims pkg/verify/* protection (67 files phantom-protected)"
+        date: "2026-03-19"
+        verdict: confirms
+    last_validated: "2026-03-19"
+    domain_tags: ["hooks", "displacement", "governance", "deny", "redirect"]
+    falsifies_if: "Deny hooks without redirect hints produce architecturally correct placement in >80% of cases (N>30)"
+    tensions:
+      - claim: MH-05
+        model: measurement-honesty
+        type: extends
+        note: "Deny count without displacement tracking is the absent-signal trap — measuring action without consequence"
+      - claim: SCT-04
+        model: skill-content-transfer
+        type: extends
+        note: "Wrong knowledge in skill docs transfers reliably — phantom protection zones are high-impact"
+    model_md_ref: "## Critical Invariants #9, ## Why This Fails #4"

@@ -258,5 +258,6 @@ The skill drifts from infrastructure quickly. 72 commits in 3 days introduced 10
 
 ## Auto-Linked Investigations
 
+- .kb/investigations/2026-03-05-inv-audit-skill-system-deployment-health.md
 - .kb/investigations/archived/2026-01-05-design-claude-design-skill-evaluation.md
 - .kb/investigations/2026-03-05-inv-skill-system-audit.md

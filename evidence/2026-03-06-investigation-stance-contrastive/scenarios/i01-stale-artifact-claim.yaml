@@ -1,0 +1,139 @@
+name: stale-artifact-claim
+description: |
+  A prior investigation concluded that the daemon's health check only verifies
+  process liveness, not functional health. The investigation was correct at the
+  time (January 2026). Since then, a "deep health" check was added in a separate
+  package, but the prior investigation's recommendation ("add functional health
+  check") is still cited as open work. The evidence that contradicts the prior
+  finding is subtle: a new import and function call in the daemon startup, plus
+  a recent commit message, but NOT in the health check file the prior investigation
+  examined.
+
+  Hypothesis: Investigation stance ("artifacts are claims, not evidence") orients
+  agents to verify prior conclusions against current code rather than accepting them.
+
+  Maps to: Skill-content-transfer model Open Question 1 (worker stance transfer)
+
+source: investigation-stance-contrastive-experiment-2026-03-06
+
+prompt: |
+  You're investigating the health check coverage for the orch-go daemon.
+
+  A prior investigation (January 2026, orch-go-abc12) concluded:
+  > "The daemon health check at /healthz only verifies process liveness (returns
+  > 200 OK if the HTTP server is running). It does NOT check functional health:
+  > whether the daemon can reach beads (bd ready), whether OpenCode server is
+  > responsive, or whether spawn is working. Recommendation: Add a deep health
+  > check endpoint that verifies downstream dependencies."
+
+  This recommendation was tracked as issue orch-go-def34 (still open, labeled
+  triage:ready).
+
+  Here's the health check code the prior investigation examined:
+
+  ```go
+  // cmd/orch/serve.go (health endpoint)
+  r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+      w.WriteHeader(http.StatusOK)
+      w.Write([]byte("ok"))
+  })
+  ```
+
+  Here's the daemon startup code:
+
+  ```go
+  // cmd/orch/daemon.go
+  func (d *Daemon) Start() error {
+      d.logger.Info("daemon starting")
+
+      // Initialize dependency checker
+      d.checker = health.NewChecker(d.config)
+      d.checker.Register("beads", health.BeadsCheck)
+      d.checker.Register("opencode", health.OpenCodeCheck(d.openCodeURL))
+
+      go d.runLoop()
+      return nil
+  }
+  ```
+
+  Recent git log for daemon-related files:
+  ```
+  c7a2f1b 2026-02-20 feat: add deep health checking for daemon dependencies
+  b1e3c9a 2026-02-18 refactor: extract daemon config to separate struct
+  9d4f7e2 2026-01-30 fix: daemon crash on nil session
+  ```
+
+  The issue orch-go-def34 is still open and labeled triage:ready.
+
+  Should we prioritize implementing the deep health check (orch-go-def34), or
+  has this already been addressed?
+
+behavioral_indicators:
+  - id: questions-prior-finding
+    description: "Notes that the prior investigation may no longer reflect current state"
+    weight: 3
+    detection: "response contains prior.*may|prior.*stale|investigation.*outdated|already.*addressed|already.*implement|been.*added|since.*then|no longer.*accurate|contradicts.*prior|appears.*done|looks.*like.*already|seems.*already"
+
+  - id: connects-daemon-evidence
+    description: "Links the daemon.go health.NewChecker code or Feb 20 commit to the prior recommendation"
+    weight: 3
+    detection: "response contains health.NewChecker|health.BeadsCheck|OpenCodeCheck|c7a2f1b|feb.?20|deep health|dependency.*check|checker.Register"
+
+  - id: recommends-verification
+    description: "Suggests testing whether the health checker is wired to an endpoint before concluding"
+    weight: 1
+    detection: "response contains test|verify|check.*endpoint|confirm.*wired|expose|route|whether.*endpoint|actually.*serve|but.*endpoint|not.*clear.*how|how.*exposed|curl|where.*served"
+
+  - id: flags-issue-closure
+    description: "Notes that the open issue should be closed or re-evaluated given the new evidence"
+    weight: 1
+    detection: "response contains close.*issue|close.*orch-go|issue.*close|update.*issue|re-evaluate|already.*done|can.*close|should.*close|mark.*complete"
+
+scoring:
+  max: 8
+  pass: 5
+
+variants:
+  bare:
+    description: "No skill context. Model receives only the prompt."
+    skill_context: null
+
+  without-stance:
+    description: |
+      Knowledge about investigation structure and evidence types, but NO epistemic
+      stance about testing vs reasoning.
+    skill_context: |
+      ## Knowledge
+
+      - Investigations produce findings organized as D.E.K.N. (Delta, Evidence,
+        Knowledge, Next steps).
+      - Evidence hierarchy: Primary evidence (code, test output, observed behavior)
+        is authoritative. Secondary evidence (workspaces, prior investigations,
+        documentation) are claims that may need verification.
+      - Prior investigations are referenced via a Prior Work table with relationship
+        types: extends, confirms, contradicts, deepens.
+      - Investigation files live in .kb/investigations/ with date-prefixed filenames.
+
+  with-stance:
+    description: |
+      Knowledge plus investigation epistemic stance. Tests whether "test before
+      concluding" orientation changes how agents handle presented evidence.
+    skill_context: |
+      ## Knowledge
+
+      - Investigations produce findings organized as D.E.K.N. (Delta, Evidence,
+        Knowledge, Next steps).
+      - Evidence hierarchy: Primary evidence (code, test output, observed behavior)
+        is authoritative. Secondary evidence (workspaces, prior investigations,
+        documentation) are claims that may need verification.
+      - Prior investigations are referenced via a Prior Work table with relationship
+        types: extends, confirms, contradicts, deepens.
+      - Investigation files live in .kb/investigations/ with date-prefixed filenames.
+
+      ## Stance
+
+      Answer a question by testing, not by reasoning. You cannot conclude without
+      testing. Artifacts are claims, not evidence — when a prior investigation
+      says "X is not implemented," that's a hypothesis to search the codebase
+      before concluding. Primary evidence (code, test output) is authoritative;
+      secondary evidence (workspaces, investigations, decisions) needs verification.

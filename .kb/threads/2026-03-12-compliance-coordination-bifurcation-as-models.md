@@ -28,3 +28,7 @@ The open questions from this thread have been answered empirically:
 **Synthesis question:** Daemon-driven synthesis remains N=1. The exploration mechanism works (21-minute opus explorations produce genuine insight) but auto-triggering at cluster thresholds hasn't been implemented. This is a coordination capability gap, not a compliance one — supporting the thread's thesis.
 
 **Resolution:** The bifurcation thesis is validated by measurement. Compliance value is measurably approaching zero (100% bypass, 96%+ intrinsic success). Coordination value is measurably increasing (allocation scoring, work graph deduplication, daemon routing are the mechanisms that produce quality). The structural split shipped in 7 commits (2026-03-13) and the blog draft at `.kb/drafts/compliance-cliff.md` captures the full argument. Remaining coordination work (auto-synthesis, coordination ROI measurement) tracked as separate issues.
+
+## Auto-Linked Investigations
+
+- .kb/investigations/2026-03-13-inv-task-compliance-coordination-boundary-map.md

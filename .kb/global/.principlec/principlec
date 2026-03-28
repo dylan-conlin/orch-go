@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""
+principlec - Principle compiler for modular principle management
+
+Usage:
+    principlec build     Compile principles.md from source
+    principlec list      List all principles
+    principlec check     Verify manifest matches source files
+"""
+
+import os
+import sys
+from pathlib import Path
+
+PRINCIPLEC_DIR = Path(__file__).parent
+
+
+def cmd_build():
+    """Compile principles.md from source."""
+    # Import and run build
+    sys.path.insert(0, str(PRINCIPLEC_DIR))
+    from build import main
+    main()
+
+
+def cmd_list():
+    """List all principles by category."""
+    import yaml
+
+    manifest_path = PRINCIPLEC_DIR / "principles.yaml"
+    with open(manifest_path) as f:
+        manifest = yaml.safe_load(f)
+
+    total = 0
+    for category in manifest['categories']:
+        print(f"\n{category['title']} ({category['name']}/)")
+        for p in category['principles']:
+            print(f"  - {p}")
+            total += 1
+
+    print(f"\nTotal: {total} principles")
+
+
+def cmd_check():
+    """Verify manifest matches source files."""
+    import yaml
+
+    manifest_path = PRINCIPLEC_DIR / "principles.yaml"
+    src_dir = PRINCIPLEC_DIR / "src"
+
+    with open(manifest_path) as f:
+        manifest = yaml.safe_load(f)
+
+    errors = []
+
+    # Check all manifest entries exist
+    for category in manifest['categories']:
+        cat_dir = src_dir / category['name']
+        if not cat_dir.exists():
+            errors.append(f"Category directory missing: {cat_dir}")
+            continue
+
+        for p in category['principles']:
+            path = cat_dir / f"{p}.md"
+            if not path.exists():
+                errors.append(f"Principle file missing: {path}")
+
+    # Check for orphan files (in src but not in manifest)
+    manifest_principles = set()
+    for category in manifest['categories']:
+        for p in category['principles']:
+            manifest_principles.add(f"{category['name']}/{p}")
+
+    for cat_dir in src_dir.iterdir():
+        if not cat_dir.is_dir():
+            continue
+        for f in cat_dir.glob("*.md"):
+            key = f"{cat_dir.name}/{f.stem}"
+            if key not in manifest_principles:
+                errors.append(f"Orphan file (not in manifest): {f}")
+
+    if errors:
+        print("Errors found:")
+        for e in errors:
+            print(f"  ✗ {e}")
+        sys.exit(1)
+    else:
+        print("✓ Manifest and source files are in sync")
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(1)
+
+    cmd = sys.argv[1]
+
+    if cmd == "build":
+        cmd_build()
+    elif cmd == "list":
+        cmd_list()
+    elif cmd == "check":
+        cmd_check()
+    else:
+        print(f"Unknown command: {cmd}")
+        print(__doc__)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

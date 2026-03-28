@@ -3,7 +3,6 @@
 // Each interface replaces one or more mock function fields with a typed contract.
 package daemon
 
-
 // IssueQuerier reads beads issues for the daemon spawn pipeline.
 type IssueQuerier interface {
 	ListReadyIssues() ([]Issue, error)
@@ -21,6 +20,11 @@ type IssueUpdater interface {
 // Spawner spawns agent work.
 type Spawner interface {
 	SpawnWork(beadsID, skill, model, workdir, account string) error
+}
+
+// BoundaryTransitioner abandons a degraded worker and respawns it with fresh context.
+type BoundaryTransitioner interface {
+	Transition(beadsID, feedback, workdir string) error
 }
 
 // WorkspaceVerifier checks whether a spawn actually created a workspace.
@@ -123,6 +127,13 @@ type defaultSpawner struct{}
 
 func (s *defaultSpawner) SpawnWork(beadsID, skill, model, workdir, account string) error {
 	return SpawnWork(beadsID, skill, model, workdir, account)
+}
+
+// defaultBoundaryTransitioner is the production BoundaryTransitioner.
+type defaultBoundaryTransitioner struct{}
+
+func (t *defaultBoundaryTransitioner) Transition(beadsID, feedback, workdir string) error {
+	return TransitionFrustratedWorker(beadsID, feedback, workdir)
 }
 
 // defaultWorkspaceVerifier checks workspace existence by scanning .orch/workspace/.

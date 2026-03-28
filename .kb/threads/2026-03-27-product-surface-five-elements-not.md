@@ -1,6 +1,6 @@
 ---
 title: "The product surface is five elements, not three — shape and resistance join threads, briefs, and tensions"
-status: active
+status: converged
 created: 2026-03-27
 updated: 2026-03-27
 resolved_to: ""
@@ -20,3 +20,5 @@ Next session opener: 'What does this product feel like to use when it's working?
 - .kb/investigations/2026-03-26-inv-daemon-behaviors-substrate-machinery-vs.md
 
 Two tensions from digest review connect back to product surface. (1) Frustration detection should trigger session boundaries, not prompts — Dylan naturally did this himself (exported, closed, restarted). The model can't shift modes but the system can restart it. This is a form of resistance signal: 'this conversation is fighting you.' (2) Between-session composition: orch compose should run automatically (daemon-triggered), producing draft digests that orient surfaces on return. No work released from composition alone — human reaction IS the comprehension act. Combined with maintenance bypass (bug fixes skip queue), queue volume drops ~60%, and returning after days away shows 3 paragraphs instead of 40 items.
+
+Converged: orient is THREE elements, not five. Threads (what am I thinking about), briefs (what did I learn), tensions (where do my beliefs conflict). Ready work is action infrastructure — mixing it into the thinking surface pressures toward execution before thinking is done. Session insight is a stale thread position — if the debrief produced a good entry, the thread already carries it. Digest summary, plans, focus all recoverable via their own commands. The thinking surface should be purely epistemic — everything else is a different verb.

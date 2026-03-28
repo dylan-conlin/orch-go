@@ -79,6 +79,10 @@ type Daemon struct {
 	// Prevents duplicate notifications. Cleaned when agent leaves QUESTION phase.
 	questionNotified map[string]time.Time
 
+	// boundaryHandled tracks workers already processed for Phase: Boundary.
+	// Prevents duplicate abandon+rework cycles while the boundary comment is still latest.
+	boundaryHandled map[string]time.Time
+
 	// resumeAttempts tracks when we last attempted to resume each agent (by beads ID).
 	// Prevents infinite resume loops by rate-limiting to 1 attempt per hour per agent.
 	resumeAttempts map[string]time.Time
@@ -120,6 +124,8 @@ type Daemon struct {
 
 	// Spawner spawns agent work.
 	Spawner Spawner
+	// BoundaryTransitioner abandons a degraded worker and respawns it with fresh context.
+	BoundaryTransitioner BoundaryTransitioner
 	// WorkspaceVerifier checks workspace existence after spawn.
 	// When set, verifies that orch work actually created a workspace directory.
 	// Catches phantom spawns where the subprocess exits 0 but no workspace exists.
@@ -146,7 +152,6 @@ type Daemon struct {
 	// BeadsHealth provides beads health snapshot collection and storage.
 	BeadsHealth BeadsHealthService
 
-
 	// ArtifactSync provides periodic artifact drift analysis and issue creation.
 	ArtifactSync ArtifactSyncService
 
@@ -155,14 +160,6 @@ type Daemon struct {
 	// committed. When nil, the gate is skipped. Production code sets this to
 	// hasRecentCommitsForBeadsID; tests leave it nil to avoid git subprocess calls.
 	CommitChecker func(beadsID string) bool
-
-
-
-
-
-
-
-
 
 	// EmptyExecutionRetryTracker tracks one-shot retry for empty-execution failures.
 	// When an orphaned agent is classified as empty-execution, the tracker ensures
@@ -206,7 +203,6 @@ type Daemon struct {
 	// Computed via events.ComputeLearning() at daemon startup or refresh.
 	Learning *events.LearningStore
 
-
 	// FocusGoal is the current focus goal text (from ~/.orch/focus.json).
 	// When set, issues from projects matching this goal get a priority boost.
 	FocusGoal string
@@ -216,8 +212,6 @@ type Daemon struct {
 	// ProjectDirNames maps project prefixes to directory basenames for focus matching.
 	// Built from ProjectRegistry at daemon startup.
 	ProjectDirNames map[string]string
-
-
 
 	// CapacityPoll polls account capacity and writes to file cache.
 	// When nil, uses the default implementation that calls ListAccountsWithCapacity.
@@ -255,11 +249,13 @@ func NewWithConfig(config Config) *Daemon {
 		Config:                   config,
 		Scheduler:                NewSchedulerFromConfig(config),
 		SpawnedIssues:            spawnTracker,
+		boundaryHandled:          make(map[string]time.Time),
 		resumeAttempts:           make(map[string]time.Time),
 		CompletionFailureTracker: NewCompletionFailureTracker(),
 		VerificationRetryTracker: NewVerificationRetryTracker(),
 		Issues:                   &defaultIssueQuerier{},
 		Spawner:                  &defaultSpawner{},
+		BoundaryTransitioner:     &defaultBoundaryTransitioner{},
 		WorkspaceVerifier:        &defaultWorkspaceVerifier{},
 		Completions:              &defaultCompletionFinder{},
 		AgreementCheck:           &defaultAgreementCheckService{},
@@ -300,20 +296,20 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 	}
 
 	d := &Daemon{
-		Config:         config,
-		Pool:           pool,
-		Scheduler:      NewSchedulerFromConfig(config),
-		SpawnedIssues:  spawnTracker,
-		resumeAttempts: make(map[string]time.Time),
-		Issues:              &defaultIssueQuerier{},
-		Spawner:             &defaultSpawner{},
-		WorkspaceVerifier:   &defaultWorkspaceVerifier{},
-		Completions:         &defaultCompletionFinder{},
-		AgreementCheck:      &defaultAgreementCheckService{},
-		Cleaner:             &defaultSessionCleaner{},
-		ActiveCounter:       &defaultActiveCounter{},
-		Agents:              &defaultAgentDiscoverer{},
-		StatusUpdater:       &defaultIssueUpdater{},
+		Config:            config,
+		Pool:              pool,
+		Scheduler:         NewSchedulerFromConfig(config),
+		SpawnedIssues:     spawnTracker,
+		resumeAttempts:    make(map[string]time.Time),
+		Issues:            &defaultIssueQuerier{},
+		Spawner:           &defaultSpawner{},
+		WorkspaceVerifier: &defaultWorkspaceVerifier{},
+		Completions:       &defaultCompletionFinder{},
+		AgreementCheck:    &defaultAgreementCheckService{},
+		Cleaner:           &defaultSessionCleaner{},
+		ActiveCounter:     &defaultActiveCounter{},
+		Agents:            &defaultAgentDiscoverer{},
+		StatusUpdater:     &defaultIssueUpdater{},
 	}
 	// Initialize rate limiter if MaxSpawnsPerHour is set
 	if config.MaxSpawnsPerHour > 0 {

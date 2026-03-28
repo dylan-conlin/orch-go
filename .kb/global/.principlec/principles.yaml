@@ -1,0 +1,88 @@
+# Principles Manifest
+# Defines ordering and metadata for principle compilation
+
+name: meta-orchestration-principles
+description: Foundational values that guide design decisions across the system
+
+# Categories in compilation order
+categories:
+  - name: epistemic
+    title: "Epistemic Foundation"
+    description: "Always true. Substrate-independent. These don't change as models improve."
+    principles:
+      - provenance
+      - session-amnesia
+      - evidence-hierarchy
+      - ai-validation-loops
+      - asymmetric-velocity
+      - verification-bottleneck
+      - understanding-lag
+      - absent-signal-trap
+
+  - name: compliance
+    title: "Compliance Layer"
+    description: "Getting individual agents to behave correctly. Necessary infrastructure, but with a structural ceiling. As models improve, this layer becomes less of the problem."
+    principles:
+      - gate-over-remind
+      - infrastructure-over-instruction
+      - identity-is-not-behavior
+      - accretion-gravity
+      - redundancy-is-load-bearing
+      - pain-as-signal
+      - track-actions-not-just-state
+      - legibility-over-compliance
+
+  - name: coordination
+    title: "Coordination Layer"
+    description: "Enabling multi-agent understanding, routing, and synthesis. Value grows as models improve. This is what the system is actually for."
+    framing: |
+      The compliance/coordination distinction is the most important structural insight to emerge from the harness engineering and knowledge accretion work (Mar 2026).
+
+      Almost all AI agent tooling today solves compliance — getting agents to follow rules, stay in scope, produce expected artifacts. This has a structural ceiling: behavioral testing shows ~39% compliance whether skills are 2,000 lines or 400 lines. Gates help. Infrastructure helps. But compliance asymptotes.
+
+      Coordination is the other half: which agent sees what context, how findings connect across investigations, when to escalate vs act, how knowledge accumulates across sessions. As models get better at following instructions (compliance ceiling rises), the relative value of coordination increases. A system that solves compliance but not coordination produces correct agents that can't see each other's work. A system that solves coordination can tolerate imperfect compliance because the human has visibility into what's happening.
+
+      The principles below are about coordination. They don't tell agents what to do — they tell the system how to route understanding.
+    principles:
+      - perspective-is-structural
+      - authority-is-scoping
+      - escalation-is-information-flow
+      - understanding-through-engagement
+      - defect-class-blindness
+      - coherence-over-patches
+
+  - name: knowledge-infrastructure
+    title: "Knowledge Infrastructure"
+    description: "How the system accumulates and surfaces understanding across sessions. The connective tissue between compliance (individual behavior) and coordination (multi-agent understanding)."
+    principles:
+      - self-describing-artifacts
+      - capture-at-context
+      - surfacing-over-browsing
+      - friction-is-signal
+      - progressive-disclosure
+      - creation-removal-asymmetry
+
+  - name: system-design
+    title: "System Design Principles"
+    description: "Architectural choices for this orchestration system. These are our design decisions, not universal constraints."
+    principles:
+      - local-first
+      - compose-over-monolith
+      - graceful-degradation
+      - share-patterns-not-tools
+      - observation-infrastructure
+      - escape-hatches
+
+  - name: meta
+    title: "System Evolution"
+    description: "How we evolve the system itself."
+    principles:
+      - evolve-by-distinction
+      - reflection-before-action
+      - pressure-over-compensation
+      - premise-before-solution
+      - strategic-first-orchestration
+      - deploy-or-delete
+
+# Provenance is compiled separately at the end
+# See: src/provenance.md

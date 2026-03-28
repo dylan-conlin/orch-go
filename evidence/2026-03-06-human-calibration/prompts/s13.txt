@@ -1,0 +1,35 @@
+Task: "Clean up deprecated LegacyNotifier — remove dead code per orch-go-dep1"
+
+In pkg/notifier/notifier.go:
+
+  // DEPRECATED: LegacyNotifier - replaced by EventBus in v2.3 (August 2025)
+  // Migration tracked in orch-go-dep1. Safe to remove — all consumers
+  // were migrated to EventBus per the migration plan.
+
+  type LegacyNotifier struct {
+      subscribers []func(Event)
+      mu          sync.RWMutex
+  }
+
+  func NewLegacyNotifier() *LegacyNotifier { ... }
+  func (n *LegacyNotifier) Publish(e Event) { ... }
+  func (n *LegacyNotifier) Subscribe(fn func(Event)) { ... }
+
+Beads issue orch-go-dep1:
+  Title: "Remove LegacyNotifier after EventBus migration"
+  Status: open (created August 2025)
+  Description: "All three original consumers (daemon.go, verify/check.go,
+  spawn/context.go) have been migrated to EventBus. LegacyNotifier is
+  dead code. Safe to remove."
+
+Recent git log for files in the notifier dependency graph:
+
+  2026-02-28  notify/notify.go     "feat: desktop notifications via subscriber pattern"
+  2026-02-02  daemon.go            "fix: reliable event delivery for spawn lifecycle"
+  2026-01-15  events/logger.go     "feat: structured event logging with subscriber hooks"
+  2025-12-10  verify/check.go      "refactor: extract verification event handling"
+
+Tests: No tests import LegacyNotifier directly (they test higher-level
+behavior through the modules that use it).
+
+Proceed with removal and report Phase: Complete?

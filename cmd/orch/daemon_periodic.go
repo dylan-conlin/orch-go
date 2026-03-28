@@ -15,7 +15,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/notify"
 )
 
-
 // periodicTasksResult holds outputs from periodic tasks needed downstream.
 type periodicTasksResult struct {
 	PhaseTimeoutSnapshot      *daemon.PhaseTimeoutSnapshot
@@ -79,6 +78,11 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 			snapshot := r.Snapshot()
 			result.PhaseTimeoutSnapshot = &snapshot
 		}
+	}
+
+	// Frustration boundary handling for headless workers
+	if r := d.RunPeriodicFrustrationBoundary(); r != nil {
+		handleFrustrationBoundaryResult(r, timestamp, verbose, logger)
 	}
 
 	// QUESTION phase detection and notification
@@ -274,6 +278,33 @@ func handleQuestionDetectionResult(r *daemon.QuestionDetectionResult, timestamp 
 	}
 }
 
+func handleFrustrationBoundaryResult(r *daemon.FrustrationBoundaryResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Frustration boundary error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.frustration_boundary", map[string]interface{}{
+			"handled": 0,
+			"error":   r.Error.Error(),
+			"message": r.Message,
+		})
+		return
+	}
+
+	if r.HandledCount > 0 {
+		agentIDs := make([]string, 0, len(r.Agents))
+		for _, agent := range r.Agents {
+			agentIDs = append(agentIDs, agent.BeadsID)
+		}
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		logDaemonEvent(logger, "daemon.frustration_boundary", map[string]interface{}{
+			"handled": r.HandledCount,
+			"agents":  agentIDs,
+			"message": r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] Frustration boundary: no boundary agents found\n", timestamp)
+	}
+}
+
 func handleAgreementCheckResult(r *daemon.AgreementCheckResult, timestamp string, verbose bool, logger *events.Logger) {
 	if r.Error != nil {
 		fmt.Fprintf(os.Stderr, "[%s] Agreement check error: %v\n", timestamp, r.Error)
@@ -388,10 +419,10 @@ func handleVerificationFailedEscalationResult(r *daemon.VerificationFailedEscala
 			escalatedIDs = append(escalatedIDs, e.BeadsID)
 		}
 		logDaemonEvent(logger, "daemon.verification_failed_escalation", map[string]interface{}{
-			"escalated":    r.EscalatedCount,
-			"scanned":      r.ScannedCount,
+			"escalated":     r.EscalatedCount,
+			"scanned":       r.ScannedCount,
 			"escalated_ids": escalatedIDs,
-			"message":      r.Message,
+			"message":       r.Message,
 		})
 	} else if verbose {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)

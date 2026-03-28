@@ -14,6 +14,7 @@ Nine questions surfaced from reviewing the harness engineering model. Three beca
 
 ## Auto-Linked Investigations
 
+- .kb/investigations/2026-03-05-inv-design-dual-authority-detection-scan.md
 - .kb/investigations/archived/2026-01-11-design-session-resume-protocol.md
 - .kb/investigations/2026-02-27-design-flow-integrated-knowledge-surfacing.md
 - .kb/investigations/archived/2025-12-25-inv-pattern-tool-relationship-shareability.md

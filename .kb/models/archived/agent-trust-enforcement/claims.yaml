@@ -1,0 +1,200 @@
+model: agent-trust-enforcement
+version: 1
+last_audit: "2026-03-19"
+
+claims:
+  - id: ATE-01
+    text: "Convention-layer constraints (CLAUDE.md, skill guidance) are insufficient to prevent agent bypass when the agent has shell access"
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Probe pw-w8r0 bypassed convention via curl — 6 OshCut accounts from bare IP (Mar 6)"
+        date: "2026-03-06"
+        verdict: confirms
+      - source: "CompetitorProxyEnforcement bypassed by non-Faraday clients"
+        date: "2026-03-17"
+        verdict: confirms
+    last_validated: "2026-03-17"
+    domain_tags: ["trust", "convention", "bypass", "shell", "CLAUDE.md"]
+    falsifies_if: "A convention-layer constraint that reliably prevents bypass in 50+ agent sessions with shell access"
+    tensions:
+      - claim: AE-01
+        model: architectural-enforcement
+        type: confirms
+        note: "Both models confirm prompt-level enforcement is insufficient — infrastructure required"
+    model_md_ref: "## Testable Claims C1"
+
+  - id: ATE-02
+    text: "OS-level enforcement (sandbox-exec/srt, chflags uchg) cannot be bypassed by application-layer agent actions"
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "11 behavioral tests: srt blocks curl, node, python, wget. chflags survives Bash writes, rm, sed."
+        date: "2026-03-19"
+        verdict: confirms
+    last_validated: "2026-03-19"
+    domain_tags: ["trust", "sandbox", "srt", "chflags", "OS-level"]
+    falsifies_if: "An agent bypassing srt allowedDomains or chflags uchg without root escalation"
+    tensions: []
+    model_md_ref: "## Testable Claims C2"
+
+  - id: ATE-03
+    text: "Allowlist-based domain restriction is strictly more secure than blocklist for agent network access"
+    type: invariant
+    scope: universal
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "srt: new domains blocked by default. Custom blocklist: new domains pass. srt rejects wildcards."
+        date: "2026-03-19"
+        verdict: confirms
+    last_validated: "2026-03-19"
+    domain_tags: ["trust", "allowlist", "blocklist", "network", "sandbox"]
+    falsifies_if: "A scenario where blocklist catches something allowlist misses (impossible by construction)"
+    tensions: []
+    model_md_ref: "## Testable Claims C3, ## The Allowlist Principle"
+
+  - id: ATE-04
+    text: "Pre-spawn validation prevents wasted agent sessions and has no equivalent in Claude Code's native features"
+    type: mechanism
+    scope: local
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "Spawn gates block before token spend. Claude Code hooks fire during execution only (no pre-spawn concept)."
+        date: "2026-03-19"
+        verdict: confirms
+    last_validated: "2026-03-19"
+    domain_tags: ["trust", "spawn-gates", "pre-spawn", "lifecycle"]
+    falsifies_if: "Claude Code adds a pre-spawn hook event type or a way to prevent session creation conditionally"
+    tensions: []
+    model_md_ref: "## Testable Claims C4"
+
+  - id: ATE-05
+    text: "Orch-go's enforcement value is in policy decisions (WHAT), not enforcement mechanisms (HOW)"
+    type: generalization
+    scope: local
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "OPSEC work: right policy (route through proxy), wrong mechanism (custom tinyproxy vs srt)"
+        date: "2026-03-19"
+        verdict: confirms
+      - source: "Reinvented wheels audit: <5% OSS overlap in mechanisms, 100% novel in cross-cutting policy"
+        date: "2026-03-19"
+        verdict: confirms
+    last_validated: "2026-03-19"
+    domain_tags: ["trust", "policy", "enforcement", "platform", "orch-go"]
+    falsifies_if: "A case where orch-go's enforcement mechanism provides unique value that no platform-native feature can replicate (beyond policy/decision layer)"
+    tensions: []
+    model_md_ref: "## Testable Claims C5, ## Policy Layer vs Enforcement Layer"
+
+  - id: ATE-06
+    text: "Policy layer and enforcement layer operate at independent lifecycle phases and are not duplicative"
+    type: mechanism
+    scope: local
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "6 orch-go features audited: 4 add value at different lifecycle phases, 1 delegates to native, 1 deprecated"
+        date: "2026-03-19"
+        verdict: confirms
+    last_validated: "2026-03-19"
+    domain_tags: ["trust", "policy", "enforcement", "lifecycle", "separation"]
+    falsifies_if: "An orch-go enforcement feature that operates at the same lifecycle phase AND mechanism as a Claude Code native feature (other than deprecated sandbox)"
+    tensions: []
+    model_md_ref: "## Testable Claims C6, ## Lifecycle-Phase Separation"
+
+  - id: ATE-07
+    text: "Application-layer middleware protects only its own abstraction stack, not arbitrary code execution"
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "CompetitorProxyEnforcement: Faraday-only, 6 bypass classes"
+        date: "2026-03-17"
+        verdict: confirms
+      - source: "scsdb read-only: session param, bypassable via SET command or new connection"
+        date: "2026-03-17"
+        verdict: confirms
+    last_validated: "2026-03-17"
+    domain_tags: ["trust", "middleware", "bypass", "abstraction", "application-layer"]
+    falsifies_if: "An application-layer middleware that catches all execution paths without OS-level support"
+    tensions: []
+    model_md_ref: "## Testable Claims C7"
+
+  - id: ATE-08
+    text: "Credential risk (bypass class 4) is partially reducible — network isolation prevents use against non-allowed services, but credentials remain usable against allowed services and exfiltrable via allowed channels"
+    type: invariant
+    scope: bounded
+    confidence: partially_confirmed
+    priority: supporting
+    evidence:
+      - source: "Inferred from bypass taxonomy — no test has attempted credential isolation"
+        date: "2026-03-19"
+        verdict: extends
+      - source: "Probe 2026-03-20: srt allowedDomains blocks credential use against non-allowed services at L1. 2/4 scenarios structurally preventable, 2/4 convention-only."
+        date: "2026-03-20"
+        verdict: refines
+    last_validated: "2026-03-20"
+    domain_tags: ["trust", "credentials", "exfiltration", "partially-reducible", "network-isolation"]
+    falsifies_if: "A mechanism that prevents credential use against services the agent has legitimate network access to, without removing the credential from the filesystem"
+    tensions: []
+    model_md_ref: "## Testable Claims C8"
+
+  - id: ATE-09
+    text: "The trust hierarchy (L1-L4) correctly predicts which enforcement mechanisms will be bypassed first under agent pressure"
+    type: generalization
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "L4 (convention) bypassed first (pw-w8r0). L3 (application) bypassed by non-standard tools. L1 (infrastructure) not bypassed in any test."
+        date: "2026-03-19"
+        verdict: confirms
+    last_validated: "2026-03-19"
+    domain_tags: ["trust", "hierarchy", "bypass", "prediction", "layers"]
+    falsifies_if: "An L1 mechanism bypassed before an L4 mechanism in a real agent session"
+    tensions: []
+    model_md_ref: "## Testable Claims C10, ## The Trust Hierarchy"
+
+  - id: ATE-10
+    text: "Defense-in-depth layers that exist only in development provide false confidence about production security posture"
+    type: mechanism
+    scope: bounded
+    confidence: confirmed
+    priority: supporting
+    evidence:
+      - source: "Docker proxy-gateway (dev only) vs Render/Fly.io (zero egress control)"
+        date: "2026-03-17"
+        verdict: confirms
+    last_validated: "2026-03-17"
+    domain_tags: ["trust", "defense-in-depth", "production", "development", "false-confidence"]
+    falsifies_if: "A deployment platform (Render, Fly.io) that provides per-service egress firewall equivalent to Docker internal:true"
+    tensions:
+      - claim: MH-01
+        model: measurement-honesty
+        type: extends
+        note: "Dev-only enforcement is a structural form of false confidence — it cannot go red in production"
+    model_md_ref: "## Testable Claims C9, C15"
+
+  - id: ATE-11
+    text: "Infrastructure-backed answers are defensible; assurance-backed answers are not"
+    type: invariant
+    scope: bounded
+    confidence: confirmed
+    priority: core
+    evidence:
+      - source: "OshCut incident: assurance failed ('I told the agent not to'). srt evaluation: infrastructure works ('agent physically cannot reach domain')."
+        date: "2026-03-19"
+        verdict: confirms
+    last_validated: "2026-03-19"
+    domain_tags: ["trust", "infrastructure", "assurance", "defensible", "opsec"]
+    falsifies_if: "An assurance-backed control that proves more reliable than an infrastructure-backed one over 50+ agent sessions"
+    tensions: []
+    model_md_ref: "## Testable Claims C17"

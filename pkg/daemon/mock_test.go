@@ -22,10 +22,10 @@ func containsHelper(s, substr string) bool {
 // mockIssueQuerier implements IssueQuerier for tests.
 // Each method delegates to a function field if set, otherwise returns zero values.
 type mockIssueQuerier struct {
-	ListReadyIssuesFunc     func() ([]Issue, error)
-	GetIssueStatusFunc      func(beadsID string) (string, error)
-	ListEpicChildrenFunc    func(epicID string) ([]Issue, error)
-	ListIssuesWithLabelFunc func(label string) ([]Issue, error)
+	ListReadyIssuesFunc       func() ([]Issue, error)
+	GetIssueStatusFunc        func(beadsID string) (string, error)
+	ListEpicChildrenFunc      func(epicID string) ([]Issue, error)
+	ListIssuesWithLabelFunc   func(label string) ([]Issue, error)
 	CreateExtractionIssueFunc func(task, parentIssueID string) (string, error)
 }
 
@@ -86,6 +86,18 @@ type mockSpawner struct {
 func (m *mockSpawner) SpawnWork(beadsID, skill, model, workdir, account string) error {
 	if m.SpawnWorkFunc != nil {
 		return m.SpawnWorkFunc(beadsID, skill, model, workdir, account)
+	}
+	return nil
+}
+
+// mockBoundaryTransitioner implements BoundaryTransitioner for tests.
+type mockBoundaryTransitioner struct {
+	TransitionFunc func(beadsID, feedback, workdir string) error
+}
+
+func (m *mockBoundaryTransitioner) Transition(beadsID, feedback, workdir string) error {
+	if m.TransitionFunc != nil {
+		return m.TransitionFunc(beadsID, feedback, workdir)
 	}
 	return nil
 }
@@ -164,12 +176,12 @@ func (m *mockAgreementCheckService) HasOpenIssue(agreementID string) (bool, erro
 
 // mockArtifactSyncService implements ArtifactSyncService for tests.
 type mockArtifactSyncService struct {
-	AnalyzeFunc                 func(projectDir string) (*ArtifactSyncResult, error)
-	HasOpenIssueFunc            func() (bool, error)
-	CreateIssueFunc             func(report *artifactsync.DriftReport) (string, error)
-	SpawnSyncAgentFunc          func(report *artifactsync.DriftReport) error
+	AnalyzeFunc                   func(projectDir string) (*ArtifactSyncResult, error)
+	HasOpenIssueFunc              func() (bool, error)
+	CreateIssueFunc               func(report *artifactsync.DriftReport) (string, error)
+	SpawnSyncAgentFunc            func(report *artifactsync.DriftReport) error
 	SpawnBudgetAwareSyncAgentFunc func(report *artifactsync.DriftReport, currentLines, budget int) error
-	CLAUDEMDLineCountFunc       func(projectDir string) (int, error)
+	CLAUDEMDLineCountFunc         func(projectDir string) (int, error)
 }
 
 func (m *mockArtifactSyncService) Analyze(projectDir string) (*ArtifactSyncResult, error) {
@@ -240,8 +252,8 @@ func (m *mockActiveCounter) Count() int {
 
 // mockAgentDiscoverer implements AgentDiscoverer for tests.
 type mockAgentDiscoverer struct {
-	GetActiveAgentsFunc         func() ([]ActiveAgent, error)
-	HasExistingSessionFunc      func(beadsID string) bool
+	GetActiveAgentsFunc           func() ([]ActiveAgent, error)
+	HasExistingSessionFunc        func(beadsID string) bool
 	HasExistingSessionOrErrorFunc func(beadsID string) (bool, error)
 }
 

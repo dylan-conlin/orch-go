@@ -1,8 +1,75 @@
 /**
  * Worker health metrics tracking and health signal injection.
  */
+import { execFile } from "child_process"
+
+import { classifyBashCommand } from "./coaching-classification"
+import { findContradiction, detectArchitecturalDecision } from "./coaching-investigation"
 import type { WorkerHealthState } from "./coaching-types"
-import { log, writeMetric } from "./coaching-types"
+import type { InvestigationRecommendation } from "./coaching-types"
+import { log, writeMetric, VARIATION_THRESHOLD } from "./coaching-types"
+
+const PHASE_COMMENT_PATTERN = /bd\s+comments?\s+add\s+.+phase:/i
+const FRUSTRATION_SIGNAL_WINDOW_MS = 15 * 60 * 1000
+const FRUSTRATION_TIME_IN_PHASE_MINUTES = 15
+
+function execFileAsync(file: string, args: string[], cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, { cwd, timeout: 10000 }, (error) => {
+      if (error) {
+        reject(error)
+        return
+      }
+      resolve()
+    })
+  })
+}
+
+function markBoundarySignal(state: WorkerHealthState, signal: string, detail: string, now: number): void {
+  state.activeBoundarySignals.set(signal, { seenAt: now, detail })
+}
+
+function clearBoundarySignal(state: WorkerHealthState, signal: string): void {
+  state.activeBoundarySignals.delete(signal)
+}
+
+function getActiveBoundarySignals(state: WorkerHealthState, now: number): Array<{ signal: string; detail: string }> {
+  const active: Array<{ signal: string; detail: string }> = []
+  for (const [signal, entry] of state.activeBoundarySignals.entries()) {
+    if (now - entry.seenAt <= FRUSTRATION_SIGNAL_WINDOW_MS) {
+      active.push({ signal, detail: entry.detail })
+    }
+  }
+  return active
+}
+
+async function reportFrustrationBoundary(
+  state: WorkerHealthState,
+  directory: string,
+  activeSignals: Array<{ signal: string; detail: string }>
+): Promise<void> {
+  if (!state.beadsID || state.frustrationBoundaryTriggered) {
+    return
+  }
+
+  const summary = activeSignals.map((entry) => entry.detail).join("; ")
+  writeMetric({
+    timestamp: new Date().toISOString(),
+    session_id: state.sessionId,
+    metric_type: "frustration_compound",
+    value: activeSignals.length,
+    details: {
+      beads_id: state.beadsID,
+      signals: activeSignals.map((entry) => entry.signal),
+      summary,
+    },
+  })
+
+  const comment = `Phase: Boundary - frustration compound detected (${activeSignals.map((entry) => entry.signal).join(", ")}): ${summary}`
+  await execFileAsync("bd", ["comments", "add", state.beadsID, comment], directory)
+  state.frustrationBoundaryTriggered = true
+  log(`Worker frustration boundary triggered for ${state.beadsID}: ${comment}`)
+}
 
 /**
  * Estimate token usage for a worker session.
@@ -83,7 +150,9 @@ export async function trackWorkerHealth(
   tool: string,
   success: boolean,
   args: any,
-  output: any
+  output: any,
+  investigationRecommendations: InvestigationRecommendation[],
+  directory: string
 ): Promise<void> {
   const now = Date.now()
   const timestamp = new Date().toISOString()
@@ -92,6 +161,75 @@ export async function trackWorkerHealth(
 
   if (tool === "read" && output?.text) {
     state.totalReadBytes += output.text.length
+  }
+
+  if (tool === "bash" && args?.command && success) {
+    const command = args.command as string
+
+    if (PHASE_COMMENT_PATTERN.test(command)) {
+      state.lastPhaseUpdate = now
+      clearBoundarySignal(state, "stuck")
+      log(`Worker phase update detected for ${state.sessionId}`)
+    }
+
+    const group = classifyBashCommand(command)
+    state.variation.lastToolTimestamp = now
+    state.variation.variationHistory.push({ group, command, timestamp: now })
+    if (state.variation.variationHistory.length > 20) {
+      state.variation.variationHistory.shift()
+    }
+
+    if (group !== "other") {
+      if (state.variation.currentGroup === group) {
+        state.variation.variationCount++
+      } else {
+        state.variation.currentGroup = group
+        state.variation.variationCount = 1
+      }
+
+      if (state.variation.variationCount >= VARIATION_THRESHOLD) {
+        const recentHistory = state.variation.variationHistory
+          .filter((entry) => entry.group === group)
+          .slice(-VARIATION_THRESHOLD)
+
+        const detail = `thrashing on ${group} commands (${state.variation.variationCount} consecutive attempts)`
+        writeMetric({
+          timestamp,
+          session_id: state.sessionId,
+          metric_type: "worker_behavioral_variation",
+          value: state.variation.variationCount,
+          details: {
+            group,
+            commands: recentHistory.map((entry) => entry.command.substring(0, 100)),
+            threshold: VARIATION_THRESHOLD,
+          },
+        })
+        markBoundarySignal(state, "thrashing", detail, now)
+      }
+    }
+
+    const decisionKeywords = detectArchitecturalDecision(command)
+    if (decisionKeywords && decisionKeywords.length > 0) {
+      const contradiction = findContradiction(decisionKeywords, investigationRecommendations)
+      if (contradiction) {
+        const detail = `contradicting prior work from ${contradiction.fileName}`
+        writeMetric({
+          timestamp,
+          session_id: state.sessionId,
+          metric_type: "worker_circular_pattern",
+          value: 1,
+          details: {
+            decision_command: command.substring(0, 200),
+            decision_keywords: decisionKeywords,
+            contradicts_investigation: contradiction.fileName,
+            recommendation: contradiction.next.substring(0, 200),
+            recommendation_keywords: contradiction.keywords,
+            recommendation_date: contradiction.date,
+          },
+        })
+        markBoundarySignal(state, "contradicting_prior_work", detail, now)
+      }
+    }
   }
 
   // 1. tool_failure_rate
@@ -142,6 +280,11 @@ export async function trackWorkerHealth(
   // 3. time_in_phase
   const minutesInPhase = Math.round((now - state.lastPhaseUpdate) / 60000)
   const TIME_IN_PHASE_WARNING_MINUTES = 15
+  if (minutesInPhase >= FRUSTRATION_TIME_IN_PHASE_MINUTES) {
+    markBoundarySignal(state, "stuck", `stuck in same phase for ${minutesInPhase} minutes`, now)
+  } else {
+    clearBoundarySignal(state, "stuck")
+  }
   if (state.totalToolCalls % 30 === 0 && minutesInPhase > 5) {
     writeMetric({
       timestamp,
@@ -196,5 +339,10 @@ export async function trackWorkerHealth(
     if (minutesSinceCommit >= COMMIT_GAP_WARNING_MINUTES) {
       await injectHealthSignal(client, state, "commit_gap", minutesSinceCommit)
     }
+  }
+
+  const activeSignals = getActiveBoundarySignals(state, now)
+  if (activeSignals.length >= 2) {
+    await reportFrustrationBoundary(state, directory, activeSignals)
   }
 }

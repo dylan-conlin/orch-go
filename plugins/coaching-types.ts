@@ -83,6 +83,7 @@ export interface AccretionState {
 
 export interface WorkerHealthState {
   sessionId: string
+  beadsID?: string
   sessionStartTime: number
   consecutiveToolFailures: number
   estimatedTokensUsed: number
@@ -90,6 +91,9 @@ export interface WorkerHealthState {
   lastCommitTime: number
   totalToolCalls: number
   totalReadBytes: number
+  variation: VariationState
+  activeBoundarySignals: Map<string, { seenAt: number; detail: string }>
+  frustrationBoundaryTriggered: boolean
   lastWarningType?: string
   lastWarningValue?: number
 }

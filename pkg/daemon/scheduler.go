@@ -8,6 +8,7 @@ const (
 	TaskRecovery                     = "recovery"
 	TaskOrphanDetection              = "orphan_detection"
 	TaskPhaseTimeout                 = "phase_timeout"
+	TaskFrustrationBoundary          = "frustration_boundary"
 	TaskQuestionDetection            = "question_detection"
 	TaskAgreementCheck               = "agreement_check"
 	TaskBeadsHealth                  = "beads_health"
@@ -115,6 +116,7 @@ func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s.Register(TaskRecovery, cfg.RecoveryEnabled, cfg.RecoveryInterval)
 	s.Register(TaskOrphanDetection, cfg.OrphanDetectionEnabled, cfg.OrphanDetectionInterval)
 	s.Register(TaskPhaseTimeout, cfg.PhaseTimeoutEnabled, cfg.PhaseTimeoutInterval)
+	s.Register(TaskFrustrationBoundary, cfg.PhaseTimeoutEnabled, cfg.PhaseTimeoutInterval)
 	s.Register(TaskQuestionDetection, cfg.PhaseTimeoutEnabled, cfg.PhaseTimeoutInterval) // shares config with phase timeout
 	s.Register(TaskAgreementCheck, cfg.AgreementCheckEnabled, cfg.AgreementCheckInterval)
 	s.Register(TaskBeadsHealth, cfg.BeadsHealthEnabled, cfg.BeadsHealthInterval)

@@ -1,0 +1,222 @@
+{
+  "generated_at": "2026-03-15T06:00:01.887382-07:00",
+  "window_days": 28,
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "commit_classification": {
+    "fixes": 264,
+    "features": 424,
+    "other": 780,
+    "total": 1468
+  },
+  "velocity": {
+    "commits_per_day": 52.42857142857143,
+    "total_commits": 1468,
+    "window_days": 28
+  },
+  "health_level": "degrading",
+  "bloated_file_count": 40,
+  "bloated_files": [
+    {
+      "path": "pkg/spawn/context_test.go",
+      "lines": 2581
+    },
+    {
+      "path": "pkg/opencode/client_test.go",
+      "lines": 2533
+    },
+    {
+      "path": "pkg/agent/lifecycle_manager_test.go",
+      "lines": 2138
+    },
+    {
+      "path": "cmd/orch/main_test.go",
+      "lines": 2072
+    },
+    {
+      "path": "cmd/orch/stats_test.go",
+      "lines": 1891
+    },
+    {
+      "path": "pkg/verify/check_test.go",
+      "lines": 1817
+    },
+    {
+      "path": "pkg/spawn/resolve_test.go",
+      "lines": 1721
+    },
+    {
+      "path": "pkg/userconfig/userconfig_test.go",
+      "lines": 1707
+    },
+    {
+      "path": "cmd/orch/hotspot_test.go",
+      "lines": 1690
+    },
+    {
+      "path": "pkg/beads/client_test.go",
+      "lines": 1570
+    },
+    {
+      "path": "pkg/spawn/kbcontext_test.go",
+      "lines": 1458
+    },
+    {
+      "path": "pkg/account/account_test.go",
+      "lines": 1452
+    },
+    {
+      "path": "pkg/events/logger_test.go",
+      "lines": 1357
+    },
+    {
+      "path": "pkg/daemon/daemon_test.go",
+      "lines": 1308
+    },
+    {
+      "path": "pkg/spawn/learning_test.go",
+      "lines": 1272
+    },
+    {
+      "path": "pkg/verify/visual_test.go",
+      "lines": 1262
+    },
+    {
+      "path": "pkg/verify/git_diff_test.go",
+      "lines": 1168
+    },
+    {
+      "path": "pkg/orient/orient_test.go",
+      "lines": 1088
+    },
+    {
+      "path": "pkg/tmux/tmux_test.go",
+      "lines": 1080
+    },
+    {
+      "path": "pkg/opencode/client.go",
+      "lines": 1040
+    },
+    {
+      "path": "pkg/spawn/learning.go",
+      "lines": 979
+    },
+    {
+      "path": "pkg/spawn/gap_test.go",
+      "lines": 965
+    },
+    {
+      "path": "pkg/events/logger.go",
+      "lines": 963
+    },
+    {
+      "path": "cmd/orch/stats_aggregation.go",
+      "lines": 959
+    },
+    {
+      "path": "cmd/orch/handoff.go",
+      "lines": 898
+    },
+    {
+      "path": "cmd/orch/query_tracked_test.go",
+      "lines": 893
+    },
+    {
+      "path": "web/src/lib/components/agent-card/agent-card.svelte",
+      "lines": 882
+    },
+    {
+      "path": "web/src/lib/stores/agents.ts",
+      "lines": 879
+    },
+    {
+      "path": "web/src/routes/+page.svelte",
+      "lines": 875
+    },
+    {
+      "path": "pkg/verify/visual.go",
+      "lines": 870
+    },
+    {
+      "path": "pkg/verify/test_evidence_test.go",
+      "lines": 864
+    },
+    {
+      "path": "cmd/orch/review.go",
+      "lines": 856
+    },
+    {
+      "path": "cmd/orch/complete_test.go",
+      "lines": 852
+    },
+    {
+      "path": "web/src/lib/components/work-graph-tree/work-graph-tree.svelte",
+      "lines": 845
+    },
+    {
+      "path": "cmd/orch/review_test.go",
+      "lines": 840
+    },
+    {
+      "path": "cmd/orch/status_test.go",
+      "lines": 829
+    },
+    {
+      "path": "cmd/orch/handoff_test.go",
+      "lines": 826
+    },
+    {
+      "path": "web/src/lib/components/agent-detail/activity-tab.svelte",
+      "lines": 810
+    },
+    {
+      "path": "web/src/routes/work-graph/+page.svelte",
+      "lines": 809
+    },
+    {
+      "path": "pkg/session/session_test.go",
+      "lines": 802
+    }
+  ],
+  "duplicate_pair_count": 17870,
+  "event_stats": {
+    "spawns": 443,
+    "completions": 658,
+    "abandonments": 9,
+    "bypasses": 109,
+    "reworks": 0
+  },
+  "override_trend": {
+    "window_days": 7,
+    "current_count": 109,
+    "previous_count": 0,
+    "delta": 109,
+    "direction": "up"
+  },
+  "recommendations": [
+    {
+      "severity": "warning",
+      "signal": "fix_feat_ratio",
+      "message": "Fix:Feat ratio 0.62:1 is degrading. Consider reducing concurrent agents or increasing verification gates."
+    },
+    {
+      "severity": "critical",
+      "signal": "velocity",
+      "message": "Velocity 52.4 commits/day exceeds verification bandwidth (\u003e45/day). Human review cannot keep pace."
+    },
+    {
+      "severity": "critical",
+      "signal": "bloat",
+      "message": "40 files exceed 800-line bloat threshold. Run 'orch hotspot' for extraction targets."
+    },
+    {
+      "severity": "warning",
+      "signal": "override_trend",
+      "message": "Verification bypasses trending up (+109 in last 7 days). Gates may be losing effectiveness."
+    },
+    {
+      "severity": "warning",
+      "signal": "duplication",
+      "message": "17870 duplicate function pairs detected. Run 'orch dupdetect' for extraction candidates."
+    }
+  ]
+}
