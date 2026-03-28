@@ -338,7 +338,7 @@ func selectRelevantModels(models []orient.ModelFreshness, maxCount int) []orient
 }
 
 // collectClaimEdges reads claims.yaml files from model directories and collects
-// notable edges (tensions, stale-in-active-area, unconfirmed core claims).
+// claim status summaries, recent disconfirmations, and notable edges.
 // Returns pre-formatted text for orient output, or empty string if no edges found.
 func collectClaimEdges(modelsDir string, now time.Time) string {
 	files, err := claims.ScanAll(modelsDir)
@@ -346,11 +346,19 @@ func collectClaimEdges(modelsDir string, now time.Time) string {
 		return ""
 	}
 
+	// Claim status summaries (models with untested claims)
+	statuses := claims.CollectClaimStatus(files, now)
+
+	// Recently disconfirmed claims (contradicts verdict in last 7 days)
+	disconfirmations := claims.CollectRecentDisconfirmations(files, now, 7)
+
 	// Extract active keywords from recent spawn events (last 7 days), scoped to current project
 	activeKeywords := extractRecentSpawnKeywords(now, readBeadsPrefix())
 
+	// Notable edges (tensions, stale-in-active, unconfirmed core)
 	edges := claims.CollectEdges(files, now, activeKeywords, 5)
-	return claims.FormatEdges(edges)
+
+	return claims.FormatClaimSurface(statuses, disconfirmations, edges)
 }
 
 // extractRecentSpawnKeywords extracts domain-relevant keywords from recent

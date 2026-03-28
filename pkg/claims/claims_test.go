@@ -440,6 +440,225 @@ func TestSaveFile(t *testing.T) {
 	}
 }
 
+func TestCollectClaimStatus(t *testing.T) {
+	now := time.Date(2026, 3, 28, 0, 0, 0, 0, time.UTC)
+
+	files := map[string]*File{
+		"model-a": {
+			Model: "model-a",
+			Claims: []Claim{
+				{ID: "A-01", Confidence: Confirmed, Priority: PriorityCore, LastValidated: "2026-03-20"},
+				{ID: "A-02", Confidence: Unconfirmed, Priority: PriorityCore},
+				{ID: "A-03", Confidence: Confirmed, Priority: PrioritySupporting, LastValidated: "2026-03-15"},
+			},
+		},
+		"model-b": {
+			Model: "model-b",
+			Claims: []Claim{
+				{ID: "B-01", Confidence: Confirmed, Priority: PriorityCore, LastValidated: "2026-03-20"},
+				{ID: "B-02", Confidence: Confirmed, Priority: PrioritySupporting, LastValidated: "2026-03-20"},
+			},
+		},
+		"model-c": {
+			Model: "model-c",
+			Claims: []Claim{
+				{ID: "C-01", Confidence: Unconfirmed, Priority: PriorityCore},
+				{ID: "C-02", Confidence: Unconfirmed, Priority: PriorityCore},
+				{ID: "C-03", Confidence: Contested, Priority: PrioritySupporting},
+			},
+		},
+	}
+
+	statuses := CollectClaimStatus(files, now)
+
+	// model-b should be excluded (all confirmed, not stale)
+	if len(statuses) != 2 {
+		t.Fatalf("got %d statuses, want 2 (model-b excluded)", len(statuses))
+	}
+
+	// model-c should be first (2 core untested > model-a's 1)
+	if statuses[0].ModelName != "model-c" {
+		t.Errorf("first status model = %q, want %q", statuses[0].ModelName, "model-c")
+	}
+	if statuses[0].CoreUntested != 2 {
+		t.Errorf("model-c CoreUntested = %d, want 2", statuses[0].CoreUntested)
+	}
+	if statuses[0].Contested != 1 {
+		t.Errorf("model-c Contested = %d, want 1", statuses[0].Contested)
+	}
+
+	// model-a should be second
+	if statuses[1].ModelName != "model-a" {
+		t.Errorf("second status model = %q, want %q", statuses[1].ModelName, "model-a")
+	}
+	if statuses[1].CoreUntested != 1 {
+		t.Errorf("model-a CoreUntested = %d, want 1", statuses[1].CoreUntested)
+	}
+	if statuses[1].Confirmed != 2 {
+		t.Errorf("model-a Confirmed = %d, want 2", statuses[1].Confirmed)
+	}
+}
+
+func TestCollectClaimStatus_StaleConfirmed(t *testing.T) {
+	now := time.Date(2026, 3, 28, 0, 0, 0, 0, time.UTC)
+
+	files := map[string]*File{
+		"model-a": {
+			Model: "model-a",
+			Claims: []Claim{
+				{ID: "A-01", Confidence: Confirmed, Priority: PriorityCore, LastValidated: "2026-01-01"},
+			},
+		},
+	}
+
+	statuses := CollectClaimStatus(files, now)
+
+	if len(statuses) != 1 {
+		t.Fatalf("got %d statuses, want 1", len(statuses))
+	}
+	if statuses[0].Stale != 1 {
+		t.Errorf("Stale = %d, want 1", statuses[0].Stale)
+	}
+	if statuses[0].CoreUntested != 1 {
+		t.Errorf("CoreUntested = %d, want 1", statuses[0].CoreUntested)
+	}
+}
+
+func TestCollectClaimStatus_Empty(t *testing.T) {
+	now := time.Date(2026, 3, 28, 0, 0, 0, 0, time.UTC)
+	statuses := CollectClaimStatus(nil, now)
+	if len(statuses) != 0 {
+		t.Errorf("got %d statuses for nil input, want 0", len(statuses))
+	}
+}
+
+func TestCollectRecentDisconfirmations(t *testing.T) {
+	now := time.Date(2026, 3, 28, 0, 0, 0, 0, time.UTC)
+
+	files := map[string]*File{
+		"model-a": {
+			Model: "model-a",
+			Claims: []Claim{
+				{
+					ID: "A-01", Text: "Claim that was contradicted",
+					Evidence: []Evidence{
+						{Source: "Old confirmation", Date: "2026-01-15", Verdict: "confirms"},
+						{Source: "Recent contradiction", Date: "2026-03-25", Verdict: "contradicts"},
+					},
+				},
+				{
+					ID: "A-02", Text: "Claim with old contradiction",
+					Evidence: []Evidence{
+						{Source: "Old contradiction", Date: "2026-02-01", Verdict: "contradicts"},
+					},
+				},
+			},
+		},
+		"model-b": {
+			Model: "model-b",
+			Claims: []Claim{
+				{
+					ID: "B-01", Text: "Another recent contradiction",
+					Evidence: []Evidence{
+						{Source: "Very recent finding", Date: "2026-03-27", Verdict: "contradicts"},
+					},
+				},
+				{
+					ID: "B-02", Text: "Confirmed claim",
+					Evidence: []Evidence{
+						{Source: "Confirmation", Date: "2026-03-26", Verdict: "confirms"},
+					},
+				},
+			},
+		},
+	}
+
+	result := CollectRecentDisconfirmations(files, now, 7)
+
+	if len(result) != 2 {
+		t.Fatalf("got %d disconfirmations, want 2", len(result))
+	}
+
+	// Check that we got A-01 and B-01 (not A-02's old contradiction or B-02's confirmation)
+	ids := map[string]bool{}
+	for _, d := range result {
+		ids[d.ClaimID] = true
+	}
+	if !ids["A-01"] {
+		t.Error("missing A-01 (recent contradiction)")
+	}
+	if !ids["B-01"] {
+		t.Error("missing B-01 (recent contradiction)")
+	}
+	if ids["A-02"] {
+		t.Error("should not include A-02 (old contradiction)")
+	}
+}
+
+func TestCollectRecentDisconfirmations_Empty(t *testing.T) {
+	now := time.Date(2026, 3, 28, 0, 0, 0, 0, time.UTC)
+	result := CollectRecentDisconfirmations(nil, now, 7)
+	if len(result) != 0 {
+		t.Errorf("got %d for nil input, want 0", len(result))
+	}
+}
+
+func TestFormatClaimSurface(t *testing.T) {
+	statuses := []ModelClaimStatus{
+		{ModelName: "model-a", Total: 6, Confirmed: 4, Unconfirmed: 1, CoreUntested: 1, Contested: 1},
+	}
+	disconfirmations := []RecentDisconfirmation{
+		{ModelName: "model-b", ClaimID: "B-01", ClaimText: "Test claim", Source: "Recent finding", Date: "2026-03-25"},
+	}
+	edges := []Edge{
+		{Type: "tension", ClaimID: "A-01", Detail: "A-01 vs B-01: they disagree"},
+	}
+
+	output := FormatClaimSurface(statuses, disconfirmations, edges)
+
+	if !strings.Contains(output, "Knowledge Edges:") {
+		t.Error("missing 'Knowledge Edges:' header")
+	}
+	if !strings.Contains(output, "Untested claims:") {
+		t.Error("missing 'Untested claims:' section")
+	}
+	if !strings.Contains(output, "model-a: 4/6 confirmed, 1 untested core, 1 contested") {
+		t.Errorf("missing or wrong model-a summary in output:\n%s", output)
+	}
+	if !strings.Contains(output, "Recently disconfirmed:") {
+		t.Error("missing 'Recently disconfirmed:' section")
+	}
+	if !strings.Contains(output, "B-01 (model-b)") {
+		t.Error("missing disconfirmation detail")
+	}
+	if !strings.Contains(output, "Tensions:") {
+		t.Error("missing 'Tensions:' section")
+	}
+}
+
+func TestFormatClaimSurface_Empty(t *testing.T) {
+	output := FormatClaimSurface(nil, nil, nil)
+	if output != "" {
+		t.Errorf("expected empty output, got %q", output)
+	}
+}
+
+func TestFormatClaimSurface_OnlyEdges(t *testing.T) {
+	edges := []Edge{
+		{Type: "unconfirmed_core", ClaimID: "A-01", Detail: "A-01: untested core claim"},
+	}
+	output := FormatClaimSurface(nil, nil, edges)
+	if !strings.Contains(output, "Knowledge Edges:") {
+		t.Error("missing header")
+	}
+	if !strings.Contains(output, "Unconfirmed core:") {
+		t.Error("missing unconfirmed core section")
+	}
+	if strings.Contains(output, "Untested claims:") {
+		t.Error("should not have untested claims section when no statuses")
+	}
+}
+
 func TestTruncate(t *testing.T) {
 	if got := truncate("short", 10); got != "short" {
 		t.Errorf("truncate short = %q", got)

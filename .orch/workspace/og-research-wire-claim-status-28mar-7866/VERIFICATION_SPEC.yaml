@@ -1,0 +1,27 @@
+verification:
+  automated:
+    - name: claims package tests
+      command: go test ./pkg/claims/ -count=1
+      expected: PASS (all tests including 9 new)
+    - name: orient package tests
+      command: go test ./pkg/orient/ -count=1
+      expected: PASS
+    - name: build check
+      command: go build ./cmd/orch/
+      expected: clean build, no errors
+  manual:
+    - name: orient output verification
+      command: go run ./cmd/orch orient
+      expected: |
+        Knowledge Edges section shows:
+        - "Untested claims:" subsection with per-model summaries (only models with untested claims)
+        - "Recently disconfirmed:" subsection (if any contradicts evidence in last 7 days)
+        - Existing edges (tensions, stale in active area, unconfirmed core)
+    - name: orient JSON output
+      command: go run ./cmd/orch orient --json | jq .claim_edges
+      expected: Pre-formatted string containing all Knowledge Edges sections
+  outcomes:
+    - CollectClaimStatus returns only models with untested claims, sorted by core untested count
+    - CollectRecentDisconfirmations finds contradicts evidence within day window
+    - FormatClaimSurface produces unified Knowledge Edges section
+    - No regressions in existing orient output
