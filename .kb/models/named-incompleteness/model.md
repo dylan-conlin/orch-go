@@ -187,6 +187,10 @@ Verification specs, deployment configs, gate logic — these need completeness. 
 
 Most evidence comes from explaining observations already made. However, the 373-paper bibliometrics study (2026-03-28) was a genuine prediction-then-test: NI-01 predicted questions would cluster tighter than findings in semantic embedding space, and the study confirmed this (d=0.20, p=0.0086). One confirmed quantitative prediction does not make the model fully predictive — cross-subfield replication and additional prediction types are needed.
 
+### 6. Survivorship Bias in Retrospective Classification
+
+The NI-02/NI-05 evidence (17/17 correct, 4/4 resolution-oriented died, 3/3 gap-preserving survived) suffers from survivorship bias. Gap-preserving features that failed quietly (Failure Modes 3 and 4: gap inflation, false gaps) are less likely to be recalled in retrospective enumeration than resolution-oriented features that failed loudly (gates with measured bypass rates, features with explicit removal decisions). Estimated 1-3 gap-preserving failures may be missing from the sample. The directional finding survives this correction. The gradient finding (degree of NI preservation predicts degree of success within mixed features) is robust to this bias. Future evidence should prioritize prospective interventions over retrospective classification.
+
 ---
 
 ## Thread Lineage
@@ -229,3 +233,4 @@ Principle test: does named incompleteness make the same prediction everywhere, f
 - `probes/2026-03-28-probe-bibliometrics-pilot-questions-vs-findings-clustering.md` — NI-01/NI-03 extended: 50 RAG papers embedded with sentence-transformers show questions clustering tighter (d=0.27), reversing TF-IDF result. Confirms composition works through semantic reference, not lexical resemblance. Underpowered at N=50 (permutation p=0.196); need N≥240 for 80% power. Critical method finding: parametric tests on pairwise similarities inflate significance.
 - `probes/2026-03-28-probe-bibliometrics-full-study-373-papers.md` — NI-01/NI-03 **confirmed**: 373 RAG papers, permutation p=0.0086, d=0.20, 95% CI [0.009, 0.045] excludes zero. Replicates across two embedding models, survives length control. Pilot d=0.27 was overestimated (true d≈0.20). First confirmed quantitative prediction of NI model.
 - `probes/2026-03-28-probe-duplicate-model-directory-merge.md` — NI-02 / Failure Mode 2 confirmed: truncated thread promote name created duplicate model directory, splitting identity and degrading probe composition. New instance of "unnamed gaps" — two names for one model is functionally equivalent to unnamed.
+- `probes/2026-03-28-probe-survivorship-bias-gap-preserving-success-rate.md` — NI-02/NI-05 qualified: survivorship bias is real (quiet gap-preserving failures are less recalled than loud resolution-oriented failures), bounded (1-3 missing features, directional finding holds), and mitigated by the gradient finding which is robust to selection bias.
