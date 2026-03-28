@@ -1,0 +1,39 @@
+verification_spec:
+  description: "Flesh out named-incompleteness model with claims, mechanism, failure modes"
+  type: knowledge-artifact
+
+  checks:
+    - name: "Model has all required sections"
+      command: "grep -c '## ' .kb/models/generative-systems-are-organized-around/model.md"
+      expected: "At least 8 sections (Summary, Core Mechanism, Claims, Subsumption, Failure Modes, Constraints, Thread Lineage, References)"
+      result: "10 ## headers: Summary, Core Mechanism, Claims, Subsumption Relationship, Why This Fails, Constraints, Thread Lineage, References — PASS"
+
+    - name: "Claims table has testable predictions"
+      command: "grep -c 'NI-0' .kb/models/generative-systems-are-organized-around/model.md"
+      expected: "At least 4 claims"
+      result: "6 claims (NI-01 through NI-06) — PASS"
+
+    - name: "Subsumption analysis covers all three child models"
+      command: "grep -c 'Compositional Accretion\\|Attractor-Gate\\|Knowledge Accretion' .kb/models/generative-systems-are-organized-around/model.md"
+      expected: "All three child models referenced in subsumption section"
+      result: "All three present in subsumption tables and analysis — PASS"
+
+    - name: "Probe file created and completed"
+      command: "head -10 .kb/models/generative-systems-are-organized-around/probes/2026-03-27-probe-subsumption-analysis-child-models.md"
+      expected: "Status: Complete, verdict populated"
+      result: "Status: Complete, verdict: confirms (with qualification) — PASS"
+
+    - name: "Probe merged into model"
+      command: "grep 'subsumption-analysis' .kb/models/generative-systems-are-organized-around/model.md"
+      expected: "Probe referenced in model References section"
+      result: "Referenced in Probes subsection of References — PASS"
+
+    - name: "Domain field populated"
+      command: "grep 'Domain:' .kb/models/generative-systems-are-organized-around/model.md"
+      expected: "Non-template domain value"
+      result: "Domain: Cross-cutting: knowledge system design, agent coordination, product design, epistemology — PASS"
+
+  manual_verification:
+    - "Read model.md and verify the core mechanism section articulates the information-theoretic argument clearly"
+    - "Verify claims table predictions are specific enough to be falsifiable"
+    - "Verify subsumption analysis precisely distinguishes what NI covers vs what child models add independently"
