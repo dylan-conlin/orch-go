@@ -140,7 +140,7 @@ Remaining 4-5 slots for API fetches
 7. **buildActiveAgentMap() is local-project-scoped** - Cross-project graph requests get nodes but NOT active agent enrichment. Any cross-project in_progress issue shows 'unassigned' as a result.
 8. **Promoted sections must participate in pinnedTreeIds deduplication** - Any section that pulls items out of the work-graph tree must register IDs in `pinnedTreeIds` to prevent double-rendering. Currently only the WIP section does this; Ready to Complete does not.
 9. **State persistence: localStorage primary, URL hash for deep-linking** - UI state (expansion, tab selection, view mode) persists in localStorage; URL hash used additionally for bookmarkable views (knowledge-tree tabs).
-10. **Three rendering modes: content, metadata, presence** - Comprehension surfaces render *content* (prose, synthesis, question text); execution surfaces render *metadata* (counts, badges, status labels). A third mode — *presence* — renders activity descriptions with recency timestamps ("Reading files... 3s ago") to provide ambient liveness proof. Content mode is for the comprehension layer; metadata mode for operational summaries; presence mode for the liveness assurance layer. (Evidence: 2026-03-26 probe established content vs metadata; 2026-03-27 pulse probe identified presence as a third mode — neither full execution content nor bare metadata.)
+10. **Four rendering modes: content, metadata, presence, computed insight** - Comprehension surfaces render *content* (prose, synthesis, question text); execution surfaces render *metadata* (counts, badges, status labels). A third mode — *presence* — renders activity descriptions with recency timestamps ("Reading files... 3s ago") to provide ambient liveness proof. A fourth mode — *computed insight* — renders signals the system derives from data the user can't see, as natural language within existing comprehension elements (e.g., "spawn area showing bolted-on resistance — 4 fixes in 14 days, fix count growing"). Content mode is for the comprehension layer; metadata mode for operational summaries; presence mode for the liveness assurance layer; computed insight mode is for meta-comprehension signals (shape classification, resistance patterns) that flow through existing elements rather than standing alone. (Evidence: 2026-03-26 probe established content vs metadata; 2026-03-27 pulse probe identified presence as third mode; 2026-03-28 probe established computed insight as fourth mode for shape/resistance signals.)
 
 ---
 
@@ -443,7 +443,7 @@ Plugin error → OpenCode internal 500 → orch status fails → API can't get a
 
 ### Merged Probes
 
-17 probes merged into this model (14 on 2026-03-06, 2 on 2026-03-26, 1 on 2026-03-27):
+18 probes merged into this model (14 on 2026-03-06, 2 on 2026-03-26, 1 on 2026-03-27, 1 on 2026-03-28):
 
 | Probe | Verdict | Summary |
 |-------|---------|---------|
@@ -464,6 +464,7 @@ Plugin error → OpenCode internal 500 → orch status fails → API can't get a
 | `2026-03-26-probe-minimum-comprehension-surface-product-identity` | EXTENDS | Product triangle (threads + briefs + tensions) rendered as content, not metadata. Content mode vs metadata mode is the product/dashboard distinction. Invariant 10 added. |
 | `2026-03-26-probe-ranking-attention-layer-boundary` | EXTENDS + CONTRADICTS | Attention pipeline is exclusively work-focused; reading surface has no ordering intelligence beyond mod-time. "Ranking intelligence" decomposes into 3 layers: substrate (exists), method-expressing (missing — thread-grouping, tension surfacing), learned (future). Partially contradicts treating ranking as single held-back surface. |
 | `2026-03-27-probe-pulse-signal-liveness-assurance-gap` | EXTENDS | Comprehension/execution binary has a third category: liveness assurance. SSE activity data reaches home page but is discarded to bare counts. Identifies "presence mode" (activity + recency) as distinct from content mode and metadata mode. Invariants 1 and 10 updated. |
+| `2026-03-28-probe-shape-resistance-computed-enrichment-design` | EXTENDS | Shape/resistance are computed enrichments flowing through existing three elements, not new standing elements. Adds fourth rendering mode: "computed insight" — system-derived signals rendered as natural language within comprehension flow. Computed tension generation enables system-produced tension entries alongside human-created questions. Invariant 10 updated. |
 
 ## Auto-Linked Investigations
 
