@@ -423,3 +423,191 @@ Still working.
 		t.Errorf("error should mention converged, got: %v", err)
 	}
 }
+
+func TestThreadPromoteCmd_NameOverridesSlug(t *testing.T) {
+	origDir, _ := os.Getwd()
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(origDir)
+
+	threadsDir := filepath.Join(dir, ".kb", "threads")
+	os.MkdirAll(threadsDir, 0o755)
+
+	// Thread with a long slug that truncates poorly (the original bug)
+	content := `---
+title: "Generative systems are organized around named incompleteness"
+status: converged
+created: 2026-03-20
+updated: 2026-03-27
+resolved_to: ""
+---
+
+# Generative systems are organized around named incompleteness
+
+## 2026-03-27
+
+The core insight crystallized.
+`
+	// Slug from Slugify: "generative-systems-are-organized-around" (truncated, loses concept)
+	os.WriteFile(filepath.Join(threadsDir, "2026-03-20-generative-systems-are-organized-around.md"), []byte(content), 0o644)
+
+	origWorkdir := threadWorkdir
+	defer func() { threadWorkdir = origWorkdir }()
+	threadWorkdir = ""
+
+	threadPromoteAs = "model"
+	threadPromoteDryRun = false
+	threadPromoteName = "named-incompleteness"
+	defer func() {
+		threadPromoteAs = "model"
+		threadPromoteDryRun = false
+		threadPromoteName = ""
+	}()
+
+	if err := threadPromoteCmd.RunE(threadPromoteCmd, []string{"generative-systems-are-organized-around"}); err != nil {
+		t.Fatalf("thread promote --name failed: %v", err)
+	}
+
+	// Model should be at the --name path, not the slug path
+	modelPath := filepath.Join(dir, ".kb", "models", "named-incompleteness", "model.md")
+	data, err := os.ReadFile(modelPath)
+	if err != nil {
+		t.Fatalf("model not created at --name path: %v", err)
+	}
+	if !strings.Contains(string(data), "Generative systems are organized around named incompleteness") {
+		t.Error("model missing original thread title")
+	}
+
+	// The old slug-based path should NOT exist
+	badPath := filepath.Join(dir, ".kb", "models", "generative-systems-are-organized-around")
+	if _, err := os.Stat(badPath); !os.IsNotExist(err) {
+		t.Error("model was created at truncated slug path instead of --name path")
+	}
+
+	// Verify thread promoted_to uses the --name path
+	threadData, _ := os.ReadFile(filepath.Join(threadsDir, "2026-03-20-generative-systems-are-organized-around.md"))
+	if !strings.Contains(string(threadData), "named-incompleteness") {
+		t.Error("thread promoted_to should reference the --name path")
+	}
+}
+
+func TestThreadPromoteCmd_NameOverridesSlugDecision(t *testing.T) {
+	origDir, _ := os.Getwd()
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(origDir)
+
+	threadsDir := filepath.Join(dir, ".kb", "threads")
+	decisionsDir := filepath.Join(dir, ".kb", "decisions")
+	os.MkdirAll(threadsDir, 0o755)
+	os.MkdirAll(decisionsDir, 0o755)
+
+	content := `---
+title: "Product surface has five elements not three"
+status: converged
+created: 2026-03-25
+updated: 2026-03-27
+resolved_to: ""
+---
+
+# Product surface has five elements not three
+
+## 2026-03-27
+
+Realized the surface is broader.
+`
+	os.WriteFile(filepath.Join(threadsDir, "2026-03-25-product-surface-has-five-elements.md"), []byte(content), 0o644)
+
+	origWorkdir := threadWorkdir
+	defer func() { threadWorkdir = origWorkdir }()
+	threadWorkdir = ""
+
+	threadPromoteAs = "decision"
+	threadPromoteDryRun = false
+	threadPromoteName = "product-surface-five-elements"
+	defer func() {
+		threadPromoteAs = "model"
+		threadPromoteDryRun = false
+		threadPromoteName = ""
+	}()
+
+	if err := threadPromoteCmd.RunE(threadPromoteCmd, []string{"product-surface-has-five-elements"}); err != nil {
+		t.Fatalf("thread promote --as decision --name failed: %v", err)
+	}
+
+	// Decision file should use --name
+	entries, _ := os.ReadDir(decisionsDir)
+	found := false
+	for _, e := range entries {
+		if strings.Contains(e.Name(), "product-surface-five-elements") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("decision file not created with --name override")
+	}
+}
+
+func TestThreadPromoteCmd_DryRunWithNameCreatesNothing(t *testing.T) {
+	origDir, _ := os.Getwd()
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(origDir)
+
+	threadsDir := filepath.Join(dir, ".kb", "threads")
+	os.MkdirAll(threadsDir, 0o755)
+
+	content := `---
+title: "Long thread title that truncates"
+status: converged
+created: 2026-03-20
+updated: 2026-03-27
+resolved_to: ""
+---
+
+# Long thread title that truncates
+
+## 2026-03-27
+
+Content.
+`
+	os.WriteFile(filepath.Join(threadsDir, "2026-03-20-long-thread-title-truncates.md"), []byte(content), 0o644)
+
+	origWorkdir := threadWorkdir
+	defer func() { threadWorkdir = origWorkdir }()
+	threadWorkdir = ""
+
+	threadPromoteAs = "model"
+	threadPromoteDryRun = true
+	threadPromoteName = "better-name"
+	defer func() {
+		threadPromoteAs = "model"
+		threadPromoteDryRun = false
+		threadPromoteName = ""
+	}()
+
+	if err := threadPromoteCmd.RunE(threadPromoteCmd, []string{"long-thread-title-truncates"}); err != nil {
+		t.Fatalf("dry-run with --name failed: %v", err)
+	}
+
+	// Neither the --name path nor the slug path should be created
+	if _, err := os.Stat(filepath.Join(dir, ".kb", "models", "better-name")); !os.IsNotExist(err) {
+		t.Error("dry-run should not create model at --name path")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".kb", "models", "long-thread-title-truncates")); !os.IsNotExist(err) {
+		t.Error("dry-run should not create model at slug path")
+	}
+
+	// Thread status should be unchanged
+	data, _ := os.ReadFile(filepath.Join(threadsDir, "2026-03-20-long-thread-title-truncates.md"))
+	if strings.Contains(string(data), "status: promoted") {
+		t.Error("dry-run should not change thread status")
+	}
+}

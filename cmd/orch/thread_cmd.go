@@ -384,6 +384,7 @@ Examples:
 var (
 	threadPromoteAs     string
 	threadPromoteDryRun bool
+	threadPromoteName   string
 )
 
 var threadPromoteCmd = &cobra.Command{
@@ -394,10 +395,14 @@ var threadPromoteCmd = &cobra.Command{
 Creates the target artifact with provenance from the thread, updates the
 thread status to promoted, and propagates the promotion to ancestor threads.
 
+Use --name to specify the artifact directory name when the thread slug
+(derived from the title) is too long or doesn't capture the concept.
+
 Examples:
-  orch thread promote generative-systems-organized-around --as model
-  orch thread promote product-surface-five-elements-not --as decision
-  orch thread promote generative-systems-organized-around --as model --dry-run`,
+  orch thread promote generative-systems-organized-around --as model --name named-incompleteness
+  orch thread promote product-surface-five-elements-not --as decision --name product-surface
+  orch thread promote converged-idea --as model
+  orch thread promote converged-idea --as model --dry-run`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		slug := args[0]
@@ -424,19 +429,24 @@ Examples:
 			return fmt.Errorf("thread %q has status %q, must be converged to promote", slug, shown.Status)
 		}
 
-		// Determine target path
+		// Determine target path — use --name if provided, otherwise slug
 		projectDir, _, err := identity.ResolveProjectDirectory(threadWorkdir)
 		if err != nil {
 			return err
 		}
 
+		artifactName := slug
+		if threadPromoteName != "" {
+			artifactName = threadPromoteName
+		}
+
 		var targetPath string
 		switch threadPromoteAs {
 		case "model":
-			targetPath = filepath.Join(".kb", "models", slug, "model.md")
+			targetPath = filepath.Join(".kb", "models", artifactName, "model.md")
 		case "decision":
 			today := time.Now().Format("2006-01-02")
-			targetPath = filepath.Join(".kb", "decisions", today+"-"+slug+".md")
+			targetPath = filepath.Join(".kb", "decisions", today+"-"+artifactName+".md")
 		}
 
 		if threadPromoteDryRun {
@@ -575,6 +585,7 @@ func init() {
 	threadUpdateCmd.Flags().StringVar(&threadUpdateTo, "to", "", "Target artifact path or brief when resolving")
 	threadPromoteCmd.Flags().StringVar(&threadPromoteAs, "as", "model", "Target artifact type: model or decision")
 	threadPromoteCmd.Flags().BoolVar(&threadPromoteDryRun, "dry-run", false, "Preview promotion without making changes")
+	threadPromoteCmd.Flags().StringVar(&threadPromoteName, "name", "", "Override artifact directory name (use when thread slug is too long or unclear)")
 }
 
 func threadStatusIcon(status string) string {
