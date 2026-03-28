@@ -306,6 +306,20 @@ Generative systems are organized around named incompleteness.
 		t.Error("probes directory not created")
 	}
 
+	// Verify claims.yaml was created
+	claimsPath := filepath.Join(dir, ".kb", "models", "named-incompleteness", "claims.yaml")
+	claimsData, err := os.ReadFile(claimsPath)
+	if err != nil {
+		t.Fatalf("claims.yaml not created: %v", err)
+	}
+	claimsStr := string(claimsData)
+	if !strings.Contains(claimsStr, "model: named-incompleteness") {
+		t.Error("claims.yaml missing model name")
+	}
+	if !strings.Contains(claimsStr, "version: 1") {
+		t.Error("claims.yaml missing version")
+	}
+
 	// Verify thread status updated
 	threadData, _ := os.ReadFile(filepath.Join(threadsDir, "2026-03-20-named-incompleteness.md"))
 	if !strings.Contains(string(threadData), "status: promoted") {
@@ -374,6 +388,12 @@ Five elements define the product surface.
 	}
 	if !found {
 		t.Error("decision file not created or missing title")
+	}
+
+	// Decisions should NOT get claims.yaml
+	claimsPath := filepath.Join(decisionsDir, "claims.yaml")
+	if _, err := os.Stat(claimsPath); !os.IsNotExist(err) {
+		t.Error("decisions should not have claims.yaml")
 	}
 }
 

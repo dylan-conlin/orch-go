@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/claims"
 	"github.com/dylan-conlin/orch-go/pkg/identity"
 	"github.com/dylan-conlin/orch-go/pkg/thread"
 	"github.com/spf13/cobra"
@@ -479,11 +480,26 @@ func scaffoldPromotionArtifact(absPath, artifactType string, t *thread.Thread) e
 		return fmt.Errorf("creating artifact directory: %w", err)
 	}
 
-	// For models, also create the probes/ subdirectory
+	// For models, also create the probes/ subdirectory and seed claims.yaml
 	if artifactType == "model" {
-		probesDir := filepath.Join(filepath.Dir(absPath), "probes")
+		modelDir := filepath.Dir(absPath)
+		probesDir := filepath.Join(modelDir, "probes")
 		if err := os.MkdirAll(probesDir, 0755); err != nil {
 			return fmt.Errorf("creating probes directory: %w", err)
+		}
+
+		// Create seed claims.yaml so downstream consumers (completion pipeline,
+		// daemon probe generation) don't fail with 'no such file or directory'.
+		today := time.Now().Format("2006-01-02")
+		seedClaims := &claims.File{
+			Model:     filepath.Base(modelDir),
+			Version:   1,
+			LastAudit: today,
+			Claims:    []claims.Claim{},
+		}
+		claimsPath := filepath.Join(modelDir, "claims.yaml")
+		if err := claims.SaveFile(claimsPath, seedClaims); err != nil {
+			return fmt.Errorf("creating seed claims.yaml: %w", err)
 		}
 	}
 
