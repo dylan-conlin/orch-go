@@ -38,6 +38,15 @@ func TestIsTestLikeIssue_TitlePatterns(t *testing.T) {
 	}
 }
 
+// Helper to build epicChildIDs from a list of issue IDs.
+func epicChildren(ids ...string) map[string]bool {
+	m := make(map[string]bool)
+	for _, id := range ids {
+		m[id] = true
+	}
+	return m
+}
+
 func TestShouldDeferTestIssue_DefersWhenImplSiblingsReady(t *testing.T) {
 	testIssue := Issue{ID: "scrape-9w3", Title: "Table-driven strategy selection tests", Status: "open"}
 	allIssues := []Issue{
@@ -45,10 +54,12 @@ func TestShouldDeferTestIssue_DefersWhenImplSiblingsReady(t *testing.T) {
 		{ID: "scrape-52p", Title: "Implement GitHub API extraction via gh CLI", Status: "open"},
 		{ID: "scrape-gdh", Title: "Integrate vision model for screenshot analysis", Status: "open"},
 	}
+	// All are epic children — deferral applies
+	epic := epicChildren("scrape-9w3", "scrape-52p", "scrape-gdh")
 
-	shouldDefer, reason := ShouldDeferTestIssue(testIssue, allIssues, nil)
+	shouldDefer, reason := ShouldDeferTestIssue(testIssue, allIssues, nil, epic)
 	if !shouldDefer {
-		t.Error("ShouldDeferTestIssue() should defer when implementation siblings are open")
+		t.Error("ShouldDeferTestIssue() should defer when implementation siblings are open epic children")
 	}
 	if reason == "" {
 		t.Error("ShouldDeferTestIssue() should provide a reason when deferring")
@@ -61,8 +72,9 @@ func TestShouldDeferTestIssue_DefersWhenImplSiblingsInProgress(t *testing.T) {
 		testIssue,
 		{ID: "scrape-52p", Title: "Implement GitHub API extraction", Status: "in_progress"},
 	}
+	epic := epicChildren("scrape-9w3", "scrape-52p")
 
-	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil)
+	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil, epic)
 	if !shouldDefer {
 		t.Error("ShouldDeferTestIssue() should defer when implementation siblings are in_progress")
 	}
@@ -74,8 +86,9 @@ func TestShouldDeferTestIssue_NoDefferWhenImplSiblingsClosed(t *testing.T) {
 		testIssue,
 		{ID: "scrape-52p", Title: "Implement GitHub API extraction", Status: "closed"},
 	}
+	epic := epicChildren("scrape-9w3", "scrape-52p")
 
-	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil)
+	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil, epic)
 	if shouldDefer {
 		t.Error("ShouldDeferTestIssue() should NOT defer when all implementation siblings are closed")
 	}
@@ -87,8 +100,9 @@ func TestShouldDeferTestIssue_NoDefferForNonTestIssue(t *testing.T) {
 		implIssue,
 		{ID: "scrape-9w3", Title: "Write tests for extraction pipeline", Status: "open"},
 	}
+	epic := epicChildren("scrape-52p", "scrape-9w3")
 
-	shouldDefer, _ := ShouldDeferTestIssue(implIssue, allIssues, nil)
+	shouldDefer, _ := ShouldDeferTestIssue(implIssue, allIssues, nil, epic)
 	if shouldDefer {
 		t.Error("ShouldDeferTestIssue() should NOT defer non-test issues")
 	}
@@ -100,8 +114,9 @@ func TestShouldDeferTestIssue_NoDefferWhenAllSiblingsAreTests(t *testing.T) {
 		testIssue,
 		{ID: "proj-2", Title: "Add tests for module B", Status: "open"},
 	}
+	epic := epicChildren("proj-1", "proj-2")
 
-	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil)
+	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil, epic)
 	if shouldDefer {
 		t.Error("ShouldDeferTestIssue() should NOT defer when all siblings are also test-like")
 	}
@@ -114,8 +129,9 @@ func TestShouldDeferTestIssue_DifferentProjectSiblingsIgnored(t *testing.T) {
 		// Different project — should not cause deferral
 		{ID: "orch-go-abc", Title: "Implement new feature", Status: "open"},
 	}
+	epic := epicChildren("scrape-9w3", "orch-go-abc")
 
-	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil)
+	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil, epic)
 	if shouldDefer {
 		t.Error("ShouldDeferTestIssue() should NOT defer based on siblings from different projects")
 	}
@@ -124,8 +140,9 @@ func TestShouldDeferTestIssue_DifferentProjectSiblingsIgnored(t *testing.T) {
 func TestShouldDeferTestIssue_NoSiblings(t *testing.T) {
 	testIssue := Issue{ID: "proj-1", Title: "Write tests for module A", Status: "open"}
 	allIssues := []Issue{testIssue}
+	epic := epicChildren("proj-1")
 
-	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil)
+	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil, epic)
 	if shouldDefer {
 		t.Error("ShouldDeferTestIssue() should NOT defer when no siblings exist")
 	}
@@ -139,15 +156,16 @@ func TestShouldDeferTestIssue_MixedStatusSiblings(t *testing.T) {
 		{ID: "proj-2", Title: "Implement module A", Status: "closed"},
 		{ID: "proj-3", Title: "Implement module B", Status: "in_progress"},
 	}
+	epic := epicChildren("proj-1", "proj-2", "proj-3")
 
-	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil)
+	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil, epic)
 	if !shouldDefer {
 		t.Error("ShouldDeferTestIssue() should defer when ANY implementation sibling is still active")
 	}
 }
 
 // Integration test: verifies that Decide() skips test issues and selects
-// implementation issues first when both are in the ready queue.
+// implementation issues first when both are in the ready queue as epic children.
 func TestDecide_DefersTestIssueSelectsImpl(t *testing.T) {
 	d := &Daemon{
 		Issues: &mockIssueQuerier{},
@@ -160,7 +178,8 @@ func TestDecide_DefersTestIssueSelectsImpl(t *testing.T) {
 			{ID: "scrape-52p", Title: "Implement GitHub API extraction via gh CLI", IssueType: "feature", Status: "open"},
 			{ID: "scrape-gdh", Title: "Integrate vision model for screenshot analysis", IssueType: "feature", Status: "open"},
 		},
-		EpicChildIDs: make(map[string]bool),
+		// All are epic children — sibling sequencing applies
+		EpicChildIDs: epicChildren("scrape-9w3", "scrape-52p", "scrape-gdh"),
 	}
 
 	decision := d.Decide(orient, nil)
@@ -188,7 +207,7 @@ func TestDecide_SpawnsTestWhenNoImplSiblings(t *testing.T) {
 			{ID: "scrape-9w3", Title: "Table-driven strategy selection tests", IssueType: "task", Status: "open"},
 			{ID: "scrape-abc", Title: "Add tests for utility module", IssueType: "task", Status: "open"},
 		},
-		EpicChildIDs: make(map[string]bool),
+		EpicChildIDs: epicChildren("scrape-9w3", "scrape-abc"),
 	}
 
 	decision := d.Decide(orient, nil)
@@ -222,7 +241,7 @@ func TestDecide_IgnoresGhostSiblingForDeferral(t *testing.T) {
 			// Ghost sibling — returned by ListReadyIssues but bd show fails
 			{ID: "orch-go-ehz", Title: "Implement feature X", IssueType: "feature", Status: "open"},
 		},
-		EpicChildIDs: make(map[string]bool),
+		EpicChildIDs: epicChildren("orch-go-kxtrd", "orch-go-ehz"),
 	}
 
 	decision := d.Decide(orient, nil)
@@ -246,13 +265,14 @@ func TestShouldDeferTestIssue_GhostSiblingIgnored(t *testing.T) {
 		testIssue,
 		{ID: "orch-go-ehz", Title: "Implement feature X", Status: "open"}, // ghost
 	}
+	epic := epicChildren("orch-go-kxtrd", "orch-go-ehz")
 
 	// Validator says orch-go-ehz does not exist
 	ghostValidator := func(id string) bool {
 		return id != "orch-go-ehz"
 	}
 
-	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, ghostValidator)
+	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, ghostValidator, epic)
 	if shouldDefer {
 		t.Error("ShouldDeferTestIssue() should NOT defer when blocking sibling is a ghost issue")
 	}
@@ -265,11 +285,12 @@ func TestShouldDeferTestIssue_ValidSiblingStillDefers(t *testing.T) {
 		testIssue,
 		{ID: "orch-go-def", Title: "Implement module A", Status: "open"},
 	}
+	epic := epicChildren("orch-go-abc", "orch-go-def")
 
 	// Validator confirms all siblings exist
 	allExist := func(id string) bool { return true }
 
-	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, allExist)
+	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, allExist, epic)
 	if !shouldDefer {
 		t.Error("ShouldDeferTestIssue() should defer when validator confirms sibling exists")
 	}
@@ -282,8 +303,9 @@ func TestShouldDeferTestIssue_NilValidatorTrustsAllSiblings(t *testing.T) {
 		testIssue,
 		{ID: "orch-go-def", Title: "Implement module A", Status: "open"},
 	}
+	epic := epicChildren("orch-go-abc", "orch-go-def")
 
-	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil)
+	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil, epic)
 	if !shouldDefer {
 		t.Error("ShouldDeferTestIssue() with nil validator should defer (trust all siblings)")
 	}
@@ -298,10 +320,11 @@ func TestShouldDeferTestIssue_GhostSiblingSkippedRealSiblingDefers(t *testing.T)
 		{ID: "orch-go-ghost", Title: "Implement feature ghost", Status: "open"},
 		{ID: "orch-go-real", Title: "Implement feature real", Status: "open"},
 	}
+	epic := epicChildren("orch-go-abc", "orch-go-ghost", "orch-go-real")
 
 	validator := func(id string) bool { return id != "orch-go-ghost" }
 
-	shouldDefer, reason := ShouldDeferTestIssue(testIssue, allIssues, validator)
+	shouldDefer, reason := ShouldDeferTestIssue(testIssue, allIssues, validator, epic)
 	if !shouldDefer {
 		t.Error("ShouldDeferTestIssue() should defer when at least one real sibling exists")
 	}
@@ -316,8 +339,9 @@ func TestShouldDeferTestIssue_ReasonIncludesSiblingID(t *testing.T) {
 		testIssue,
 		{ID: "scrape-52p", Title: "Implement GitHub API", Status: "open"},
 	}
+	epic := epicChildren("scrape-9w3", "scrape-52p")
 
-	_, reason := ShouldDeferTestIssue(testIssue, allIssues, nil)
+	_, reason := ShouldDeferTestIssue(testIssue, allIssues, nil, epic)
 	if reason == "" {
 		t.Fatal("expected non-empty reason")
 	}
@@ -380,9 +404,87 @@ func TestShouldDeferTestIssue_InvestigationNotDeferred(t *testing.T) {
 		investigation,
 		{ID: "orch-go-impl", Title: "Implement feature X", IssueType: "feature", Status: "open"},
 	}
+	epic := epicChildren("orch-go-kxtrd", "orch-go-impl")
 
-	shouldDefer, _ := ShouldDeferTestIssue(investigation, allIssues, nil)
+	shouldDefer, _ := ShouldDeferTestIssue(investigation, allIssues, nil, epic)
 	if shouldDefer {
 		t.Error("investigation issue should never be deferred as test-like, even with open impl siblings")
+	}
+}
+
+// Regression test for orch-go-cn3j0: standalone issues in the same project must
+// NOT be treated as siblings. Only epic children should trigger deferral.
+func TestShouldDeferTestIssue_StandaloneIssuesNotSiblings(t *testing.T) {
+	// Simulates the bug: orch-go-47ppm (test-like) deferred behind orch-go-3zxfz
+	// (unrelated bug) just because they share the orch-go prefix.
+	testIssue := Issue{ID: "orch-go-47ppm", Title: "Write tests for daemon triage", Status: "open"}
+	allIssues := []Issue{
+		testIssue,
+		{ID: "orch-go-3zxfz", Title: "Re-enable hotspot checker", Status: "open"},
+	}
+	// Neither is an epic child — they're standalone issues
+	noEpic := map[string]bool{}
+
+	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil, noEpic)
+	if shouldDefer {
+		t.Error("ShouldDeferTestIssue() must NOT defer standalone issues — only epic children are siblings")
+	}
+}
+
+// Verify that nil epicChildIDs disables deferral entirely.
+func TestShouldDeferTestIssue_NilEpicChildIDsNoDeferral(t *testing.T) {
+	testIssue := Issue{ID: "proj-1", Title: "Write tests for module A", Status: "open"}
+	allIssues := []Issue{
+		testIssue,
+		{ID: "proj-2", Title: "Implement module A", Status: "open"},
+	}
+
+	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil, nil)
+	if shouldDefer {
+		t.Error("ShouldDeferTestIssue() with nil epicChildIDs should never defer")
+	}
+}
+
+// Test that a test issue which IS an epic child is not deferred when the impl
+// sibling is NOT an epic child (different origin).
+func TestShouldDeferTestIssue_OnlyTestIsEpicChild(t *testing.T) {
+	testIssue := Issue{ID: "proj-1", Title: "Write tests for module A", Status: "open"}
+	allIssues := []Issue{
+		testIssue,
+		{ID: "proj-2", Title: "Implement module A", Status: "open"},
+	}
+	// Only the test is an epic child, not the impl sibling
+	epic := epicChildren("proj-1")
+
+	shouldDefer, _ := ShouldDeferTestIssue(testIssue, allIssues, nil, epic)
+	if shouldDefer {
+		t.Error("ShouldDeferTestIssue() should NOT defer when impl sibling is not an epic child")
+	}
+}
+
+// Decide integration: standalone issues in the same project must not trigger deferral.
+func TestDecide_StandaloneIssuesNotDeferred(t *testing.T) {
+	d := &Daemon{
+		Issues: &mockIssueQuerier{},
+	}
+	orient := OrientResult{
+		Sense: SenseResult{GateSignal: SpawnGateSignal{Allowed: true}},
+		PrioritizedIssues: []Issue{
+			// Test-like issue first in priority
+			{ID: "orch-go-47ppm", Title: "Write tests for daemon triage", IssueType: "task", Status: "open"},
+			// Unrelated bug in same project
+			{ID: "orch-go-3zxfz", Title: "Re-enable hotspot checker", IssueType: "bug", Status: "open"},
+		},
+		// Neither is an epic child — standalone issues
+		EpicChildIDs: map[string]bool{},
+	}
+
+	decision := d.Decide(orient, nil)
+	if !decision.ShouldSpawn {
+		t.Fatalf("Decide() ShouldSpawn = false, want true; BlockReason: %s", decision.BlockReason)
+	}
+	// Test issue should NOT be deferred — it's a standalone issue, not an epic sibling
+	if decision.Issue.ID != "orch-go-47ppm" {
+		t.Errorf("Decide() selected %s, want orch-go-47ppm (standalone issues should not be deferred)", decision.Issue.ID)
 	}
 }

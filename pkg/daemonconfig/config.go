@@ -231,6 +231,18 @@ type Config struct {
 	// Default: 0.6 (60% auto-completed, 40% any completion).
 	AuditAutoCompleteWeight float64
 
+	// ComposeEnabled controls whether the daemon periodically runs brief composition.
+	// When enabled, the daemon clusters accumulated briefs into digest artifacts.
+	ComposeEnabled bool
+
+	// ComposeInterval is how often to check whether composition should run.
+	// Default is 2 hours.
+	ComposeInterval time.Duration
+
+	// ComposeThreshold is the minimum number of undigested briefs required
+	// before composition runs. Default is 8.
+	ComposeThreshold int
+
 	// ComprehensionThreshold is the maximum number of comprehension:unread items
 	// before the daemon pauses spawning. The daemon adds this label after
 	// auto-completing agents; orch complete transitions it to comprehension:processed.
@@ -293,6 +305,9 @@ func DefaultConfig() Config {
 		AuditSelectInterval:                     168 * time.Hour, // Weekly
 		AuditSelectCount:                        2,               // 2 issues per cycle
 		AuditAutoCompleteWeight:                 0.6,             // 60% from auto-completed pool
-		ComprehensionThreshold:                  5,               // Pause after 5 uncomprehended items
+		ComposeEnabled:                          true,
+		ComposeInterval:                         2 * time.Hour, // Check every 2 hours
+		ComposeThreshold:                        8,             // Compose when 8+ undigested briefs
+		ComprehensionThreshold:                  5,             // Pause after 5 uncomprehended items
 	}
 }

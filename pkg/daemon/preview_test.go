@@ -476,17 +476,29 @@ func TestPreview_RejectsRecentlySpawnedIssues(t *testing.T) {
 }
 
 // Regression test for orch-go-84loq: Preview must defer test-like issues when
-// implementation siblings are pending, matching the ShouldDeferTestIssue check
-// in Decide() (ooda.go). Without this, daemon preview shows test issues as
-// spawnable but the daemon loop skips them.
+// implementation siblings are pending as epic children, matching the
+// ShouldDeferTestIssue check in Decide() (ooda.go). Sibling deferral only
+// applies to epic children — standalone issues in the same project are not siblings.
 func TestPreview_DefersTestIssueWithImplSiblings(t *testing.T) {
 	d := &Daemon{
-		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{ID: "proj-1", Title: "Write tests for auth module", Priority: 0, IssueType: "task", Status: "open"},
-				{ID: "proj-2", Title: "Implement auth module", Priority: 1, IssueType: "feature", Status: "open"},
-			}, nil
-		}},
+		Config: Config{Label: "triage:ready"},
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					// Epic parent with triage:ready — triggers expansion
+					{ID: "proj-epic", Title: "Auth module epic", Priority: 0, IssueType: "epic", Status: "open", Labels: []string{"triage:ready"}},
+				}, nil
+			},
+			ListEpicChildrenFunc: func(epicID string) ([]Issue, error) {
+				if epicID == "proj-epic" {
+					return []Issue{
+						{ID: "proj-1", Title: "Write tests for auth module", Priority: 0, IssueType: "task", Status: "open"},
+						{ID: "proj-2", Title: "Implement auth module", Priority: 1, IssueType: "feature", Status: "open"},
+					}, nil
+				}
+				return nil, nil
+			},
+		},
 	}
 
 	result, err := d.Preview()
@@ -519,6 +531,33 @@ func TestPreview_DefersTestIssueWithImplSiblings(t *testing.T) {
 	}
 	if !found {
 		t.Error("Preview() should include deferred test issue in rejected issues")
+	}
+}
+
+// Regression test for orch-go-cn3j0: Preview must NOT defer standalone test
+// issues behind unrelated issues in the same project. Deferral only applies
+// to epic children.
+func TestPreview_StandaloneTestIssueNotDeferred(t *testing.T) {
+	d := &Daemon{
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Write tests for auth module", Priority: 0, IssueType: "task", Status: "open"},
+				{ID: "proj-2", Title: "Implement auth module", Priority: 1, IssueType: "feature", Status: "open"},
+			}, nil
+		}},
+	}
+
+	result, err := d.Preview()
+	if err != nil {
+		t.Fatalf("Preview() unexpected error: %v", err)
+	}
+
+	// Standalone test issue should NOT be deferred — first in priority order
+	if result.Issue == nil {
+		t.Fatal("Preview() expected spawnable issue, got nil")
+	}
+	if result.Issue.ID != "proj-1" {
+		t.Errorf("Preview() issue ID = %q, want 'proj-1' (standalone issues should not be deferred)", result.Issue.ID)
 	}
 }
 

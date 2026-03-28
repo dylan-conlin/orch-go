@@ -58,8 +58,13 @@ func isTestLikeIssue(issue Issue) bool {
 type SiblingExistsFunc func(id string) bool
 
 // ShouldDeferTestIssue determines whether a test-like issue should be deferred
-// because same-project implementation siblings are still pending (open or
+// because same-epic implementation siblings are still pending (open or
 // in_progress). Returns (true, reason) if the issue should be skipped this cycle.
+//
+// Sibling relationship requires BOTH issues to be children of the same epic
+// (i.e., present in epicChildIDs). Standalone issues in the same project are
+// NOT considered siblings — this prevents false deferral when unrelated issues
+// share a project prefix (e.g., orch-go has dozens of independent issues).
 //
 // The allIssues slice should include both open and in_progress issues from the
 // same ListReadyIssues query — this is already the case since beads Ready()
@@ -69,14 +74,24 @@ type SiblingExistsFunc func(id string) bool
 // exists in beads. When non-nil, siblings that fail validation are skipped
 // (ghost issue protection). When nil, all siblings are trusted.
 //
+// epicChildIDs tracks which issues are children of an expanded epic. When nil
+// or empty, no deferral is applied (no epic context means no sibling relationship).
+//
 // Logic:
 //   - If issue is not test-like → no deferral
-//   - If same-project siblings exist that are NOT test-like and are open or
-//     in_progress → defer (let implementations complete first)
+//   - If issue is not an epic child → no deferral (standalone issues have no siblings)
+//   - If same-project epic-child siblings exist that are NOT test-like and are
+//     open or in_progress → defer (let implementations complete first)
 //   - If all same-project siblings are also test-like or are closed → no deferral
 //   - If blocking sibling is a ghost (siblingExists returns false) → skip it
-func ShouldDeferTestIssue(issue Issue, allIssues []Issue, siblingExists SiblingExistsFunc) (bool, string) {
+func ShouldDeferTestIssue(issue Issue, allIssues []Issue, siblingExists SiblingExistsFunc, epicChildIDs map[string]bool) (bool, string) {
 	if !isTestLikeIssue(issue) {
+		return false, ""
+	}
+
+	// Only defer when the issue is an epic child — standalone issues
+	// in the same project are not siblings.
+	if len(epicChildIDs) == 0 || !epicChildIDs[issue.ID] {
 		return false, ""
 	}
 
@@ -88,13 +103,17 @@ func ShouldDeferTestIssue(issue Issue, allIssues []Issue, siblingExists SiblingE
 		if projectFromIssueID(other.ID) != issueProject {
 			continue
 		}
+		// Other must also be an epic child to be a sibling
+		if !epicChildIDs[other.ID] {
+			continue
+		}
 		// Sibling is implementation-like (not test) and still active
 		if !isTestLikeIssue(other) && (other.Status == "open" || other.Status == "in_progress") {
 			// Verify sibling exists if validator provided (ghost issue protection)
 			if siblingExists != nil && !siblingExists(other.ID) {
 				continue
 			}
-			return true, fmt.Sprintf("test issue deferred: implementation sibling %s (%s) pending in same project", other.ID, other.Status)
+			return true, fmt.Sprintf("test issue deferred: implementation sibling %s (%s) pending in same epic", other.ID, other.Status)
 		}
 	}
 	return false, ""

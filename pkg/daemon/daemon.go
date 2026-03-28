@@ -220,6 +220,10 @@ type Daemon struct {
 	// AuditSelect handles random quality audit issue selection.
 	// When nil, uses the default implementation that queries beads and events.
 	AuditSelect AuditSelectService
+
+	// ComposeService handles periodic brief composition into digests.
+	// When nil, uses the default implementation that reads from .kb/briefs/.
+	ComposeService ComposeService
 }
 
 // New creates a new Daemon instance with default configuration.

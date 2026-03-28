@@ -107,3 +107,4 @@
 {"type":"gate.fired","timestamp":"2026-03-27T14:52:49.333561-07:00","message":"warning: pkg/orient/orient_test.go (1354 lines, +30 net)","file":"pkg/orient/orient_test.go","lines":1354}
 {"type":"gate.fired","timestamp":"2026-03-27T16:40:08.790566-07:00","message":"warning: pkg/orient/orient_test.go (1329 lines, +-25 net)","file":"pkg/orient/orient_test.go","lines":1329}
 {"type":"gate.fired","timestamp":"2026-03-27T16:42:46.136912-07:00","message":"warning: pkg/daemon/prior_art_dedup_test.go (905 lines, +197 net)","file":"pkg/daemon/prior_art_dedup_test.go","lines":905}
+{"type":"gate.fired","timestamp":"2026-03-28T09:54:43.31356-07:00","message":"warning: pkg/events/logger.go (1006 lines, +2 net)","file":"pkg/events/logger.go","lines":1006}

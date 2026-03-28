@@ -142,6 +142,11 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 		handleAuditSelectResult(r, timestamp, verbose, logger)
 	}
 
+	// Brief composition into digests (between-session clustering)
+	if r := d.RunPeriodicCompose(); r != nil {
+		handleComposeResult(r, timestamp, verbose, logger)
+	}
+
 	return result
 }
 
@@ -479,6 +484,28 @@ func handleAuditSelectResult(r *daemon.AuditSelectResult, timestamp string, verb
 		}
 	} else if verbose {
 		fmt.Printf("[%s] Audit select: %s\n", timestamp, r.Message)
+	}
+}
+
+func handleComposeResult(r *daemon.ComposeResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Compose error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.compose", map[string]interface{}{
+			"composed": false,
+			"error":    r.Error.Error(),
+			"message":  r.Message,
+		})
+	} else if r.Composed {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		logDaemonEvent(logger, "daemon.compose", map[string]interface{}{
+			"composed":       true,
+			"brief_count":    r.BriefCount,
+			"clusters_found": r.ClustersFound,
+			"digest_path":    r.DigestPath,
+			"message":        r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] Compose: %s\n", timestamp, r.Message)
 	}
 }
 

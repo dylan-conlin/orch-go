@@ -18,6 +18,7 @@ const (
 	TaskLightweightCleanup           = "lightweight_cleanup"
 	TaskCapacityPoll                 = "capacity_poll"
 	TaskAuditSelect                  = "audit_select"
+	TaskCompose                      = "compose"
 )
 
 // periodicTask holds the scheduling state for a single periodic task.
@@ -126,6 +127,7 @@ func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s.Register(TaskLightweightCleanup, cfg.LightweightCleanupEnabled, cfg.LightweightCleanupInterval)
 	s.Register(TaskCapacityPoll, cfg.CapacityPollEnabled, cfg.CapacityPollInterval)
 	s.Register(TaskAuditSelect, cfg.AuditSelectEnabled, cfg.AuditSelectInterval)
+	s.Register(TaskCompose, cfg.ComposeEnabled, cfg.ComposeInterval)
 	return s
 }
 

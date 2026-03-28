@@ -101,9 +101,9 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 
 	var spawnable *Issue
 	for _, issue := range issues {
-		// Coordination: defer test issues when implementation siblings are pending.
+		// Coordination: defer test issues when implementation siblings are pending (epic children only).
 		// Matches the ShouldDeferTestIssue check in Decide() (ooda.go).
-		if shouldDefer, reason := ShouldDeferTestIssue(issue, issues, siblingExists); shouldDefer {
+		if shouldDefer, reason := ShouldDeferTestIssue(issue, issues, siblingExists, epicChildIDs); shouldDefer {
 			result.RejectedIssues = append(result.RejectedIssues, RejectedIssue{
 				Issue:  issue,
 				Reason: reason,
