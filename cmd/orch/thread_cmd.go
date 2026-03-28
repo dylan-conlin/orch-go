@@ -328,7 +328,7 @@ Examples:
 
 		status := thread.NormalizeStatus(strings.TrimSpace(threadUpdateStatus))
 		switch status {
-		case thread.StatusForming, thread.StatusActive, thread.StatusConverged, thread.StatusSubsumed, thread.StatusResolved:
+		case thread.StatusForming, thread.StatusActive, thread.StatusConverged, thread.StatusSubsumed, thread.StatusResolved, thread.StatusPromoted:
 		default:
 			return fmt.Errorf("invalid thread status %q", threadUpdateStatus)
 		}
@@ -381,6 +381,183 @@ Examples:
 	},
 }
 
+var (
+	threadPromoteAs     string
+	threadPromoteDryRun bool
+)
+
+var threadPromoteCmd = &cobra.Command{
+	Use:   "promote <slug>",
+	Short: "Promote a converged thread into a durable artifact",
+	Long: `Promote a converged thread into a model or decision.
+
+Creates the target artifact with provenance from the thread, updates the
+thread status to promoted, and propagates the promotion to ancestor threads.
+
+Examples:
+  orch thread promote generative-systems-organized-around --as model
+  orch thread promote product-surface-five-elements-not --as decision
+  orch thread promote generative-systems-organized-around --as model --dry-run`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		slug := args[0]
+
+		dir, err := threadsDir()
+		if err != nil {
+			return err
+		}
+
+		// Validate --as flag
+		switch threadPromoteAs {
+		case "model", "decision":
+		default:
+			return fmt.Errorf("--as must be 'model' or 'decision', got %q", threadPromoteAs)
+		}
+
+		// Load thread to get content for scaffold
+		shown, err := thread.Show(dir, slug)
+		if err != nil {
+			return err
+		}
+
+		if shown.Status != thread.StatusConverged {
+			return fmt.Errorf("thread %q has status %q, must be converged to promote", slug, shown.Status)
+		}
+
+		// Determine target path
+		projectDir, _, err := identity.ResolveProjectDirectory(threadWorkdir)
+		if err != nil {
+			return err
+		}
+
+		var targetPath string
+		switch threadPromoteAs {
+		case "model":
+			targetPath = filepath.Join(".kb", "models", slug, "model.md")
+		case "decision":
+			today := time.Now().Format("2006-01-02")
+			targetPath = filepath.Join(".kb", "decisions", today+"-"+slug+".md")
+		}
+
+		if threadPromoteDryRun {
+			fmt.Printf("Would promote: %s -> %s (%s)\n", slug, targetPath, threadPromoteAs)
+			fmt.Printf("Thread title: %s\n", shown.Title)
+			fmt.Printf("Thread entries: %d\n", len(shown.Entries))
+			return nil
+		}
+
+		// Scaffold target artifact
+		absTargetPath := filepath.Join(projectDir, targetPath)
+		if err := scaffoldPromotionArtifact(absTargetPath, threadPromoteAs, shown); err != nil {
+			return err
+		}
+
+		// Promote the thread (updates status, promoted_to, propagates ancestors)
+		if err := thread.Promote(dir, slug, threadPromoteAs, targetPath); err != nil {
+			return err
+		}
+
+		relTarget, _ := filepath.Rel(mustGetwd(), absTargetPath)
+		fmt.Printf("Promoted: %s -> %s (%s)\n", slug, relTarget, threadPromoteAs)
+		return nil
+	},
+}
+
+// scaffoldPromotionArtifact creates the target artifact file with provenance.
+func scaffoldPromotionArtifact(absPath, artifactType string, t *thread.Thread) error {
+	if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
+		return fmt.Errorf("creating artifact directory: %w", err)
+	}
+
+	// For models, also create the probes/ subdirectory
+	if artifactType == "model" {
+		probesDir := filepath.Join(filepath.Dir(absPath), "probes")
+		if err := os.MkdirAll(probesDir, 0755); err != nil {
+			return fmt.Errorf("creating probes directory: %w", err)
+		}
+	}
+
+	var content string
+	switch artifactType {
+	case "model":
+		content = scaffoldModel(t)
+	case "decision":
+		content = scaffoldDecision(t)
+	}
+
+	return os.WriteFile(absPath, []byte(content), 0644)
+}
+
+func scaffoldModel(t *thread.Thread) string {
+	// Collect entry text for the initial thesis
+	var entryText strings.Builder
+	for _, e := range t.Entries {
+		entryText.WriteString(fmt.Sprintf("**%s:** %s\n\n", e.Date, e.Text))
+	}
+
+	today := time.Now().Format("2006-01-02")
+	return fmt.Sprintf(`# Model: %s
+
+**Domain:** {System area this model describes}
+**Last Updated:** %s
+**Promoted From:** Thread "%s" (%s)
+
+---
+
+## Summary (30 seconds)
+
+{Synthesize from thread entries below}
+
+---
+
+## Core Mechanism
+
+{How does this component/system actually work?}
+
+---
+
+## Thread Lineage
+
+%s
+---
+
+## References
+
+**Thread:**
+- .kb/threads/%s — Promoted thread
+`, t.Title, today, t.Title, t.Filename, entryText.String(), t.Filename)
+}
+
+func scaffoldDecision(t *thread.Thread) string {
+	var entryText strings.Builder
+	for _, e := range t.Entries {
+		entryText.WriteString(fmt.Sprintf("**%s:** %s\n\n", e.Date, e.Text))
+	}
+
+	today := time.Now().Format("2006-01-02")
+	return fmt.Sprintf(`# Decision: %s
+
+**Date:** %s
+**Status:** Accepted
+**Promoted From:** Thread "%s" (%s)
+
+## Context
+
+{Why was this decision needed?}
+
+## Thread Lineage
+
+%s
+## Decision
+
+{What was decided?}
+
+## Consequences
+
+{What follows from this decision?}
+`, t.Title, today, t.Title, t.Filename, entryText.String())
+}
+
 func init() {
 	threadCmd.AddCommand(threadNewCmd)
 	threadCmd.AddCommand(threadAppendCmd)
@@ -389,12 +566,15 @@ func init() {
 	threadCmd.AddCommand(threadResolveCmd)
 	threadCmd.AddCommand(threadUpdateCmd)
 	threadCmd.AddCommand(threadLinkCmd)
+	threadCmd.AddCommand(threadPromoteCmd)
 
 	threadCmd.PersistentFlags().StringVar(&threadWorkdir, "workdir", "", "Target project directory (for cross-project thread operations)")
 	threadNewCmd.Flags().StringVar(&threadNewFrom, "from", "", "Parent thread slug (creates child thread with spawned_from reference)")
 	threadResolveCmd.Flags().StringVar(&threadResolveTo, "to", "", "Target artifact path (e.g., .kb/models/enforcement.md)")
-	threadUpdateCmd.Flags().StringVar(&threadUpdateStatus, "status", "", "New lifecycle status (forming, active, converged, subsumed, resolved)")
+	threadUpdateCmd.Flags().StringVar(&threadUpdateStatus, "status", "", "New lifecycle status (forming, active, converged, subsumed, resolved, promoted)")
 	threadUpdateCmd.Flags().StringVar(&threadUpdateTo, "to", "", "Target artifact path or brief when resolving")
+	threadPromoteCmd.Flags().StringVar(&threadPromoteAs, "as", "model", "Target artifact type: model or decision")
+	threadPromoteCmd.Flags().BoolVar(&threadPromoteDryRun, "dry-run", false, "Preview promotion without making changes")
 }
 
 func threadStatusIcon(status string) string {
@@ -409,6 +589,8 @@ func threadStatusIcon(status string) string {
 		return "[>]"
 	case thread.StatusResolved:
 		return "[x]"
+	case thread.StatusPromoted:
+		return "[^]"
 	default:
 		return "[?]"
 	}

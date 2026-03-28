@@ -81,6 +81,9 @@ func runOrient() error {
 	// Element 1: Active threads
 	data.ActiveThreads = collectActiveThreads(projectDir)
 
+	// Element 1b: Promotion-ready threads
+	data.PromotionReady = collectPromotionReady(projectDir)
+
 	// Element 2: Recent briefs
 	briefsDir := filepath.Join(projectDir, ".kb", "briefs")
 	readState := loadBriefReadStateForOrient(projectDir)
@@ -494,6 +497,26 @@ func collectActiveThreads(projectDir string) []orient.ActiveThread {
 			Updated:     summaries[i].Updated,
 			EntryCount:  summaries[i].EntryCount,
 			LatestEntry: summaries[i].LatestEntry,
+		}
+	}
+	return result
+}
+
+// collectPromotionReady returns converged threads without promoted_to.
+func collectPromotionReady(projectDir string) []orient.PromotionCandidate {
+	threadsDir := filepath.Join(projectDir, ".kb", "threads")
+	candidates, err := thread.PromotionReady(threadsDir)
+	if err != nil || len(candidates) == 0 {
+		return nil
+	}
+
+	result := make([]orient.PromotionCandidate, len(candidates))
+	for i, c := range candidates {
+		result[i] = orient.PromotionCandidate{
+			Slug:       c.Slug,
+			Title:      c.Title,
+			Updated:    c.Updated,
+			EntryCount: c.EntryCount,
 		}
 	}
 	return result

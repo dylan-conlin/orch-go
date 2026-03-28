@@ -112,12 +112,21 @@ type SessionResume struct {
 	Source  string `json:"source,omitempty"` // path to handoff file
 }
 
+// PromotionCandidate represents a converged thread ready for promotion.
+type PromotionCandidate struct {
+	Slug       string `json:"slug"`
+	Title      string `json:"title"`
+	Updated    string `json:"updated"`
+	EntryCount int    `json:"entry_count"`
+}
+
 // OrientationData holds all data needed to render session orientation.
 // The thinking surface (FormatOrientation) renders: threads, briefs, tensions.
 // Operational sections (FormatHealth) render: throughput, changelog, models, health, daemon, divergence, etc.
 type OrientationData struct {
 	// --- Thinking surface (rendered by FormatOrientation) ---
-	ActiveThreads    []ActiveThread  `json:"active_threads,omitempty"`
+	ActiveThreads      []ActiveThread       `json:"active_threads,omitempty"`
+	PromotionReady     []PromotionCandidate `json:"promotion_ready,omitempty"`
 	RecentBriefs     []RecentBrief   `json:"recent_briefs,omitempty"`
 	UnreadBriefCount int             `json:"unread_brief_count"`
 	DigestSummary    *DigestSummary  `json:"digest_summary,omitempty"`
@@ -238,6 +247,9 @@ func FormatOrientation(data *OrientationData) string {
 
 	// Element 1: Threads (primary frame)
 	formatActiveThreads(&b, data.ActiveThreads)
+
+	// Element 1b: Promotion-ready threads (converged but not yet artifacts)
+	formatPromotionReady(&b, data.PromotionReady)
 
 	// Element 2: Recent Briefs (what was learned)
 	b.WriteString(FormatRecentBriefs(data.RecentBriefs, data.UnreadBriefCount))
@@ -376,6 +388,18 @@ func formatActiveThreads(b *strings.Builder, threads []ActiveThread) {
 			preview := truncateSummary(t.LatestEntry, 100)
 			b.WriteString(fmt.Sprintf("     > %s\n", preview))
 		}
+	}
+	b.WriteString("\n")
+}
+
+func formatPromotionReady(b *strings.Builder, candidates []PromotionCandidate) {
+	if len(candidates) == 0 {
+		return
+	}
+	b.WriteString("Ready to promote:\n")
+	for _, c := range candidates {
+		b.WriteString(fmt.Sprintf("   - %s (converged %s, %d entries)\n", c.Title, c.Updated, c.EntryCount))
+		b.WriteString(fmt.Sprintf("     orch thread promote %s --as model|decision\n", c.Slug))
 	}
 	b.WriteString("\n")
 }
