@@ -43,7 +43,7 @@ Architect investigations produce structural constraints (4-layer enforcement, CA
 ## Implications
 
 - **Architect is a coordination skill, not a planning skill.** Its value is preventing 30 agents from each solving the same structural problem differently. The daemon's dedup gauntlet accumulated because each tactical fix was done without architect review. (The gauntlet has since been refactored into composable SpawnPipeline gates in `pkg/daemon/spawn_gate.go`.)
-- **Architect output should be implementation issues, not code.** All 4 investigations produced prioritized implementation plans that became beads issues. The architect doesn't implement — it creates the structural attractors that implementation agents follow.
+- **Architect output should be implementation issues, not code.** All 4 investigations produced prioritized implementation plans that became beads issues. The architect doesn't implement — it creates the structural attractors that implementation agents follow. However, issue creation itself must be deduped — architects now run a Prior Art Check (git log + bd list) before every `bd create` to avoid creating zombie issues for work already committed by other agents.
 - **Architect investigations should be gated by complexity, not urgency.** Simple bugs don't need architecture. The spawn gate correctly exempts architect from hotspot blocking — architects need to read bloated files to design their extraction.
 
 ---
@@ -72,12 +72,14 @@ Architect investigations produce structural constraints (4-layer enforcement, CA
 | 2026-03-05 | Daemon unified reliability | Internal complexity hides failure modes. Inside-out simplification > adding more layers. |
 | 2026-03-17 | Accretion gates advisory decision | All 4 accretion layers shipped but converted to advisory after 100% bypass rate. Gates signal, don't block. |
 | 2026-03-18 | Accuracy audit probe | Model claims verified: decomposition+phasing principles sound; implementation status was stale; dedup not collapsed to ~60 lines but refactored to composable gates. |
+| 2026-03-27 | Issue creation dedup probe | Architect skill had zero pre-creation dedup — all dedup was spawn-time (CommitDedupGate). Added Prior Art Check to skill template as layer 1 dedup. |
 
 ---
 
 ## Probes
 
 - 2026-03-18: [Architect Model Accuracy Audit](probes/2026-03-18-probe-architect-model-accuracy-audit.md) — Core principles (decomposition, phasing) confirmed sound; implementation status was stale (all 4 accretion layers shipped, all advisory); dedup refactored to composable gates not ~60 lines; coaching doesn't detect accretion.
+- 2026-03-27: [Issue Creation Dedup Effectiveness](probes/2026-03-27-probe-issue-creation-dedup-effectiveness.md) — Architect skill had zero pre-creation dedup (Defect Class 6 exposure). Added Prior Art Check procedure to skill template as layer 1 dedup, upstream of daemon's CommitDedupGate.
 
 ---
 

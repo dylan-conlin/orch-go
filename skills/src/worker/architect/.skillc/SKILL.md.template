@@ -226,7 +226,34 @@ For designs that will be implemented by agents, produce a verification spec at `
 
 **Reference:** See `reference/templates-and-formats.md` for full and simplified verification spec templates.
 
-#### 5d. Decomposition (Multi-Component Designs)
+#### 5d. Prior Art Check (Before Issue Creation)
+
+**Before every `bd create` call**, check if the proposed work already exists — either committed in git or tracked in an open issue. Skipping this check is the #1 source of duplicate issues in the system (Defect Class 6).
+
+**Procedure:**
+
+1. **Extract 3-5 keywords** from the proposed issue title (e.g., "Add retry logic to spawn execution" → `retry spawn execution`)
+
+2. **Check git commits** for recent work matching those keywords:
+   ```bash
+   git log --oneline -30 --since="7 days ago" --grep="keyword1\|keyword2\|keyword3"
+   ```
+
+3. **Check open issues** for existing coverage:
+   ```bash
+   bd list --status open | grep -i "keyword"
+   ```
+
+4. **Decide:**
+   - **Match found in git:** Work is already done. Skip `bd create`. Log: `bd comments add <beads-id> "DEDUP: Skipped issue creation — commits found: <commit-hash>"`
+   - **Match found in open issues:** Work is already tracked. Skip `bd create`. Log: `bd comments add <beads-id> "DEDUP: Skipped issue creation — existing issue: <issue-id>"`
+   - **No match:** Proceed with `bd create`
+
+**Why this matters:** The daemon has a CommitDedupGate that catches duplicates at spawn-time, but by then the issue already exists in beads as a zombie. Checking at creation-time prevents the zombie from being created at all.
+
+---
+
+#### 5e. Decomposition (Multi-Component Designs)
 
 **Trigger:** Recommendations involve 3+ components OR multiple implementation phases.
 
@@ -241,19 +268,21 @@ For designs that will be implemented by agents, produce a verification spec at `
    | CC-1 | "All competitor HTTP goes through proxy" | middleware + router + config | Integration test: request without proxy header → 403 |
    ```
    Each claim becomes an acceptance criterion on the integration issue.
-3. **Create component issues:** One `bd create` per component, labeled `triage:ready`
-4. **Create integration issue:** `bd create "Integration: <behavioral goal>" --type task -l triage:ready`
+3. **Run Prior Art Check** (5d above) for each proposed issue, then:
+4. **Create component issues:** One `bd create` per component (only if prior art check passes), labeled `triage:ready`
+5. **Create integration issue:** `bd create "Integration: <behavioral goal>" --type task -l triage:ready`
    - Scope as **behavior verification** using composition claims, NOT component verification ("middleware class exists")
    - Add dependency on all component issues: `bd dep add <integration-id> <component-id>` for each
-5. **Link in investigation:** Reference plan slug and all issue IDs in the Recommendations section
+6. **Link in investigation:** Reference plan slug and all issue IDs in the Recommendations section
 
 **If NOT triggered (single-component):**
+- **Run Prior Art Check** (5d above), then:
 - Create one implementation issue directly: `bd create "<implementation task>" --type feature -l triage:ready`
 - No plan needed
 
 **Why integration issue matters:** Swarm agents build components in parallel but nothing wires them together. Without an explicit integration issue scoped as behavioral verification, all building blocks arrive but the feature doesn't work. (Evidence: pw-9knh — 6 agents completed, zero integration.)
 
-#### 5e. Commit Artifacts
+#### 5f. Commit Artifacts
 
 ```bash
 git add .kb/investigations/

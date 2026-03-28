@@ -277,6 +277,93 @@ func TestSketchybarHealthParity(t *testing.T) {
 	}
 }
 
+// TestSketchybarMtimeLiveness verifies that stale file mtime triggers yellow/red liveness
+// and that daemon is marked dead when mtime exceeds threshold.
+func TestSketchybarMtimeLiveness(t *testing.T) {
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skip("jq not available")
+	}
+
+	now := time.Now()
+
+	tests := []struct {
+		name       string
+		mtimeAge   time.Duration // how old to make the file mtime
+		wantHealth string
+		wantStatus string // "running" or "dead"
+	}{
+		{
+			name:       "fresh_file_green",
+			mtimeAge:   10 * time.Second,
+			wantHealth: "green",
+			wantStatus: "running",
+		},
+		{
+			name:       "stale_file_yellow",
+			mtimeAge:   3 * time.Minute,
+			wantHealth: "yellow",
+			wantStatus: "running",
+		},
+		{
+			name:       "very_stale_file_red_dead",
+			mtimeAge:   15 * time.Minute,
+			wantHealth: "red",
+			wantStatus: "dead",
+		},
+	}
+
+	bashScript := buildHealthComputeScript()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			statusPath := filepath.Join(tmpDir, "daemon-status.json")
+
+			// Write a valid daemon-status.json
+			status := DaemonStatus{
+				PID:    1234,
+				Status: "running",
+				Capacity: CapacityStatus{
+					Max: 5, Active: 2, Available: 3,
+				},
+				LastPoll:   now.Add(-30 * time.Second),
+				ReadyCount: 3,
+			}
+			data, err := json.MarshalIndent(status, "", "  ")
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if err := os.WriteFile(statusPath, data, 0644); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+
+			// Backdate the file mtime to simulate staleness
+			staleTime := now.Add(-tt.mtimeAge)
+			if err := os.Chtimes(statusPath, staleTime, staleTime); err != nil {
+				t.Fatalf("chtimes: %v", err)
+			}
+
+			cmd := exec.Command("bash", "-c", bashScript)
+			cmd.Env = append(os.Environ(),
+				"DAEMON_STATUS="+statusPath,
+				fmt.Sprintf("NOW_EPOCH=%d", now.Unix()),
+			)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("bash script failed: %v\nOutput: %s", err, string(out))
+			}
+
+			vars := parseBashOutput(string(out))
+			if vars["HEALTH_LEVEL"] != tt.wantHealth {
+				t.Errorf("HEALTH_LEVEL: want %s, got %s", tt.wantHealth, vars["HEALTH_LEVEL"])
+			}
+			if vars["STATUS"] != tt.wantStatus {
+				t.Errorf("STATUS: want %s, got %s", tt.wantStatus, vars["STATUS"])
+			}
+		})
+	}
+}
+
 // TestSketchybarDaemonNotRunning verifies the widget shows "off" when daemon-status.json
 // is missing (daemon not running).
 func TestSketchybarDaemonNotRunning(t *testing.T) {
@@ -490,20 +577,22 @@ HEALTH_LEVEL="green"
       else "" end
     ')
 
-    # 1. Liveness: use NOW_EPOCH from env for deterministic testing
-    LAST_POLL_ISO=$(echo "$DS" | jq -r '.last_poll // empty' | cut -c1-19)
-    LAST_POLL_EPOCH=""
-    if [ -n "$LAST_POLL_ISO" ]; then
-      LAST_POLL_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%S" "$LAST_POLL_ISO" "+%s" 2>/dev/null)
+    # 1. Liveness: use file mtime (daemon writes file every poll cycle).
+    #    NOW_EPOCH from env for deterministic testing, otherwise use current time.
+    FILE_MTIME=$(stat -f %m "$DAEMON_STATUS")
+    if [ -z "$NOW_EPOCH" ]; then
+      NOW_EPOCH=$(date +%s)
     fi
+    MTIME_AGE=$((NOW_EPOCH - FILE_MTIME))
+
     LIVENESS_LEVEL="green"
-    if [ -n "$LAST_POLL_EPOCH" ] && [ -n "$NOW_EPOCH" ]; then
-      POLL_AGE=$((NOW_EPOCH - LAST_POLL_EPOCH))
-      if [ "$POLL_AGE" -gt 600 ]; then
-        LIVENESS_LEVEL="red"
-      elif [ "$POLL_AGE" -gt 120 ]; then
-        LIVENESS_LEVEL="yellow"
-      fi
+    DAEMON_ALIVE=true
+    if [ "$MTIME_AGE" -gt 600 ]; then
+      LIVENESS_LEVEL="red"
+      DAEMON_ALIVE=false
+      STATUS="dead"
+    elif [ "$MTIME_AGE" -gt 120 ]; then
+      LIVENESS_LEVEL="yellow"
     fi
 
     # 2. Capacity

@@ -1,0 +1,49 @@
+name: Issue Creation Dedup in Architect Skill
+issue: orch-go-aqq5a
+type: skill-text-change
+
+acceptance_criteria:
+  - id: AC-1
+    description: "Architect SKILL.md.template contains Prior Art Check section (5d) before Decomposition"
+    verification: "grep 'Prior Art Check' skills/src/worker/architect/.skillc/SKILL.md.template"
+    status: pass
+
+  - id: AC-2
+    description: "Prior Art Check instructs git log search before bd create"
+    verification: "grep 'git log' skills/src/worker/architect/.skillc/SKILL.md.template"
+    status: pass
+
+  - id: AC-3
+    description: "Prior Art Check instructs bd list search before bd create"
+    verification: "grep 'bd list' skills/src/worker/architect/.skillc/SKILL.md.template"
+    status: pass
+
+  - id: AC-4
+    description: "Decomposition (5e) references Prior Art Check before component issue creation"
+    verification: "grep 'Prior Art Check' skills/src/worker/architect/.skillc/SKILL.md.template | grep -c '5d above'"
+    expected: "2 references (multi-component and single-component paths)"
+    status: pass
+
+  - id: AC-5
+    description: "Deployed skill contains Prior Art Check"
+    verification: "grep 'Prior Art Check' ~/.claude/skills/SKILL.md"
+    status: pass
+
+  - id: AC-6
+    description: "Architect model updated with probe findings"
+    verification: "grep '2026-03-27' .kb/models/architect/model.md"
+    status: pass
+
+  - id: AC-7
+    description: "Probe file exists and status is Complete"
+    verification: "grep 'Status: Complete' .kb/models/architect/probes/2026-03-27-probe-issue-creation-dedup-effectiveness.md"
+    status: pass
+
+  - id: AC-8
+    description: "Follow-up issue created for worker-base"
+    verification: "bd show orch-go-95x1b"
+    status: pass
+
+manual_verification:
+  - "Observe next architect spawn to confirm Prior Art Check is followed"
+  - "Monitor for DEDUP comments in beads over next week"
