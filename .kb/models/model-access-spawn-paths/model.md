@@ -371,6 +371,24 @@ CLI.Model ("sonnet" from --model flag)   ← daemon always sets this
 - Keyword scan catches common patterns
 - Escape hatch becomes invisible safety net
 
+### Failure Mode 10: GPT-5.4 Zero-Token Silent Death in Production (Mar 2026)
+
+**Symptom:** Session created, prompt accepted, assistant "responds" with 0 text and 0 tool calls, completes in <10ms. Session appears alive but produced no work.
+
+**Root Cause:** Unknown — appears infrastructure-triggered (clusters on specific dates/moments), not a model capability issue. Controlled tests show 95% success (N=21) but production shows 71% success (N=24).
+
+**Production evidence (Mar 24-28, 2026):**
+- 24 GPT-5.4 sessions total: 17 functional (71%), 7 silent deaths (29%)
+- Mar 24: 4/4 failed (100%) — batch spawn, all within 7 seconds
+- Mar 26: 3/17 failed (18%) — some during early batch
+- Mar 27-28: 3/3 succeeded (0% failure)
+
+**Distinguishing from Planning stalls:** Silent deaths are NOT stalls — the agent never starts. The assistant response is structurally present but empty (0 chars, 0 tools, <10ms completion). This differs from agents that enter Planning and stop progressing.
+
+**Fix path:** Fingerprinted one-shot retry from `.kb/investigations/2026-03-26-inv-design-retry-strategy-gpt-silent.md` — classify `empty_execution` fingerprint and retry once before escalating.
+
+**Note on CLAUDE.md stat:** "GPT-5.4 is significantly better (95% completion, N=21)" reflects controlled tests. Production conditions (concurrent agents, server state) produce ~29% failure rate. Both numbers are correct for their context.
+
 ---
 
 ## Constraints
@@ -755,3 +773,4 @@ All probes in `.kb/models/model-access-spawn-paths/probes/` merged as of 2026-03
 | `2026-02-24-probe-daemon-spawn-model-bypass-and-claude-visibility.md` | Feb 24 | EXTENDS | Daemon always passes `--model` bypassing user `default_model` config; `runSpawnClaude` is only backend missing `AtomicSpawnPhase2`, creating lifecycle visibility gap |
 | `2026-02-28-probe-claude-code-feature-gap-analysis.md` | Feb 28 | EXTENDS | Third spawn path: `claude -p --output-format stream-json` (headless print mode); untapped Claude CLI capabilities: `--effort`, `--permission-mode`, `--max-turns`, `--settings` |
 | `2026-03-02-probe-oauth-token-auto-refresh.md` | Mar 2 | EXTENDS | Full token lifecycle: 8h access tokens, rotate-on-use refresh tokens, no grace period, two failure modes (chain death + chain divergence), `orch usage` as implicit keepalive |
+| `2026-03-28-probe-gpt54-planning-stall-misdiagnosis.md` | Mar 28 | CONTRADICTS/EXTENDS | Reported "Planning stalls" were misdiagnosed: agent 1 hit governance block (worked correctly), agent 2 was likely opus not GPT-5.4. Real issue: 29% production silent death rate (0-token responses), clustering on infrastructure events. New Failure Mode 10 added. |
