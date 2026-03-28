@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for the orch-go CLI. Read this before debugging CLI issues or adding new commands.
 
-**Last verified:** 2026-03-27 (artifact sync: orch compose command, daemon file table)
+**Last verified:** 2026-03-28 (artifact sync: orch friction command)
 
 **Supersedes:** 16 CLI investigations from Dec 19 - Jan 4 (see History section)
 
@@ -117,6 +117,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `orch entropy` | Aggregate signals from git, events, bloat, duplication |
 | `orch health` | Display composite harness health score (0-100) |
 | `orch history` | Show agent history with skill usage analytics |
+| `orch friction` | Aggregate friction metrics from agent sessions |
 | `orch patterns` | Surface behavioral patterns for orchestrator awareness |
 | `orch tokens` | Show detailed token usage for sessions |
 | `orch transcript` | Convert OpenCode JSON export to readable markdown |

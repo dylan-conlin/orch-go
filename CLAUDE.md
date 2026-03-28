@@ -27,6 +27,7 @@ orch complete proj-123                                    # Verify and close
 orch complete proj-123 --headless                         # Non-interactive (daemon-triggered)
 orch clean                                                # Clean up finished agents
 orch compose                                              # Cluster briefs into digest
+orch friction                                             # Aggregate friction metrics from agents
 orch thread new "How X relates to Y"                      # Create living thread
 orch thread list                                          # List threads with status
 orch opsec status                                         # Check OPSEC proxy health

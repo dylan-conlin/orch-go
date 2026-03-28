@@ -2,7 +2,7 @@
 
 **Purpose:** Descriptions of key orch-go packages — their responsibilities, main types, and APIs.
 
-**Last verified:** 2026-03-27
+**Last verified:** 2026-03-28 (artifact sync: friction package, compose classify)
 
 ---
 
@@ -81,7 +81,16 @@
 - Thread matching uses title keyword overlap (weighted 2x) + body overlap; requires `MinThreadTitleOverlap` (1) and `MinThreadMatchScore` (3)
 - Constants: `MinKeywordOverlap` (4), `MaxDocumentFrequency` (0.15)
 - `ThreadInfo.TitleKeywords` — keywords from thread title only, used for focused matching
+- Brief classification (`classify.go`): `ClassifyBrief()` categorizes briefs as `maintenance` or `knowledge` based on skill, issue type, and title keywords; maintenance briefs bypass comprehension queue
 - CLI: `orch compose` (cmd/orch/compose_cmd.go)
+
+## pkg/friction/ (Friction Metrics)
+
+- Parses `Friction:` comments from `.beads/issues.jsonl`
+- Produces aggregate metrics: category breakdown (tooling/ceremony/bug/gap/capacity), recurring sources, per-skill friction rates, weekly trends
+- `ParseFriction()` extracts `Entry` structs from beads comments
+- `Report` struct with `TotalIssues`, `FrictionCount`, category counts, skill rates
+- CLI: `orch friction` (cmd/orch/friction_cmd.go)
 
 ## pkg/dupdetect/ (Duplicate Detection)
 
